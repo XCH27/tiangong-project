@@ -1,0 +1,706 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 0fd126b..f213185 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -577,3 +577,22 @@ built desktop, Host, CLI and actual AI SDK stream path. The Chinese/English mess
+ missing subscription service access, retains HTTP 403, marks the probe failed and leaves metadata
+ closed. A complete synthetic successful stream marks only its tested model successful. Original
+ review-profile credentials, default and model parameters are preserved; no paid probe was sent.
++
++### Product identity and subscription tiers
++
++Keep the existing vendor/service/region catalog and credential owner. Within an intake section,
++a vendor group containing one named service uses that product's public service name; multi-service
++groups retain the vendor heading and existing service selector. Generic API groups keep vendor
++identity. Grok subscription uses its own Grok asset and label, while xAI API retains xAI. Membership
++tiers belong to each authenticated account; do not create duplicate login routes per tier or infer
++entitlement from the tier label. Preserve user-authored connection aliases and stable route IDs.
++
++The official Grok Build billing extension enriches credits with RemoteSettings.subscription_tier_display
++(or subscription_tier). Read /settings and /billing?format=credits concurrently with the same saved
++account headers and bounded transport, through the existing subscription usage/cache owner. Only the
++whitelisted tier string is projected; remote settings cannot change Fleet behavior. Missing quota
++with a known tier remains unknown quota, never full/zero. A usage period end is not a membership
++expiry or paid billing period. Keep unknown future tier names rather than mapping them to Free.
++Reuse the existing account badge and original plan-status card; known tiers receive established
++semantic color tokens. Original ProviderDetailFeedback and SectionLayout remain byte-identical to
++the pin; only failure copy/classification/manual dismissal differs from upstream.
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 0821c38..8c0afb8 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -34,8 +34,8 @@
+             },
+             "serviceId": "coding",
+             "serviceNameMap": {
+-              "zh-CN": "Coding Plan",
+-              "en-US": "Coding Plan"
++              "zh-CN": "智谱 / Z.ai Coding Plan",
++              "en-US": "Z.ai / BigModel Coding Plan"
+             },
+             "region": "global"
+           }
+@@ -130,8 +130,8 @@
+             },
+             "serviceId": "coding",
+             "serviceNameMap": {
+-              "zh-CN": "Coding Plan",
+-              "en-US": "Coding Plan"
++              "zh-CN": "智谱 / Z.ai Coding Plan",
++              "en-US": "Z.ai / BigModel Coding Plan"
+             },
+             "region": "cn"
+           }
+@@ -1007,8 +1007,8 @@
+             },
+             "serviceId": "chatgpt",
+             "serviceNameMap": {
+-              "zh-CN": "ChatGPT 订阅",
+-              "en-US": "ChatGPT subscription"
++              "zh-CN": "ChatGPT",
++              "en-US": "ChatGPT"
+             }
+           }
+         },
+@@ -1042,8 +1042,8 @@
+             },
+             "serviceId": "copilot",
+             "serviceNameMap": {
+-              "zh-CN": "GitHub Copilot 订阅",
+-              "en-US": "GitHub Copilot subscription"
++              "zh-CN": "GitHub Copilot",
++              "en-US": "GitHub Copilot"
+             }
+           }
+         },
+@@ -1283,8 +1283,8 @@
+             },
+             "serviceId": "token",
+             "serviceNameMap": {
+-              "zh-CN": "Token Plan",
+-              "en-US": "Token Plan"
++              "zh-CN": "Qwen Token Plan",
++              "en-US": "Qwen Token Plan"
+             },
+             "region": "cn"
+           }
+@@ -1319,8 +1319,8 @@
+             },
+             "serviceId": "token",
+             "serviceNameMap": {
+-              "zh-CN": "Token Plan",
+-              "en-US": "Token Plan"
++              "zh-CN": "Qwen Token Plan",
++              "en-US": "Qwen Token Plan"
+             },
+             "region": "global"
+           }
+@@ -1355,8 +1355,8 @@
+             },
+             "serviceId": "token",
+             "serviceNameMap": {
+-              "zh-CN": "Token Plan",
+-              "en-US": "Token Plan"
++              "zh-CN": "MiMo Token Plan",
++              "en-US": "MiMo Token Plan"
+             },
+             "region": "cn"
+           }
+@@ -1494,8 +1494,8 @@
+             },
+             "serviceId": "token",
+             "serviceNameMap": {
+-              "zh-CN": "Token Plan",
+-              "en-US": "Token Plan"
++              "zh-CN": "MiniMax Token Plan",
++              "en-US": "MiniMax Token Plan"
+             },
+             "region": "cn"
+           }
+@@ -1530,8 +1530,8 @@
+             },
+             "serviceId": "token",
+             "serviceNameMap": {
+-              "zh-CN": "Token Plan",
+-              "en-US": "Token Plan"
++              "zh-CN": "MiniMax Token Plan",
++              "en-US": "MiniMax Token Plan"
+             },
+             "region": "global"
+           }
+@@ -1647,8 +1647,8 @@
+         {
+           "templateId": "fleet-xai",
+           "templateNameMap": {
+-            "zh-CN": "Grok 订阅",
+-            "en-US": "Grok subscription"
++            "zh-CN": "Grok",
++            "en-US": "Grok"
+           },
+           "config": {
+             "access": {
+@@ -1663,7 +1663,7 @@
+             "builtinModelIds": [],
+             "logo": {
+               "type": "builtin",
+-              "key": "xai"
++              "key": "grok"
+             }
+           },
+           "catalog": {
+@@ -1674,8 +1674,8 @@
+             },
+             "serviceId": "grok",
+             "serviceNameMap": {
+-              "zh-CN": "Grok 订阅",
+-              "en-US": "Grok subscription"
++              "zh-CN": "Grok",
++              "en-US": "Grok"
+             }
+           }
+         }
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+index 0c48af6..2427cfc 100644
+--- a/packages/services/src/model-provider/subscriptionCatalog.ts
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -58,16 +58,19 @@ export async function readSubscriptionJson(
+   url: string,
+   headers: Record<string, string>,
+   fetcher: typeof fetch,
++  timeoutMs = 15_000,
+ ): Promise<unknown> {
+   const response = await fetcher(url, {
+     headers,
+     redirect: "error",
+-    signal: AbortSignal.timeout(15_000),
++    signal: AbortSignal.timeout(timeoutMs),
+   });
+   if (!response.ok) {
+     await response.body?.cancel();
+     // Never echo a vendor response body: it can contain credentials or account data.
+-    throw new Error(`Subscription request failed (HTTP ${response.status})`);
++    throw Object.assign(new Error(`Subscription request failed (HTTP ${response.status})`), {
++      statusCode: response.status,
++    });
+   }
+   const reader = response.body?.getReader();
+   if (!reader) throw new Error("Subscription response is empty");
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index aed02a4..d9e548b 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -5,7 +5,11 @@ import type {
+   SubscriptionMembership,
+   SubscriptionBillingPeriod,
+ } from "./codexSubscriptionMetadata.js";
+-import { GROK_SUBSCRIPTION_BASE_URL, grokSubscriptionHeaders } from "./subscriptionCatalog.js";
++import {
++  GROK_SUBSCRIPTION_BASE_URL,
++  grokSubscriptionHeaders,
++  readSubscriptionJson,
++} from "./subscriptionCatalog.js";
+ 
+ export interface SubscriptionUsageWindow {
+   id: string;
+@@ -121,7 +125,14 @@ export function parseSubscriptionUsage(
+       });
+     }
+   }
+-  return windows.length
++  const plan = text(
++    kind === "openai-codex"
++      ? body.plan_type
++      : kind === "xai"
++        ? body.subscriptionTier
++        : body.copilot_plan,
++  );
++  return windows.length || (kind === "xai" && plan)
+     ? {
+         status: "available",
+         ...(kind === "openai-codex" &&
+@@ -137,13 +148,7 @@ export function parseSubscriptionUsage(
+             : kind === "xai"
+               ? "Grok credits"
+               : "GitHub Copilot",
+-        plan: text(
+-          kind === "openai-codex"
+-            ? body.plan_type
+-            : kind === "xai"
+-              ? body.subscriptionTier
+-              : body.copilot_plan,
+-        ),
++        plan,
+       }
+     : { status: "unavailable" };
+ }
+@@ -157,27 +162,23 @@ export async function readSubscriptionUsage(
+   if (kind !== "github-copilot" && !text(credential.accountId)) return { status: "auth-required" };
+   // 企业实例的目标域名须单独核实，不能把其凭据发给 github.com。
+   if (kind === "github-copilot" && credential.enterpriseUrl) return { status: "unsupported" };
++  if (kind === "xai") return readGrokUsage(credential, fetcher, now);
+   const codex = kind === "openai-codex";
+   const url = codex
+     ? "https://chatgpt.com/backend-api/wham/usage"
+-    : kind === "xai"
+-      ? `${GROK_SUBSCRIPTION_BASE_URL}/billing?format=credits`
+-      : "https://api.github.com/copilot_internal/user";
++    : "https://api.github.com/copilot_internal/user";
+   try {
+     const response = await fetcher(url, {
+       method: "GET",
+       redirect: "error",
+       signal: AbortSignal.timeout(10_000),
+-      headers:
+-        kind === "xai"
+-          ? grokSubscriptionHeaders(credential)
+-          : {
+-              Accept: "application/json",
+-              Authorization: `Bearer ${codex ? credential.access : credential.refresh}`,
+-              ...(codex
+-                ? { "ChatGPT-Account-Id": credential.accountId as string }
+-                : { "User-Agent": "Fleet", "X-GitHub-Api-Version": "2022-11-28" }),
+-            },
++      headers: {
++        Accept: "application/json",
++        Authorization: `Bearer ${codex ? credential.access : credential.refresh}`,
++        ...(codex
++          ? { "ChatGPT-Account-Id": credential.accountId as string }
++          : { "User-Agent": "Fleet", "X-GitHub-Api-Version": "2022-11-28" }),
++      },
+     });
+     if (!response.ok) {
+       await response.body?.cancel();
+@@ -220,3 +221,39 @@ export async function readSubscriptionUsage(
+     return { status: "unavailable" };
+   }
+ }
++
++async function readGrokUsage(
++  credential: OAuthCredential,
++  fetcher: typeof fetch,
++  now: () => number,
++): Promise<SubscriptionUsageResult> {
++  const headers = grokSubscriptionHeaders(credential);
++  // 官方 billing.rs 从 /settings 补充档位；额度响应本身不保证包含 subscriptionTier。
++  // 同一账号的两个只读结果进入既有额度缓存，不能把远端 settings 应用为 Fleet 配置。
++  const [credits, settings] = await Promise.allSettled(
++    ["/billing?format=credits", "/settings"].map((path) =>
++      readSubscriptionJson(`${GROK_SUBSCRIPTION_BASE_URL}${path}`, headers, fetcher, 10_000),
++    ),
++  );
++  for (const result of [credits, settings]) {
++    if (
++      result?.status === "rejected" &&
++      [401, 403].includes(Number(record(result.reason)?.statusCode))
++    )
++      return { status: "auth-required" };
++  }
++  const remote = settings?.status === "fulfilled" ? record(settings.value) : undefined;
++  const payload = credits?.status === "fulfilled" ? record(credits.value) : undefined;
++  const plan =
++    text(remote?.subscription_tier_display) ??
++    text(remote?.subscription_tier) ??
++    text(payload?.subscriptionTier);
++  if (!payload && !plan)
++    return {
++      status:
++        credits?.status === "rejected" && record(credits.reason)?.statusCode === 429
++          ? "rate-limited"
++          : "unavailable",
++    };
++  return parseSubscriptionUsage("xai", { ...payload, subscriptionTier: plan }, now());
++}
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 8728640..65a0e88 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -283,3 +283,27 @@ test("subscription/API sections keep all routes without treating key-based plans
+     assert.equal(vendors.flatMap((vendor) => vendor.templates).length, category.length);
+   }
+ });
++
++test("filtered intake uses product names and logos without replacing vendor identity or login routes", () => {
++  const section = (category: "subscription" | "api") =>
++    groupProviderTemplates(
++      templates.filter((t) => providerConnectionCategory(t) === category),
++      "en-US",
++    );
++  const subscriptions = section("subscription");
++  const api = section("api");
++  const grok = subscriptions.find((g) => g.id === "vendor:xai")!;
++  assert.equal(grok.label, "Grok");
++  assert.equal(grok.templates.length, 1, "membership tiers share the existing login path");
++  assert.equal(grok.templates[0]?.templateId, "fleet-xai");
++  assert.equal(grok.templates[0]?.config.logo?.key, "grok");
++  assert.equal(grok.templates[0]?.catalog?.vendorId, "xai");
++  const xai = api.find((g) => g.id === "vendor:xai")!;
++  assert.equal(xai.label, "xAI");
++  assert.equal(xai.templates[0]?.config.logo?.key, "xai");
++  assert.equal(subscriptions.find((g) => g.id === "vendor:openai")?.label, "ChatGPT");
++  assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
++  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code");
++  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
++  assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
++});
+diff --git a/packages/services/test/subscription-usage.test.ts b/packages/services/test/subscription-usage.test.ts
+index f2325ec..8344f1b 100644
+--- a/packages/services/test/subscription-usage.test.ts
++++ b/packages/services/test/subscription-usage.test.ts
+@@ -245,16 +245,28 @@ test("Grok credits preserve the official percentage and period, not legacy monet
+     "xai",
+     credential,
+     async (url, init) => {
+-      assert.equal(url, "https://cli-chat-proxy.grok.com/v1/billing?format=credits");
++      assert.ok(
++        [
++          "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
++          "https://cli-chat-proxy.grok.com/v1/settings",
++        ].includes(String(url)),
++      );
++      assert.equal(init?.redirect, "error");
++      assert.ok(init?.signal);
+       const headers = new Headers(init?.headers);
+       assert.equal(headers.get("authorization"), "Bearer fixture-access");
+       assert.equal(headers.get("x-userid"), "account-a");
+       assert.equal(headers.get("X-XAI-Token-Auth"), "xai-grok-cli");
+-      return Response.json(payload);
++      return Response.json(
++        String(url).endsWith("/settings")
++          ? { subscription_tier_display: "SuperGrok Heavy", subscription_tier: "supergrok_heavy" }
++          : payload,
++      );
+     },
+     () => 99,
+   );
+   assert.equal(result.status, "available");
++  if (result.status === "available") assert.equal(result.plan, "SuperGrok Heavy");
+   if (result.status === "available")
+     assert.deepEqual(result.windows, [
+       {
+@@ -275,6 +287,58 @@ test("Grok credits preserve the official percentage and period, not legacy monet
+     );
+ });
+ 
++test("Grok tier and quota are independent facts and optional settings never grant access or imply an expiry", async () => {
++  const read = (billing: Response, settings: Response) =>
++    readSubscriptionUsage(
++      "xai",
++      credential,
++      async (url) => (String(url).endsWith("/settings") ? settings : billing),
++      () => 99,
++    );
++  const tierOnly = await read(
++    Response.json({ config: {} }),
++    Response.json({
++      subscription_tier_display: "SuperGrok Plus",
++      allow_access: false,
++    }),
++  );
++  assert.equal(tierOnly.status, "available");
++  if (tierOnly.status === "available") {
++    assert.equal(tierOnly.plan, "SuperGrok Plus");
++    assert.deepEqual(tierOnly.windows, []);
++    assert.equal(tierOnly.membership, undefined);
++    assert.equal(tierOnly.billing, undefined);
++  }
++  const quotaOnly = await read(
++    Response.json({ config: { creditUsagePercent: 17 } }),
++    new Response(null, { status: 503 }),
++  );
++  assert.equal(quotaOnly.status, "available");
++  if (quotaOnly.status === "available") {
++    assert.equal(quotaOnly.windows[0]?.usedPercent, 17);
++    assert.equal(quotaOnly.plan, undefined);
++  }
++  const unknown = await read(
++    Response.json({ config: {} }),
++    Response.json({ subscription_tier: "future_plan" }),
++  );
++  assert.equal(unknown.status, "available");
++  if (unknown.status === "available") assert.equal(unknown.plan, "future_plan");
++  assert.equal(
++    (
++      await read(
++        Response.json({ config: { creditUsagePercent: 17 } }),
++        new Response(null, { status: 401 }),
++      )
++    ).status,
++    "auth-required",
++  );
++  assert.equal(
++    (await read(new Response(null, { status: 429 }), new Response(null, { status: 503 }))).status,
++    "rate-limited",
++  );
++});
++
+ test("account-scoped membership uses the provider subscription route and distinguishes absent, expired and renewing terms", async () => {
+   let requests = 0;
+   const now = Date.parse("2026-09-27T00:00:00Z");
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index cdfed9b..e3657d3 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,6 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.allowance.windowsUnavailable": "Usage allowance is unavailable",
+   "settings.modelProvider.testFailure.unsaved":
+     "Save the pending address or key changes before testing.",
+   "settings.modelProvider.testFailure.environment":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6a6ba84..011d52c 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,6 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.allowance.windowsUnavailable": "暂未获取到额度",
+   "settings.modelProvider.testFailure.unsaved": "连接有未保存的修改，请先保存地址或密钥，再测试。",
+   "settings.modelProvider.testFailure.environment":
+     "当前环境无法执行连接测试，请确认本地工作区和运行时已启动。",
+diff --git a/packages/ui/src/lib/subscriptionPlanPresentation.ts b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+new file mode 100644
+index 0000000..a12b45d
+--- /dev/null
++++ b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+@@ -0,0 +1,55 @@
++type SubscriptionKind = "openai-codex" | "github-copilot" | "xai";
++const COLORS = {
++  neutral: "bg-muted text-foreground-subtle",
++  green: "bg-success/15 text-foreground border-success/30",
++  gold: "bg-warning/15 text-foreground border-warning/30",
++  blue: "bg-usage-chart-1/15 text-foreground border-usage-chart-1/30",
++  purple: "bg-usage-chart-3/15 text-foreground border-usage-chart-3/30",
++  teal: "bg-usage-chart-4/15 text-foreground border-usage-chart-4/30",
++} as const;
++type Plan = readonly [name: string, color: keyof typeof COLORS];
++const PLANS: Record<SubscriptionKind, Record<string, Plan>> = {
++  "openai-codex": {
++    free: ["Free", "neutral"],
++    plus: ["Plus", "green"],
++    pro: ["Pro", "gold"],
++    team: ["Team", "purple"],
++    business: ["Business", "purple"],
++    enterprise: ["Enterprise", "teal"],
++    chatgptteamplan: ["Team", "purple"],
++    chatgptplusplan: ["Plus", "green"],
++    chatgptproplan: ["Pro", "gold"],
++  },
++  "github-copilot": {
++    free: ["Free", "neutral"],
++    pro: ["Pro", "green"],
++    proplus: ["Pro+", "gold"],
++    business: ["Business", "purple"],
++    enterprise: ["Enterprise", "teal"],
++  },
++  xai: {
++    free: ["Free", "neutral"],
++    xbasic: ["X Basic", "neutral"],
++    premium: ["X Premium", "blue"],
++    xpremium: ["X Premium", "blue"],
++    premiumplus: ["X Premium+", "purple"],
++    xpremiumplus: ["X Premium+", "purple"],
++    supergroklite: ["SuperGrok Lite", "teal"],
++    supergrok: ["SuperGrok", "green"],
++    supergrokplus: ["SuperGrok Plus", "blue"],
++    supergrokheavy: ["SuperGrok Heavy", "gold"],
++    business: ["Business", "purple"],
++    enterprise: ["Enterprise", "teal"],
++  },
++};
++
++/** 仅格式化服务商已报告的档位；不按名称推算额度、费用或使用权限。 */
++export function subscriptionPlanPresentation(kind: SubscriptionKind, plan: string) {
++  const key = plan
++    .trim()
++    .toLowerCase()
++    .replace(/[\s_-]/g, "")
++    .replace(/\+/g, "plus");
++  const known = PLANS[kind][key];
++  return { name: known?.[0] ?? plan, className: COLORS[known?.[1] ?? "neutral"] };
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index c747ddf..075a160 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -12,6 +12,7 @@ import XiaomiMiMo from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
+ import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg";
+ import Anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
+ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
++import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+ import OpenRouter from "@lobehub/icons-static-svg/icons/openrouter.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+@@ -39,6 +40,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; color: bool
+   openai: { src: OpenAI, color: false },
+   anthropic: { src: Anthropic, color: false },
+   xai: { src: XAI, color: false },
++  grok: { src: Grok, color: false },
+   openrouter: { src: OpenRouter, color: false },
+   opencode: { src: OpenCode, color: false },
+   github: { src: GithubCopilot, color: false },
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index 5fef709..30bc64b 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -10,7 +10,8 @@ import { CredentialDefaultControl } from "./ProviderDraftControls.js";
+ import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
+ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { Badge } from "@/components/ui/badge.js";
+-import { SubscriptionUsageSection, subscriptionPlanName } from "./SubscriptionUsageSection.js";
++import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
+ 
+ export function SubscriptionAccountRow({
+   account,
+@@ -49,15 +50,7 @@ export function SubscriptionAccountRow({
+   });
+   const result = reading.result;
+   const plan = result?.status === "available" ? result.plan : undefined;
+-  const tier = plan ? subscriptionPlanName(plan) : undefined;
+-  const color =
+-    tier === "Plus"
+-      ? "bg-success/15 text-foreground border-success/30"
+-      : tier === "Pro"
+-        ? "bg-warning/15 text-foreground border-warning/30"
+-        : tier === "Team" || tier === "Business"
+-          ? "bg-usage-chart-3/15 text-foreground border-usage-chart-3/30"
+-          : "bg-muted text-foreground-subtle";
++  const tier = plan ? subscriptionPlanPresentation(kind, plan) : undefined;
+   const label =
+     displayLabel ||
+     account.label ||
+@@ -71,8 +64,8 @@ export function SubscriptionAccountRow({
+         planTitle={label}
+         titleAccessory={
+           tier ? (
+-            <Badge variant="secondary" className={color}>
+-              {tier}
++            <Badge variant="secondary" className={tier.className}>
++              {tier.name}
+             </Badge>
+           ) : undefined
+         }
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+index 47037cc..ff9c280 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+@@ -31,6 +31,9 @@ export function SubscriptionAllowanceDetails({
+   const days = activeUntil === undefined ? undefined : Math.ceil((activeUntil - now) / 86_400_000);
+   return (
+     <div className="@container space-y-2">
++      {result.windows.length === 0 ? (
++        <p className="text-ui-sm text-foreground-subtle">{t("windowsUnavailable")}</p>
++      ) : null}
+       <div
+         className={cn(
+           "grid grid-cols-1 gap-x-4",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+index 44cec2c..5bed5f6 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+@@ -7,7 +7,7 @@ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ 
+ const SUBSCRIPTION_GUIDES = {
+   "openai-codex": "https://chatgpt.com/pricing/",
+-  xai: "https://docs.x.ai/grok/faq",
++  xai: "https://x.ai/pricing",
+   "github-copilot": "https://github.com/features/copilot/plans",
+ } as const;
+ 
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index a63d83f..2ae59e0 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -6,18 +6,7 @@ import { Button } from "@/components/ui/button.js";
+ import { SubscriptionAllowanceDetails } from "./SubscriptionAllowanceDetails.js";
+ import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-const PLAN_NAMES: Record<string, string> = {
+-  team: "Team",
+-  plus: "Plus",
+-  pro: "Pro",
+-  business: "Business",
+-  free: "Free",
+-  chatgptteamplan: "Team",
+-  chatgptplusplan: "Plus",
+-  chatgptproplan: "Pro",
+-};
+-
+-export const subscriptionPlanName = (plan: string) => PLAN_NAMES[plan.toLowerCase()] ?? plan;
++import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
+ 
+ // 沿用 ZCode 状态卡的标题/动作/内容布局，额度属于账号，不属于上下文 Token 环。
+ export function SubscriptionUsageSection({
+@@ -66,7 +55,7 @@ export function SubscriptionUsageSection({
+         <span className="text-ui-base font-medium">
+           {t("title")}
+           {result?.status === "available" && result.plan && !reading
+-            ? ` · ${subscriptionPlanName(result.plan)}`
++            ? ` · ${subscriptionPlanPresentation(kind, result.plan).name}`
+             : ""}
+         </span>
+         <Button
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+index 074d2a4..e9e6f7e 100644
+--- a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -43,6 +43,21 @@ export function groupProviderTemplates(
+     groups.set(id, group);
+   }
+   const search = query.trim().toLocaleLowerCase();
++  // 单一服务展示用户连接的产品；公司身份保留在目录，不能把 Grok/ChatGPT 标成其 API 厂商。
++  for (const group of groups.values()) {
++    const first = group.templates[0]?.catalog;
++    if (
++      first &&
++      first.serviceId !== "api" &&
++      group.templates.every((template) => template.catalog?.serviceId === first.serviceId)
++    ) {
++      group.label = resolveProviderTemplateName(
++        group.templates[0]!.templateId,
++        { templateNameMap: first.serviceNameMap },
++        locale,
++      );
++    }
++  }
+   return [...groups.values()].filter(
+     (group) =>
+       !search ||
+diff --git a/packages/ui/test/subscriptionAllowanceDetails.test.tsx b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+index 2ac9fae..1562c01 100644
+--- a/packages/ui/test/subscriptionAllowanceDetails.test.tsx
++++ b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
+ import { SubscriptionAllowanceDetails } from "../src/settings/model-provider-section/SubscriptionAllowanceDetails.js";
+ import type { SubscriptionUsageReading } from "../src/settings/model-provider-section/subscriptionUsageLifecycle.js";
+ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { subscriptionPlanPresentation } from "../src/lib/subscriptionPlanPresentation.js";
+ 
+ const now = Date.parse("2026-09-27T10:00:00Z");
+ const base: Extract<SubscriptionUsageReading, { status: "available" }> = {
+@@ -64,3 +65,24 @@ test("remaining membership days require a reported term, and quota reset is neve
+   );
+   assert.doesNotMatch(render(), /0 days|Term ended/);
+ });
++
++test("a reported membership with missing allowance does not draw a zero or full meter", () => {
++  const html = render({ ...base, plan: "SuperGrok Heavy", windows: [] });
++  assert.match(html, /Usage allowance is unavailable/);
++  assert.doesNotMatch(html, /aria-valuenow|100% remaining|0% remaining/);
++});
++
++test("Grok tiers share account badges while preserving distinct product tiers and future names", () => {
++  const tiers = ["SuperGrok Lite", "SuperGrok", "SuperGrok Plus", "SuperGrok Heavy"];
++  assert.equal(new Set(tiers.map((t) => subscriptionPlanPresentation("xai", t).className)).size, 4);
++  for (const tier of tiers)
++    assert.equal(
++      subscriptionPlanPresentation("xai", tier.toLowerCase().replaceAll(" ", "_")).name,
++      tier,
++    );
++  assert.equal(subscriptionPlanPresentation("xai", "x_premium_plus").name, "X Premium+");
++  assert.equal(subscriptionPlanPresentation("xai", "Future Plan 50X").name, "Future Plan 50X");
++  assert.equal(subscriptionPlanPresentation("xai", "SuperGrokPro").name, "SuperGrokPro");
++  assert.equal(subscriptionPlanPresentation("openai-codex", "chatgptplusplan").name, "Plus");
++  assert.equal(subscriptionPlanPresentation("github-copilot", "pro+").name, "Pro+");
++});

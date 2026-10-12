@@ -1,0 +1,354 @@
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 4112a49..2577473 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -13,15 +13,16 @@ it does not automatically capture the current settings page, grant permission, o
+ ## Model connections
+ 
+ Open **Settings → Models**. Select the provider and connection method, then enter its credentials.
+-Presets supply their supported API format; declared alternatives expand under advanced connection
+-settings. Custom endpoints expose format selection. Chat Completions, Responses and Anthropic
+-Messages are different request protocols, not interchangeable display preferences.
+-
+-The model list loads automatically from saved connection settings. Search and select additional
+-models in the same list, or add a model ID manually. Refresh and errors stay in place. Loading a
+-catalog does not add models, overwrite your settings or run a model test. Subscription catalogs
+-currently come from the installed adapter; they are not live account entitlement lists.
+-A provider's brand or a model's name does not prove support for every format.
++The request address is above the credentials. Upstream format buttons save immediately; presets
++only offer their declared formats. Chat Completions, Responses and Anthropic Messages are different
++request protocols. Changing format does not commit unfinished credential edits.
++
++The model list loads from the saved connection and automatically adds discovered models. Existing
++order, disabled models and custom settings are preserved. Search filters this list locally. Use
++**Add Model** below the list only for a missing model ID: enter the ID and press Enter or the
++checkmark; Escape cancels. Normal addition stays inline. A configuration problem or failed explicit
++connection test opens model details. Discovery does not run inference; a listed model is not proof
++of successful use. Catalog origin and available metadata depend on the connected provider.
+ 
+ Use the provider's documented URL and supported protocol. Retrieved model IDs are request IDs;
+ a display name is not a replacement ID. Check discovered models and manually correct missing
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 492e726..cb57381 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -10,14 +10,15 @@
+ 
+ ## 模型连接
+ 
+-打开 **设置 → 模型**。选择供应商和连接方式，填写凭据。预置服务自动使用已声明的 API
+-格式；有其他已适配格式时，可在高级连接设置中展开。自定义地址直接显示格式选择。
+-Chat Completions、Responses、Anthropic Messages 是不同的请求协议，不是显示偏好。
+-
+-连接保存后，模型列表会自动加载。在原列表内搜索、勾选添加，也可以手动添加模型 ID。
+-刷新与错误提示都在列表内。读取目录不会自动添加模型、覆盖配置或发起模型测试。
+-订阅模型目录目前来自已安装的适配器，不代表账号实时可用的全部模型。
+-不能因为供应商品牌或模型名称，就认定它支持所有格式。
++打开 **设置 → 模型设置**，选择供应商与连接方式，填写凭据。请求地址位于凭据上方。
++点击“上游格式”按钮后立即保存，预设只提供已声明支持的格式。Chat Completions、Responses
++和 Anthropic Messages 是不同的请求协议。切换格式不会同时保存尚未提交的密钥修改。
++
++模型列表根据已保存的连接自动获取，并直接添加识别到的模型，保留已有顺序、停用状态和
++自定义配置。搜索仅筛选这份列表。未识别到的模型可点击列表下方的 **添加模型**，输入模型 ID
++后按回车或勾号保存，Esc 取消。正常添加不弹窗；配置出错或手动测试连接失败时打开模型详情。
++获取列表不会发起推理请求，列表中出现模型也不代表它已通过连接测试。目录来源和可用元数据
++取决于实际连接的供应商。
+ 
+ 使用供应商文档明确支持的地址与协议。拉取到的模型 ID 用于请求，展示名称不能替代 ID。
+ 检查模型列表，手动纠正缺失的元数据。上下文大小表示容量，不是已使用 token 数量。
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index cf9952c..438cc37 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,5 +1,5 @@
+ import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
+-import { Check, Loader2Icon, Plus, RefreshCwIcon, X } from "lucide-react";
++import { Check, Loader2Icon, Plus, RefreshCwIcon, SearchIcon, X } from "lucide-react";
+ import { TID_MODEL_PROVIDER_ADD_MODEL_BUTTON } from "@zcode/shared";
+ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+@@ -24,7 +24,7 @@ export function ModelDiscoverySection({
+   discoveryEnabled?: boolean;
+   modelIds: readonly string[];
+   onAddModel: (modelId: string) => Promise<void>;
+-  renderConfiguredModels: (query: string, addRow?: ReactNode) => ReactNode;
++  renderConfiguredModels: (query: string) => ReactNode;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+@@ -35,6 +35,8 @@ export function ModelDiscoverySection({
+   const [modelName, setModelName] = useState("");
+   const addInputRef = useRef<HTMLInputElement>(null);
+   const addButtonRef = useRef<HTMLButtonElement>(null);
++  const searchInputRef = useRef<HTMLInputElement>(null);
++  const previousAddOpen = useRef(false);
+   const [addError, setAddError] = useState<string>();
+   const addingRef = useRef(false);
+   const addGeneration = useRef(0);
+@@ -71,6 +73,11 @@ export function ModelDiscoverySection({
+     setAddError(undefined);
+     addButtonRef.current?.focus();
+   };
++  useEffect(() => {
++    // 添加按钮和输入行共用列表末行；等待按钮重新挂载后再恢复键盘焦点。
++    if (previousAddOpen.current && !addOpen) addButtonRef.current?.focus();
++    previousAddOpen.current = addOpen;
++  }, [addOpen]);
+   useEffect(
+     () => () => {
+       addGeneration.current++;
+@@ -119,30 +126,34 @@ export function ModelDiscoverySection({
+   return (
+     <div className="space-y-3" data-testid="model-discovery">
+       <div className="flex items-center gap-2">
+-        <Input
+-          {...TECHNICAL_INPUT_ATTRIBUTES}
+-          className="flex-1"
+-          value={query}
+-          onChange={(event) => setQuery(event.target.value)}
+-          placeholder={t("search")}
+-          aria-label={t("search")}
+-        />
+-        <Button
+-          type="button"
+-          variant="secondary"
+-          className="shrink-0 rounded-lg"
+-          ref={addButtonRef}
+-          disabled={adding}
+-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+-          onClick={() => {
+-            setQuery("");
+-            setAddOpen(true);
+-            addInputRef.current?.focus();
++        <form
++          className="relative min-w-0 flex-1"
++          role="search"
++          onSubmit={(event) => {
++            event.preventDefault();
++            setQuery(query.trim());
++            searchInputRef.current?.focus();
+           }}
+         >
+-          <Plus data-icon="inline-start" aria-hidden="true" />
+-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+-        </Button>
++          <Input
++            {...TECHNICAL_INPUT_ATTRIBUTES}
++            ref={searchInputRef}
++            className="pr-8"
++            value={query}
++            onChange={(event) => setQuery(event.target.value)}
++            placeholder={t("search")}
++            aria-label={t("search")}
++          />
++          <Button
++            type="submit"
++            variant="ghost"
++            size="icon-sm"
++            className="absolute right-0.5 top-1/2 -translate-y-1/2 text-foreground-subtle"
++            aria-label={t("search")}
++          >
++            <SearchIcon className="size-4" aria-hidden="true" />
++          </Button>
++        </form>
+         {discoveryEnabled ? (
+           <Button
+             type="button"
+@@ -159,82 +170,95 @@ export function ModelDiscoverySection({
+           </Button>
+         ) : null}
+       </div>
+-      {renderConfiguredModels(
+-        query,
+-        addOpen ? (
+-          <div className="space-y-2 px-3 py-2" data-no-model-drag="true">
+-            <div className="flex items-center gap-2">
+-              <Input
+-                {...TECHNICAL_INPUT_ATTRIBUTES}
+-                ref={addInputRef}
+-                autoFocus
+-                className="min-w-0 flex-1 font-mono"
+-                value={modelName}
+-                disabled={adding}
+-                placeholder={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
+-                aria-label={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
+-                aria-invalid={alreadyAdded || Boolean(addError)}
+-                onChange={(event) => {
+-                  setModelName(event.target.value);
+-                  setAddError(undefined);
+-                }}
+-                onCompositionStart={() => {
+-                  compositionActive.current = true;
+-                }}
+-                onCompositionEnd={() => {
+-                  compositionActive.current = false;
+-                }}
+-                onKeyDown={(event) => {
+-                  if (
+-                    isImeComposingKeyEvent({
+-                      compositionActive: compositionActive.current,
+-                      nativeEvent: event.nativeEvent,
+-                    }) ||
+-                    event.keyCode === 229
+-                  )
+-                    return;
+-                  if (event.key === "Enter") {
+-                    event.preventDefault();
+-                    void addModel();
+-                  }
+-                  if (event.key === "Escape") {
+-                    event.preventDefault();
+-                    cancelAdd();
+-                  }
+-                }}
+-              />
+-              <Button
+-                type="button"
+-                variant="ghost"
+-                size="icon-sm"
+-                disabled={adding || !modelName.trim() || alreadyAdded}
+-                onClick={() => void addModel()}
+-                aria-label={intl.formatMessage({ id: adding ? "common.saving" : "common.save" })}
+-              >
+-                {adding ? (
+-                  <Loader2Icon className="size-4 animate-spin" />
+-                ) : (
+-                  <Check className="size-4" />
+-                )}
+-              </Button>
+-              <Button
+-                type="button"
+-                variant="ghost"
+-                size="icon-sm"
+-                disabled={adding}
+-                onClick={cancelAdd}
+-                aria-label={intl.formatMessage({ id: "common.cancel" })}
+-              >
+-                <X className="size-4" />
+-              </Button>
+-            </div>
+-            {addError || alreadyAdded ? (
+-              <p role="alert" className="text-ui-caption text-destructive">
+-                {addError ?? t("alreadyAdded")}
+-              </p>
+-            ) : null}
++      {renderConfiguredModels(query)}
++      {addOpen ? (
++        <div className="space-y-2" data-no-model-drag="true">
++          <div className="flex items-center gap-2">
++            <Plus className="size-4 shrink-0 text-foreground-subtle" aria-hidden="true" />
++            <Input
++              {...TECHNICAL_INPUT_ATTRIBUTES}
++              ref={addInputRef}
++              autoFocus
++              className="min-w-0 flex-1 font-mono"
++              value={modelName}
++              disabled={adding}
++              placeholder={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
++              aria-label={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
++              aria-invalid={alreadyAdded || Boolean(addError)}
++              onChange={(event) => {
++                setModelName(event.target.value);
++                setAddError(undefined);
++              }}
++              onCompositionStart={() => {
++                compositionActive.current = true;
++              }}
++              onCompositionEnd={() => {
++                compositionActive.current = false;
++              }}
++              onKeyDown={(event) => {
++                if (
++                  isImeComposingKeyEvent({
++                    compositionActive: compositionActive.current,
++                    nativeEvent: event.nativeEvent,
++                  }) ||
++                  event.keyCode === 229
++                )
++                  return;
++                if (event.key === "Enter") {
++                  event.preventDefault();
++                  void addModel();
++                }
++                if (event.key === "Escape") {
++                  event.preventDefault();
++                  cancelAdd();
++                }
++              }}
++            />
++            <Button
++              type="button"
++              variant="ghost"
++              size="icon-sm"
++              disabled={adding || !modelName.trim() || alreadyAdded}
++              onClick={() => void addModel()}
++              aria-label={intl.formatMessage({ id: adding ? "common.saving" : "common.save" })}
++            >
++              {adding ? (
++                <Loader2Icon className="size-4 animate-spin" />
++              ) : (
++                <Check className="size-4" />
++              )}
++            </Button>
++            <Button
++              type="button"
++              variant="ghost"
++              size="icon-sm"
++              disabled={adding}
++              onClick={cancelAdd}
++              aria-label={intl.formatMessage({ id: "common.cancel" })}
++            >
++              <X className="size-4" />
++            </Button>
+           </div>
+-        ) : undefined,
++          {addError || alreadyAdded ? (
++            <p role="alert" className="text-ui-caption text-destructive">
++              {addError ?? t("alreadyAdded")}
++            </p>
++          ) : null}
++        </div>
++      ) : (
++        <Button
++          type="button"
++          variant="ghost"
++          ref={addButtonRef}
++          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
++          onClick={() => {
++            setQuery("");
++            setAddOpen(true);
++          }}
++        >
++          <Plus className="size-4" aria-hidden="true" />
++          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
++        </Button>
+       )}
+       {disabledReason ? (
+         <p role="status" className="text-ui-caption text-foreground-subtle">
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 30ceb23..cb42e3d 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -471,20 +471,15 @@ export function ProviderModelsSection({
+     setAddedModelId(model.modelId);
+   };
+ 
+-  const renderConfiguredModels = (query: string, addRow?: ReactNode) => {
++  const renderConfiguredModels = (query: string) => {
+     const search = query.trim().toLocaleLowerCase();
+     const visibleModels = models.filter((model) =>
+       model.modelId.toLocaleLowerCase().includes(search),
+     );
+     return (
+       <div>
+-        {visibleModels.length > 0 || addRow ? (
++        {visibleModels.length > 0 ? (
+           <div className="overflow-hidden rounded-lg border border-input-border bg-input">
+-            {addRow ? (
+-              <div className={visibleModels.length ? "border-b border-input-border" : undefined}>
+-                {addRow}
+-              </div>
+-            ) : null}
+             <SortableProviderModelList
+               modelIds={visibleModels.map((model) => model.modelId)}
+               sortableModelIds={visibleModels.map((model) => model.modelId)}

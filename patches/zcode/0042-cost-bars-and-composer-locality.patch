@@ -1,0 +1,594 @@
+diff --git a/packages/ui/src/chat-input-toolbar/CodingPlanContextUsage.tsx b/packages/ui/src/chat-input-toolbar/CodingPlanContextUsage.tsx
+index 4f1190c..c366a14 100644
+--- a/packages/ui/src/chat-input-toolbar/CodingPlanContextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/CodingPlanContextUsage.tsx
+@@ -37,7 +37,6 @@ export type ChatCodingPlanUsageRemainingConfig = {
+   modelProvidersLoading: boolean;
+   onEntitlementRefresh?: () => void | Promise<void>;
+   onProviderChange?: (providerId: SidebarUsageCodingPlanSourceId) => void;
+-  onUsageClick?: () => void;
+   selectedProviderId?: SidebarUsageCodingPlanSourceId;
+ };
+ 
+@@ -343,7 +342,6 @@ export function ChatCodingPlanUsageRemainingPanel({
+         <CodingPlanUsageHeaderAction
+           error={state.displayedEntitlement?.error}
+           loading={actionRefreshing}
+-          openLabel={intl.formatMessage({ id: "sidebar.usage.plan.open" })}
+           refreshingLabel={intl.formatMessage({
+             id: "sidebar.usage.plan.refreshing",
+           })}
+@@ -355,7 +353,6 @@ export function ChatCodingPlanUsageRemainingPanel({
+               ? intl.formatMessage({ id: "sidebar.usage.plan.updateFailed" })
+               : undefined
+           }
+-          onUsageClick={config.onUsageClick}
+         />
+       </div>
+       <div className={cn("grid gap-2", getContextQuotaMeterGridClass(quotaGridCount))}>
+diff --git a/packages/ui/src/chat-input-toolbar/CodingPlanUsageHeaderAction.tsx b/packages/ui/src/chat-input-toolbar/CodingPlanUsageHeaderAction.tsx
+index 466f97d..7afb1d7 100644
+--- a/packages/ui/src/chat-input-toolbar/CodingPlanUsageHeaderAction.tsx
++++ b/packages/ui/src/chat-input-toolbar/CodingPlanUsageHeaderAction.tsx
+@@ -1,4 +1,4 @@
+-import { CheckIcon, ChevronRightIcon, InfoIcon, Loader2 } from "lucide-react";
++import { CheckIcon, InfoIcon, Loader2 } from "lucide-react";
+ import { useEffect, useRef, useState } from "react";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { TooltipProvider } from "@/components/ui/tooltip.js";
+@@ -8,16 +8,12 @@ const CONTEXT_USAGE_REFRESH_SUCCESS_MS = 1_000;
+ export function CodingPlanUsageHeaderAction({
+   error,
+   loading,
+-  onUsageClick,
+-  openLabel,
+   refreshingLabel,
+   updatedLabel,
+   warningLabel,
+ }: {
+   error: string | null | undefined;
+   loading: boolean;
+-  onUsageClick?: () => void;
+-  openLabel: string;
+   refreshingLabel: string;
+   updatedLabel: string;
+   warningLabel?: string;
+@@ -66,36 +62,18 @@ export function CodingPlanUsageHeaderAction({
+     );
+   }
+ 
++  if (!warningLabel) return null;
+   return (
+-    <span className="inline-flex shrink-0 items-center gap-1">
+-      {warningLabel ? (
+-        <TooltipProvider>
+-          <ControlHintTooltip title={warningLabel}>
+-            <span
+-              role="img"
+-              aria-label={warningLabel}
+-              className="inline-flex h-6 w-5 items-center justify-center text-warning"
+-            >
+-              <InfoIcon className="size-3.5" aria-hidden="true" />
+-            </span>
+-          </ControlHintTooltip>
+-        </TooltipProvider>
+-      ) : null}
+-      {onUsageClick ? (
+-        <button
+-          type="button"
+-          aria-label={openLabel}
+-          className="inline-flex h-6 shrink-0 items-center gap-0.5 text-ui-sm text-foreground-subtle hover:text-foreground hover:underline"
+-          onClick={(event) => {
+-            event.preventDefault();
+-            event.stopPropagation();
+-            onUsageClick();
+-          }}
++    <TooltipProvider>
++      <ControlHintTooltip title={warningLabel}>
++        <span
++          role="img"
++          aria-label={warningLabel}
++          className="inline-flex h-6 w-5 shrink-0 items-center justify-center text-warning"
+         >
+-          <span>{openLabel}</span>
+-          <ChevronRightIcon className="size-3.5" />
+-        </button>
+-      ) : null}
+-    </span>
++          <InfoIcon className="size-3.5" aria-hidden="true" />
++        </span>
++      </ControlHintTooltip>
++    </TooltipProvider>
+   );
+ }
+diff --git a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+index 8178629..ce81626 100644
+--- a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+@@ -11,17 +11,12 @@ import {
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+-import {
+-  setPendingSettingsSectionIntent,
+-  setPendingSettingsUsageIntent,
+-} from "@/lib/settingsNavigation.js";
+ import {
+   subscriptionAccountDisplayLabel,
+   resolveQuotaInspectionAccount,
+ } from "@/settings/model-provider-section/subscriptionAccountLifecycle.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import { SubscriptionUsageSection } from "@/settings/model-provider-section/SubscriptionUsageSection.js";
+-import { useTabStore } from "@/store/TabStoreProvider.js";
+ 
+ export interface ConversationSubscriptionConnection {
+   providerId: string;
+@@ -38,16 +33,13 @@ export function ConversationSubscriptionUsage({
+   connection,
+   open,
+   onPickerOpenChange,
+-  onNavigate,
+ }: {
+   connection: ConversationSubscriptionConnection;
+   open: boolean;
+   onPickerOpenChange(open: boolean): void;
+-  onNavigate(): void;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+-  const openSettings = useTabStore((state) => state.openSettingsTab);
+   const scope = `${connection.providerId}:${connection.revision}`;
+   const requestKey = `${connection.lastAccountId ?? ""}:${connection.lastObservedAt ?? ""}`;
+   const [state, setState] = useState<{
+@@ -217,34 +209,6 @@ export function ConversationSubscriptionUsage({
+           ) : null}
+         </div>
+       )}
+-      <div className="flex items-center justify-between gap-2">
+-        <Button
+-          variant="link"
+-          size="sm"
+-          className="h-auto p-0"
+-          onClick={() => {
+-            onNavigate();
+-            setPendingSettingsSectionIntent("modelProvider", {
+-              modelProviderId: connection.providerId,
+-            });
+-            openSettings();
+-          }}
+-        >
+-          {intl.formatMessage({ id: "chat.allowance.manage" })}
+-        </Button>
+-        <Button
+-          variant="link"
+-          size="sm"
+-          className="h-auto p-0"
+-          onClick={() => {
+-            onNavigate();
+-            setPendingSettingsUsageIntent();
+-            openSettings();
+-          }}
+-        >
+-          {intl.formatMessage({ id: "sidebar.usage.plan.openStats" })}
+-        </Button>
+-      </div>
+     </section>
+   );
+ }
+diff --git a/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx b/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
+index 782d642..737911a 100644
+--- a/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
++++ b/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
+@@ -10,7 +10,6 @@ export interface ChatStartPlanBalanceConfig {
+   loading: boolean;
+   /** hover 打开 context 面板时发起的静默 access 刷新（与 Coding Plan 段 onAccess 语义一致）。 */
+   onAccess?: () => Promise<void> | void;
+-  onUpgradeClick?: () => void;
+   /** hover 触发的本次刷新 promise 进行中；静默刷新不置 entitlement.loading，spinner 需要跟随它。 */
+   refreshing?: boolean;
+   snapshot: UsageEntitlementSnapshot | null;
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 25a4f72..766576c 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -56,7 +56,6 @@ import {
+   hasChatStartPlanBalance,
+   type ChatStartPlanBalanceConfig,
+ } from "@/chat-input-toolbar/StartPlanContextBalance.js";
+-import { runContextPanelActionWithClose } from "@/chat-input-toolbar/contextPanelAction.js";
+ import { coordinateCodingPlanQuotaResetAutoPlay } from "@/chat-input-toolbar/codingPlanQuotaResetAutoPlay.js";
+ import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";
+ import { USAGE_PROGRESS_TONES } from "@/lib/usageProgressTones.js";
+@@ -343,65 +342,40 @@ export function ChatContextUsage({
+       document.removeEventListener("keydown", dismiss);
+     };
+   }, [contextOpen, closeContext]);
+-  const codingPlanUsageRemainingWithClose = useMemo<
++  const codingPlanUsageRemainingForPanel = useMemo<
+     ChatCodingPlanUsageRemainingConfig | undefined
+   >(() => {
+     if (!codingPlanUsageRemaining) {
+       return undefined;
+     }
+-    const base = {
++    return {
+       ...codingPlanUsageRemaining,
+       refreshing: contextAccessRefreshing || codingPlanUsageRemaining.refreshing === true,
+     };
+-    if (!codingPlanUsageRemaining.onUsageClick) {
+-      return base;
+-    }
+-
+-    return {
+-      ...base,
+-      onUsageClick: () =>
+-        runContextPanelActionWithClose({
+-          action: codingPlanUsageRemaining.onUsageClick,
+-          close: () => setContextOpen(false),
+-        }),
+-    };
+   }, [codingPlanUsageRemaining, contextAccessRefreshing]);
+-  const startPlanBalanceWithClose = useMemo<ChatStartPlanBalanceConfig | undefined>(() => {
++  const startPlanBalanceForPanel = useMemo<ChatStartPlanBalanceConfig | undefined>(() => {
+     if (!startPlanBalance) {
+       return undefined;
+     }
+-    const base: ChatStartPlanBalanceConfig = {
++    return {
+       ...startPlanBalance,
+       // 静默 access 刷新不置 entitlement.loading，今日余额标题旁 spinner 需要跟随
+       // 本次 hover 触发的 promise（contextAccessRefreshing），语义对齐 Coding Plan 段的 refreshing。
+       refreshing: contextAccessRefreshing || startPlanBalance.refreshing === true,
+     };
+-    if (!startPlanBalance.onUpgradeClick) {
+-      return base;
+-    }
+-
+-    return {
+-      ...base,
+-      onUpgradeClick: () => {
+-        // HoverCard 内按钮点击不会像外部 hover leave 一样自动关闭面板。
+-        // 升级入口会切到设置页，必须先收起 context 面板，避免旧浮层残留在新页面上。
+-        setContextOpen(false);
+-        startPlanBalance.onUpgradeClick?.();
+-      },
+-    };
+   }, [startPlanBalance, contextAccessRefreshing]);
+-  const hasCodingPlanUsageRemaining = codingPlanUsageRemainingWithClose
+-    ? hasChatCodingPlanUsageRemaining(codingPlanUsageRemainingWithClose)
++  const hasCodingPlanUsageRemaining = codingPlanUsageRemainingForPanel
++    ? hasChatCodingPlanUsageRemaining(codingPlanUsageRemainingForPanel)
+     : false;
+-  const hasStartPlanBalance = hasChatStartPlanBalance(startPlanBalanceWithClose);
++  const hasStartPlanBalance = hasChatStartPlanBalance(startPlanBalanceForPanel);
+ 
+   // 自动重置：触发器和面板复用同一完整 Personal/Team scope；共享 in-flight 避免重复请求。
+   const resetCodingPlanState = useMemo(
+     () =>
+-      codingPlanUsageRemainingWithClose
+-        ? resolveCodingPlanUsageRemainingState(codingPlanUsageRemainingWithClose)
++      codingPlanUsageRemainingForPanel
++        ? resolveCodingPlanUsageRemainingState(codingPlanUsageRemainingForPanel)
+         : null,
+-    [codingPlanUsageRemainingWithClose],
++    [codingPlanUsageRemainingForPanel],
+   );
+   const resetSourceKey = resetCodingPlanState?.displayedProviderId ?? null;
+   // MCP 与不足三张的主额度同排；主额度占满三列时才在下一行贯穿，浮层始终保持统一宽度。
+@@ -410,7 +384,7 @@ export function ChatContextUsage({
+     sourceKey: resetSourceKey,
+     preferredProviderId: resetCodingPlanState?.displayedEntitlement?.providerId,
+     accountAccess: resetCodingPlanState?.displayedEntitlement?.accountAccess,
+-    onEntitlementRefresh: codingPlanUsageRemainingWithClose?.onEntitlementRefresh,
++    onEntitlementRefresh: codingPlanUsageRemainingForPanel?.onEntitlementRefresh,
+   });
+   const opportunityBadge = resolveChatCodingPlanResetOpportunityBadge(
+     resetCodingPlanState,
+@@ -1073,17 +1047,13 @@ export function ChatContextUsage({
+                   accountPickerOpenRef.current = open;
+                   if (open) setContextOpen(true);
+                 }}
+-                onNavigate={() => {
+-                  pinnedRef.current = false;
+-                  setContextOpen(false);
+-                }}
+               />
+             </div>
+           ) : null}
+-          {codingPlanUsageRemainingWithClose && hasCodingPlanUsageRemaining ? (
++          {codingPlanUsageRemainingForPanel && hasCodingPlanUsageRemaining ? (
+             <ChatCodingPlanUsageRemainingPanel
+               autoCelebrateArm={armedAutoConfetti}
+-              config={codingPlanUsageRemainingWithClose}
++              config={codingPlanUsageRemainingForPanel}
+               intl={intl}
+               locale={locale}
+               quotaResetDialogOpen={quotaResetDialogOpen}
+@@ -1092,9 +1062,9 @@ export function ChatContextUsage({
+               onQuotaResetDialogOpenChange={handleQuotaResetDialogOpenChange}
+             />
+           ) : null}
+-          {startPlanBalanceWithClose && hasStartPlanBalance ? (
++          {startPlanBalanceForPanel && hasStartPlanBalance ? (
+             <ChatStartPlanBalancePanel
+-              config={startPlanBalanceWithClose}
++              config={startPlanBalanceForPanel}
+               intl={intl}
+               locale={locale}
+               separated={Boolean(
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 75177e8..1ffb476 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -56,7 +56,6 @@ const enUS: Record<string, string> = {
+   "settings.usage.activity.modelRequests": "Model requests",
+   "settings.usage.activity.toolCalls": "Tool calls",
+   "settings.usage.activity.toolErrors": "Tool error rate",
+-  "settings.usage.activity.cache": "Cache hit rate",
+   "settings.usage.activity.attributionHelp": "Only tool calls from a turn clearly served by this model are counted; mixed-model turns are not assigned to either model.",
+   "settings.usage.activity.fast": "Fast mode share",
+   "settings.usage.activity.tools": "Tools",
+@@ -7201,6 +7200,7 @@ const enUS: Record<string, string> = {
+   "settings.usage.apiEstimate.coverage": "Priced {priced}/{total} requests",
+   "settings.usage.apiEstimate.loading": "Reading local usage…",
+   "settings.usage.apiEstimate.empty": "No recorded model calls",
++  "settings.usage.apiEstimate.noPositiveCost": "No positive cost to show in this range",
+   "chat.allowance.lastUsed": "Last used",
+   "chat.allowance.inspect": "View:",
+   "chat.allowance.autoSwitch": "Auto switch",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index a365cd8..131b765 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -46,7 +46,6 @@ const zhCN: Record<string, string> = {
+   "settings.usage.activity.modelRequests": "模型请求",
+   "settings.usage.activity.toolCalls": "工具调用",
+   "settings.usage.activity.toolErrors": "工具错误率",
+-  "settings.usage.activity.cache": "缓存命中率",
+   "settings.usage.activity.attributionHelp": "只统计同一轮明确使用该模型的工具调用；切换过模型的轮次不强行归属。",
+   "settings.usage.activity.fast": "快速模式占比",
+   "settings.usage.activity.tools": "工具",
+@@ -6834,6 +6833,7 @@ const zhCN: Record<string, string> = {
+   "settings.usage.apiEstimate.coverage": "已计价 {priced}/{total} 次请求",
+   "settings.usage.apiEstimate.loading": "正在读取本地用量…",
+   "settings.usage.apiEstimate.empty": "暂无模型调用记录",
++  "settings.usage.apiEstimate.noPositiveCost": "此时段没有可显示的费用",
+   "chat.allowance.lastUsed": "上次使用",
+   "chat.allowance.inspect": "查看：",
+   "chat.allowance.autoSwitch": "自动切换",
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+index 48cdfde..c9a479b 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+@@ -26,9 +26,6 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+   const fast = scoped
+     .filter((r) => r.speedMode === "fast" || r.speedMode === "priority")
+     .reduce((n, r) => n + r.requestCount, 0);
+-  const cacheKnown = scoped.reduce((n, row) => n + row.cacheReportedCount, 0);
+-  const cacheInput = scoped.reduce((n, row) => n + row.cacheInputTokens, 0);
+-  const cacheRead = scoped.reduce((n, row) => n + row.cacheReadTokens, 0);
+   const toolCalls = modelId ? activity?.toolCallCount : snapshot.summary.toolCallCount;
+   const toolErrors = modelId ? activity?.toolErrorCount : snapshot.tools.reduce((sum, row) => sum + row.errorCount, 0);
+   const summary = [
+@@ -39,7 +36,6 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+       t("toolErrors"),
+       toolCalls && toolErrors !== undefined ? percent.format(toolErrors / toolCalls) : "—",
+     ],
+-    [t("cache"), cacheKnown && cacheInput ? percent.format(cacheRead / cacheInput) : "—"],
+     [t("fast"), speedKnown ? percent.format(fast / speedKnown) : "—"],
+   ];
+   const rows =
+@@ -69,15 +65,17 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+         </dl>
+       </div>
+       <div className="min-w-0 space-y-3">
+-        <Tabs value={view} onValueChange={(v) => setView(v as "tools" | "skills")}>
+-          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+-            {(["tools", "skills"] as const).map((v) => (
+-              <TabsTrigger key={v} value={v} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+-                {t(v)}
+-              </TabsTrigger>
+-            ))}
+-          </TabsList>
+-        </Tabs>
++        <div className="flex justify-end">
++          <Tabs value={view} onValueChange={(v) => setView(v as "tools" | "skills")}>
++            <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
++              {(["tools", "skills"] as const).map((v) => (
++                <TabsTrigger key={v} value={v} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++                  {t(v)}
++                </TabsTrigger>
++              ))}
++            </TabsList>
++          </Tabs>
++        </div>
+         <ol className="max-h-48 space-y-2 overflow-y-auto">
+           {rows.map((row) => (
+             <li key={row.key}>
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index ea7ae20..83d8e97 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -87,7 +87,9 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+           sourceLabels={sourceLabels}
+         />
+       ) : (
+-        <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>
++        <p className="text-ui-sm text-foreground-subtle">
++          {t(report.summary.requests > 0 ? "noPositiveCost" : "empty")}
++        </p>
+       )}
+       <div className="border-t border-border pt-4">
+         <AppUsageActivity snapshot={snapshot} modelId={modelFocus} />
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+index fc7250d..415f8b2 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+@@ -20,19 +20,14 @@ export function UsageCostSourceBars({
+   sourceLabels: Record<UsageCostSource, string>;
+ }) {
+   const max = Math.max(0, ...rows.map((row) => row.total ?? 0));
+-  const present = SOURCES.filter((source) => rows.some((row) => row[source] > 0));
++  const sourceTotals = SOURCES.map((source, index) => ({
++    source,
++    color: COLORS[index],
++    amount: rows.reduce((sum, row) => sum + row[source], 0),
++  })).filter((item) => item.amount > 0);
++  const pricedTotal = sourceTotals.reduce((sum, item) => sum + item.amount, 0);
+   return (
+     <div className="space-y-3">
+-      {present.length ? (
+-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-sm text-foreground-subtle">
+-          {present.map((source) => (
+-            <span key={source} className="inline-flex items-center gap-1.5">
+-              <span className="size-2 rounded-sm" style={{ backgroundColor: COLORS[SOURCES.indexOf(source)] }} />
+-              {sourceLabels[source]}
+-            </span>
+-          ))}
+-        </div>
+-      ) : null}
+       <div className="max-h-80 space-y-1 overflow-y-auto" role="list" aria-label={label}>
+         {rows.map((row) => {
+           const total = row.total;
+@@ -57,6 +52,7 @@ export function UsageCostSourceBars({
+                 </span>
+                 <Progress
+                   className="h-2 min-w-0 flex-1"
++                  indicatorClassName="min-w-2"
+                   value={max > 0 && total !== null ? total / max * 100 : 0}
+                   aria-label={row.fullLabel}
+                   segments={total && total > 0 ? SOURCES.map((source, index) => ({
+@@ -72,6 +68,23 @@ export function UsageCostSourceBars({
+           );
+         })}
+       </div>
++      {sourceTotals.length ? (
++        <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-sm text-foreground-subtle">
++          {sourceTotals.map(({ source, color, amount }) => (
++            <span key={source} className="inline-flex items-center gap-1.5">
++              <span
++                aria-hidden="true"
++                className="size-2 shrink-0 rounded-sm border border-border"
++                style={{ backgroundColor: color }}
++              />
++              <span>{sourceLabels[source]}</span>
++              <span className="font-mono tabular-nums text-foreground">
++                {money(amount)} · {Math.round(amount / pricedTotal * 100)}%
++              </span>
++            </span>
++          ))}
++        </div>
++      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+index ff94e0d..81e77c7 100644
+--- a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
++++ b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+@@ -51,5 +51,9 @@ export function buildUsageCostSourceRows(
+       item[usageCostSource(row.querySource)] += row.estimatedUsd;
+     }
+   }
+-  return [...byKey.values()].sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.key.localeCompare(b.key));
++  // This is a cost chart. Unpriced and genuinely zero-cost requests remain in
++  // the coverage summary and model usage chart, not as empty monetary bars.
++  return [...byKey.values()]
++    .filter((row) => row.total !== null && row.total > 0)
++    .sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.key.localeCompare(b.key));
+ }
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 6415184..585829f 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -60,10 +60,7 @@ import {
+   shouldShowManageModelsAction,
+ } from "@/chat-input-toolbar/modelSelection.js";
+ import { resolveV4ModelTriggerDisplay } from "@/v4/composer/modelTriggerDisplay.js";
+-import {
+-  setPendingSettingsSectionIntent,
+-  setPendingSettingsUsageCodingPlanIntent,
+-} from "@/lib/settingsNavigation.js";
++import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+ import type { ModelSelectionView } from "@zcode/services";
+ import type { ModelSelectionState } from "@/hooks/useModelSelectionView.js";
+@@ -87,7 +84,6 @@ import {
+ import {
+   type SidebarUsageCodingPlanProviderId,
+   type SidebarUsageCodingPlanSourceId,
+-  writeSidebarUsageCodingPlanProviderPreference,
+ } from "@/lib/sidebarUsageCodingPlanProviderPreference.js";
+ import { resolveEntitledAccountProviderAccess } from "@/lib/accountProviderAccess.js";
+ import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
+@@ -443,18 +439,6 @@ function V4ComposerModelControlsImpl({
+   const effectiveConfig = useMemo<SessionConfigState | null>(() => {
+     return resolveDraftDisplayedConfig(draftConfig ?? {});
+   }, [draftConfig]);
+-  const handleOpenUsageDetails = useCallback(
+-    (sourceId?: SidebarUsageCodingPlanSourceId) => {
+-      if (sourceId) {
+-        writeSidebarUsageCodingPlanProviderPreference(sourceId);
+-      }
+-      // 剩余额度「更多」直达 Coding Plan 使用统计（按上面写入的来源偏好选中当前套餐），
+-      // 不落到应用用量；通用 Usage 入口仍走 setPendingSettingsUsageIntent。
+-      setPendingSettingsUsageCodingPlanIntent();
+-      openSettingsTab();
+-    },
+-    [openSettingsTab],
+-  );
+ 
+   const contextPlanConnection = useMemo(
+     () =>
+@@ -660,10 +644,6 @@ function V4ComposerModelControlsImpl({
+     teamEntitlement.loading,
+     teamEntitlement.snapshot,
+   ]);
+-  const handleUsageClick = useCallback(
+-    () => handleOpenUsageDetails(contextCodingPlanUsageSelectedSourceId),
+-    [contextCodingPlanUsageSelectedSourceId, handleOpenUsageDetails],
+-  );
+   const codingPlanUsageRemainingConfig = useMemo<
+     ChatCodingPlanUsageRemainingConfig | undefined
+   >(() => {
+@@ -676,7 +656,6 @@ function V4ComposerModelControlsImpl({
+       modelProvidersLoading: providerSourcesLoading,
+       onEntitlementRefresh: () => refreshTaskEntitlements({ force: true, silent: true }),
+       onAccess: () => refreshTaskEntitlements({ silent: true, reason: "access" }),
+-      onUsageClick: handleUsageClick,
+       selectedProviderId: contextCodingPlanUsageSelectedSourceId,
+     };
+   }, [
+@@ -685,7 +664,6 @@ function V4ComposerModelControlsImpl({
+     contextCodingPlanUsageTeamSource,
+     contextPlanConnection.kind,
+     codingPlanUsageEntitlements,
+-    handleUsageClick,
+     providerSourcesLoading,
+     refreshTaskEntitlements,
+   ]);
+diff --git a/packages/ui/test/usageCostSourceViewModel.test.ts b/packages/ui/test/usageCostSourceViewModel.test.ts
+index 4ac4fb8..c763047 100644
+--- a/packages/ui/test/usageCostSourceViewModel.test.ts
++++ b/packages/ui/test/usageCostSourceViewModel.test.ts
+@@ -39,3 +39,20 @@ test("model and project bars include only recorded requests", () => {
+   assert.deepEqual(buildUsageCostSourceRows(rows, "projects", ["/project", "/unused-project"])
+     .map((row) => row.key), ["/project"]);
+ });
++
++test("cost bars omit unpriced and zero-cost models without hiding priced partial coverage", () => {
++  const rows = [
++    usage("main_turn", "priced", 2),
++    { ...usage("main_turn", "priced", 0), pricedCount: 0 },
++    { ...usage("main_turn", "unpriced", 0), pricedCount: 0 },
++    usage("main_turn", "zero", 0),
++  ];
++  const models = buildUsageCostSourceRows(rows, "models");
++  assert.deepEqual(models.map((row) => row.key), ["priced"]);
++  assert.deepEqual([models[0]!.total, models[0]!.pricedCount, models[0]!.requestCount],
++    [2, 1, 2]);
++  assert.deepEqual(
++    buildUsageCostSourceRows(rows.slice(2), "models").map((row) => row.key),
++    [],
++  );
++});

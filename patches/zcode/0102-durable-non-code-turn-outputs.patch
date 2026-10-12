@@ -1,0 +1,4428 @@
+diff --git a/.gitignore b/.gitignore
+index 4771068c9a7deff668cb3a3c11a7f2bf496af124..27393f6712feb0804431132b4da714bf24738929 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -72,3 +72,6 @@ packages/desktop/.e2e-network-capture/
+ 
+ # Isolated local acceptance profile (credentials and user content)
+ .fleet-profile/
++
++# Provider JSON advisory locks are transient coordination state, not source.
++/config/provider/*.json.lock/
+diff --git a/AGENTS.md b/AGENTS.md
+index 682bc5f2144b923712ced25393214755df1b74e0..826df6cfff8aac1f0ed7bddf292d1ce961b32ae1 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,3 +1,10 @@
++# Fleet candidate instruction scope
++
++Read [Fleet root rules](../../AGENTS.md) and their routed module before acting. Root owner,
++product, permission and delivery decisions govern this candidate. The upstream engineering
++guidance below remains applicable where it does not conflict with those current decisions.
++Upstream product assumptions and reference-update rules do not select Fleet scope or repin sources.
++
+ ## 核心原则
+ 
+ - 新增或修改行为前，先更新对应 spec；目录不存在时按需创建。先明确产品规则、状态所有者、接口和验收场景，再实现代码。
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index 3c973e70ecb1aaf31a974e4c29d5106f279a4908..0d1bf704d1584c0fe61bb6aeb1b830e6b153b00f 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -1,3 +1,4 @@
++import { resolvePersistedToolAttachment } from "./tool-output-attachment.js";
+ import { createClaudeNativeAgentPort } from "@zcode/adapters/native-agent";
+ import { getEnabledApiKeys } from "@zcode/provider";
+ import { isAbsolute, join, resolve } from "node:path";
+@@ -909,8 +910,12 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       ref: string;
+       mime: string;
+       messageId?: string;
++      toolCallId?: string;
+       attachmentIndex?: number;
+     }): Promise<{ ref: string; mediaType: string; artifactUri?: string }> => {
++      if (input.toolCallId !== undefined) {
++        return resolvePersistedToolAttachment(sessionStore, sessionId, input);
++      }
+       let ref = input.ref;
+       let mediaType = input.mime;
+       let artifactUri: string | undefined;
+@@ -1055,6 +1060,41 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+         const { ref, mediaType } = await resolvePromptAttachment(input);
+         // 读取必须留在 session runtime 内：artifact 走 session store，路径走当前
+         // FileSystemPort，SSH/WSL/Docker 才会命中正确的远端文件系统。
++        if (
++          ref.startsWith("zcode-artifact://") &&
++          (input.toolCallId !== undefined || artifactStore.readToolResultBinaryArtifact)
++        ) {
++          if (!artifactStore.readToolResultBinaryArtifact)
++            throw new Error("fault.attachment.readUnsupported");
++          const artifact = await artifactStore.readToolResultBinaryArtifact({
++            uri: ref,
++            trace: traceContext,
++          });
++          // Retained attachments use text data URLs; generated outputs use native bytes.
++          // Both explicit tool previews and already authorized Markdown images share this reader.
++          if (
++            artifact.contentType === "text/plain" &&
++            Buffer.from(artifact.bytes.subarray(0, 5)).toString() === "data:"
++          ) {
++            return decodePromptAttachmentDataUrl(
++              Buffer.from(artifact.bytes).toString("utf8"),
++              mediaType,
++              input.maxBytes,
++            );
++          }
++          if (artifact.bytes.byteLength > input.maxBytes)
++            throw new Error("fault.attachment.previewTooLarge");
++          if (mediaType === "image/*" && !artifact.contentType.startsWith("image/")) {
++            throw new Error("fault.attachment.previewNotMedia");
++          }
++          return {
++            bytes: artifact.bytes,
++            mediaType:
++              mediaType === "image/*" && artifact.contentType.startsWith("image/")
++                ? artifact.contentType
++                : mediaType,
++          };
++        }
+         if (ref.startsWith("zcode-artifact://")) {
+           const artifact = await artifactStore.readToolResultArtifact({
+             uri: ref,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/tool-output-attachment.ts b/apps/zcode-cli/packages/bootstrap/src/app/tool-output-attachment.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6cba71cba45c1f9939ffd84c09e8dd5802f3d85f
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/tool-output-attachment.ts
+@@ -0,0 +1,38 @@
++import type { MessageId, SessionId, SessionStorePort } from "@zcode/contracts";
++
++/** Resolve output through the original persisted tool; never fall back to a caller's path. */
++export async function resolvePersistedToolAttachment(
++  store: SessionStorePort,
++  sessionId: SessionId,
++  input: { ref: string; messageId?: string; toolCallId?: string; attachmentIndex?: number },
++): Promise<{ ref: string; mediaType: string; artifactUri: string }> {
++  const denied = () => new Error("fault.attachment.previewRefNotAuthorized");
++  if (
++    !input.messageId ||
++    !input.toolCallId ||
++    input.attachmentIndex === undefined ||
++    !Number.isInteger(input.attachmentIndex) ||
++    input.attachmentIndex < 0 ||
++    !input.ref.startsWith(`zcode-artifact://${encodeURIComponent(sessionId)}/`)
++  )
++    throw denied();
++  const message = await store.messageWithParts({
++    sessionID: sessionId,
++    messageID: input.messageId as MessageId,
++  });
++  if (!message || message.info.role !== "assistant" || message.info.sessionID !== sessionId)
++    throw denied();
++  const matches = message.parts.filter(
++    (part) => part.type === "tool" && part.callID === input.toolCallId,
++  );
++  if (matches.length !== 1) throw denied();
++  const tool = matches[0];
++  if (tool?.type !== "tool" || tool.state.status !== "completed") throw denied();
++  const attachment = tool.state.attachments?.[input.attachmentIndex];
++  if (!attachment || attachment.sessionID !== sessionId || attachment.messageID !== input.messageId)
++    throw denied();
++  const ref = attachment.metadata?.artifactUri ?? attachment.url;
++  if (ref !== input.ref || !ref.startsWith(`zcode-artifact://${encodeURIComponent(sessionId)}/`))
++    throw denied();
++  return { ref, artifactUri: ref, mediaType: attachment.mime };
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/types.ts b/apps/zcode-cli/packages/bootstrap/src/app/types.ts
+index 4e9c44ddd00fcc107904479f9cb22afc242cef3e..a3dc312d6abb11ebabf9abd2367e19690da41b66 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/types.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/types.ts
+@@ -349,6 +349,7 @@ export interface ZCodeApp {
+     mime: string;
+     maxBytes: number;
+     messageId?: string;
++    toolCallId?: string;
+     attachmentIndex?: number;
+   }): Promise<{ bytes: Uint8Array; mediaType: string }>;
+   /** Share 选择阶段只读 userInput 附件元数据；不读取完整内容。 */
+@@ -356,6 +357,7 @@ export interface ZCodeApp {
+     ref: string;
+     mime: string;
+     messageId?: string;
++    toolCallId?: string;
+     attachmentIndex?: number;
+   }): Promise<{ totalBytes: number; mediaType: string; mtimeMs?: number }>;
+   /** Desktop local 已发送视频：解析 artifact-first 本地播放源；否则保持分片读取。 */
+@@ -363,6 +365,7 @@ export interface ZCodeApp {
+     ref: string;
+     mime: string;
+     messageId?: string;
++    toolCallId?: string;
+     attachmentIndex?: number;
+   }): Promise<{ kind: "local_path"; path: string; mediaType: string } | { kind: "chunked" }>;
+   setTarget(input: {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index 798c50c171c28f60aed353660052eb653535bd2d..80370ca2826aa7c5c195262211545ef8e1fb823a 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -427,11 +427,12 @@ export class ProductProjection {
+   // output-token Continue 是同一 product turn 内的请求级恢复，不应泄漏成新的正文行。
+   // 这里只保留上一条满足 length/zero-tool/视觉紧邻条件的 text row，任何真实边界都会清空。
+   private outputContinuationTextRowId: number | null = null;
+-  private toolRowIdByCallId = new Map<string, number>();
++  // Upstream call IDs may repeat across turns or assistant requests. Keep every row.
++  private toolRowIdsByCallId = new Map<string, number[]>();
+   private latestListAppsSnapshot = new Map<number, CuaAppIdentity>();
+   // snapshot 是权威状态；该 Set 只是 TurnComplete 缺终态兜底的派生索引，避免每轮扫描全表。
+-  private openForegroundToolCallIds = new Set<string>();
+-  private fileToolInputPreviewByCallId = new Map<string, FileToolInputPreviewState>();
++  private openForegroundToolRowIds = new Set<number>();
++  private fileToolInputPreviewByRowId = new Map<number, FileToolInputPreviewState>();
+   private subagentRowIdByAgentId = new Map<string, number>();
+   private hookRowIdByInvocationId = new Map<string, number>();
+   // resume SessionStart 没有 turnId；先保留在 CLI projection，下一条真实 user-intent
+@@ -526,9 +527,11 @@ export class ProductProjection {
+     }
+     if (
+       payload.kind === "tool_input_delta" &&
+-      this.toolRowIdByCallId.has(String(payload.toolCallId))
++      this.findToolRow(String(payload.toolCallId), event) !== undefined
+     ) {
+-      const state = this.fileToolInputPreviewByCallId.get(String(payload.toolCallId));
++      const state = this.fileToolInputPreviewByRowId.get(
++        this.findToolRow(String(payload.toolCallId), event)!.rowId,
++      );
+       if (state) {
+         if (
+           state.lastPublishedAt !== null &&
+@@ -650,10 +653,13 @@ export class ProductProjection {
+   seedUsage(seed: SessionUsageSeed): void {
+     // 冷恢复累计与容量无关。任何已到达的 live 主请求优先，重复 seed 不能回退或重复相加。
+     if (seed.cumulative && this.snapshot.usage.lastRequest === undefined) {
+-      this.snapshot = { ...this.snapshot, usage: {
+-        ...this.snapshot.usage,
+-        cumulative: { ...this.snapshot.usage.cumulative, ...seed.cumulative },
+-      } };
++      this.snapshot = {
++        ...this.snapshot,
++        usage: {
++          ...this.snapshot.usage,
++          cumulative: { ...this.snapshot.usage.cumulative, ...seed.cumulative },
++        },
++      };
+     }
+     // lastRequest 与占用独立恢复；任何实时主请求（包括空报告）都优先于迟到查询种子。
+     if (seed.lastRequest !== undefined && this.snapshot.usage.lastRequest === undefined) {
+@@ -1108,15 +1114,14 @@ export class ProductProjection {
+     clone.streamingTextRowId = this.streamingTextRowId;
+     clone.streamingReasoningRowId = this.streamingReasoningRowId;
+     clone.outputContinuationTextRowId = this.outputContinuationTextRowId;
+-    clone.toolRowIdByCallId = new Map(this.toolRowIdByCallId);
++    clone.toolRowIdsByCallId = new Map(
++      [...this.toolRowIdsByCallId].map(([id, rows]) => [id, [...rows]]),
++    );
+     // 实时发布逐事件走原子 clone；遗漏该侧表会让成功的 list_apps 快照在提交时丢失。
+     clone.latestListAppsSnapshot = new Map(this.latestListAppsSnapshot);
+-    clone.openForegroundToolCallIds = new Set(this.openForegroundToolCallIds);
+-    clone.fileToolInputPreviewByCallId = new Map(
+-      [...this.fileToolInputPreviewByCallId].map(([toolCallId, state]) => [
+-        toolCallId,
+-        { ...state },
+-      ]),
++    clone.openForegroundToolRowIds = new Set(this.openForegroundToolRowIds);
++    clone.fileToolInputPreviewByRowId = new Map(
++      [...this.fileToolInputPreviewByRowId].map(([rowId, state]) => [rowId, { ...state }]),
+     );
+     clone.subagentRowIdByAgentId = new Map(this.subagentRowIdByAgentId);
+     clone.hookRowIdByInvocationId = new Map(this.hookRowIdByInvocationId);
+@@ -1170,10 +1175,10 @@ export class ProductProjection {
+     this.streamingTextRowId = candidate.streamingTextRowId;
+     this.streamingReasoningRowId = candidate.streamingReasoningRowId;
+     this.outputContinuationTextRowId = candidate.outputContinuationTextRowId;
+-    this.toolRowIdByCallId = candidate.toolRowIdByCallId;
++    this.toolRowIdsByCallId = candidate.toolRowIdsByCallId;
+     this.latestListAppsSnapshot = candidate.latestListAppsSnapshot;
+-    this.openForegroundToolCallIds = candidate.openForegroundToolCallIds;
+-    this.fileToolInputPreviewByCallId = candidate.fileToolInputPreviewByCallId;
++    this.openForegroundToolRowIds = candidate.openForegroundToolRowIds;
++    this.fileToolInputPreviewByRowId = candidate.fileToolInputPreviewByRowId;
+     this.subagentRowIdByAgentId = candidate.subagentRowIdByAgentId;
+     this.hookRowIdByInvocationId = candidate.hookRowIdByInvocationId;
+     this.pendingSessionHookInvocations = candidate.pendingSessionHookInvocations;
+@@ -2160,7 +2165,15 @@ export class ProductProjection {
+   private applyBackgroundTaskNotification(fact: CanonicalUserIntentFact): ConversationDelta[] {
+     const parsed = parseZCodeBackgroundTaskNotificationText(fact.input);
+     if (!parsed) return [];
+-    const row = this.findToolRow(parsed.toolUseId);
++    const anchorRowId = parsed.notification.taskId
++      ? this.snapshot.backgroundWorks.find((work) => work.workId === parsed.notification.taskId)
++          ?.anchorRowId
++      : undefined;
++    const anchoredRow = anchorRowId == null ? undefined : this.findRow(anchorRowId);
++    const row =
++      anchoredRow?.kind === "toolCall" && anchoredRow.toolCallId === parsed.toolUseId
++        ? anchoredRow
++        : this.findToolRow(parsed.toolUseId);
+     if (!row) return [];
+ 
+     const notificationStatus = zcodeBackgroundTaskNotificationToolUpdateStatus(
+@@ -2576,7 +2589,7 @@ export class ProductProjection {
+         return this.appendStreamingToolInput(event, payload);
+       }
+       case "tool_input_end":
+-        return this.flushStreamingToolInput(String(payload.toolCallId ?? ""));
++        return this.flushStreamingToolInput(event, payload);
+       case "tool_call":
+         return this.finalizeStreamingToolInput(event, payload);
+       default:
+@@ -2713,12 +2726,12 @@ export class ProductProjection {
+     status: "cancelled" | "error",
+     only?: (row: ToolCallRow) => boolean,
+   ): ConversationDelta[] {
+-    if (this.openForegroundToolCallIds.size === 0) return [];
++    if (this.openForegroundToolRowIds.size === 0) return [];
+     const openRows: ToolCallRow[] = [];
+-    for (const toolCallId of this.openForegroundToolCallIds) {
+-      const row = this.findToolRow(toolCallId);
++    for (const rowId of this.openForegroundToolRowIds) {
++      const row = this.findRow(rowId);
+       // 派生索引不能成为第二份权威状态；收口前始终以当前 snapshot row 复核。
+-      if (!row || !this.isOpenForegroundToolRow(row)) continue;
++      if (row?.kind !== "toolCall" || !this.isOpenForegroundToolRow(row)) continue;
+       if (only && !only(row)) continue;
+       openRows.push(row);
+     }
+@@ -2733,7 +2746,7 @@ export class ProductProjection {
+       const next: ToolCallRow = {
+         ...row,
+         status,
+-        inputText: `${row.inputText ?? ""}${this.takePendingStreamingToolInput(row.toolCallId)}`,
++        inputText: `${row.inputText ?? ""}${this.takePendingStreamingToolInput(row.rowId)}`,
+         endedAt: this.ms(event),
+       };
+       delete next.approvalInteractionId;
+@@ -2779,20 +2792,22 @@ export class ProductProjection {
+       if (delta.op === "row.appended" || delta.op === "row.upserted") {
+         if (delta.row.kind !== "toolCall") continue;
+         if (this.isOpenForegroundToolRow(delta.row)) {
+-          this.openForegroundToolCallIds.add(delta.row.toolCallId);
++          this.openForegroundToolRowIds.add(delta.row.rowId);
+         } else {
+-          this.openForegroundToolCallIds.delete(delta.row.toolCallId);
++          this.openForegroundToolRowIds.delete(delta.row.rowId);
+         }
+         continue;
+       }
+       if (delta.op !== "row.removed") continue;
+-      for (const [toolCallId, rowId] of this.toolRowIdByCallId) {
+-        if (rowId < delta.fromRowId) continue;
+-        // Bug 原因：rewind 过去只删 rows/message 索引，旧 toolCallId 仍会阻止新分支
+-        // 重新打开同 id 的流式工具；open tracker 也会留下已经不存在的 row。
+-        this.toolRowIdByCallId.delete(toolCallId);
+-        this.openForegroundToolCallIds.delete(toolCallId);
+-        this.fileToolInputPreviewByCallId.delete(toolCallId);
++      for (const [toolCallId, rowIds] of this.toolRowIdsByCallId) {
++        const retained = rowIds.filter((rowId) => rowId < delta.fromRowId);
++        for (const rowId of rowIds) {
++          if (rowId < delta.fromRowId) continue;
++          this.openForegroundToolRowIds.delete(rowId);
++          this.fileToolInputPreviewByRowId.delete(rowId);
++        }
++        if (retained.length) this.toolRowIdsByCallId.set(toolCallId, retained);
++        else this.toolRowIdsByCallId.delete(toolCallId);
+       }
+       this.pruneRemovedSubagentIndexes();
+     }
+@@ -2819,7 +2834,7 @@ export class ProductProjection {
+     if (
+       toolCallId === "" ||
+       shouldHideInvalidToolCallFromProduct(payload.toolName) ||
+-      this.toolRowIdByCallId.has(toolCallId)
++      this.findToolRow(toolCallId, event, payload.assistantResponseId) !== undefined
+     ) {
+       return [];
+     }
+@@ -2832,9 +2847,9 @@ export class ProductProjection {
+       status: "inputStreaming",
+       inputText: "",
+     };
+-    this.toolRowIdByCallId.set(toolCallId, row.rowId);
++    this.indexToolRow(row);
+     if (isZCodeFileStreamingToolInputPreviewTool(row.toolName)) {
+-      this.fileToolInputPreviewByCallId.set(toolCallId, {
++      this.fileToolInputPreviewByRowId.set(row.rowId, {
+         lastPublishedAt: null,
+         pendingAppend: "",
+       });
+@@ -2848,9 +2863,9 @@ export class ProductProjection {
+     payload: CanonicalModelStream,
+   ): ConversationDelta[] {
+     const toolCallId = String(payload.toolCallId ?? "");
+-    const rowId = this.toolRowIdByCallId.get(toolCallId);
++    const rowId = this.findToolRow(toolCallId, event, payload.assistantResponseId)?.rowId;
+     if (rowId === undefined) return [];
+-    const state = this.fileToolInputPreviewByCallId.get(toolCallId);
++    const state = this.fileToolInputPreviewByRowId.get(rowId);
+     if (!state) {
+       return [{ op: "row.delta", rowId, path: "inputText", append: payload.delta }];
+     }
+@@ -2870,16 +2885,23 @@ export class ProductProjection {
+     return append === "" ? [] : [{ op: "row.delta", rowId, path: "inputText", append }];
+   }
+ 
+-  private flushStreamingToolInput(toolCallId: string): ConversationDelta[] {
+-    const append = this.takePendingStreamingToolInput(toolCallId);
+-    if (append === "") return [];
+-    const rowId = this.toolRowIdByCallId.get(toolCallId);
+-    return rowId === undefined ? [] : [{ op: "row.delta", rowId, path: "inputText", append }];
++  private flushStreamingToolInput(
++    event: SessionEvent,
++    payload: CanonicalModelStream,
++  ): ConversationDelta[] {
++    const row = this.findToolRow(
++      String(payload.toolCallId ?? ""),
++      event,
++      payload.assistantResponseId,
++    );
++    if (!row) return [];
++    const append = this.takePendingStreamingToolInput(row.rowId);
++    return append === "" ? [] : [{ op: "row.delta", rowId: row.rowId, path: "inputText", append }];
+   }
+ 
+-  private takePendingStreamingToolInput(toolCallId: string): string {
+-    const state = this.fileToolInputPreviewByCallId.get(toolCallId);
+-    this.fileToolInputPreviewByCallId.delete(toolCallId);
++  private takePendingStreamingToolInput(rowId: number): string {
++    const state = this.fileToolInputPreviewByRowId.get(rowId);
++    this.fileToolInputPreviewByRowId.delete(rowId);
+     return state?.pendingAppend ?? "";
+   }
+ 
+@@ -2889,10 +2911,10 @@ export class ProductProjection {
+   ): ConversationDelta[] {
+     const toolCallId = String(payload.toolCallId ?? "");
+     if (toolCallId === "") return [];
+-    this.fileToolInputPreviewByCallId.delete(toolCallId);
+     if (shouldHideInvalidToolCallFromProduct(payload.toolName)) return [];
+     const inputText = stringifyToolInput(payload.input);
+-    const existing = this.findToolRow(toolCallId);
++    const existing = this.findToolRow(toolCallId, event, payload.assistantResponseId);
++    if (existing) this.fileToolInputPreviewByRowId.delete(existing.rowId);
+     if (existing) {
+       return [
+         {
+@@ -2920,7 +2942,7 @@ export class ProductProjection {
+       inputText,
+       input: payload.input,
+     };
+-    this.toolRowIdByCallId.set(toolCallId, row.rowId);
++    this.indexToolRow(row);
+     return [{ op: "row.appended", row }];
+   }
+ 
+@@ -2928,7 +2950,6 @@ export class ProductProjection {
+     if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
+     const payload = event.payload as ToolCallScheduledPayload;
+     const toolCallId = String(payload.toolCallId);
+-    this.fileToolInputPreviewByCallId.delete(toolCallId);
+     if (shouldHideInvalidToolCallFromProduct(payload.toolName)) return [];
+     const inputText = stringifyToolInput(payload.input);
+     const cuaAction = readOfficialCuaAction(payload.toolName);
+@@ -2936,7 +2957,8 @@ export class ProductProjection {
+       cuaAction && cuaAction !== "list_apps"
+         ? resolveCuaAppIdentity(payload.input, this.latestListAppsSnapshot)
+         : undefined;
+-    const existing = this.findToolRow(toolCallId);
++    const existing = this.findToolRow(toolCallId, event, payload.assistantMessageId);
++    if (existing) this.fileToolInputPreviewByRowId.delete(existing.rowId);
+     const planDeltas = this.todoPlanDeltas(
+       event,
+       extractPlanStepsFromToolInput({
+@@ -2979,14 +3001,14 @@ export class ProductProjection {
+       ...(cuaApp ? { cuaApp } : {}),
+       ...(payload.display?.kind === "mcp_tool" ? { display: payload.display } : {}),
+     };
+-    this.toolRowIdByCallId.set(toolCallId, row.rowId);
++    this.indexToolRow(row);
+     return [{ op: "row.appended", row }, ...planDeltas];
+   }
+ 
+   private onToolCallActivity(event: SessionEvent): ConversationDelta[] {
+     if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
+     const payload = event.payload as ToolCallStartedPayload;
+-    const row = this.findToolRow(String(payload.toolCallId));
++    const row = this.findToolRow(String(payload.toolCallId), event);
+     if (!row) return [];
+     return projectToolActivity(event, row);
+   }
+@@ -2995,7 +3017,7 @@ export class ProductProjection {
+     if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
+     const payload = event.payload as ToolCallResultPayload;
+     const toolCallId = String(payload.toolCallId);
+-    const row = this.findToolRow(toolCallId);
++    const row = this.findToolRow(toolCallId, event);
+     if (!row) return [];
+     const success = payload.result.success;
+     if (success && readOfficialCuaAction(row.toolName) === "list_apps") {
+@@ -3007,7 +3029,7 @@ export class ProductProjection {
+     const next: ToolCallRow = {
+       ...row,
+       status: success ? "success" : "error",
+-      output: buildToolOutput(payload.result, toolCallId),
++      output: buildToolOutput(payload.result, toolCallId, String(event.sessionId)),
+       ...(display ? { display } : {}),
+       endedAt: this.ms(event),
+     };
+@@ -3078,7 +3100,7 @@ export class ProductProjection {
+   private onToolCallError(event: SessionEvent): ConversationDelta[] {
+     if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
+     const payload = event.payload as ToolCallErrorPayload;
+-    const row = this.findToolRow(String(payload.toolCallId));
++    const row = this.findToolRow(String(payload.toolCallId), event);
+     if (!row) return [];
+     const cancelled =
+       payload.error.type === CoreErrorType.ToolCancelled || payload.error.code === "TOOL_CANCELLED";
+@@ -3112,7 +3134,7 @@ export class ProductProjection {
+       interactionId,
+     );
+     const deltas: ConversationDelta[] = [];
+-    const row = this.findToolRow(toolCallId);
++    const row = this.findToolRow(toolCallId, event);
+     if (row) {
+       deltas.push({
+         op: "row.upserted",
+@@ -3144,7 +3166,7 @@ export class ProductProjection {
+       return {
+         interactionId,
+         kind: "userInput",
+-        anchorRowId: this.toolRowIdByCallId.get(toolCallId) ?? null,
++        anchorRowId: this.findToolRow(toolCallId, event)?.rowId ?? null,
+         createdAt: this.ms(event),
+         payload: {
+           kind: "userInput",
+@@ -3166,7 +3188,7 @@ export class ProductProjection {
+       return {
+         interactionId,
+         kind: "userInput",
+-        anchorRowId: this.toolRowIdByCallId.get(toolCallId) ?? null,
++        anchorRowId: this.findToolRow(toolCallId, event)?.rowId ?? null,
+         createdAt: this.ms(event),
+         payload: {
+           kind: "userInput",
+@@ -3186,7 +3208,7 @@ export class ProductProjection {
+     return {
+       interactionId,
+       kind: "permission",
+-      anchorRowId: this.toolRowIdByCallId.get(toolCallId) ?? null,
++      anchorRowId: this.findToolRow(toolCallId, event)?.rowId ?? null,
+       createdAt: this.ms(event),
+       payload: {
+         kind: "permission",
+@@ -3257,12 +3279,13 @@ export class ProductProjection {
+     return this.settlePermission(
+       String(payload.toolCallId),
+       payload.decision === "deny" ? "cancelled" : "running",
++      event,
+     );
+   }
+ 
+   private onPermissionDenied(event: SessionEvent): ConversationDelta[] {
+     const payload = event.payload as PermissionDeniedPayload;
+-    return this.settlePermission(String(payload.toolCallId), "cancelled");
++    return this.settlePermission(String(payload.toolCallId), "cancelled", event);
+   }
+ 
+   private onWorkspaceHookReviewRequested(event: SessionEvent): ConversationDelta[] {
+@@ -3353,19 +3376,34 @@ export class ProductProjection {
+     return changed ? [{ op: "state.updated", patch: { pendingInteractions } }] : [];
+   }
+ 
+-  private settlePermission(toolCallId: string, status: ToolCallRow["status"]): ConversationDelta[] {
++  private settlePermission(
++    toolCallId: string,
++    status: ToolCallRow["status"],
++    event: SessionEvent,
++  ): ConversationDelta[] {
+     const deltas: ConversationDelta[] = [];
+-    const row = this.findToolRow(toolCallId);
++    const row = this.findToolRow(toolCallId, event);
+     if (row) {
+       const next: ToolCallRow = { ...row, status };
+       delete next.approvalInteractionId;
+       deltas.push({ op: "row.upserted", row: next });
+     }
++    const requestId = (event.payload as { requestId?: string }).requestId;
++    const matching = this.snapshot.pendingInteractions.filter(
++      (item) =>
++        (item.payload.kind === "permission" || item.payload.kind === "userInput") &&
++        item.payload.toolCallId === toolCallId,
++    );
+     const remaining = this.snapshot.pendingInteractions.filter(
+       (item) =>
+         !(
+           (item.payload.kind === "permission" || item.payload.kind === "userInput") &&
+-          item.payload.toolCallId === toolCallId
++          item.payload.toolCallId === toolCallId &&
++          (requestId
++            ? item.interactionId === requestId
++            : row
++              ? item.anchorRowId === row.rowId
++              : matching.length === 1)
+         ),
+     );
+     if (remaining.length !== this.snapshot.pendingInteractions.length) {
+@@ -4288,6 +4326,8 @@ export class ProductProjection {
+   private onBackgroundTaskLifecycle(event: SessionEvent): ConversationDelta[] {
+     const payload = event.payload as {
+       taskId?: string;
++      toolCallId?: string;
++      assistantMessageId?: string;
+       toolName?: string;
+       taskKind?: string;
+       command?: string;
+@@ -4352,7 +4392,12 @@ export class ProductProjection {
+         : existing?.blocked !== undefined
+           ? { blocked: existing.blocked }
+           : {}),
+-      anchorRowId: existing?.anchorRowId ?? null,
++      anchorRowId:
++        existing?.anchorRowId ??
++        (payload.toolCallId
++          ? this.findToolRow(payload.toolCallId, event, payload.assistantMessageId)?.rowId
++          : undefined) ??
++        null,
+       ...(payload.childSessionId
+         ? { childSessionId: payload.childSessionId }
+         : existing?.childSessionId
+@@ -4613,8 +4658,11 @@ export class ProductProjection {
+       ? pending : undefined;
+     const selection = this.snapshot.config;
+     const modelChanged = request
+-      ? Boolean(selection.provider && selection.model &&
+-          (request.providerId !== selection.provider || request.modelId !== selection.model))
++      ? Boolean(
++          selection.provider &&
++          selection.model &&
++          (request.providerId !== selection.provider || request.modelId !== selection.model),
++        )
+       : this.contextWindowState.measurement?.staleReason === "model-change";
+     const measurement: ContextWindowMeasurement = measured ? {
+       source: "provider-usage", state: modelChanged ? "stale" : "current", observedAt: this.ms(event),
+@@ -4630,7 +4678,13 @@ export class ProductProjection {
+       lastRequest.accountId = payload.accountId;
+       lastRequest.observedAt = this.ms(event);
+     }
+-    for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"] as const) {
++    for (const key of [
++      "inputTokens",
++      "outputTokens",
++      "cacheReadTokens",
++      "cacheWriteTokens",
++      "reasoningTokens",
++    ] as const) {
+       const value = usage[key];
+       if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+         lastRequest[key] = value;
+@@ -4642,8 +4696,9 @@ export class ProductProjection {
+     this.contextWindowState.measuredByEvent ||= measured;
+     if (request) this.contextWindowState.request = undefined;
+     // 切模后到达的旧请求仍可计消费，但不能把旧模型容量覆盖回当前 Registry 容量。
+-    const maxTokens = modelChanged ? this.contextWindowState.maxTokens
+-      : payload.contextWindow ?? this.contextWindowState.maxTokens;
++    const maxTokens = modelChanged
++      ? this.contextWindowState.maxTokens
++      : (payload.contextWindow ?? this.contextWindowState.maxTokens);
+     this.contextWindowState.maxTokens = maxTokens;
+     const cumulative = this.snapshot.usage.cumulative;
+     deltas.push({
+@@ -5420,11 +5475,38 @@ export class ProductProjection {
+     }
+   }
+ 
+-  private findToolRow(toolCallId: string): ToolCallRow | undefined {
+-    const rowId = this.toolRowIdByCallId.get(toolCallId);
+-    if (rowId === undefined) return undefined;
+-    const row = this.findRow(rowId);
+-    return row?.kind === "toolCall" ? row : undefined;
++  private indexToolRow(row: ToolCallRow): void {
++    const rowIds = this.toolRowIdsByCallId.get(row.toolCallId) ?? [];
++    if (!rowIds.includes(row.rowId)) rowIds.push(row.rowId);
++    this.toolRowIdsByCallId.set(row.toolCallId, rowIds);
++  }
++
++  private findToolRow(
++    toolCallId: string,
++    event?: SessionEvent,
++    assistantResponseId?: string,
++  ): ToolCallRow | undefined {
++    const payload = event?.payload as
++      | { assistantMessageId?: string; assistantResponseId?: string }
++      | undefined;
++    const assistant =
++      assistantResponseId ?? payload?.assistantMessageId ?? payload?.assistantResponseId;
++    const turnId = event?.turnId ? this.turnIdOf(event) : undefined;
++    const candidates = (this.toolRowIdsByCallId.get(toolCallId) ?? [])
++      .map((rowId) => this.findRow(rowId))
++      .filter(
++        (row): row is ToolCallRow =>
++          row?.kind === "toolCall" &&
++          (!turnId || row.turnId === turnId) &&
++          (!assistant || !row.assistantResponseId || row.assistantResponseId === assistant),
++      );
++    // Legacy events without an assistant identity must not silently update another request.
++    // A missing streamed identity can be filled by the unique scheduled call, never guessed.
++    if (assistant) {
++      const exact = candidates.filter((row) => row.assistantResponseId === assistant);
++      if (exact.length === 1) return exact[0];
++    }
++    return candidates.length === 1 ? candidates[0] : undefined;
+   }
+ 
+   private findSubagentRow(agentId: string): SubagentRow | undefined {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/projection-rows.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/projection-rows.ts
+index 4af3491e1a3ef54f5befde148ecfc86240c738bf..2ffd62eaf7fd6bbbcec0280e9665ccb60b7d870d 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/projection-rows.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/projection-rows.ts
+@@ -16,7 +16,7 @@ import type {
+   TurnHeaderRow,
+   UserInputRow,
+ } from "@zcode/shared/zcode-protocol-v4";
+-import { PROTOCOL_V4_LIMITS } from "@zcode/shared/zcode-protocol-v4";
++import { toolOutputAttachmentSchema, PROTOCOL_V4_LIMITS } from "@zcode/shared/zcode-protocol-v4";
+ 
+ interface RowBaseInput {
+   rowId: number;
+@@ -159,7 +159,22 @@ export function mapGoalStatus(status: GoalStatus): GoalState["status"] {
+ 
+ // 终态截断全档统一：head+tail 各 32K，超出部分以 truncated.ref 按需拉取。
+ // 阶段 ref 先用 toolCallId 占位（artifact 存取属传输外壳期）。
+-export function buildToolOutput(result: ToolResultPayload, toolCallId: string): ToolOutput {
++export function buildToolOutput(
++  result: ToolResultPayload,
++  toolCallId: string,
++  sessionId?: string,
++): ToolOutput {
++  const attachments =
++    result.success && sessionId
++      ? (result.attachments ?? []).slice(0, 32).flatMap((attachment) => {
++          const parsed = toolOutputAttachmentSchema.safeParse(attachment);
++          return parsed.success &&
++            parsed.data.ref.startsWith(`zcode-artifact://${encodeURIComponent(sessionId)}/`)
++            ? [parsed.data]
++            : [];
++        })
++      : [];
++  const attachmentFields = attachments.length ? { attachments } : {};
+   const text = result.content;
+   // 模型可见文本只保留图片占位符，若 V4 output 不独立携带 display，
+   // 实时投影和冷恢复都会丢失 CUA 截图。Node REPL 图片仍走 ToolCallRow.display 专用通道。
+@@ -168,13 +183,14 @@ export function buildToolOutput(result: ToolResultPayload, toolCallId: string):
+   const tailBytes = PROTOCOL_V4_LIMITS.toolOutputFinalTailBytes;
+   const totalBytes = Buffer.byteLength(text, "utf8");
+   if (totalBytes <= headBytes + tailBytes) {
+-    return { text, ...(display ? { display } : {}) };
++    return { text, ...attachmentFields, ...(display ? { display } : {}) };
+   }
+   const buffer = Buffer.from(text, "utf8");
+   const head = buffer.subarray(0, headBytes).toString("utf8");
+   const tail = buffer.subarray(buffer.length - tailBytes).toString("utf8");
+   return {
+     text: `${head}\n…\n${tail}`,
++    ...attachmentFields,
+     ...(display ? { display } : {}),
+     truncated: { totalBytes, ref: `tool-output/${toolCallId}` },
+   };
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+index 7a7dd35521cb4de9b08d3ea80b802eb45531fde3..8fb53f6766d8b4dfc39c5339b09f8e761f92bb54 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+@@ -765,6 +765,7 @@ function synthesizeToolPart(
+       SessionEventType.ToolCallStarted,
+       {
+         toolCallId,
++        assistantMessageId,
+         toolName: part.tool,
+         ...(persistedMetadata?.display ? { display: persistedMetadata.display } : {}),
+         startedAt: new Date(
+@@ -787,10 +788,25 @@ function synthesizeToolPart(
+       SessionEventType.ToolCallResult,
+       {
+         toolCallId,
++        assistantMessageId,
+         duration: Math.max(0, part.state.time.end - part.state.time.start),
+         result: {
+           success: true,
+           content: part.state.output,
++          attachments: part.state.attachments
++            ?.map((attachment, attachmentIndex) => ({
++              attachmentIndex,
++              ref: attachment.metadata?.artifactUri ?? attachment.url,
++              fileName: attachment.filename ?? "",
++              mime: attachment.mime,
++              ...(attachment.metadata?.sizeBytes === undefined
++                ? {}
++                : { bytes: attachment.metadata.sizeBytes }),
++            }))
++            .filter((attachment) =>
++              attachment.ref.startsWith(`zcode-artifact://${encodeURIComponent(part.sessionID)}/`),
++            )
++            .slice(0, 32),
+           ...(persistedMetadata?.display ? { display: persistedMetadata.display } : {}),
+         },
+       },
+@@ -804,6 +820,7 @@ function synthesizeToolPart(
+       SessionEventType.ToolCallResult,
+       {
+         toolCallId,
++        assistantMessageId,
+         duration: Math.max(0, part.state.time.end - part.state.time.start),
+         result: {
+           success: false,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts
+index 6585dbd2118c84e1420e4e71eb808bd78a5501ca..5c58544b74f6a6b36b983facba95d6b4f23bb7b6 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts
+@@ -335,6 +335,7 @@ export interface V4GatewayHost {
+       mime: string;
+       maxBytes: number;
+       messageId?: string;
++      toolCallId?: string;
+       attachmentIndex?: number;
+     },
+   ): Promise<{ bytes: Uint8Array; mediaType: string }>;
+@@ -345,6 +346,7 @@ export interface V4GatewayHost {
+       ref: string;
+       mime: string;
+       messageId?: string;
++      toolCallId?: string;
+       attachmentIndex?: number;
+     },
+   ): Promise<{ totalBytes: number; mediaType: string; mtimeMs?: number }>;
+@@ -355,6 +357,7 @@ export interface V4GatewayHost {
+       ref: string;
+       mime: string;
+       messageId?: string;
++      toolCallId?: string;
+       attachmentIndex?: number;
+     },
+   ): Promise<V4AttachmentPreviewSourceResult>;
+@@ -2021,6 +2024,8 @@ export class ConversationV4Gateway {
+       resolution.attachment.mime,
+       resolution.messageId,
+       resolution.attachmentIndex,
++      false,
++      resolution.toolCallId,
+     );
+     if (params.offset > payload.bytes.byteLength) {
+       throw new Error("fault.attachment.previewRangeInvalid");
+@@ -2048,20 +2053,18 @@ export class ConversationV4Gateway {
+       : !this.host.sessionExists(params.sessionId)
+         ? await this.ensureColdReadyPublisher(params.sessionId)
+         : await this.hydratePublisher(params.sessionId);
+-    const row = publisher
+-      .getSnapshot()
+-      .rows.window.find(
+-        (candidate) =>
+-          candidate.rowId === params.target.rowId && candidate.entityId === params.target.entityId,
+-      );
+-    if (row?.kind !== "userInput") {
+-      throw new ZCodeAttachmentFaultError(ZCODE_ATTACHMENT_FAULT_CODES.shareReadNotAuthorized);
+-    }
+-    const attachment = row.attachments?.[params.attachmentIndex];
+-    if (!attachment || (attachment.ref !== params.ref && attachment.previewRef !== params.ref)) {
++    const resolution = this.resolveReadableMediaAttachment(
++      publisher,
++      params.sessionId,
++      params.ref,
++      params.target,
++      params.attachmentIndex,
++      true,
++    );
++    if (!resolution) {
+       throw new ZCodeAttachmentFaultError(ZCODE_ATTACHMENT_FAULT_CODES.shareReadNotAuthorized);
+     }
+-    const messageId = publisher.getMessageIdForRow(row.rowId) ?? undefined;
++    const { attachment, messageId, toolCallId } = resolution;
+     let payload: { bytes: Uint8Array; mediaType: string };
+     try {
+       payload = await this.readAttachmentPayload(
+@@ -2071,6 +2074,7 @@ export class ConversationV4Gateway {
+         messageId,
+         params.attachmentIndex,
+         true,
++        toolCallId,
+       );
+     } catch (error) {
+       throw toShareStatFault(error);
+@@ -2101,26 +2105,25 @@ export class ConversationV4Gateway {
+       : !this.host.sessionExists(params.sessionId)
+         ? await this.ensureColdReadyPublisher(params.sessionId)
+         : await this.hydratePublisher(params.sessionId);
+-    const row = publisher
+-      .getSnapshot()
+-      .rows.window.find(
+-        (candidate) =>
+-          candidate.rowId === params.target.rowId && candidate.entityId === params.target.entityId,
+-      );
+-    if (row?.kind !== "userInput") {
+-      throw new ZCodeAttachmentFaultError(ZCODE_ATTACHMENT_FAULT_CODES.shareStatNotAuthorized);
+-    }
+-    const attachment = row.attachments?.[params.attachmentIndex];
+-    if (!attachment || (attachment.ref !== params.ref && attachment.previewRef !== params.ref)) {
++    const resolution = this.resolveReadableMediaAttachment(
++      publisher,
++      params.sessionId,
++      params.ref,
++      params.target,
++      params.attachmentIndex,
++      true,
++    );
++    if (!resolution) {
+       throw new ZCodeAttachmentFaultError(ZCODE_ATTACHMENT_FAULT_CODES.shareStatNotAuthorized);
+     }
+-    const messageId = publisher.getMessageIdForRow(row.rowId) ?? undefined;
++    const { attachment, messageId, toolCallId } = resolution;
+     let result: { totalBytes: number; mediaType: string; mtimeMs?: number };
+     try {
+       result = await this.host.statSessionAttachment(params.sessionId, {
+         ref: params.ref,
+         mime: attachment.mime,
+         ...(messageId ? { messageId } : {}),
++        ...(toolCallId ? { toolCallId } : {}),
+         attachmentIndex: params.attachmentIndex,
+       });
+     } catch (error) {
+@@ -2166,6 +2169,7 @@ export class ConversationV4Gateway {
+       ref: params.ref,
+       mime: resolution.attachment.mime,
+       ...(resolution.messageId ? { messageId: resolution.messageId } : {}),
++      ...(resolution.toolCallId ? { toolCallId: resolution.toolCallId } : {}),
+       ...(resolution.attachmentIndex !== undefined
+         ? { attachmentIndex: resolution.attachmentIndex }
+         : {}),
+@@ -2179,8 +2183,15 @@ export class ConversationV4Gateway {
+     ref: string,
+     target?: { rowId: number; entityId: string },
+     attachmentIndex?: number,
+-  ): { attachment: AttachmentRef; messageId?: string; attachmentIndex?: number } | null {
+-    const isPreviewable = (attachment: AttachmentRef) => {
++    allowGeneric = false,
++  ): {
++    attachment: Omit<AttachmentRef, "bytes"> & { bytes?: number };
++    messageId?: string;
++    toolCallId?: string;
++    attachmentIndex?: number;
++  } | null {
++    const isPreviewable = (attachment: { mime: string }) => {
++      if (allowGeneric) return true;
+       const mime = attachment.mime.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+       return mime.startsWith("image/") || mime.startsWith("video/") || mime === "application/pdf";
+     };
+@@ -2192,6 +2203,28 @@ export class ConversationV4Gateway {
+         .rows.window.find(
+           (candidate) => candidate.rowId === target.rowId && candidate.entityId === target.entityId,
+         );
++      if (row?.kind === "toolCall") {
++        // A renderer-supplied URI never grants access. The Host row binds it to one
++        // assistant message, call, and original attachment index; the store rechecks that binding.
++        const attachment = row.output?.attachments?.find(
++          (item) => item.attachmentIndex === attachmentIndex,
++        );
++        if (
++          row.status !== "success" ||
++          !row.assistantResponseId ||
++          !attachment ||
++          attachment.ref !== ref ||
++          !artifactRefBelongsToSession(ref, sessionId) ||
++          !isPreviewable(attachment)
++        )
++          return null;
++        return {
++          attachment,
++          messageId: row.assistantResponseId,
++          toolCallId: row.toolCallId,
++          attachmentIndex,
++        };
++      }
+       if (row?.kind !== "userInput") return null;
+       const attachment = row.attachments?.[attachmentIndex];
+       if (!attachment || !isPreviewable(attachment) || !matchesRef(attachment)) {
+@@ -2255,12 +2288,13 @@ export class ConversationV4Gateway {
+     messageId?: string,
+     attachmentIndex?: number,
+     allowGeneric = false,
++    toolCallId?: string,
+   ): Promise<{ bytes: Uint8Array; mediaType: string }> {
+     const now = this.now();
+     this.pruneBinaryReadCache(now);
+     // 首段标签 `att`：这张表与 dwf 产物字节共用（见 BinaryReadCacheEntry），两个键空间
+     // 只能靠一个不可能相等的首段隔离。
+-    const key = `att\u0000${sessionId}\u0000${messageId ?? "legacy"}\u0000${attachmentIndex ?? -1}\u0000${ref}`;
++    const key = `att\u0000${sessionId}\u0000${messageId ?? "legacy"}\u0000${toolCallId ?? "input"}\u0000${attachmentIndex ?? -1}\u0000${ref}`;
+     const cached = this.binaryReadCache.get(key);
+     if (cached) {
+       cached.accessedAt = now;
+@@ -2279,6 +2313,7 @@ export class ConversationV4Gateway {
+       mime,
+       maxBytes,
+       ...(messageId ? { messageId } : {}),
++      ...(toolCallId ? { toolCallId } : {}),
+       ...(attachmentIndex !== undefined ? { attachmentIndex } : {}),
+     })
+       .then((result) => {
+diff --git a/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts b/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..553c41d5fba2f12046500441484c4777b72f7c2b
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts
+@@ -0,0 +1,906 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { rm } from "node:fs/promises";
++import { join } from "node:path";
++import {
++  createInMemorySessionEventStore,
++  createRootTraceContext,
++  SessionEventType,
++  type SessionEvent,
++  type SessionId,
++  type ToolArtifactStorePort,
++} from "@zcode/contracts";
++import { toolOutputSchema, type ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
++import { ProviderRegistry } from "@zcode/provider";
++import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
++import { fixture, reply } from "../../core/test/helpers/pi-runtime-fixture.js";
++import { toolResultAttachmentRefs } from "../../core/src/tool/executor/events.js";
++import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
++import { synthesizeEventsFromMessages } from "../src/zcode-protocol-v4/transcript-hydration.js";
++import { ConversationV4Gateway, type V4GatewayHost } from "../src/zcode-protocol-v4/v4-gateway.js";
++import { resolvePersistedToolAttachment } from "../src/app/tool-output-attachment.js";
++import { createZCodeApp } from "../src/app/create-app.js";
++
++const sessionId = "session" as SessionId;
++const png = Buffer.from(
++  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
++  "base64",
++);
++const mp4 = Buffer.from("000000186674797069736f6d0000020069736f6d69736f32", "hex");
++const imageCall = () => ({
++  id: "reused-image-call",
++  name: "GenerateImage",
++  input: { providerId: "fixture", modelId: "image", prompt: "square" },
++});
++function rows(events: SessionEvent[]) {
++  const projection = new ProductProjection(sessionId, "fixture-epoch");
++  for (const event of events) projection.applyEventAtomically(event, () => true);
++  return projection.getSnapshot().rows.window;
++}
++
++test("a live output event is readable at publication, after its completed tool part is durable", async () => {
++  for (const streaming of [false, true]) {
++    let generations = 0;
++    const f = await fixture(undefined, streaming, {
++      config: { toolAllowlist: ["GenerateImage"] },
++      deps: {
++        mediaGenerationPort: {
++          listModels: () => [
++            {
++              providerId: "fixture",
++              providerLabel: "Fixture",
++              modelId: "image",
++              kind: "image",
++              status: "requires-check",
++            },
++          ],
++          prepareImage: async () => "image-binding",
++          generateImage: async () => {
++            generations++;
++            return { bytes: png, mimeType: "image/png" };
++          },
++        },
++      },
++    });
++    let successEvents = 0;
++    const publicationFailures: unknown[] = [];
++    const unsubscribe = f.runtime.subscribeEvents({
++      async onSessionEvent(event) {
++        if (event.type !== SessionEventType.ToolCallResult) return;
++        const payload = event.payload as any;
++        if (!payload.result.success || !payload.result.attachments?.length) return;
++        successEvents++;
++        const attachment = payload.result.attachments[0];
++        try {
++          await resolvePersistedToolAttachment(f.store, sessionId, {
++            ref: attachment.ref,
++            messageId: payload.assistantMessageId,
++            toolCallId: payload.toolCallId,
++            attachmentIndex: attachment.attachmentIndex,
++          });
++        } catch (error) {
++          publicationFailures.push(error);
++        }
++      },
++    });
++    try {
++      f.steps.push(
++        () => reply("creating", [imageCall()]),
++        () => reply("done"),
++      );
++      await f.runtime.executeTurn("Create a visible result");
++      assert.equal(
++        successEvents,
++        1,
++        "publish one success after commit, never a second patch event",
++      );
++      assert.deepEqual(
++        publicationFailures,
++        [],
++        "the UI must be able to read at the event boundary",
++      );
++      assert.equal(generations, 1);
++    } finally {
++      unsubscribe();
++      await f.close();
++    }
++  }
++});
++
++test("failed completed-tool persistence never publishes a readable success or regenerates media", async () => {
++  const eventStore = createInMemorySessionEventStore();
++  let generations = 0;
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["GenerateImage"] },
++    deps: {
++      eventStore,
++      mediaGenerationPort: {
++        listModels: () => [
++          {
++            providerId: "fixture",
++            providerLabel: "Fixture",
++            modelId: "image",
++            kind: "image",
++            status: "requires-check",
++          },
++        ],
++        prepareImage: async () => "image-binding",
++        generateImage: async () => {
++          generations++;
++          return { bytes: png, mimeType: "image/png" };
++        },
++      },
++    },
++  });
++  const savePart = f.store.savePart.bind(f.store);
++  f.store.savePart = async (part, ...rest) => {
++    if (part.type === "tool" && part.state.status === "completed") {
++      throw new Error("injected completed tool save failure");
++    }
++    return savePart(part, ...rest);
++  };
++  try {
++    f.steps.push(() => reply("creating", [imageCall()]));
++    await assert.rejects(
++      f.runtime.executeTurn("Create, but fail to persist the result"),
++      (error: any) => error.cause?.message === "injected completed tool save failure",
++    );
++    const events = await eventStore.getEvents(sessionId);
++    assert.equal(
++      events.filter(
++        (event) =>
++          event.type === SessionEventType.ToolCallResult && (event.payload as any).result.success,
++      ).length,
++      0,
++    );
++    assert.ok(
++      rows(events)
++        .filter((row) => row.kind === "toolCall")
++        .every((row) => !row.output?.attachments?.length),
++    );
++    const coldEvents = synthesizeEventsFromMessages(
++      await f.store.messages({ sessionID: sessionId }),
++      { sessionId },
++    );
++    assert.ok(
++      rows(coldEvents)
++        .filter((row) => row.kind === "toolCall")
++        .every((row) => !row.output?.attachments?.length),
++      "cold reopen cannot synthesize a success for a failed completed-part write",
++    );
++    assert.equal(generations, 1, "a storage failure cannot retry the provider effect");
++  } finally {
++    f.store.savePart = savePart;
++    await f.close();
++  }
++});
++
++test("stored outputs survive Host/Pi execution and cold V4 replay, with exact per-tool read authorization", async () => {
++  const eventStore = createInMemorySessionEventStore();
++  let generations = 0;
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["GenerateImage", "GenerateVideo"] },
++    deps: {
++      eventStore,
++      mediaGenerationPort: {
++        listModels: () => [
++          {
++            providerId: "fixture",
++            providerLabel: "Fixture",
++            modelId: "image",
++            kind: "image",
++            status: "requires-check",
++          },
++          {
++            providerId: "fixture",
++            providerLabel: "Fixture",
++            modelId: "video",
++            kind: "video",
++            status: "requires-check",
++          },
++        ],
++        prepareImage: async () => "image-binding",
++        generateImage: async () => {
++          generations++;
++          return { bytes: png, mimeType: "image/png" };
++        },
++        prepareVideo: async () => ({
++          binding: "video-binding",
++          credentialReference: "fixture-key",
++        }),
++        submitVideo: async () => {
++          generations++;
++          return { requestId: "fixture-video" };
++        },
++        readVideo: async () => ({ status: "done", bytes: mp4, mimeType: "video/mp4" }),
++      },
++    },
++  });
++  const artifacts = new NodeToolArtifactStore({
++    rootDir: join(f.dir, "artifacts"),
++    imageCacheRootDir: join(f.dir, "images"),
++    videoCacheRootDir: join(f.dir, "videos"),
++  });
++  const gateways: ConversationV4Gateway[] = [];
++  let previewApp: Awaited<ReturnType<typeof createZCodeApp>> | undefined;
++  let reads = 0;
++  let stats = 0;
++  const gateway = (events: SessionEvent[], synthesized: boolean) => {
++    const host: V4GatewayHost = {
++      sessionExists: (id) => id === sessionId,
++      emitWireFrame() {},
++      executeCommand: async () => undefined,
++      loadPersistedEvents: async (id) => ({ events: id === sessionId ? events : [], synthesized }),
++      async readSessionAttachment(id, input) {
++        reads++;
++        if (previewApp) return previewApp.readPromptAttachment(input);
++        const resolved = await resolvePersistedToolAttachment(f.store, id as SessionId, input);
++        const result = await artifacts.readToolResultBinaryArtifact({ uri: resolved.ref });
++        return { bytes: result.bytes, mediaType: resolved.mediaType };
++      },
++      async statSessionAttachment(id, input) {
++        stats++;
++        if (previewApp) return previewApp.statPromptAttachment!(input);
++        const resolved = await resolvePersistedToolAttachment(f.store, id as SessionId, input);
++        const stat = await artifacts.statToolResultArtifact({ uri: resolved.ref });
++        return { totalBytes: stat.bytes, mediaType: resolved.mediaType };
++      },
++    };
++    const result = new ConversationV4Gateway(host);
++    gateways.push(result);
++    return result;
++  };
++  const params = (row: ToolCallRow) => ({
++    sessionId,
++    target: { rowId: row.rowId, entityId: row.entityId! },
++    attachmentIndex: row.output!.attachments![0]!.attachmentIndex,
++    ref: row.output!.attachments![0]!.ref,
++    offset: 0,
++    limit: 512,
++  });
++  try {
++    f.steps.push(
++      () =>
++        reply("creating", [
++          imageCall(),
++          {
++            id: "video-call",
++            name: "GenerateVideo",
++            input: { providerId: "fixture", modelId: "video", prompt: "garden", duration: 6 },
++          },
++        ]),
++      () => reply("same-turn request", [imageCall()]),
++      () => reply("done"),
++    );
++    await f.runtime.executeTurn("Create image and video", [
++      {
++        type: "image",
++        mimeType: "image/png",
++        content: `data:image/png;base64,${png.toString("base64")}`,
++      },
++    ]);
++    f.steps.push(
++      () => reply("creating again", [imageCall()]),
++      () => reply("done again"),
++    );
++    await f.runtime.executeTurn("Create another image");
++    const liveEvents = await eventStore.getEvents(sessionId);
++    const liveRows = rows(liveEvents).filter(
++      (row): row is ToolCallRow => row.kind === "toolCall" && !!row.output?.attachments?.length,
++    );
++    assert.equal(
++      liveRows.length,
++      4,
++      JSON.stringify(rows(liveEvents).filter((row) => row.kind === "toolCall")),
++    );
++    assert.equal(generations, 4);
++    assert.equal(
++      JSON.stringify(liveRows).includes(png.toString("base64")),
++      false,
++      "frames contain refs, not image bytes",
++    );
++    const liveGateway = gateway(liveEvents, false);
++    for (const row of liveRows) {
++      const result = await liveGateway.attachmentRead(params(row));
++      assert.deepEqual(
++        Buffer.from(result.dataBase64, "base64"),
++        row.toolName === "GenerateVideo" ? mp4 : png,
++      );
++    }
++    await f.reopen();
++    previewApp = await createZCodeApp({
++      sessionId,
++      sessionStore: f.store,
++      artifactStore: artifacts,
++      providerRegistry: new ProviderRegistry([]),
++      skipUserConfig: true,
++      officialPluginRoots: [],
++      pluginStorageRoot: join(f.dir, "plugins"),
++      runtimeConfig: {
++        workingDirectory: f.dir,
++        titleGeneration: { enabled: false },
++        memory: { use: false },
++        dynamicWorkflowEnabled: false,
++      },
++      env: { ZCODE_STORAGE_DIR: join(f.dir, "app-storage"), ZCODE_HOME: join(f.dir, "app-home") },
++    });
++    const messages = await f.store.messages({ sessionID: sessionId });
++    const coldEvents = synthesizeEventsFromMessages(messages, { sessionId });
++    const coldRows = rows(coldEvents).filter(
++      (row): row is ToolCallRow => row.kind === "toolCall" && !!row.output?.attachments?.length,
++    );
++    assert.equal(coldRows.length, 4);
++    assert.deepEqual(
++      coldRows.map((row) => row.output!.attachments),
++      liveRows.map((row) => row.output!.attachments),
++    );
++    const coldGateway = gateway(coldEvents, true);
++    for (const row of coldRows) {
++      const query = params(row);
++      assert.ok(toolOutputSchema.safeParse(row.output).success);
++      assert.deepEqual(
++        Buffer.from((await coldGateway.conversationAttachmentRead(query)).dataBase64, "base64"),
++        row.toolName === "GenerateVideo" ? mp4 : png,
++      );
++      const { offset: _o, limit: _l, ...statQuery } = query;
++      assert.equal(
++        (await coldGateway.conversationAttachmentStat(statQuery)).totalBytes,
++        row.toolName === "GenerateVideo" ? mp4.length : png.length,
++      );
++    }
++    const legacyInput = rows(coldEvents).find(
++      (row) => row.kind === "userInput" && row.attachments?.length,
++    );
++    assert.ok(legacyInput?.kind === "userInput");
++    const legacyRef = legacyInput.attachments![0]!.ref;
++    assert.deepEqual(
++      Buffer.from(
++        (await coldGateway.attachmentRead({ sessionId, ref: legacyRef, offset: 0, limit: 512 }))
++          .dataBase64,
++        "base64",
++      ),
++      png,
++      "legacy user-input authorization and data-URL storage remain readable",
++    );
++    assert.deepEqual(
++      Buffer.from(
++        (
++          await coldGateway.conversationAttachmentRead({
++            sessionId,
++            target: { rowId: legacyInput.rowId, entityId: legacyInput.entityId! },
++            ref: legacyRef,
++            attachmentIndex: 0,
++            offset: 0,
++            limit: 512,
++          })
++        ).dataBase64,
++        "base64",
++      ),
++      png,
++    );
++    const first = coldRows[0]!;
++    const query = params(first);
++    const beforeInvalid = reads;
++    const statsBeforeInvalid = stats;
++    for (const invalid of [
++      { ...query, target: { ...query.target, entityId: "wrong-entity" } },
++      { ...query, target: { ...query.target, rowId: 999999 } },
++      { ...query, attachmentIndex: 99 },
++      { ...query, ref: coldRows[2]!.output!.attachments![0]!.ref },
++      { ...query, ref: query.ref.replace("//session/", "//other-session/") },
++      { ...query, ref: "/etc/passwd" },
++      { ...query, toolCallId: "injected-call" },
++    ]) {
++      await assert.rejects(coldGateway.attachmentRead(invalid));
++      const { offset: _o, limit: _l, ...invalidStat } = invalid;
++      await assert.rejects(coldGateway.conversationAttachmentStat(invalidStat));
++    }
++    assert.equal(reads, beforeInvalid, "invalid UI selectors never reach the bytes owner");
++    assert.equal(
++      stats,
++      statsBeforeInvalid,
++      "invalid stat selectors never reach the artifact owner",
++    );
++    await assert.rejects(
++      coldGateway.attachmentRead({ ...query, target: undefined, attachmentIndex: undefined }),
++      /NotAuthorized/,
++    );
++    await assert.rejects(
++      resolvePersistedToolAttachment(f.store, sessionId, {
++        ref: query.ref,
++        messageId: first.assistantResponseId,
++        toolCallId: "wrong-call",
++        attachmentIndex: 0,
++      }),
++      /NotAuthorized/,
++    );
++    await assert.rejects(
++      resolvePersistedToolAttachment(f.store, "other-session" as SessionId, {
++        ref: query.ref,
++        messageId: first.assistantResponseId,
++        toolCallId: first.toolCallId,
++        attachmentIndex: 0,
++      }),
++      /NotAuthorized/,
++    );
++    await assert.rejects(
++      resolvePersistedToolAttachment(f.store, sessionId, {
++        ref: query.ref,
++        messageId: coldRows[2]!.assistantResponseId,
++        toolCallId: first.toolCallId,
++        attachmentIndex: 0,
++      }),
++      /NotAuthorized/,
++      "reused upstream call IDs cannot cross assistant messages",
++    );
++    const file = await artifacts.statToolResultArtifact({ uri: query.ref });
++    assert.ok(file.path);
++    await rm(file.path);
++    const missingGateway = gateway(coldEvents, true);
++    await assert.rejects(missingGateway.attachmentRead(query), /not found/);
++    assert.equal(generations, 4, "opening a missing result never regenerates media");
++    f.steps.push((request) => {
++      const blocks = request.messages
++        .filter((message: any) => message.role === "tool")
++        .flatMap((message: any) => (Array.isArray(message.content) ? message.content : []));
++      assert.equal(
++        blocks.some((block: any) => block.type === "video" || block.mediaType === "video/mp4"),
++        false,
++        "output preview does not inject videos into the model",
++      );
++      return reply("checked");
++    });
++    await f.runtime.executeTurn("Continue using existing results");
++  } finally {
++    for (const item of gateways) item.dispose();
++    await previewApp?.close();
++    await f.close();
++  }
++});
++
++test("event refs remain bounded, same-session, index-stable and unclassified", () => {
++  const content = [
++    {
++      type: "image",
++      mediaType: "image/png",
++      dataUrl: "data:image/png;base64,YQ==",
++      source: { uri: "zcode-artifact://other/one" },
++    },
++    ...Array.from({ length: 40 }, (_, n) => ({
++      type: "file",
++      mediaType: "video/mp4",
++      name: `${n}.mp4`,
++      uri: `zcode-artifact://session/${n}`,
++      text: "reference",
++      source: { uri: `zcode-artifact://session/${n}` },
++    })),
++  ];
++  const refs = toolResultAttachmentRefs(content as never, sessionId)!;
++  assert.equal(refs.length, 32);
++  assert.equal(refs[0]!.attachmentIndex, 1);
++  assert.equal(refs[0]!.ref, "zcode-artifact://session/0");
++  assert.equal("generated" in refs[0]!, false, "an observed image is not relabelled as generation");
++  assert.equal(
++    toolResultAttachmentRefs(
++      [
++        {
++          type: "image",
++          mediaType: "image/png",
++          dataUrl: "https://untrusted/image",
++          source: { uri: "zcode-artifact://session/0" },
++        },
++      ] as never,
++      sessionId,
++    ),
++    undefined,
++  );
++});
++
++test("assistant Markdown reads the existing binary output without widening artifact authorization", async () => {
++  let generations = 0;
++  let outputRef = "";
++  let nonImageRef = "";
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["GenerateImage"] },
++    deps: {
++      mediaGenerationPort: {
++        listModels: () => [
++          {
++            providerId: "fixture",
++            providerLabel: "Fixture",
++            modelId: "image",
++            kind: "image",
++            status: "requires-check",
++          },
++        ],
++        prepareImage: async () => "image-binding",
++        generateImage: async () => {
++          generations++;
++          return { bytes: png, mimeType: "image/png" };
++        },
++      },
++    },
++  });
++  const artifacts = new NodeToolArtifactStore({ rootDir: join(f.dir, "artifacts") });
++  let app: Awaited<ReturnType<typeof createZCodeApp>> | undefined;
++  let gateway: ConversationV4Gateway | undefined;
++  try {
++    f.steps.push(
++      () => reply("creating", [imageCall()]),
++      async () => {
++        const tool = (await f.store.messages({ sessionID: sessionId }))
++          .flatMap((message) => message.parts)
++          .find((part) => part.type === "tool" && part.state.status === "completed");
++        assert.ok(tool?.type === "tool" && tool.state.status === "completed");
++        outputRef = tool.state.attachments![0]!.url;
++        nonImageRef = (
++          await artifacts.writeToolResultArtifact({
++            content: "saved receipt metadata",
++            contentType: "text/plain",
++            retention: "session",
++            sessionId,
++            toolCallId: "non-image-fixture",
++            toolName: "fixture",
++            trace: createRootTraceContext({ sessionId }),
++          })
++        ).uri;
++        return reply(
++          `![created image](${outputRef})\n![cross-session](zcode-artifact://other/not-ours)\n![not an image](${nonImageRef})`,
++        );
++      },
++    );
++    await f.runtime.executeTurn("Create and show the result");
++    app = await createZCodeApp({
++      sessionId,
++      sessionStore: f.store,
++      artifactStore: artifacts,
++      providerRegistry: new ProviderRegistry([]),
++      skipUserConfig: true,
++      officialPluginRoots: [],
++      pluginStorageRoot: join(f.dir, "plugins"),
++      runtimeConfig: {
++        workingDirectory: f.dir,
++        titleGeneration: { enabled: false },
++        memory: { use: false },
++        dynamicWorkflowEnabled: false,
++      },
++      env: { ZCODE_STORAGE_DIR: join(f.dir, "app-storage"), ZCODE_HOME: join(f.dir, "app-home") },
++    });
++    const events = synthesizeEventsFromMessages(await f.store.messages({ sessionID: sessionId }), {
++      sessionId,
++    });
++    let reads = 0;
++    gateway = new ConversationV4Gateway({
++      sessionExists: (id) => id === sessionId,
++      emitWireFrame() {},
++      executeCommand: async () => undefined,
++      loadPersistedEvents: async () => ({ events, synthesized: true }),
++      async readSessionAttachment(_id, input) {
++        reads++;
++        return app!.readPromptAttachment(input);
++      },
++    });
++    const data = await gateway.attachmentRead({ sessionId, ref: outputRef, offset: 0, limit: 512 });
++    assert.deepEqual(Buffer.from(data.dataBase64, "base64"), png);
++    assert.equal(data.mediaType, "image/png");
++    const permittedReads = reads;
++    for (const ref of [
++      "zcode-artifact://other/not-ours",
++      "zcode-artifact://session/not-in-transcript",
++      "/etc/passwd",
++    ]) {
++      await assert.rejects(
++        gateway.attachmentRead({ sessionId, ref, offset: 0, limit: 512 }),
++        /NotAuthorized/,
++      );
++    }
++    assert.equal(reads, permittedReads, "an unowned Markdown URI never reaches the byte reader");
++    await assert.rejects(
++      gateway.attachmentRead({ sessionId, ref: nonImageRef, offset: 0, limit: 512 }),
++      /previewNotMedia/,
++    );
++    assert.equal(generations, 1, "previewing does not generate a second image");
++  } finally {
++    gateway?.dispose();
++    await app?.close();
++    await f.close();
++  }
++});
++
++test(
++  "Stop after provider commit retains a receipt and reopens the exact saved output without generation",
++  { timeout: 10000 },
++  async () => {
++    const eventStore = createInMemorySessionEventStore();
++    const committed = Promise.withResolvers<{ receiptUri: string; artifactUri: string }>();
++    const release = Promise.withResolvers<void>();
++    const controller = new AbortController();
++    let generations = 0;
++    let artifacts: NodeToolArtifactStore;
++    let stopAtCommit = true;
++    const ownedArtifacts = new Proxy({} as ToolArtifactStorePort, {
++      get(_target, name) {
++        if (name === "writeToolResultArtifactOnce")
++          return async (
++            ...args: Parameters<NodeToolArtifactStore["writeToolResultArtifactOnce"]>
++          ) => {
++            const saved = await artifacts.writeToolResultArtifactOnce(...args);
++            const receipt = JSON.parse(args[0].content);
++            if (stopAtCommit && receipt.status === "completed") {
++              stopAtCommit = false;
++              committed.resolve({ receiptUri: saved.uri, artifactUri: receipt.artifactUri });
++              await release.promise;
++            }
++            return saved;
++          };
++        const value = artifacts?.[name as keyof NodeToolArtifactStore];
++        return typeof value === "function" ? value.bind(artifacts) : value;
++      },
++    });
++    const f = await fixture(undefined, false, {
++      config: { toolAllowlist: ["GenerateImage", "ResumeMediaJob"] },
++      deps: {
++        eventStore,
++        artifactStore: ownedArtifacts,
++        mediaGenerationPort: {
++          listModels: () => [
++            {
++              providerId: "fixture",
++              providerLabel: "Fixture",
++              modelId: "image",
++              kind: "image",
++              status: "requires-check",
++            },
++          ],
++          prepareImage: async () => "image-binding",
++          generateImage: async () => {
++            generations++;
++            return { bytes: png, mimeType: "image/png" };
++          },
++        },
++      },
++    });
++    artifacts = new NodeToolArtifactStore({
++      rootDir: join(f.dir, "artifacts"),
++      imageCacheRootDir: join(f.dir, "images"),
++      videoCacheRootDir: join(f.dir, "videos"),
++    });
++    let resultGateway: ConversationV4Gateway | undefined;
++    try {
++      f.steps.push(() => reply("creating", [imageCall()]));
++      const running = f.runtime.executeTurn("Generate, then stop after local commit", undefined, {
++        abortSignal: controller.signal,
++      });
++      // Attach the rejection handler before Stop; an abort may settle immediately.
++      const stopped = assert.rejects(running, /cancel|stop/i);
++      const saved = await committed.promise;
++      controller.abort(new Error("user stop"));
++      release.resolve();
++      await stopped;
++      const stoppedRows = rows(await eventStore.getEvents(sessionId)).filter(
++        (row): row is ToolCallRow => row.kind === "toolCall",
++      );
++      assert.equal(stoppedRows.length, 1);
++      assert.equal(
++        stoppedRows[0]!.output?.attachments,
++        undefined,
++        "an interrupted tool cannot advertise an uncommitted result part",
++      );
++      assert.deepEqual(
++        Buffer.from(
++          (await artifacts.readToolResultBinaryArtifact({ uri: saved.artifactUri })).bytes,
++        ),
++        png,
++      );
++      await f.reopen();
++      f.steps.push(
++        () =>
++          reply("recovering", [
++            {
++              id: "retrieve-saved-image",
++              name: "ResumeMediaJob",
++              input: { receiptUri: saved.receiptUri, waitSeconds: 0 },
++            },
++          ]),
++        () => reply("recovered"),
++      );
++      await f.runtime.executeTurn("Retrieve the existing output");
++      assert.equal(
++        generations,
++        1,
++        "recovery reads the existing receipt and must never request generation again",
++      );
++      const coldEvents = synthesizeEventsFromMessages(
++        await f.store.messages({ sessionID: sessionId }),
++        { sessionId },
++      );
++      const recovered = rows(coldEvents).find(
++        (row): row is ToolCallRow => row.kind === "toolCall" && row.toolName === "ResumeMediaJob",
++      );
++      assert.ok(recovered?.output?.attachments?.length);
++      assert.equal(recovered.output.attachments[0]!.ref, saved.artifactUri);
++      resultGateway = new ConversationV4Gateway({
++        sessionExists: (id) => id === sessionId,
++        emitWireFrame() {},
++        executeCommand: async () => undefined,
++        loadPersistedEvents: async () => ({ events: coldEvents, synthesized: true }),
++        async readSessionAttachment(id, input) {
++          const resolved = await resolvePersistedToolAttachment(f.store, id as SessionId, input);
++          const result = await artifacts.readToolResultBinaryArtifact({ uri: resolved.ref });
++          return { bytes: result.bytes, mediaType: resolved.mediaType };
++        },
++      });
++      const data = await resultGateway.attachmentRead({
++        sessionId,
++        target: { rowId: recovered.rowId, entityId: recovered.entityId! },
++        attachmentIndex: 0,
++        ref: saved.artifactUri,
++        offset: 0,
++        limit: 512,
++      });
++      assert.deepEqual(Buffer.from(data.dataBase64, "base64"), png);
++    } finally {
++      controller.abort();
++      release.resolve();
++      resultGateway?.dispose();
++      await f.close();
++    }
++  },
++);
++
++test("pending, failed and unknown receipts have no output preview and retrieval never starts generation", async () => {
++  const eventStore = createInMemorySessionEventStore();
++  let providerCalls = 0;
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["ResumeMediaJob"] },
++    deps: {
++      eventStore,
++      mediaGenerationPort: {
++        listModels: () => [],
++        prepareImage: async () => "unused",
++        generateImage: async () => {
++          providerCalls++;
++          throw new Error("must not generate");
++        },
++        submitVideo: async () => {
++          providerCalls++;
++          throw new Error("must not submit");
++        },
++        readVideo: async () => {
++          providerCalls++;
++          throw new Error("no original provider ID");
++        },
++      },
++    },
++  });
++  const artifacts = new NodeToolArtifactStore({ rootDir: join(f.dir, "artifacts") });
++  try {
++    const calls = [];
++    for (const status of ["pending", "failed", "unknown"] as const) {
++      const saved = await artifacts.writeToolResultArtifactOnce({
++        sessionId,
++        toolCallId: status,
++        toolName: "MediaJobReceipt",
++        idempotencyKey: `fixture-${status}:intent`,
++        contentType: "application/json",
++        retention: "session",
++        trace: createRootTraceContext({ sessionId }),
++        content: JSON.stringify({
++          version: 1,
++          jobId: `fixture-${status}`,
++          kind: "video",
++          providerId: "fixture",
++          modelId: "video",
++          startedAt: Date.now(),
++          updatedAt: Date.now(),
++          status,
++        }),
++      });
++      calls.push({
++        id: status,
++        name: "ResumeMediaJob",
++        input: { receiptUri: saved.uri, waitSeconds: 0 },
++      });
++    }
++    f.steps.push(
++      () => reply("check saved jobs", calls),
++      () => reply("nothing completed"),
++    );
++    await f.runtime.executeTurn("Inspect these existing requests");
++    const live = rows(await eventStore.getEvents(sessionId)).filter(
++      (row): row is ToolCallRow => row.kind === "toolCall",
++    );
++    assert.equal(live.length, 3);
++    assert.ok(live.every((row) => !row.output?.attachments?.length));
++    assert.ok(live.every((row) => !row.output?.text.includes("Generated media saved")));
++    await f.reopen();
++    const cold = rows(
++      synthesizeEventsFromMessages(await f.store.messages({ sessionID: sessionId }), { sessionId }),
++    ).filter((row): row is ToolCallRow => row.kind === "toolCall");
++    assert.equal(cold.length, 3);
++    assert.ok(cold.every((row) => !row.output?.attachments?.length));
++    assert.equal(providerCalls, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("late background updates retain their original task row when a later turn reuses the call ID", () => {
++  const projection = new ProductProjection(sessionId, "background-epoch");
++  let sequence = 0;
++  const send = (type: SessionEvent["type"], turnId: string, payload: unknown) => {
++    sequence++;
++    projection.applyEventAtomically(
++      {
++        id: `event-${sequence}`,
++        sessionId,
++        turnId,
++        traceId: "trace",
++        sequenceNumber: sequence,
++        timestamp: new Date(sequence * 1000),
++        type,
++        payload,
++      } as SessionEvent,
++      () => true,
++    );
++  };
++  send(SessionEventType.TurnStarted, "background-launch", { input: "Run a background check" });
++  send(SessionEventType.ToolCallScheduled, "background-launch", {
++    toolCallId: "background-call",
++    assistantMessageId: "launch-message",
++    toolName: "Agent",
++    input: { run_in_background: true },
++    schedule: { parallelGroups: [["background-call"]], executionOrder: ["background-call"] },
++  });
++  send(SessionEventType.BackgroundTaskStarted, "background-launch", {
++    taskId: "background-job",
++    toolCallId: "background-call",
++    assistantMessageId: "launch-message",
++    taskKind: "subagent",
++    status: "running",
++  });
++  send(SessionEventType.ToolCallResult, "background-launch", {
++    toolCallId: "background-call",
++    assistantMessageId: "launch-message",
++    duration: 1,
++    result: { success: true, content: "launched" },
++  });
++  send(SessionEventType.TurnComplete, "background-launch", { resultType: "success" });
++  send(SessionEventType.TurnStarted, "human-next", { input: "Another request" });
++  send(SessionEventType.ToolCallScheduled, "human-next", {
++    toolCallId: "background-call",
++    assistantMessageId: "later-message",
++    toolName: "Probe",
++    input: {},
++    schedule: { parallelGroups: [["background-call"]], executionOrder: ["background-call"] },
++  });
++  send(SessionEventType.ToolCallResult, "human-next", {
++    toolCallId: "background-call",
++    assistantMessageId: "later-message",
++    duration: 1,
++    result: { success: true, content: "later tool completed" },
++  });
++  send(SessionEventType.TurnComplete, "human-next", { resultType: "success" });
++  send(SessionEventType.TurnStarted, "background-notification", {
++    input:
++      "<task-notification><tool-use-id>background-call</tool-use-id><task-id>background-job</task-id><status>failed</status><error>original task failed</error></task-notification>",
++    inputKind: "background_task",
++  });
++  const result = projection
++    .getSnapshot()
++    .rows.window.find(
++      (row): row is ToolCallRow =>
++        row.kind === "toolCall" && row.assistantResponseId === "launch-message",
++    );
++  assert.equal(result?.turnId, "background-launch");
++  assert.equal(result?.status, "error");
++  assert.equal(result?.output?.text, "original task failed");
++  const later = projection
++    .getSnapshot()
++    .rows.window.find(
++      (row): row is ToolCallRow =>
++        row.kind === "toolCall" && row.assistantResponseId === "later-message",
++    );
++  assert.equal(later?.status, "success");
++  assert.equal(later?.output?.text, "later tool completed");
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/events/session.events.ts b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+index 30bb3e81d5a2aba7e7c03db1776284779e7116b6..4651aac3e2e2a831be86afe3cb064e0336d16846 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/session.events.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+@@ -835,6 +835,7 @@ export interface ToolCallScheduledPayload {
+ 
+ export interface ToolCallStartedPayload {
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   toolName?: string;
+   startedAt: Date;
+   display?: ToolResultDisplayPayload;
+@@ -849,6 +850,7 @@ export interface ToolCallStartedPayload {
+ 
+ export interface ToolCallProgressPayload {
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   toolName?: string;
+   elapsedMs?: number;
+   pid?: number;
+@@ -862,6 +864,7 @@ export interface ToolCallProgressPayload {
+ 
+ export interface ToolCallResultPayload {
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   result: ToolResultPayload;
+   duration: number;
+   /** Skill metadata 仅用于 telemetry，不进入模型可见的 result.content。 */
+@@ -870,6 +873,7 @@ export interface ToolCallResultPayload {
+ 
+ export interface ToolCallErrorPayload {
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   error: ErrorPayload;
+   /** Skill metadata 仅用于 telemetry，不进入模型可见的错误正文。 */
+   skillMetadata?: SkillTelemetryMetadata;
+@@ -893,6 +897,7 @@ export type BackgroundTaskStatus =
+ export interface BackgroundTaskPayloadBase {
+   taskId: string;
+   toolCallId?: ToolCallId | string;
++  assistantMessageId?: MessageId;
+   toolName?: string;
+   // "workflow" = workflow run（CreateWorkflow）。追踪器的行为已按 per-tool lifecycleProvider
+   // 分派，taskKind 只决定面板分组与图标，所以加宽是纯展示修正，不改任何生命周期语义。
+@@ -958,6 +963,7 @@ export interface DynamicWorkflowRunProgressPayload {
+ export interface PermissionRequestedPayload {
+   requestId?: string;
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   toolName: string;
+   riskLevel: RiskLevel;
+   reason: string;
+@@ -976,6 +982,7 @@ export interface PermissionRequestedPayload {
+ export interface PermissionResolvedPayload {
+   requestId?: string;
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   decision: PermissionDecision;
+   reason?: string;
+   modifiedInput?: unknown;
+@@ -983,6 +990,7 @@ export interface PermissionResolvedPayload {
+ 
+ export interface PermissionDeniedPayload {
+   toolCallId: ToolCallId;
++  assistantMessageId?: MessageId;
+   toolName: string;
+   reason: string;
+   inputSummary?: unknown;
+@@ -1075,7 +1083,17 @@ export interface ToolCallPayload {
+   input: unknown;
+ }
+ 
++/** Metadata only: the original Session/tool attachment remains the read authority. */
++export interface ToolResultAttachment {
++  attachmentIndex: number;
++  ref: string;
++  fileName: string;
++  mime: string;
++  bytes?: number;
++}
++
+ export interface ToolResultPayload {
++  attachments?: ToolResultAttachment[];
+   success: boolean;
+   content: string;
+   display?: ToolResultDisplayPayload;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+index 7ae84ea452faebc221ab1efcd1f43fcd39dff49b..6d65c0ca2981cb7bfba1c802733622e08292364a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+@@ -349,6 +349,12 @@ export async function executeToolCallsForModelStep(
+         },
+         options.modelTraceContext,
+       );
++      if (result.completionEventAfterPersist) {
++        const completionEvent = result.completionEventAfterPersist;
++        await this.appendEvent(completionEvent, options.modelTraceContext);
++        state.events.push(completionEvent);
++        delete result.completionEventAfterPersist;
++      }
+     }
+     this.logger?.debug("addToolResult", {
+       toolCallId: result.toolCallId,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/background-tasks.ts b/apps/zcode-cli/packages/core/src/tool/executor/background-tasks.ts
+index aee34ab20b0bffcd3240752661dbc66ad9096722..e03be55dd88d6778c7b647438b7542d68d206fa7 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/background-tasks.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/background-tasks.ts
+@@ -379,7 +379,12 @@ export class BackgroundTaskTracker {
+       timestamp: new Date(),
+       traceId: traceContext.traceId,
+       sequenceNumber: 0,
+-      payload,
++      payload: {
++        ...payload,
++        ...(typeof traceContext.attributes?.assistantMessageId === "string"
++          ? { assistantMessageId: traceContext.attributes.assistantMessageId }
++          : {}),
++      },
+     });
+   }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index f5f31097ab8f38edc4e883376c4225e73ed52aa7..223afaf4ae8e3eb14b6a6d7c5341b5ef7359360f 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -29,7 +29,7 @@ import {
+   isToolHandlerFailure,
+   isToolHandlerFailureError,
+ } from "./errors.js";
+-import { emitToolCallError, emitToolCallResult, emitToolCallStarted } from "./events.js";
++import { emitToolCallError, createToolCallResultEvent, emitToolCallStarted } from "./events.js";
+ import {
+   formatHookAdditionalContexts,
+   runPostToolUseFailureHooks,
+@@ -551,8 +551,8 @@ async function executeToolCallImpl(
+       { entry },
+     );
+ 
+-    await emitToolCallResult(
+-      deps,
++    const completionEvent = createToolCallResultEvent(
++      deps.sessionId,
+       canonicalToolCall,
+       traceContext,
+       turnId,
+@@ -562,6 +562,17 @@ async function executeToolCallImpl(
+       perf,
+       skillTelemetryMetadata,
+     );
++    if (
++      deps.sessionStore &&
++      completionEvent.payload.assistantMessageId &&
++      completionEvent.payload.result.attachments?.length
++    ) {
++      // A readable output needs the completed ToolPart, not just saved bytes.
++      // The Host publishes this same event after committing that original part.
++      result.completionEventAfterPersist = completionEvent;
++    } else {
++      await deps.emitEvent(completionEvent);
++    }
+ 
+     await backgroundTasks.trackBackgroundTask(canonicalToolCall, output, traceContext, turnId);
+ 
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/events.ts b/apps/zcode-cli/packages/core/src/tool/executor/events.ts
+index 7d19a6ab06ee40682b23340e5f766b95446acec7..f1306e9401b394c2f5b34f57f97d870904297b78 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/events.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/events.ts
+@@ -6,6 +6,13 @@ import {
+   type PermissionOptionsPolicy,
+   type PermissionUpdate,
+   type ToolResultDisplayPayload,
++  type ToolResultAttachment,
++  type ModelMessageContent,
++  type MessageId,
++  type SessionId,
++  type SessionEvent,
++  type ToolCallResultPayload,
++  type ToolCallId,
+   type ToolSideEffectScope,
+   type ToolExecutionTelemetry,
+   type SkillTelemetryMetadata,
+@@ -17,6 +24,11 @@ import type { ExecutableToolCall, ToolExecutionResult, ToolResultSerialization }
+ import type { ToolExecutorDeps } from "./types.js";
+ import { summarizeInput } from "./utils.js";
+ 
++function assistantIdentity(traceContext: TraceContext): { assistantMessageId?: MessageId } {
++  const id = traceContext.attributes?.assistantMessageId;
++  return typeof id === "string" && id ? { assistantMessageId: id as MessageId } : {};
++}
++
+ export async function emitToolCallStarted(
+   deps: ToolExecutorDeps,
+   toolCall: ExecutableToolCall,
+@@ -37,6 +49,7 @@ export async function emitToolCallStarted(
+     sequenceNumber: 0,
+     payload: {
+       toolCallId: toolCall.id,
++      ...assistantIdentity(traceContext),
+       toolName: toolCall.name,
+       startedAt: new Date(startTime),
+       display,
+@@ -48,8 +61,44 @@ export async function emitToolCallStarted(
+   });
+ }
+ 
+-export async function emitToolCallResult(
+-  deps: ToolExecutorDeps,
++/** Only already stored, same-Session media refs may enter a UI event. No data URLs. */
++export function toolResultAttachmentRefs(
++  content: ModelMessageContent | undefined,
++  sessionId: string,
++): ToolResultAttachment[] | undefined {
++  if (!Array.isArray(content)) return undefined;
++  const attachments: ToolResultAttachment[] = [];
++  let attachmentIndex = 0;
++  for (const block of content) {
++    if (block.type === "text") continue;
++    const isMedia =
++      ((block.type === "image" || block.type === "video") && block.dataUrl.startsWith("data:")) ||
++      (block.type === "file" &&
++        (block.dataUrl?.startsWith("data:") ||
++          (block.uri === block.source?.uri && typeof block.text === "string")));
++    // Keep indexing identical to persistedToolMediaProjection; unsupported mixtures have no attachments.
++    if (!isMedia) return undefined;
++    const ref = block.source?.uri;
++    if (
++      ref?.startsWith(`zcode-artifact://${encodeURIComponent(sessionId)}/`) &&
++      attachments.length < 32
++    ) {
++      attachments.push({
++        attachmentIndex,
++        ref,
++        fileName:
++          (block.type === "file" ? block.name : undefined) ?? block.source?.placeholder ?? "",
++        mime: block.mediaType,
++        ...(block.source?.sizeBytes === undefined ? {} : { bytes: block.source.sizeBytes }),
++      });
++    }
++    attachmentIndex++;
++  }
++  return attachments.length ? attachments : undefined;
++}
++
++export function createToolCallResultEvent(
++  sessionId: SessionId,
+   toolCall: ExecutableToolCall,
+   traceContext: TraceContext,
+   turnId: TurnId | undefined,
+@@ -58,21 +107,23 @@ export async function emitToolCallResult(
+   display: ToolResultDisplayPayload | undefined,
+   perf: ToolExecutionTelemetry | undefined,
+   skillMetadata: SkillTelemetryMetadata | undefined,
+-): Promise<void> {
+-  await deps.emitEvent({
++): SessionEvent & { payload: ToolCallResultPayload } {
++  return {
+     id: crypto.randomUUID() as any,
+-    sessionId: deps.sessionId,
++    sessionId,
+     turnId,
+     type: SessionEventType.ToolCallResult,
+     timestamp: new Date(),
+     traceId: traceContext.traceId,
+     sequenceNumber: 0,
+     payload: {
+-      toolCallId: toolCall.id,
++      toolCallId: toolCall.id as ToolCallId,
++      ...assistantIdentity(traceContext),
+       ...(skillMetadata ? { skillMetadata } : {}),
+       result: {
+         success: true,
+         content: serialization.content,
++        attachments: toolResultAttachmentRefs(serialization.modelContent, sessionId),
+         display,
+         perf,
+         truncated: serialization.truncated,
+@@ -83,7 +134,7 @@ export async function emitToolCallResult(
+       },
+       duration: durationMs,
+     },
+-  });
++  };
+ }
+ 
+ export async function emitToolCallError(
+@@ -104,6 +155,7 @@ export async function emitToolCallError(
+     sequenceNumber: 0,
+     payload: {
+       toolCallId,
++      ...assistantIdentity(traceContext),
+       error,
+       ...(skillMetadata ? { skillMetadata } : {}),
+     },
+@@ -155,6 +207,7 @@ export async function emitPermissionRequested(
+     payload: {
+       requestId,
+       toolCallId: toolCall.id,
++      ...assistantIdentity(traceContext),
+       toolName: toolCall.name,
+       riskLevel,
+       reason: reason ?? `Tool ${toolCall.name} requires approval`,
+@@ -187,6 +240,7 @@ export async function emitPermissionResolved(
+     payload: {
+       requestId,
+       toolCallId: toolCall.id,
++      ...assistantIdentity(traceContext),
+       decision: decision.decision,
+       reason: decision.reason,
+       modifiedInput: decision.modifiedInput,
+@@ -210,6 +264,7 @@ export async function emitPermissionDenied(
+     sequenceNumber: 0,
+     payload: {
+       toolCallId: toolCall.id,
++      ...assistantIdentity(traceContext),
+       toolName: toolCall.name,
+       reason: reason ?? `Permission denied for ${toolCall.name}`,
+       inputSummary: summarizeInput(toolCall.input),
+diff --git a/apps/zcode-cli/packages/core/src/tool/types.ts b/apps/zcode-cli/packages/core/src/tool/types.ts
+index 55d5f241236990bd7e6333c4e11e1917e9a097a0..4650c9998c4d4bee6e2b79210526fde5aca972f2 100644
+--- a/apps/zcode-cli/packages/core/src/tool/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/types.ts
+@@ -423,6 +423,8 @@ export interface ToolExecutionResult {
+   modelContent?: ModelMessageContent;
+   readFileStateMetadata?: PersistedReadFileStateMetadata;
+   serialization?: ToolResultSerialization;
++  /** Internal handoff only; publish once after the original completed ToolPart is committed. */
++  completionEventAfterPersist?: SessionEvent;
+   /** Executor 汇总后的内部性能事实；不进入模型可见 Tool Output。 */
+   performance?: ToolExecutionTelemetry;
+   error?: {
+diff --git a/package.json b/package.json
+index d600c034345a0f29ef54b825057247678503f1fc..457741e8baff39d728bcaac71abada5f3b47ec0a 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+@@ -68,7 +68,8 @@
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+     "test:combined-model-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/combinedModelControl.browser.test.tsx __combinedModelTests --desktop-styles",
+     "test:draft-model-defaults": "node scripts/test-usage-hooks.mjs packages/ui/test/draftModelDefaults.browser.test.tsx __draftModelDefaultTests --desktop-styles",
+-    "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles"
++    "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles",
++    "test:conversation-outputs": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/conversationOutputs.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/conversationOutputs.browser.test.tsx __conversationOutputTests --desktop-styles"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/shared/src/zcode-protocol-v4/toolDisplay.ts b/packages/shared/src/zcode-protocol-v4/toolDisplay.ts
+index b7e971a9f25d99b405e7f1e04a527b1bf8537f50..593efdded69d0cd71c59fa86edc2c6486b284ad4 100644
+--- a/packages/shared/src/zcode-protocol-v4/toolDisplay.ts
++++ b/packages/shared/src/zcode-protocol-v4/toolDisplay.ts
+@@ -2,6 +2,7 @@
+ // 从 rows.ts 拆出：两侧增量叠加后 rows.ts 触发 oxlint max-lines(400)。
+ // 本文件只含不依赖 rowBaseFields 的纯展示 union，rows.ts 单向依赖它，无循环。
+ import { z } from "zod";
++import { attachmentRefSchema } from "./attachment-ref.js";
+ import { bashOutputDisplaySchema } from "../bash-output-display.js";
+ import { timestampSchema } from "./core.js";
+ import { OFFICIAL_MCP_TOOL_ERROR_CODES } from "../official-mcp-tool-error.js";
+@@ -152,7 +153,15 @@ export type ToolResultDisplay = z.infer<typeof toolResultDisplaySchema>;
+ 
+ // toolCall。终态 output 全档统一 head+tail 截断，超出走 truncated.ref 按需拉。
+ // display 是展示载荷；版本不兼容时降级为无卡片，避免同一内容导致整条订阅反复恢复失败。
++// Tool bytes stay with the Session artifact owner; indices address the original persisted list.
++export const toolOutputAttachmentSchema = attachmentRefSchema.omit({ previewRef: true }).extend({
++  attachmentIndex: z.number().int().nonnegative(),
++  bytes: z.number().int().nonnegative().optional(),
++});
++export type ToolOutputAttachment = z.infer<typeof toolOutputAttachmentSchema>;
++
+ export const toolOutputSchema = z.object({
++  attachments: z.array(toolOutputAttachmentSchema).max(32).optional().catch(undefined),
+   text: z.string(),
+   display: toolResultDisplaySchema.optional().catch(undefined),
+   truncated: z
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 0614ab89c067d91012db12e9e8be0218993ee21e..88d6ff4d76f9e535c098f6b2eca21d291987a616 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -2228,6 +2228,11 @@ const enUS: Record<string, string> = {
+   "taskTimeline.thisMonth": "This month",
+   "taskTimeline.lastMonth": "Last month",
+   "taskTimeline.older": "Older",
++  "chat.results.title": "Turn outputs",
++  "chat.results.image": "Generated image",
++  "chat.results.video": "Generated video",
++  "chat.results.more": "Show more outputs",
++  "chat.results.less": "Show fewer outputs",
+   "chat.changeSummary.filesChanged.one": "{count} file changed",
+   "chat.changeSummary.filesChanged.other": "{count} files changed",
+   "chat.changeSummary.expand": "Expand changed files",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 17f7d220368e340d561b057c5a61a80f5bdde42b..3a59316f367053109584d4d530d20757a1aed13a 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2064,6 +2064,11 @@ const zhCN: Record<string, string> = {
+   "taskTimeline.thisMonth": "本月",
+   "taskTimeline.lastMonth": "上月",
+   "taskTimeline.older": "更早",
++  "chat.results.title": "本轮成果",
++  "chat.results.image": "生成图片",
++  "chat.results.video": "生成视频",
++  "chat.results.more": "展开更多成果",
++  "chat.results.less": "收起成果",
+   "chat.changeSummary.filesChanged.one": "{count} 个文件已更改",
+   "chat.changeSummary.filesChanged.other": "{count} 个文件已更改",
+   "chat.changeSummary.expand": "展开已更改文件",
+diff --git a/packages/ui/src/v4/ConversationAttachmentList.tsx b/packages/ui/src/v4/ConversationAttachmentList.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..c5629580b786407fcbf52ee826fd44e25e639931
+--- /dev/null
++++ b/packages/ui/src/v4/ConversationAttachmentList.tsx
+@@ -0,0 +1,623 @@
++/* oxlint-disable eslint(max-lines) -- Preserve the existing shared gallery/PDF lifecycle together while extracting it from ConversationRowView. */
++import { memo, useCallback, useEffect, useRef, useState } from "react";
++import { XIcon } from "lucide-react";
++import { TID_V4_EDIT_ATTACHMENT_REMOVE, TID_V4_ROW_ATTACHMENTS, testId } from "@zcode/shared";
++import type { AttachmentRef } from "@zcode/shared/zcode-protocol-v4";
++import {
++  Attachment,
++  AttachmentPreview,
++  AttachmentRemove,
++  Attachments,
++} from "@/components/ai-elements/attachments.js";
++import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialog.js";
++import {
++  ChatMediaAttachmentPreviewDialog,
++  type ChatMediaAttachmentPreviewTarget,
++} from "@/ChatMediaAttachmentPreviewDialog.js";
++import type { PdfViewerRangeSource } from "@/components/ui/pdf-viewer.js";
++import { cn } from "@/components/lib/utils.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { logger } from "@/logger.js";
++import {
++  FileDisplayIcon,
++  FileDisplayInline,
++  resolveFileDisplayDescriptor,
++} from "@/lib/fileDisplay.js";
++import type { ConversationRowRenderContext } from "@/v4/conversationRowContext.js";
++
++type DisplayAttachment = Omit<AttachmentRef, "bytes"> & { bytes?: number };
++
++export interface ConversationAttachmentListProps {
++  attachments: readonly DisplayAttachment[] | undefined;
++  /** Output galleries load full videos only when opened. */
++  prefetchVideo?: boolean;
++  prefetchImages?: boolean;
++  /** 编辑态删除附件后仍保留其在持久 FilePart 列表中的原序号。 */
++  attachmentIndices?: readonly number[];
++  entityId?: string;
++  attachmentKind?: "all" | "media" | "file";
++  directItems?: boolean;
++  onRemove?: (index: number) => void;
++  rowId: number;
++  sessionId?: string;
++  readAttachment?: NonNullable<ConversationRowRenderContext["readAttachment"]>;
++  readAttachmentRange?: NonNullable<ConversationRowRenderContext["readAttachmentRange"]>;
++}
++
++function getAttachmentTypeLabel(filename: string, mimeType: string): string {
++  const leaf = filename.split(/[\\/]/u).at(-1) ?? filename;
++  const dotIndex = leaf.lastIndexOf(".");
++  if (dotIndex > 0 && dotIndex < leaf.length - 1) {
++    return leaf.slice(dotIndex + 1).toUpperCase();
++  }
++  return (mimeType.split("/").at(-1) ?? mimeType).toUpperCase();
++}
++
++/**
++ * 附件渲染：row 仍只保存 AttachmentRef；图片挂载时按 session/ref 分块读取缩略图，点击后复用已加载 URL 进入共享预览。
++ * 非图片与失败后的图片保持纯展示，避免无动作的假手型。
++ */
++export const ConversationAttachmentList = memo(function ConversationAttachmentList({
++  attachments,
++  attachmentIndices,
++  entityId,
++  attachmentKind = "all",
++  directItems = false,
++  prefetchVideo = true,
++  prefetchImages = true,
++  onRemove,
++  rowId,
++  sessionId,
++  readAttachment,
++  readAttachmentRange,
++}: ConversationAttachmentListProps) {
++  const { intl } = useZCodeIntl();
++  const [previewIndex, setPreviewIndex] = useState(0);
++  const [previewOpen, setPreviewOpen] = useState(false);
++  const [failedRefs, setFailedRefs] = useState<ReadonlySet<string>>(() => new Set());
++  const [thumbnailUrls, setThumbnailUrls] = useState<ReadonlyMap<string, string>>(() => new Map());
++  // 可见消息行预取 image/video Blob：图片直接显示，视频由无控件播放器展示首帧；
++  // video URL 同时供 gallery 复用，避免用户点击后再次读取大文件。
++  const [videoPreview, setVideoPreview] = useState<ChatMediaAttachmentPreviewTarget | null>(null);
++  const [videoPreviewRef, setVideoPreviewRef] = useState<string | null>(null);
++  const [videoPreviewLoading, setVideoPreviewLoading] = useState(false);
++  const [videoPreviewError, setVideoPreviewError] = useState(false);
++  const [pdfPreview, setPdfPreview] = useState<ChatMediaAttachmentPreviewTarget | null>(null);
++  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
++  const [pdfPreviewError, setPdfPreviewError] = useState(false);
++  const [pdfPreviewRef, setPdfPreviewRef] = useState<string | null>(null);
++  const pdfPreviewUrlRef = useRef<string | null>(null);
++  const pdfPreviewRequestRef = useRef(0);
++  const pdfPreviewAbortRef = useRef<AbortController | null>(null);
++  const videoPreviewUrlRef = useRef<string | null>(null);
++  const videoPreviewRequestRef = useRef(0);
++  const videoPreviewAbortRef = useRef<AbortController | null>(null);
++  const thumbnailUrlsRef = useRef<Map<string, string>>(new Map());
++  const thumbnailObjectUrlsRef = useRef<Set<string>>(new Set());
++  const previewOpenLabel = intl.formatMessage({
++    id: "chat.attachments.preview.open",
++  });
++  const previewVideoOpenLabel = intl.formatMessage({
++    id: "chat.attachments.preview.openVideo",
++  });
++  const previewPdfOpenLabel = intl.formatMessage({
++    id: "chat.attachments.preview.openPdf",
++  });
++  const previewUnavailableLabel = intl.formatMessage({
++    id: "chat.attachments.preview.unavailable",
++  });
++
++  useEffect(() => {
++    if (attachmentKind === "file" || !attachments || !sessionId || !readAttachment) {
++      return;
++    }
++    let cancelled = false;
++    // 只丢弃读取结果不会停止底层分块传输，消息行卸载后仍可能拉取完整视频。
++    // 预取生命周期必须通过 AbortSignal 贯穿 transport，及时释放文件 IO 与 IPC 资源。
++    const controller = new AbortController();
++    const mediaAttachments = attachments.flatMap((attachment, index) =>
++      (prefetchImages && attachment.mime.startsWith("image/")) ||
++      (prefetchVideo && attachment.mime.startsWith("video/"))
++        ? [{ attachment, index }]
++        : [],
++    );
++
++    // V4 虚拟列表只挂载可见行，避免扫描整段历史。所有媒体使用稳定 row target，
++    // 确保同一路径重复使用或来自工具结果时，读取当前实体授权的 durable artifact。
++    void Promise.all(
++      mediaAttachments.map(async ({ attachment, index }) => {
++        const ref = attachment.previewRef ?? attachment.ref;
++        const isVideo = attachment.mime.startsWith("video/");
++        try {
++          const result = await readAttachment({
++            sessionId,
++            ref,
++            signal: controller.signal,
++            ...(isVideo ? { mediaType: attachment.mime } : {}),
++            ...(entityId
++              ? {
++                  target: { rowId, entityId },
++                  attachmentIndex: attachmentIndices?.[index] ?? index,
++                }
++              : {}),
++          });
++          if (cancelled) return;
++          const isLocalUrl = "url" in result;
++          const url = isLocalUrl
++            ? result.url
++            : URL.createObjectURL(
++                new Blob([Uint8Array.from(result.bytes)], {
++                  type: result.mediaType,
++                }),
++              );
++          if (!isLocalUrl) thumbnailObjectUrlsRef.current.add(url);
++          if (cancelled) {
++            if (!isLocalUrl) {
++              thumbnailObjectUrlsRef.current.delete(url);
++              URL.revokeObjectURL(url);
++            }
++            return;
++          }
++          thumbnailUrlsRef.current.set(ref, url);
++          setThumbnailUrls(new Map(thumbnailUrlsRef.current));
++        } catch (error) {
++          if (cancelled || controller.signal.aborted) return;
++          if (!isVideo) setFailedRefs((current) => new Set(current).add(ref));
++          logger.warn(
++            `[v4-attachment-preview] failed to read sent ${isVideo ? "video" : "image"} thumbnail`,
++            error,
++          );
++        }
++      }),
++    );
++
++    return () => {
++      controller.abort();
++      cancelled = true;
++      // Desktop local video 返回自定义协议 URL，不是 renderer 创建的 Blob；
++      // 只释放本 effect 创建的 object URL，避免把本地媒体 URL 当成 Blob 生命周期管理。
++      for (const url of thumbnailObjectUrlsRef.current) URL.revokeObjectURL(url);
++      thumbnailObjectUrlsRef.current.clear();
++      thumbnailUrlsRef.current.clear();
++    };
++  }, [
++    attachmentIndices,
++    attachmentKind,
++    attachments,
++    entityId,
++    prefetchVideo,
++    prefetchImages,
++    readAttachment,
++    rowId,
++    sessionId,
++  ]);
++
++  // ── sent video 预览读取：staging 语义原样保留 ──
++  const releaseVideoPreviewUrl = useCallback(() => {
++    if (!videoPreviewUrlRef.current) return;
++    URL.revokeObjectURL(videoPreviewUrlRef.current);
++    videoPreviewUrlRef.current = null;
++  }, []);
++
++  const cancelVideoPreviewRead = useCallback(() => {
++    videoPreviewRequestRef.current += 1;
++    videoPreviewAbortRef.current?.abort();
++    videoPreviewAbortRef.current = null;
++  }, []);
++
++  useEffect(
++    () => () => {
++      cancelVideoPreviewRead();
++      releaseVideoPreviewUrl();
++    },
++    [cancelVideoPreviewRead, releaseVideoPreviewUrl],
++  );
++
++  const closeVideoPreview = useCallback(() => {
++    cancelVideoPreviewRead();
++    releaseVideoPreviewUrl();
++    setVideoPreview(null);
++    setVideoPreviewRef(null);
++    setVideoPreviewLoading(false);
++    setVideoPreviewError(false);
++  }, [cancelVideoPreviewRead, releaseVideoPreviewUrl]);
++
++  const closePdfPreview = useCallback(() => {
++    pdfPreviewRequestRef.current += 1;
++    pdfPreviewAbortRef.current?.abort();
++    pdfPreviewAbortRef.current = null;
++    if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
++    pdfPreviewUrlRef.current = null;
++    setPdfPreview(null);
++    setPdfPreviewRef(null);
++    setPdfPreviewLoading(false);
++    setPdfPreviewError(false);
++  }, []);
++
++  useEffect(
++    () => () => {
++      closePdfPreview();
++    },
++    [closePdfPreview],
++  );
++
++  const openVideoPreview = useCallback(
++    async (attachment: DisplayAttachment, attachmentIndex: number, galleryIndex: number) => {
++      if (!sessionId || !readAttachment) return;
++      const ref = attachment.previewRef ?? attachment.ref;
++      cancelVideoPreviewRead();
++      const thumbnailUrl = thumbnailUrlsRef.current.get(ref);
++      if (thumbnailUrl) {
++        releaseVideoPreviewUrl();
++        setPreviewIndex(galleryIndex);
++        setPreviewOpen(true);
++        setVideoPreviewRef(ref);
++        setVideoPreview({
++          filename: attachment.fileName,
++          mediaType: attachment.mime,
++          url: thumbnailUrl,
++        });
++        setVideoPreviewLoading(false);
++        setVideoPreviewError(false);
++        return;
++      }
++      const requestId = videoPreviewRequestRef.current;
++      const abortController = new AbortController();
++      videoPreviewAbortRef.current = abortController;
++      releaseVideoPreviewUrl();
++      setPreviewIndex(galleryIndex);
++      setPreviewOpen(true);
++      setVideoPreviewRef(ref);
++      setVideoPreview({
++        filename: attachment.fileName,
++        mediaType: attachment.mime,
++      });
++      setVideoPreviewLoading(true);
++      setVideoPreviewError(false);
++      try {
++        const result = await readAttachment({
++          sessionId,
++          ref,
++          mediaType: attachment.mime,
++          // 有 entityId 时按稳定 row target 精确读取；否则退回按 ref 匹配。
++          ...(entityId ? { target: { rowId, entityId }, attachmentIndex } : {}),
++          signal: abortController.signal,
++        });
++        if (videoPreviewRequestRef.current !== requestId) return;
++        const isLocalUrl = "url" in result;
++        const url = isLocalUrl
++          ? result.url
++          : URL.createObjectURL(
++              new Blob([Uint8Array.from(result.bytes)], { type: result.mediaType }),
++            );
++        if (videoPreviewRequestRef.current !== requestId) {
++          if (!isLocalUrl) URL.revokeObjectURL(url);
++          return;
++        }
++        videoPreviewUrlRef.current = isLocalUrl ? null : url;
++        setVideoPreview({
++          filename: attachment.fileName,
++          mediaType: result.mediaType,
++          url,
++        });
++      } catch (error) {
++        if (videoPreviewRequestRef.current !== requestId) return;
++        // 一次 read 失败曾永久禁用附件入口，把可否打开 Dialog 错绑到读取结果。
++        // 失败只属于本次预览；保留入口，让每次打开都重新读取并在 Dialog 内展示错误。
++        setVideoPreviewError(true);
++        logger.warn("[v4-attachment-preview] failed to read sent media", error);
++      } finally {
++        if (videoPreviewRequestRef.current === requestId) {
++          videoPreviewAbortRef.current = null;
++          setVideoPreviewLoading(false);
++        }
++      }
++    },
++    [cancelVideoPreviewRead, entityId, readAttachment, releaseVideoPreviewUrl, rowId, sessionId],
++  );
++
++  const openPdfPreview = useCallback(
++    async (attachment: DisplayAttachment, attachmentIndex: number) => {
++      if (!sessionId || (!readAttachment && !readAttachmentRange)) return;
++      const ref = attachment.previewRef ?? attachment.ref;
++      pdfPreviewRequestRef.current += 1;
++      const requestId = pdfPreviewRequestRef.current;
++      pdfPreviewAbortRef.current?.abort();
++      const abortController = new AbortController();
++      pdfPreviewAbortRef.current = abortController;
++      if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
++      pdfPreviewUrlRef.current = null;
++      setPdfPreviewRef(ref);
++      setPdfPreview({ filename: attachment.fileName, mediaType: "application/pdf" });
++      setPdfPreviewLoading(true);
++      setPdfPreviewError(false);
++      try {
++        const target = entityId ? { target: { rowId, entityId }, attachmentIndex } : {};
++        if (readAttachmentRange) {
++          const firstRange = await readAttachmentRange({
++            sessionId,
++            ref,
++            ...target,
++            offset: 0,
++            limit: 256 * 1024,
++            signal: abortController.signal,
++          });
++          const source: PdfViewerRangeSource = {
++            totalBytes: firstRange.totalBytes,
++            initialData: firstRange.bytes,
++            requestRange: async (offset, limit) => {
++              const range = await readAttachmentRange({
++                sessionId,
++                ref,
++                ...target,
++                offset,
++                limit,
++                signal: abortController.signal,
++              });
++              return range.bytes;
++            },
++          };
++          if (pdfPreviewRequestRef.current !== requestId) return;
++          setPdfPreview({
++            filename: attachment.fileName,
++            mediaType: firstRange.mediaType,
++            pdfSource: source,
++          });
++          return;
++        }
++        if (!readAttachment) return;
++        const result = await readAttachment({
++          sessionId,
++          ref,
++          ...target,
++          signal: abortController.signal,
++        });
++        if (pdfPreviewRequestRef.current !== requestId) return;
++        const url =
++          "url" in result
++            ? result.url
++            : URL.createObjectURL(
++                new Blob([Uint8Array.from(result.bytes)], { type: result.mediaType }),
++              );
++        if (!("url" in result)) pdfPreviewUrlRef.current = url;
++        setPdfPreview({
++          filename: attachment.fileName,
++          mediaType: result.mediaType,
++          url,
++        });
++      } catch (error) {
++        if (pdfPreviewRequestRef.current !== requestId) return;
++        setPdfPreviewError(true);
++        logger.warn("[v4-attachment-preview] failed to read sent PDF", error);
++      } finally {
++        if (pdfPreviewRequestRef.current === requestId) {
++          pdfPreviewAbortRef.current = null;
++          setPdfPreviewLoading(false);
++        }
++      }
++    },
++    [entityId, readAttachment, readAttachmentRange, rowId, sessionId],
++  );
++
++  const visibleAttachments = (attachments ?? [])
++    .map((attachment, index) => ({ attachment, index }))
++    .filter(({ attachment }) => {
++      if (attachmentKind === "all") return true;
++      const isMedia = attachment.mime.startsWith("image/") || attachment.mime.startsWith("video/");
++      return attachmentKind === "media" ? isMedia : !isMedia;
++    });
++  if (attachmentKind === "all") {
++    // 行内编辑器过去直接沿用只读消息的通用附件列表，既没有按输入框的
++    // “媒体 → 文件”视觉顺序排列，也误用了已发送消息的 pill。排序只改变渲染顺序，
++    // index 仍指向原数组，避免删除后提交错误的附件。
++    visibleAttachments.sort(
++      ({ attachment: left }, { attachment: right }) =>
++        Number(right.mime.startsWith("image/") || right.mime.startsWith("video/")) -
++        Number(left.mime.startsWith("image/") || left.mime.startsWith("video/")),
++    );
++  }
++  if (visibleAttachments.length === 0) return null;
++  const previewEntries = (attachments ?? []).flatMap((attachment, index) => {
++    const isImage = attachment.mime.startsWith("image/");
++    const isVideo = attachment.mime.startsWith("video/");
++    if (!isImage && !isVideo) return [];
++    const ref = attachment.previewRef ?? attachment.ref;
++    const src = thumbnailUrls.get(ref);
++    if (isImage && !src) return [];
++    return [
++      {
++        attachment,
++        index,
++        persistedAttachmentIndex: attachmentIndices?.[index] ?? index,
++      },
++    ];
++  });
++  const previewItems = previewEntries.map(({ attachment }) => {
++    const ref = attachment.previewRef ?? attachment.ref;
++    const isVideo = attachment.mime.startsWith("video/");
++    return {
++      alt: attachment.fileName,
++      filename: attachment.fileName,
++      mediaType: attachment.mime,
++      src: isVideo && videoPreviewRef === ref ? videoPreview?.url : thumbnailUrls.get(ref),
++      loading: isVideo && videoPreviewRef === ref && videoPreviewLoading,
++      error: isVideo && videoPreviewRef === ref && videoPreviewError,
++    };
++  });
++  const selectPreviewItem = (galleryIndex: number) => {
++    const entry = previewEntries[galleryIndex];
++    if (!entry) return;
++    if (entry.attachment.mime.startsWith("video/")) {
++      void openVideoPreview(entry.attachment, entry.persistedAttachmentIndex, galleryIndex);
++      return;
++    }
++    cancelVideoPreviewRead();
++    releaseVideoPreviewUrl();
++    setVideoPreview(null);
++    setVideoPreviewRef(null);
++    setVideoPreviewLoading(false);
++    setVideoPreviewError(false);
++    setPreviewIndex(galleryIndex);
++    setPreviewOpen(true);
++  };
++  const items = visibleAttachments.map(({ attachment, index }) => {
++    const ref = attachment.previewRef ?? attachment.ref;
++    const isImage = attachment.mime.startsWith("image/");
++    const isVideo = attachment.mime.startsWith("video/");
++    const isPdf = attachment.mime.split(";", 1)[0]?.trim().toLowerCase() === "application/pdf";
++    const isMedia = isImage || isVideo;
++    const isEditingAttachment = attachmentKind === "all";
++    const isThumbnail = attachmentKind === "media" || (isEditingAttachment && isMedia);
++    const fileDisplayDescriptor = resolveFileDisplayDescriptor(attachment.fileName);
++    const isUnavailable = failedRefs.has(ref);
++    const thumbnailUrl = thumbnailUrls.get(ref) ?? "";
++    const previewItemIndex = previewEntries.findIndex((entry) => entry.index === index);
++    // 图片与视频共用当前消息的媒体 gallery；video 首次成为 active item 时再读取。
++    const canOpen =
++      (isImage && !isUnavailable && previewItemIndex >= 0) ||
++      (isVideo && Boolean(sessionId && readAttachment)) ||
++      (isPdf && Boolean(sessionId && (readAttachment || readAttachmentRange)));
++    return (
++      <Attachment
++        key={`${attachment.ref}-${index}`}
++        variant={isThumbnail ? "grid" : "inline"}
++        data-v4-user-edit-attachment-kind={
++          isEditingAttachment
++            ? isImage
++              ? "image"
++              : isVideo
++                ? "video"
++                : isPdf
++                  ? "pdf"
++                  : "file"
++            : undefined
++        }
++        data-v4-user-input-attachment-pill={isThumbnail ? undefined : "true"}
++        data-v4-user-input-media-attachment={isThumbnail ? "true" : undefined}
++        className={cn(
++          isThumbnail &&
++            (isEditingAttachment
++              ? "relative size-12 overflow-hidden rounded-lg bg-surface p-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-lg after:border after:border-border after:content-[''] hover:bg-surface-hover"
++              : "relative size-20 overflow-hidden rounded-xl bg-surface p-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-xl after:border after:border-border after:content-[''] hover:bg-surface-hover"),
++          !isThumbnail &&
++            (isEditingAttachment
++              ? "h-12 w-fit max-w-full min-w-0 gap-2 rounded-lg border border-border bg-surface p-1.5 pr-6 [--attachment-bg:var(--color-surface)] hover:bg-surface-hover"
++              : "rounded-full border-0 bg-surface px-3 py-1.5 hover:bg-surface-hover"),
++        )}
++        onRemove={onRemove ? () => onRemove(index) : undefined}
++        onOpen={
++          canOpen
++            ? () =>
++                isPdf
++                  ? void openPdfPreview(attachment, attachmentIndices?.[index] ?? index)
++                  : selectPreviewItem(previewItemIndex)
++            : undefined
++        }
++        openLabel={
++          canOpen
++            ? isVideo
++              ? previewVideoOpenLabel
++              : isPdf
++                ? previewPdfOpenLabel
++                : previewOpenLabel
++            : undefined
++        }
++        title={isUnavailable ? previewUnavailableLabel : undefined}
++        data={{
++          id: `${rowId}-${index}`,
++          type: "file",
++          filename: attachment.fileName,
++          mediaType: attachment.mime,
++          url: thumbnailUrl,
++        }}
++      >
++        {isThumbnail ? (
++          <div className="relative size-full">
++            <AttachmentPreview className="size-full rounded-none" />
++          </div>
++        ) : isEditingAttachment ? (
++          <>
++            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background">
++              <FileDisplayIcon
++                src={fileDisplayDescriptor.fileIconSrc}
++                size={16}
++                className="size-4 shrink-0"
++              />
++            </div>
++            <div className="min-w-0 max-w-40 flex-1">
++              <span
++                className="block truncate text-ui-base font-medium text-foreground"
++                title={attachment.fileName}
++              >
++                {attachment.fileName}
++              </span>
++              <span className="block truncate text-ui-sm font-normal text-foreground-subtle">
++                {getAttachmentTypeLabel(attachment.fileName, attachment.mime)}
++              </span>
++            </div>
++          </>
++        ) : (
++          <FileDisplayInline
++            path={attachment.fileName}
++            options={{
++              className: "inline-flex min-w-0 max-w-40 items-center gap-1.5",
++              iconSize: 16,
++              fileNameClassName: "truncate text-ui-base font-medium text-foreground",
++            }}
++          />
++        )}
++        {onRemove && isEditingAttachment ? (
++          <AttachmentRemove
++            placement="corner"
++            size="icon"
++            variant="default"
++            aria-label={intl.formatMessage({ id: "chat.attachments.remove" })}
++            label={intl.formatMessage({ id: "chat.attachments.remove" })}
++            data-testid={testId(TID_V4_EDIT_ATTACHMENT_REMOVE, `${rowId}-${index}`)}
++            className="absolute top-0.5 right-0.5 z-10 size-3.5 rounded-full p-0 text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
++          >
++            <XIcon className="size-2.5" />
++          </AttachmentRemove>
++        ) : null}
++      </Attachment>
++    );
++  });
++  return (
++    <>
++      {directItems ? (
++        items
++      ) : (
++        <Attachments
++          variant="inline"
++          data-testid={testId(TID_V4_ROW_ATTACHMENTS, String(rowId))}
++          className="max-w-full gap-2"
++        >
++          {items}
++        </Attachments>
++      )}
++      <ImagePreviewDialog
++        initialIndex={previewIndex}
++        items={previewItems}
++        onActiveIndexChange={selectPreviewItem}
++        onOpenChange={(open) => {
++          if (open) {
++            setPreviewOpen(true);
++            return;
++          }
++          setPreviewOpen(false);
++          closeVideoPreview();
++        }}
++        open={previewOpen}
++      />
++      <ChatMediaAttachmentPreviewDialog
++        attachment={pdfPreview}
++        open={pdfPreviewRef !== null}
++        loading={pdfPreviewLoading}
++        error={pdfPreviewError}
++        onOpenChange={(open) => {
++          if (!open) closePdfPreview();
++        }}
++      />
++    </>
++  );
++});
+diff --git a/packages/ui/src/v4/ConversationFileSummaryPanel.tsx b/packages/ui/src/v4/ConversationFileSummaryPanel.tsx
+index 1e1059c37b10e8583fed479b1ae6714649faf70c..466b8bfe78bccaf42af37449b999921c98620f16 100644
+--- a/packages/ui/src/v4/ConversationFileSummaryPanel.tsx
++++ b/packages/ui/src/v4/ConversationFileSummaryPanel.tsx
+@@ -259,22 +259,30 @@ export function ConversationFileSummaryPanel({
+                   workspaceIdentity: context.workspaceIdentity,
+                   workspaceRemoteSessionId: context.workspaceRemoteSessionId,
+                 });
++                // Documents and media are inspected in their existing format-aware viewer.
++                // The code diff and its original rewind controls remain available for source files.
++                const previewFirst = /\.(?:md|markdown|pdf|docx?|xlsx?|pptx?|csv|tsv|html?|svg|png|jpe?g|webp|gif|mp4|mov|webm|mp3|wav)$/iu.test(item.path);
++                const canOpen = previewFirst ? Boolean(context.onOpenCodeViewer) : canReview;
++                const openItem = () => previewFirst
++                  ? context.onOpenCodeViewer?.(filePreviewSource)
++                  : openDiff(item, context);
+                 return (
+                   <div key={item.path} className="w-full bg-background/50 overflow-hidden">
+                     <div
+-                      aria-disabled={!canReview}
++                      aria-disabled={!canOpen}
+                       className={cn(
+                         "flex w-full items-center gap-1 px-2 py-2 text-left transition-colors",
+-                        canReview ? "cursor-pointer hover:bg-hover/30" : "cursor-default",
++                        canOpen ? "cursor-pointer hover:bg-hover/30" : "cursor-default",
+                       )}
+-                      onClick={() => openDiff(item, context)}
++                      onClick={openItem}
+                       onKeyDown={(event) => {
++                        if (event.target !== event.currentTarget) return;
+                         if (event.key !== "Enter" && event.key !== " ") return;
+                         event.preventDefault();
+-                        openDiff(item, context);
++                        openItem();
+                       }}
+                       role="button"
+-                      tabIndex={canReview ? 0 : -1}
++                      tabIndex={canOpen ? 0 : -1}
+                       title={item.path}
+                     >
+                       <div className="flex min-w-0 flex-1 items-center gap-2">
+diff --git a/packages/ui/src/v4/ConversationOutputCards.tsx b/packages/ui/src/v4/ConversationOutputCards.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..d925a24fbf9ac2e073cf67640698ff356524e4bf
+--- /dev/null
++++ b/packages/ui/src/v4/ConversationOutputCards.tsx
+@@ -0,0 +1,109 @@
++import { useLayoutEffect, useMemo, useRef, useState } from "react";
++import { Button } from "@/components/ui/button.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { ConversationAttachmentList } from "./ConversationAttachmentList.js";
++import type { ConversationRowRenderContext } from "./conversationRowContext.js";
++import type { ConversationOutput } from "./conversationOutputs.js";
++
++type OutputContext = Pick<
++  ConversationRowRenderContext,
++  "sessionId" | "readAttachment" | "readAttachmentRange"
++>;
++
++function OutputCard({
++  output: { rowId, entityId, attachment },
++  context,
++}: {
++  output: ConversationOutput;
++  context: OutputContext;
++}) {
++  const { intl } = useZCodeIntl();
++  const { ref, fileName, mime, bytes, attachmentIndex } = attachment;
++  const cardRef = useRef<HTMLDivElement>(null);
++  const [hasBeenVisible, setHasBeenVisible] = useState(false);
++  useLayoutEffect(() => {
++    // CSS-hidden status bodies must not fetch outputs before being shown. Once shown,
++    // preserve their preview URLs even if resizing hides the card behind an open dialog.
++    const element = cardRef.current;
++    if (!element) return;
++    const reveal = () => {
++      if (element.getClientRects().length) setHasBeenVisible(true);
++    };
++    reveal();
++    const observer = new ResizeObserver(reveal);
++    observer.observe(element);
++    return () => observer.disconnect();
++  }, []);
++  // Status/stream updates must not revoke a visible preview or reread the same bytes.
++  const attachments = useMemo(() => [{ ref, fileName, mime, bytes }], [ref, fileName, mime, bytes]);
++  const indices = useMemo(() => [attachmentIndex], [attachmentIndex]);
++  return (
++    <div
++      ref={cardRef}
++      className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-2"
++    >
++      <ConversationAttachmentList
++        attachments={attachments}
++        attachmentIndices={indices}
++        rowId={rowId}
++        entityId={entityId}
++        sessionId={context.sessionId ?? undefined}
++        attachmentKind="media"
++        readAttachment={context.readAttachment}
++        readAttachmentRange={context.readAttachmentRange}
++        prefetchVideo={false}
++        prefetchImages={hasBeenVisible}
++      />
++      <div className="min-w-0 flex-1">
++        <p className="truncate text-ui-base" title={fileName}>
++          {fileName}
++        </p>
++        <p className="text-ui-sm text-foreground-subtle">
++          {intl.formatMessage({
++            id: mime.startsWith("video/") ? "chat.results.video" : "chat.results.image",
++          })}
++        </p>
++      </div>
++    </div>
++  );
++}
++
++/** A view of native Session files; this component neither creates a catalog nor owns their bytes. */
++export function ConversationOutputCards({
++  outputs,
++  context,
++  compact = false,
++}: {
++  outputs: readonly ConversationOutput[];
++  context: OutputContext;
++  compact?: boolean;
++}) {
++  const { intl } = useZCodeIntl();
++  const [expanded, setExpanded] = useState(false);
++  const limit = compact ? 3 : 6;
++  if (!outputs.length) return null;
++  const visible = expanded ? outputs : outputs.slice(0, limit);
++  return (
++    <section aria-label={intl.formatMessage({ id: "chat.results.title" })} className="space-y-2">
++      {!compact ? (
++        <p className="text-ui-base font-medium">
++          {intl.formatMessage({ id: "chat.results.title" })}
++        </p>
++      ) : null}
++      <div className={compact ? "flex flex-col gap-2" : "grid grid-cols-1 gap-2 @lg:grid-cols-2"}>
++        {visible.map((output) => (
++          <OutputCard
++            key={`${context.sessionId}:${output.rowId}:${output.entityId}:${output.attachment.ref}`}
++            output={output}
++            context={context}
++          />
++        ))}
++      </div>
++      {outputs.length > limit ? (
++        <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
++          {intl.formatMessage({ id: expanded ? "chat.results.less" : "chat.results.more" })}
++        </Button>
++      ) : null}
++    </section>
++  );
++}
+diff --git a/packages/ui/src/v4/ConversationRowView.tsx b/packages/ui/src/v4/ConversationRowView.tsx
+index 382716601e99dcae50111f202fb9d2af4bb579c9..c09d1186b0e20561b504ec581a35c9b3fe30b065 100644
+--- a/packages/ui/src/v4/ConversationRowView.tsx
++++ b/packages/ui/src/v4/ConversationRowView.tsx
+@@ -14,11 +14,9 @@ import {
+   ThumbsDownIcon,
+   ThumbsUpIcon,
+   TrendingUpDownIcon,
+-  XIcon,
+ } from "lucide-react";
+ import {
+   TID_V4_EDIT,
+-  TID_V4_EDIT_ATTACHMENT_REMOVE,
+   TID_V4_EDIT_CANCEL,
+   TID_V4_EDIT_INPUT,
+   TID_V4_EDIT_SUBMIT,
+@@ -49,18 +47,6 @@ import type {
+ import { AssistantPreviewCards } from "@/AssistantPreviewCards.js";
+ import { AssistantCodeCommentCards } from "@/AssistantCodeCommentCards.js";
+ import { useAssistantCodeCommentFeatureEnabled } from "@/AssistantCodeCommentFeatureProvider.js";
+-import {
+-  Attachment,
+-  AttachmentPreview,
+-  AttachmentRemove,
+-  Attachments,
+-} from "@/components/ai-elements/attachments.js";
+-import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialog.js";
+-import {
+-  ChatMediaAttachmentPreviewDialog,
+-  type ChatMediaAttachmentPreviewTarget,
+-} from "@/ChatMediaAttachmentPreviewDialog.js";
+-import type { PdfViewerRangeSource } from "@/components/ui/pdf-viewer.js";
+ import {
+   MessageAction,
+   MessageActions,
+@@ -90,11 +76,6 @@ import { reportAppTelemetryEvent } from "@/lib/appTelemetry.js";
+ import { runUserAction, runUserActionAsync } from "@/lib/userActionTelemetry.js";
+ import { logger } from "@/logger.js";
+ import type { AssistantPreviewCard } from "@/lib/assistantPreviewCards.js";
+-import {
+-  FileDisplayIcon,
+-  FileDisplayInline,
+-  resolveFileDisplayDescriptor,
+-} from "@/lib/fileDisplay.js";
+ import {
+   projectAssistantCodeComments,
+   type AssistantCodeCommentCard,
+@@ -119,6 +100,7 @@ import { ConversationSelectionReferenceChip } from "@/v4/composer/ConversationSe
+ import { PptxElementReferenceChip } from "@/v4/composer/PptxElementReferenceChip.js";
+ import { useOpenPptxElementReference } from "@/v4/composer/useOpenPptxElementReference.js";
+ import { ConversationFileRewindDialog } from "@/v4/ConversationFileRewindDialog.js";
++import { ConversationAttachmentList } from "@/v4/ConversationAttachmentList.js";
+ import { ConversationUserInputBody } from "@/v4/ConversationUserInputBody.js";
+ import { ConversationUserInputContent } from "@/v4/ConversationUserInputContent.js";
+ import {
+@@ -215,15 +197,6 @@ type UserInputEditHandler = (
+ 
+ type AssistantMessageFeedback = "like" | "dislike";
+ 
+-function getAttachmentTypeLabel(filename: string, mimeType: string): string {
+-  const leaf = filename.split(/[\\/]/u).at(-1) ?? filename;
+-  const dotIndex = leaf.lastIndexOf(".");
+-  if (dotIndex > 0 && dotIndex < leaf.length - 1) {
+-    return leaf.slice(dotIndex + 1).toUpperCase();
+-  }
+-  return (mimeType.split("/").at(-1) ?? mimeType).toUpperCase();
+-}
+-
+ export type AssistantFeedbackHandler = (
+   target: ConversationRowTarget,
+   feedback: AssistantMessageFeedback | null,
+@@ -280,574 +253,6 @@ interface ConversationRowViewProps {
+ // 需要 hook 的行类型（assistantText/toolCall）hook 调用留在各自组件内，避免
+ // switch 分发组件里出现条件 hook。──
+ 
+-/**
+- * 附件渲染：row 仍只保存 AttachmentRef；图片挂载时按 session/ref 分块读取缩略图，点击后复用已加载 URL 进入共享预览。
+- * 非图片与失败后的图片保持纯展示，避免无动作的假手型。
+- */
+-const UserInputAttachmentList = memo(function UserInputAttachmentList({
+-  attachments,
+-  attachmentIndices,
+-  entityId,
+-  attachmentKind = "all",
+-  directItems = false,
+-  onRemove,
+-  rowId,
+-  sessionId,
+-  readAttachment,
+-  readAttachmentRange,
+-}: {
+-  attachments: readonly AttachmentRef[] | undefined;
+-  /** 编辑态删除附件后仍保留其在持久 FilePart 列表中的原序号。 */
+-  attachmentIndices?: readonly number[];
+-  entityId?: string;
+-  attachmentKind?: "all" | "media" | "file";
+-  directItems?: boolean;
+-  onRemove?: (index: number) => void;
+-  rowId: number;
+-  sessionId?: string;
+-  readAttachment?: NonNullable<ConversationRowRenderContext["readAttachment"]>;
+-  readAttachmentRange?: NonNullable<ConversationRowRenderContext["readAttachmentRange"]>;
+-}) {
+-  const { intl } = useZCodeIntl();
+-  const [previewIndex, setPreviewIndex] = useState(0);
+-  const [previewOpen, setPreviewOpen] = useState(false);
+-  const [failedRefs, setFailedRefs] = useState<ReadonlySet<string>>(() => new Set());
+-  const [thumbnailUrls, setThumbnailUrls] = useState<ReadonlyMap<string, string>>(() => new Map());
+-  // 可见消息行预取 image/video Blob：图片直接显示，视频由无控件播放器展示首帧；
+-  // video URL 同时供 gallery 复用，避免用户点击后再次读取大文件。
+-  const [videoPreview, setVideoPreview] = useState<ChatMediaAttachmentPreviewTarget | null>(null);
+-  const [videoPreviewRef, setVideoPreviewRef] = useState<string | null>(null);
+-  const [videoPreviewLoading, setVideoPreviewLoading] = useState(false);
+-  const [videoPreviewError, setVideoPreviewError] = useState(false);
+-  const [pdfPreview, setPdfPreview] = useState<ChatMediaAttachmentPreviewTarget | null>(null);
+-  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+-  const [pdfPreviewError, setPdfPreviewError] = useState(false);
+-  const [pdfPreviewRef, setPdfPreviewRef] = useState<string | null>(null);
+-  const pdfPreviewUrlRef = useRef<string | null>(null);
+-  const pdfPreviewRequestRef = useRef(0);
+-  const pdfPreviewAbortRef = useRef<AbortController | null>(null);
+-  const videoPreviewUrlRef = useRef<string | null>(null);
+-  const videoPreviewRequestRef = useRef(0);
+-  const videoPreviewAbortRef = useRef<AbortController | null>(null);
+-  const thumbnailUrlsRef = useRef<Map<string, string>>(new Map());
+-  const thumbnailObjectUrlsRef = useRef<Set<string>>(new Set());
+-  const previewOpenLabel = intl.formatMessage({
+-    id: "chat.attachments.preview.open",
+-  });
+-  const previewVideoOpenLabel = intl.formatMessage({
+-    id: "chat.attachments.preview.openVideo",
+-  });
+-  const previewPdfOpenLabel = intl.formatMessage({
+-    id: "chat.attachments.preview.openPdf",
+-  });
+-  const previewUnavailableLabel = intl.formatMessage({
+-    id: "chat.attachments.preview.unavailable",
+-  });
+-
+-  useEffect(() => {
+-    if (attachmentKind === "file" || !attachments || !sessionId || !readAttachment) {
+-      return;
+-    }
+-    let cancelled = false;
+-    // 只丢弃读取结果不会停止底层分块传输，消息行卸载后仍可能拉取完整视频。
+-    // 预取生命周期必须通过 AbortSignal 贯穿 transport，及时释放文件 IO 与 IPC 资源。
+-    const controller = new AbortController();
+-    const mediaAttachments = attachments.flatMap((attachment, index) =>
+-      attachment.mime.startsWith("image/") || attachment.mime.startsWith("video/")
+-        ? [{ attachment, index }]
+-        : [],
+-    );
+-
+-    // V4 虚拟列表只挂载可见行，避免扫描整段历史。视频仍使用稳定 row target，
+-    // 保证同一路径多次发送时缩略图来自当前消息的 durable artifact。
+-    void Promise.all(
+-      mediaAttachments.map(async ({ attachment, index }) => {
+-        const ref = attachment.previewRef ?? attachment.ref;
+-        const isVideo = attachment.mime.startsWith("video/");
+-        try {
+-          const result = await readAttachment({
+-            sessionId,
+-            ref,
+-            signal: controller.signal,
+-            ...(isVideo ? { mediaType: attachment.mime } : {}),
+-            ...(isVideo && entityId
+-              ? {
+-                  target: { rowId, entityId },
+-                  attachmentIndex: attachmentIndices?.[index] ?? index,
+-                }
+-              : {}),
+-          });
+-          if (cancelled) return;
+-          const isLocalUrl = "url" in result;
+-          const url = isLocalUrl
+-            ? result.url
+-            : URL.createObjectURL(
+-                new Blob([Uint8Array.from(result.bytes)], {
+-                  type: result.mediaType,
+-                }),
+-              );
+-          if (!isLocalUrl) thumbnailObjectUrlsRef.current.add(url);
+-          if (cancelled) {
+-            if (!isLocalUrl) {
+-              thumbnailObjectUrlsRef.current.delete(url);
+-              URL.revokeObjectURL(url);
+-            }
+-            return;
+-          }
+-          thumbnailUrlsRef.current.set(ref, url);
+-          setThumbnailUrls(new Map(thumbnailUrlsRef.current));
+-        } catch (error) {
+-          if (cancelled || controller.signal.aborted) return;
+-          if (!isVideo) setFailedRefs((current) => new Set(current).add(ref));
+-          logger.warn(
+-            `[v4-attachment-preview] failed to read sent ${isVideo ? "video" : "image"} thumbnail`,
+-            error,
+-          );
+-        }
+-      }),
+-    );
+-
+-    return () => {
+-      controller.abort();
+-      cancelled = true;
+-      // Desktop local video 返回自定义协议 URL，不是 renderer 创建的 Blob；
+-      // 只释放本 effect 创建的 object URL，避免把本地媒体 URL 当成 Blob 生命周期管理。
+-      for (const url of thumbnailObjectUrlsRef.current) URL.revokeObjectURL(url);
+-      thumbnailObjectUrlsRef.current.clear();
+-      thumbnailUrlsRef.current.clear();
+-    };
+-  }, [attachmentIndices, attachmentKind, attachments, entityId, readAttachment, rowId, sessionId]);
+-
+-  // ── sent video 预览读取：staging 语义原样保留 ──
+-  const releaseVideoPreviewUrl = useCallback(() => {
+-    if (!videoPreviewUrlRef.current) return;
+-    URL.revokeObjectURL(videoPreviewUrlRef.current);
+-    videoPreviewUrlRef.current = null;
+-  }, []);
+-
+-  const cancelVideoPreviewRead = useCallback(() => {
+-    videoPreviewRequestRef.current += 1;
+-    videoPreviewAbortRef.current?.abort();
+-    videoPreviewAbortRef.current = null;
+-  }, []);
+-
+-  useEffect(
+-    () => () => {
+-      cancelVideoPreviewRead();
+-      releaseVideoPreviewUrl();
+-    },
+-    [cancelVideoPreviewRead, releaseVideoPreviewUrl],
+-  );
+-
+-  const closeVideoPreview = useCallback(() => {
+-    cancelVideoPreviewRead();
+-    releaseVideoPreviewUrl();
+-    setVideoPreview(null);
+-    setVideoPreviewRef(null);
+-    setVideoPreviewLoading(false);
+-    setVideoPreviewError(false);
+-  }, [cancelVideoPreviewRead, releaseVideoPreviewUrl]);
+-
+-  const closePdfPreview = useCallback(() => {
+-    pdfPreviewRequestRef.current += 1;
+-    pdfPreviewAbortRef.current?.abort();
+-    pdfPreviewAbortRef.current = null;
+-    if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+-    pdfPreviewUrlRef.current = null;
+-    setPdfPreview(null);
+-    setPdfPreviewRef(null);
+-    setPdfPreviewLoading(false);
+-    setPdfPreviewError(false);
+-  }, []);
+-
+-  useEffect(
+-    () => () => {
+-      closePdfPreview();
+-    },
+-    [closePdfPreview],
+-  );
+-
+-  const openVideoPreview = useCallback(
+-    async (attachment: AttachmentRef, attachmentIndex: number, galleryIndex: number) => {
+-      if (!sessionId || !readAttachment) return;
+-      const ref = attachment.previewRef ?? attachment.ref;
+-      cancelVideoPreviewRead();
+-      const thumbnailUrl = thumbnailUrlsRef.current.get(ref);
+-      if (thumbnailUrl) {
+-        releaseVideoPreviewUrl();
+-        setPreviewIndex(galleryIndex);
+-        setPreviewOpen(true);
+-        setVideoPreviewRef(ref);
+-        setVideoPreview({
+-          filename: attachment.fileName,
+-          mediaType: attachment.mime,
+-          url: thumbnailUrl,
+-        });
+-        setVideoPreviewLoading(false);
+-        setVideoPreviewError(false);
+-        return;
+-      }
+-      const requestId = videoPreviewRequestRef.current;
+-      const abortController = new AbortController();
+-      videoPreviewAbortRef.current = abortController;
+-      releaseVideoPreviewUrl();
+-      setPreviewIndex(galleryIndex);
+-      setPreviewOpen(true);
+-      setVideoPreviewRef(ref);
+-      setVideoPreview({
+-        filename: attachment.fileName,
+-        mediaType: attachment.mime,
+-      });
+-      setVideoPreviewLoading(true);
+-      setVideoPreviewError(false);
+-      try {
+-        const result = await readAttachment({
+-          sessionId,
+-          ref,
+-          mediaType: attachment.mime,
+-          // 有 entityId 时按稳定 row target 精确读取；否则退回按 ref 匹配。
+-          ...(entityId ? { target: { rowId, entityId }, attachmentIndex } : {}),
+-          signal: abortController.signal,
+-        });
+-        if (videoPreviewRequestRef.current !== requestId) return;
+-        const isLocalUrl = "url" in result;
+-        const url = isLocalUrl
+-          ? result.url
+-          : URL.createObjectURL(
+-              new Blob([Uint8Array.from(result.bytes)], { type: result.mediaType }),
+-            );
+-        if (videoPreviewRequestRef.current !== requestId) {
+-          if (!isLocalUrl) URL.revokeObjectURL(url);
+-          return;
+-        }
+-        videoPreviewUrlRef.current = isLocalUrl ? null : url;
+-        setVideoPreview({
+-          filename: attachment.fileName,
+-          mediaType: result.mediaType,
+-          url,
+-        });
+-      } catch (error) {
+-        if (videoPreviewRequestRef.current !== requestId) return;
+-        // 一次 read 失败曾永久禁用附件入口，把可否打开 Dialog 错绑到读取结果。
+-        // 失败只属于本次预览；保留入口，让每次打开都重新读取并在 Dialog 内展示错误。
+-        setVideoPreviewError(true);
+-        logger.warn("[v4-attachment-preview] failed to read sent media", error);
+-      } finally {
+-        if (videoPreviewRequestRef.current === requestId) {
+-          videoPreviewAbortRef.current = null;
+-          setVideoPreviewLoading(false);
+-        }
+-      }
+-    },
+-    [cancelVideoPreviewRead, entityId, readAttachment, releaseVideoPreviewUrl, rowId, sessionId],
+-  );
+-
+-  const openPdfPreview = useCallback(
+-    async (attachment: AttachmentRef, attachmentIndex: number) => {
+-      if (!sessionId || (!readAttachment && !readAttachmentRange)) return;
+-      const ref = attachment.previewRef ?? attachment.ref;
+-      pdfPreviewRequestRef.current += 1;
+-      const requestId = pdfPreviewRequestRef.current;
+-      pdfPreviewAbortRef.current?.abort();
+-      const abortController = new AbortController();
+-      pdfPreviewAbortRef.current = abortController;
+-      if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+-      pdfPreviewUrlRef.current = null;
+-      setPdfPreviewRef(ref);
+-      setPdfPreview({ filename: attachment.fileName, mediaType: "application/pdf" });
+-      setPdfPreviewLoading(true);
+-      setPdfPreviewError(false);
+-      try {
+-        const target = entityId ? { target: { rowId, entityId }, attachmentIndex } : {};
+-        if (readAttachmentRange) {
+-          const firstRange = await readAttachmentRange({
+-            sessionId,
+-            ref,
+-            ...target,
+-            offset: 0,
+-            limit: 256 * 1024,
+-            signal: abortController.signal,
+-          });
+-          const source: PdfViewerRangeSource = {
+-            totalBytes: firstRange.totalBytes,
+-            initialData: firstRange.bytes,
+-            requestRange: async (offset, limit) => {
+-              const range = await readAttachmentRange({
+-                sessionId,
+-                ref,
+-                ...target,
+-                offset,
+-                limit,
+-                signal: abortController.signal,
+-              });
+-              return range.bytes;
+-            },
+-          };
+-          if (pdfPreviewRequestRef.current !== requestId) return;
+-          setPdfPreview({
+-            filename: attachment.fileName,
+-            mediaType: firstRange.mediaType,
+-            pdfSource: source,
+-          });
+-          return;
+-        }
+-        if (!readAttachment) return;
+-        const result = await readAttachment({
+-          sessionId,
+-          ref,
+-          ...target,
+-          signal: abortController.signal,
+-        });
+-        if (pdfPreviewRequestRef.current !== requestId) return;
+-        const url =
+-          "url" in result
+-            ? result.url
+-            : URL.createObjectURL(
+-                new Blob([Uint8Array.from(result.bytes)], { type: result.mediaType }),
+-              );
+-        if (!("url" in result)) pdfPreviewUrlRef.current = url;
+-        setPdfPreview({
+-          filename: attachment.fileName,
+-          mediaType: result.mediaType,
+-          url,
+-        });
+-      } catch (error) {
+-        if (pdfPreviewRequestRef.current !== requestId) return;
+-        setPdfPreviewError(true);
+-        logger.warn("[v4-attachment-preview] failed to read sent PDF", error);
+-      } finally {
+-        if (pdfPreviewRequestRef.current === requestId) {
+-          pdfPreviewAbortRef.current = null;
+-          setPdfPreviewLoading(false);
+-        }
+-      }
+-    },
+-    [entityId, readAttachment, readAttachmentRange, rowId, sessionId],
+-  );
+-
+-  const visibleAttachments = (attachments ?? [])
+-    .map((attachment, index) => ({ attachment, index }))
+-    .filter(({ attachment }) => {
+-      if (attachmentKind === "all") return true;
+-      const isMedia = attachment.mime.startsWith("image/") || attachment.mime.startsWith("video/");
+-      return attachmentKind === "media" ? isMedia : !isMedia;
+-    });
+-  if (attachmentKind === "all") {
+-    // 行内编辑器过去直接沿用只读消息的通用附件列表，既没有按输入框的
+-    // “媒体 → 文件”视觉顺序排列，也误用了已发送消息的 pill。排序只改变渲染顺序，
+-    // index 仍指向原数组，避免删除后提交错误的附件。
+-    visibleAttachments.sort(
+-      ({ attachment: left }, { attachment: right }) =>
+-        Number(right.mime.startsWith("image/") || right.mime.startsWith("video/")) -
+-        Number(left.mime.startsWith("image/") || left.mime.startsWith("video/")),
+-    );
+-  }
+-  if (visibleAttachments.length === 0) return null;
+-  const previewEntries = (attachments ?? []).flatMap((attachment, index) => {
+-    const isImage = attachment.mime.startsWith("image/");
+-    const isVideo = attachment.mime.startsWith("video/");
+-    if (!isImage && !isVideo) return [];
+-    const ref = attachment.previewRef ?? attachment.ref;
+-    const src = thumbnailUrls.get(ref);
+-    if (isImage && !src) return [];
+-    return [
+-      {
+-        attachment,
+-        index,
+-        persistedAttachmentIndex: attachmentIndices?.[index] ?? index,
+-      },
+-    ];
+-  });
+-  const previewItems = previewEntries.map(({ attachment }) => {
+-    const ref = attachment.previewRef ?? attachment.ref;
+-    const isVideo = attachment.mime.startsWith("video/");
+-    return {
+-      alt: attachment.fileName,
+-      filename: attachment.fileName,
+-      mediaType: attachment.mime,
+-      src: isVideo && videoPreviewRef === ref ? videoPreview?.url : thumbnailUrls.get(ref),
+-      loading: isVideo && videoPreviewRef === ref && videoPreviewLoading,
+-      error: isVideo && videoPreviewRef === ref && videoPreviewError,
+-    };
+-  });
+-  const selectPreviewItem = (galleryIndex: number) => {
+-    const entry = previewEntries[galleryIndex];
+-    if (!entry) return;
+-    if (entry.attachment.mime.startsWith("video/")) {
+-      void openVideoPreview(entry.attachment, entry.persistedAttachmentIndex, galleryIndex);
+-      return;
+-    }
+-    cancelVideoPreviewRead();
+-    releaseVideoPreviewUrl();
+-    setVideoPreview(null);
+-    setVideoPreviewRef(null);
+-    setVideoPreviewLoading(false);
+-    setVideoPreviewError(false);
+-    setPreviewIndex(galleryIndex);
+-    setPreviewOpen(true);
+-  };
+-  const items = visibleAttachments.map(({ attachment, index }) => {
+-    const ref = attachment.previewRef ?? attachment.ref;
+-    const isImage = attachment.mime.startsWith("image/");
+-    const isVideo = attachment.mime.startsWith("video/");
+-    const isPdf = attachment.mime.split(";", 1)[0]?.trim().toLowerCase() === "application/pdf";
+-    const isMedia = isImage || isVideo;
+-    const isEditingAttachment = attachmentKind === "all";
+-    const isThumbnail = attachmentKind === "media" || (isEditingAttachment && isMedia);
+-    const fileDisplayDescriptor = resolveFileDisplayDescriptor(attachment.fileName);
+-    const isUnavailable = failedRefs.has(ref);
+-    const thumbnailUrl = thumbnailUrls.get(ref) ?? "";
+-    const previewItemIndex = previewEntries.findIndex((entry) => entry.index === index);
+-    // 图片与视频共用当前消息的媒体 gallery；video 首次成为 active item 时再读取。
+-    const canOpen =
+-      (isImage && !isUnavailable && previewItemIndex >= 0) ||
+-      (isVideo && Boolean(sessionId && readAttachment)) ||
+-      (isPdf && Boolean(sessionId && (readAttachment || readAttachmentRange)));
+-    return (
+-      <Attachment
+-        key={`${attachment.ref}-${index}`}
+-        variant={isThumbnail ? "grid" : "inline"}
+-        data-v4-user-edit-attachment-kind={
+-          isEditingAttachment
+-            ? isImage
+-              ? "image"
+-              : isVideo
+-                ? "video"
+-                : isPdf
+-                  ? "pdf"
+-                  : "file"
+-            : undefined
+-        }
+-        data-v4-user-input-attachment-pill={isThumbnail ? undefined : "true"}
+-        data-v4-user-input-media-attachment={isThumbnail ? "true" : undefined}
+-        className={cn(
+-          isThumbnail &&
+-            (isEditingAttachment
+-              ? "relative size-12 overflow-hidden rounded-lg bg-surface p-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-lg after:border after:border-border after:content-[''] hover:bg-surface-hover"
+-              : "relative size-20 overflow-hidden rounded-xl bg-surface p-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-xl after:border after:border-border after:content-[''] hover:bg-surface-hover"),
+-          !isThumbnail &&
+-            (isEditingAttachment
+-              ? "h-12 w-fit max-w-full min-w-0 gap-2 rounded-lg border border-border bg-surface p-1.5 pr-6 [--attachment-bg:var(--color-surface)] hover:bg-surface-hover"
+-              : "rounded-full border-0 bg-surface px-3 py-1.5 hover:bg-surface-hover"),
+-        )}
+-        onRemove={onRemove ? () => onRemove(index) : undefined}
+-        onOpen={
+-          canOpen
+-            ? () =>
+-                isPdf
+-                  ? void openPdfPreview(attachment, attachmentIndices?.[index] ?? index)
+-                  : selectPreviewItem(previewItemIndex)
+-            : undefined
+-        }
+-        openLabel={
+-          canOpen
+-            ? isVideo
+-              ? previewVideoOpenLabel
+-              : isPdf
+-                ? previewPdfOpenLabel
+-                : previewOpenLabel
+-            : undefined
+-        }
+-        title={isUnavailable ? previewUnavailableLabel : undefined}
+-        data={{
+-          id: `${rowId}-${index}`,
+-          type: "file",
+-          filename: attachment.fileName,
+-          mediaType: attachment.mime,
+-          url: thumbnailUrl,
+-        }}
+-      >
+-        {isThumbnail ? (
+-          <div className="relative size-full">
+-            <AttachmentPreview className="size-full rounded-none" />
+-          </div>
+-        ) : isEditingAttachment ? (
+-          <>
+-            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background">
+-              <FileDisplayIcon
+-                src={fileDisplayDescriptor.fileIconSrc}
+-                size={16}
+-                className="size-4 shrink-0"
+-              />
+-            </div>
+-            <div className="min-w-0 max-w-40 flex-1">
+-              <span
+-                className="block truncate text-ui-base font-medium text-foreground"
+-                title={attachment.fileName}
+-              >
+-                {attachment.fileName}
+-              </span>
+-              <span className="block truncate text-ui-sm font-normal text-foreground-subtle">
+-                {getAttachmentTypeLabel(attachment.fileName, attachment.mime)}
+-              </span>
+-            </div>
+-          </>
+-        ) : (
+-          <FileDisplayInline
+-            path={attachment.fileName}
+-            options={{
+-              className: "inline-flex min-w-0 max-w-40 items-center gap-1.5",
+-              iconSize: 16,
+-              fileNameClassName: "truncate text-ui-base font-medium text-foreground",
+-            }}
+-          />
+-        )}
+-        {onRemove && isEditingAttachment ? (
+-          <AttachmentRemove
+-            placement="corner"
+-            size="icon"
+-            variant="default"
+-            aria-label={intl.formatMessage({ id: "chat.attachments.remove" })}
+-            label={intl.formatMessage({ id: "chat.attachments.remove" })}
+-            data-testid={testId(TID_V4_EDIT_ATTACHMENT_REMOVE, `${rowId}-${index}`)}
+-            className="absolute top-0.5 right-0.5 z-10 size-3.5 rounded-full p-0 text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+-          >
+-            <XIcon className="size-2.5" />
+-          </AttachmentRemove>
+-        ) : null}
+-      </Attachment>
+-    );
+-  });
+-  return (
+-    <>
+-      {directItems ? (
+-        items
+-      ) : (
+-        <Attachments
+-          variant="inline"
+-          data-testid={testId(TID_V4_ROW_ATTACHMENTS, String(rowId))}
+-          className="max-w-full gap-2"
+-        >
+-          {items}
+-        </Attachments>
+-      )}
+-      <ImagePreviewDialog
+-        initialIndex={previewIndex}
+-        items={previewItems}
+-        onActiveIndexChange={selectPreviewItem}
+-        onOpenChange={(open) => {
+-          if (open) {
+-            setPreviewOpen(true);
+-            return;
+-          }
+-          setPreviewOpen(false);
+-          closeVideoPreview();
+-        }}
+-        open={previewOpen}
+-      />
+-      <ChatMediaAttachmentPreviewDialog
+-        attachment={pdfPreview}
+-        open={pdfPreviewRef !== null}
+-        loading={pdfPreviewLoading}
+-        error={pdfPreviewError}
+-        onOpenChange={(open) => {
+-          if (!open) closePdfPreview();
+-        }}
+-      />
+-    </>
+-  );
+-});
+-
+ const UserInputRowView = memo(function UserInputRowView({
+   row,
+   context,
+@@ -1062,7 +467,7 @@ const UserInputRowView = memo(function UserInputRowView({
+             editAttachments.length > 0 || editContextCount > 0 ? (
+               <div className="flex max-w-full flex-col items-start gap-2">
+                 {editAttachments.length > 0 ? (
+-                  <UserInputAttachmentList
++                  <ConversationAttachmentList
+                     attachments={editAttachments}
+                     attachmentIndices={editAttachmentIndices}
+                     entityId={row.entityId}
+@@ -1204,7 +609,7 @@ const UserInputRowView = memo(function UserInputRowView({
+               data-v4-user-input-media-attachments="true"
+               className="flex max-w-full flex-wrap justify-end gap-2"
+             >
+-              <UserInputAttachmentList
++              <ConversationAttachmentList
+                 attachments={row.attachments}
+                 entityId={row.entityId}
+                 attachmentKind="media"
+@@ -1224,7 +629,7 @@ const UserInputRowView = memo(function UserInputRowView({
+               className="flex max-w-full flex-wrap justify-end gap-2"
+             >
+               {hasFileAttachments ? (
+-                <UserInputAttachmentList
++                <ConversationAttachmentList
+                   attachments={row.attachments}
+                   entityId={row.entityId}
+                   attachmentKind="file"
+diff --git a/packages/ui/src/v4/ConversationStatusPanel.tsx b/packages/ui/src/v4/ConversationStatusPanel.tsx
+index ff89c64a6feb8c19363a32aa424bed6508ae8142..426cdb5bd3b8b74ff3594fc4e2340cf44d42663c 100644
+--- a/packages/ui/src/v4/ConversationStatusPanel.tsx
++++ b/packages/ui/src/v4/ConversationStatusPanel.tsx
+@@ -1,3 +1,6 @@
++import { ConversationOutputCards } from "./ConversationOutputCards.js";
++import type { ConversationOutput } from "./conversationOutputs.js";
++import type { ConversationRowRenderContext } from "./conversationRowContext.js";
+ /* oxlint-disable eslint(max-lines) -- 状态面板同时维护收起态摘要、展开态分区、菜单策略和宽度自适应，同文件能保证两种形态共享同一内容优先级。 */
+ import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
+ import {
+@@ -25,6 +28,7 @@ import {
+   CircleIcon,
+   EllipsisIcon,
+   FileDiffIcon,
++  FilesIcon,
+   GoalIcon,
+   ListChecksIcon,
+   Maximize2Icon,
+@@ -102,6 +106,8 @@ import {
+ } from "@/v4/conversationGoalSummaryModel.js";
+ 
+ interface ConversationStatusPanelProps {
++  outputs?: readonly ConversationOutput[];
++  outputContext?: ConversationRowRenderContext;
+   workspacePath: string;
+   workspaceIdentity?: string;
+   gitSummary?: GitRepositorySummary | null;
+@@ -226,6 +232,7 @@ function formatRunningSubagentCount(
+ }
+ 
+ type StatusSectionKind =
++  | "outputs"
+   | "environment"
+   | "goal"
+   | "sessionPlans"
+@@ -235,6 +242,7 @@ type StatusSectionKind =
+   | "agent";
+ 
+ const STATUS_SECTION_SCROLL_POLICY = {
++  outputs: "max-h-80",
+   environment: null,
+   goal: "max-h-48",
+   sessionPlans: "max-h-48",
+@@ -1620,6 +1628,10 @@ function StatusSummaryRow({
+     <StatusSummaryMetric icon={<GoalIcon className="size-4 text-[var(--color-foreground)]" />}>
+       <span className="min-w-0 truncate">{goalTitle}</span>
+     </StatusSummaryMetric>
++  ) : model.outputs.length > 0 ? (
++    <StatusSummaryMetric icon={<FilesIcon className="size-4 text-[var(--color-foreground)]" />}>
++      <span className="min-w-0 truncate">{intl.formatMessage({ id: "chat.results.title" })}</span>
++    </StatusSummaryMetric>
+   ) : hasGitMiniSummary ? (
+     <StatusSummaryMetric icon={<FileDiffIcon className="size-4 text-[var(--color-foreground)]" />}>
+       <span className="min-w-0 truncate">
+@@ -1704,6 +1716,8 @@ function StatusSummaryRow({
+ }
+ 
+ function ConversationStatusPanelImpl({
++  outputs,
++  outputContext,
+   workspacePath,
+   workspaceIdentity,
+   gitSummary,
+@@ -1750,6 +1764,7 @@ function ConversationStatusPanelImpl({
+   const model = useMemo(
+     () =>
+       buildConversationStatusPanelModel({
++        outputs,
+         isOfficeMode,
+         gitSummary,
+         gitDirtyFileCount,
+@@ -1764,6 +1779,7 @@ function ConversationStatusPanelImpl({
+       }),
+     [
+       isOfficeMode,
++      outputs,
+       backgroundWorks,
+       gitDirtyFileCount,
+       gitSummary,
+@@ -1963,6 +1979,11 @@ function ConversationStatusPanelImpl({
+               variant === "auto" ? "hidden @min-[1280px]/conversation:flex" : "flex",
+             )}
+           >
++            {model.outputs.length > 0 && outputContext ? (
++              <StatusSection section="outputs" title={intl.formatMessage({ id: "chat.results.title" })}>
++                <ConversationOutputCards outputs={model.outputs} context={outputContext} compact />
++              </StatusSection>
++            ) : null}
+             {canRenderGit ? (
+               <GitStatusSection
+                 model={model}
+diff --git a/packages/ui/src/v4/ConversationTurnGroup.tsx b/packages/ui/src/v4/ConversationTurnGroup.tsx
+index 39db0b55b2d065482a4bef5e3cbda4727d23dd31..49c3306e032c246ff495569a0ad38e14e964274f 100644
+--- a/packages/ui/src/v4/ConversationTurnGroup.tsx
++++ b/packages/ui/src/v4/ConversationTurnGroup.tsx
+@@ -1,3 +1,5 @@
++import { collectConversationOutputs } from "./conversationOutputs.js";
++import { ConversationOutputCards } from "./ConversationOutputCards.js";
+ /* eslint-disable max-lines -- turn group 需要在同一处维护普通 assistant 与后台结果的严格行序，拆分会重复 actions/preview/tail 协议。 */
+ import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
+ import { Fragment, memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+@@ -1390,6 +1392,7 @@ function ConversationTurnGroupImpl({
+             />
+           )}
+           {/* 轮尾摘要：这一轮留下在跑的 run，排在完成卡之后、其余轮尾块之前。 */}
++          <ConversationOutputCards outputs={collectConversationOutputs(unit.renderRows)} context={context} />
+           <ConversationWorkflowDigests
+             context={context}
+             digests={workflowTurnDigests}
+@@ -1399,7 +1402,7 @@ function ConversationTurnGroupImpl({
+               完成后的结果摘要，必须等回复结束再跟随最终 assistant 正文收尾。 */}
+           <CronAutomationTurnCards cards={cronAutomationTurnCards} context={context} />
+           <OffPeakTurnCards cards={offPeakTurnCards} context={context} />
+-          {!isOfficeMode && unit.header?.fileChanges ? (
++          {unit.header?.fileChanges ? (
+             <ConversationFileSummaryPanel header={unit.header} context={context} />
+           ) : null}
+           {unit.browserTurnEndRows.length > 0 ? (
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+index dd1f09143070e769cebc1361c76e3981c8a203ba..72188b5c2147a0a77195eb98f9afb4163dc2f3ee 100644
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -1,3 +1,4 @@
++import { currentTurnOutputs } from "./conversationOutputs.js";
+ import { resolveSelectionSideInheritedModel } from "@/lib/selectionSideInheritedModel.js";
+ import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.js";
+ import type { SessionCreateSource } from "@zcode/shared";
+@@ -3834,9 +3835,11 @@ export function SessionPane({
+     return () => setSelectionSideChatBlocked(sessionId, false);
+   }, [blockingInteractionId, selectionSideChat, sessionId]);
+   const isOfficeMode = useIsOfficeMode();
++  const generatedOutputs = useMemo(() => currentTurnOutputs(snapshot?.rows.window ?? []), [snapshot?.rows.window]);
+   const statusPanelModel = useMemo(
+     () =>
+       buildConversationStatusPanelModel({
++        outputs: generatedOutputs,
+         isOfficeMode,
+         workspacePath,
+         gitSummary,
+@@ -3851,6 +3854,7 @@ export function SessionPane({
+       }),
+     [
+       isOfficeMode,
++      generatedOutputs,
+       gitDirtyFileCount,
+       gitSummary,
+       gitWorktreeChangeSummary,
+@@ -4609,6 +4613,8 @@ export function SessionPane({
+         ) : null}
+         {!isDraft ? (
+           <ConversationStatusPanel
++            outputs={generatedOutputs}
++            outputContext={rowContext}
+             workspacePath={workspacePath}
+             workspaceIdentity={workspaceIdentity}
+             gitSummary={gitSummary}
+diff --git a/packages/ui/src/v4/conversationOutputs.ts b/packages/ui/src/v4/conversationOutputs.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..27e27ddfddbf00f1d0e7f15fc3aa85b7566762dd
+--- /dev/null
++++ b/packages/ui/src/v4/conversationOutputs.ts
+@@ -0,0 +1,37 @@
++import type { ConversationRow, ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
++
++export interface ConversationOutput {
++  rowId: number;
++  entityId: string;
++  attachment: NonNullable<NonNullable<ToolCallRow["output"]>["attachments"]>[number];
++}
++
++const GENERATION_TOOLS = new Set(["GenerateImage", "GenerateVideo", "ResumeMediaJob"]);
++
++/** Only committed generation results are deliverables; Read/screenshot/user inputs are observations. */
++export function collectConversationOutputs(rows: readonly ConversationRow[]): ConversationOutput[] {
++  const byRef = new Map<string, ConversationOutput>();
++  for (const row of rows) {
++    if (
++      row.kind !== "toolCall" ||
++      !row.entityId ||
++      !GENERATION_TOOLS.has(row.toolName) ||
++      row.status !== "success"
++    )
++      continue;
++    for (const attachment of row.output?.attachments ?? []) {
++      if (!attachment.mime.startsWith("image/") && !attachment.mime.startsWith("video/")) continue;
++      // Resume can publish the same durable result again. Its filename is not its identity.
++      byRef.set(attachment.ref, { rowId: row.rowId, entityId: row.entityId, attachment });
++    }
++  }
++  return [...byRef.values()];
++}
++
++/** The compact status panel describes the current turn, not a total over a paginated history. */
++export function currentTurnOutputs(rows: readonly ConversationRow[]): ConversationOutput[] {
++  const current = [...rows].reverse().find((row) => row.kind === "turnHeader");
++  return current
++    ? collectConversationOutputs(rows.filter((row) => row.turnId === current.turnId))
++    : [];
++}
+diff --git a/packages/ui/src/v4/conversationStatusPanelModel.ts b/packages/ui/src/v4/conversationStatusPanelModel.ts
+index 170d7330c51a3fbc3f4f83a8b65fb1764a464e6d..0b809fa14dba3c3082237318a26cacbb1c4739da 100644
+--- a/packages/ui/src/v4/conversationStatusPanelModel.ts
++++ b/packages/ui/src/v4/conversationStatusPanelModel.ts
+@@ -1,3 +1,4 @@
++import type { ConversationOutput } from "./conversationOutputs.js";
+ import type { GitRepositorySummary } from "@zcode/shared";
+ import type {
+   BackgroundWorkSummary,
+@@ -107,6 +108,7 @@ export function workflowRunOpenTarget(
+ }
+ 
+ export interface ConversationStatusPanelModel {
++  outputs: readonly ConversationOutput[];
+   hasContent: boolean;
+   git: ConversationStatusPanelGitModel | null;
+   goal: GoalState | null;
+@@ -118,6 +120,7 @@ export interface ConversationStatusPanelModel {
+ }
+ 
+ interface BuildConversationStatusPanelModelInput {
++  outputs?: readonly ConversationOutput[];
+   isOfficeMode?: boolean;
+   gitSummary?: GitRepositorySummary | null;
+   gitDirtyFileCount?: number;
+@@ -365,6 +368,7 @@ export function buildConversationStatusPanelModel(
+   const runningWorkflowRuns = buildRunningWorkflowRuns(input.workflowRuns, workflowWorkByWorkId);
+ 
+   return {
++    outputs: input.outputs ?? [],
+     git,
+     goal,
+     sessionPlans,
+@@ -373,6 +377,7 @@ export function buildConversationStatusPanelModel(
+     runningSubagentWorks,
+     runningWorkflowRuns,
+     hasContent: Boolean(
++      input.outputs?.length ||
+       git ||
+       goal ||
+       sessionPlans ||
+diff --git a/packages/ui/test/conversationOutputs.browser.test.tsx b/packages/ui/test/conversationOutputs.browser.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..7f36bba2f61ac81797207badbe792834b17e78d7
+--- /dev/null
++++ b/packages/ui/test/conversationOutputs.browser.test.tsx
+@@ -0,0 +1,245 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ConversationOutputCards } from "../src/v4/ConversationOutputCards.js";
++import { ConversationStatusPanel } from "../src/v4/ConversationStatusPanel.js";
++import { ConversationFileSummaryPanel } from "../src/v4/ConversationFileSummaryPanel.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import type { ConversationOutput } from "../src/v4/conversationOutputs.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: { name: string; error?: string }[] = [];
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const png = Uint8Array.from(
++  atob(
++    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC9sAAAAASUVORK5CYII=",
++  ),
++  (c) => c.charCodeAt(0),
++);
++const output = (video = false): ConversationOutput => ({
++  rowId: video ? 12 : 11,
++  entityId: video ? "video-row" : "image-row",
++  attachment: {
++    attachmentIndex: video ? 4 : 2,
++    ref: `zcode-artifact://fixture/outputs/${video ? "video" : "image"}`,
++    fileName: video ? "预览视频.mp4" : "生成图片.png",
++    mime: video ? "video/mp4" : "image/png",
++  },
++});
++
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++async function mounted(locale: "zh-CN" | "en-US", children: React.ReactNode) {
++  const node = document.createElement("div");
++  node.style.width = "320px";
++  document.body.append(node);
++  const root = createRoot(node);
++  const render = async (value: React.ReactNode) => {
++    await act(async () => {
++      root.render(
++        <PlatformProvider
++          platform={
++            { isDesktop: true, openExternal: async () => {}, openPath: async () => {} } as never
++          }
++        >
++          <ZCodeIntlProvider initialLocale={locale}>
++            <TooltipProvider>{value}</TooltipProvider>
++          </ZCodeIntlProvider>
++        </PlatformProvider>,
++      );
++      await new Promise((resolve) => setTimeout(resolve, 20));
++    });
++  };
++  await render(children);
++  return {
++    node,
++    render,
++    close: async () => {
++      await act(async () => root.unmount());
++      node.remove();
++    },
++  };
++}
++
++(window as unknown as Record<string, unknown>).__conversationOutputTests = (async () => {
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true]) {
++      document.documentElement.classList.toggle("dark", dark);
++      await test(`${locale}/${dark ? "dark" : "light"}: media-only status and preview do not require Git`, async () => {
++        const calls: any[] = [];
++        const read = async (params: any) => {
++          calls.push(params);
++          return { bytes: [...png], mediaType: "image/png" };
++        };
++        const context = { sessionId: "fixture", readAttachment: read } as any;
++        const outputs = [output(), output(true)];
++        const f = await mounted(
++          locale,
++          <ConversationStatusPanel
++            workspacePath="/fixture"
++            outputs={outputs}
++            outputContext={context}
++            summaryPanelVariantOverride="panel"
++          />,
++        );
++        try {
++          check(
++            f.node.textContent?.includes(locale === "zh-CN" ? "本轮成果" : "Turn outputs"),
++            "Media-only status entry is missing",
++          );
++          check(
++            !f.node.textContent?.includes("+0") && !f.node.textContent?.includes("-0"),
++            "Media got fake code statistics",
++          );
++          check(
++            f.node.textContent?.includes("生成图片.png") &&
++              f.node.textContent?.includes("预览视频.mp4"),
++            "Outputs not listed",
++          );
++          check(
++            calls.length === 1 &&
++              calls[0].target?.entityId === "image-row" &&
++              calls[0].attachmentIndex === 2,
++            "Image did not use its exact persisted tool target",
++          );
++          check(!calls.some((call) => call.ref.includes("video")), "Video was eagerly transferred");
++          check(f.node.scrollWidth <= 320, "Result card overflows narrow window");
++          const before = calls.length;
++          await f.render(
++            <ConversationStatusPanel
++              workspacePath="/fixture"
++              outputs={outputs.map((r) => ({ ...r, attachment: { ...r.attachment } }))}
++              outputContext={context}
++              summaryPanelVariantOverride="panel"
++            />,
++          );
++          check(calls.length === before, "Equivalent status update reread output bytes");
++          const image = f.node.querySelector<HTMLElement>("img");
++          check(image, "Image thumbnail not available");
++          await act(async () => image!.closest<HTMLElement>('[role="button"],button')!.click());
++          check(document.querySelector('[role="dialog"]'), "Shared image preview did not open");
++          await f.render(
++            <ConversationStatusPanel
++              workspacePath="/fixture"
++              outputs={[...outputs]}
++              outputContext={context}
++              summaryPanelVariantOverride="panel"
++            />,
++          );
++          check(
++            document.querySelector('[role="dialog"]'),
++            "Status update lost the opened result preview",
++          );
++        } finally {
++          await f.close();
++        }
++      });
++    }
++  await test("missing result remains an explicit unavailable file without generation or stale image", async () => {
++    let calls = 0;
++    const context = {
++      sessionId: "fixture",
++      readAttachment: async () => {
++        calls++;
++        throw new Error("Missing fixture bytes");
++      },
++    } as any;
++    const f = await mounted(
++      "zh-CN",
++      <ConversationOutputCards outputs={[output()]} context={context} />,
++    );
++    try {
++      check(f.node.textContent?.includes("生成图片.png"), "Missing-file identity disappeared");
++      check(
++        f.node.querySelector('[title="图片暂时无法预览"]') ||
++          f.node.querySelector('[title*="无法"]'),
++        "Missing bytes have no explicit unavailable state",
++      );
++      check(!f.node.querySelector("img"), "Missing bytes became a stale image");
++      check(calls === 1, "Missing preview silently retried");
++    } finally {
++      await f.close();
++    }
++  });
++  await test("collapsed automatic result panel delays image I/O until it is actually shown", async () => {
++    let calls = 0;
++    const outputs = [output()];
++    const context = { sessionId: "fixture", readAttachment: async () => { calls++; return { bytes: [...png], mediaType: "image/png" }; } } as any;
++    const f = await mounted("zh-CN", <ConversationStatusPanel workspacePath="/fixture" outputs={outputs} outputContext={context} />);
++    try {
++      check(calls === 0, "CSS-hidden result panel fetched image bytes");
++      await f.render(<ConversationStatusPanel workspacePath="/fixture" outputs={outputs} outputContext={context} summaryPanelVariantOverride="panel" />);
++      check(calls === 1, "Showing result panel did not read its image");
++    } finally { await f.close(); }
++  });
++  for (const path of ["/fixture/报告.md", "/fixture/table.xlsx", "/fixture/source.ts"]) {
++    await test(`${path}: document opens native preview; source preserves code review`, async () => {
++      const opens: any[] = [];
++      const header = {
++        kind: "turnHeader",
++        rowId: 1,
++        entityId: "turn-A",
++        turnId: "A",
++        state: "complete",
++        fileChanges: { files: 1, additions: 1, deletions: 0, state: "active" },
++      } as any;
++      const context = {
++        workspacePath: "/fixture",
++        workspaceIdentity: "remote-fixture",
++        workspaceRemoteSessionId: "remote-session",
++        onOpenCodeViewer: (source: any) => opens.push(source),
++        fetchFileChanges: async () => ({
++          state: "active",
++          items: [
++            {
++              path,
++              additions: 1,
++              deletions: 0,
++              patches: [
++                { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["-old", "+new"] },
++              ],
++            },
++          ],
++        }),
++      } as any;
++      const f = await mounted(
++        "zh-CN",
++        <ConversationFileSummaryPanel header={header} context={context} />,
++      );
++      try {
++        await act(async () => {
++          f.node.querySelector<HTMLButtonElement>("button")!.click();
++          await new Promise((resolve) => setTimeout(resolve, 20));
++        });
++        const file = f.node.querySelector<HTMLElement>(`[role="button"][title="${path}"]`);
++        check(file, "File detail not available");
++        await act(async () =>
++          file!.dispatchEvent(
++            new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
++          ),
++        );
++        check(
++          opens[0]?.type === (path.endsWith(".ts") ? "patch" : "file"),
++          "Wrong default inspection mode",
++        );
++        check(
++          opens[0]?.workspaceIdentity === "remote-fixture" &&
++            opens[0]?.workspaceRemoteSessionId === "remote-session",
++          "Preview escaped its remote target",
++        );
++      } finally {
++        await f.close();
++      }
++    });
++  }
++  return results;
++})();
+diff --git a/packages/ui/test/conversationOutputs.test.ts b/packages/ui/test/conversationOutputs.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5224061afee6e447899a37d202095482b548536a
+--- /dev/null
++++ b/packages/ui/test/conversationOutputs.test.ts
+@@ -0,0 +1,73 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { ConversationRow, ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
++import { collectConversationOutputs, currentTurnOutputs } from "../src/v4/conversationOutputs.js";
++import { buildConversationStatusPanelModel } from "../src/v4/conversationStatusPanelModel.js";
++
++function tool(rowId: number, ref: string, extra: Partial<ToolCallRow> = {}): ToolCallRow {
++  return {
++    kind: "toolCall",
++    rowId,
++    entityId: `tool:${rowId}`,
++    turnId: "turn-A",
++    toolCallId: "reused-id",
++    assistantResponseId: `assistant:${rowId}`,
++    toolName: "GenerateImage",
++    status: "success",
++    inputText: "",
++    output: {
++      text: "Created",
++      attachments: [{ ref, fileName: "image.png", mime: "image/png", attachmentIndex: 3 }],
++    },
++    ...extra,
++  } as ToolCallRow;
++}
++
++test("turn outputs use generation receipts, not user images, Read results or unfinished work", () => {
++  const ref = "zcode-artifact://fixture/outputs/image";
++  const rows = [
++    tool(1, ref),
++    tool(2, "read-ref", { toolName: "Read" }),
++    tool(3, "pending", { status: "running" }),
++    tool(4, "failed", { status: "error" }),
++    { kind: "userInput", attachments: [{ ref: "input" }] },
++  ] as ConversationRow[];
++  assert.deepEqual(
++    collectConversationOutputs(rows).map((item) => item.attachment.ref),
++    [ref],
++  );
++  assert.equal(collectConversationOutputs(rows)[0]!.attachment.attachmentIndex, 3);
++});
++
++test("resume deduplicates the same durable file but same filenames and reused call IDs retain distinct outputs", () => {
++  const rows = [tool(1, "A"), tool(2, "B"), tool(3, "A", { toolName: "ResumeMediaJob" })];
++  const results = collectConversationOutputs(rows);
++  assert.equal(results.length, 2);
++  assert.equal(results.find((r) => r.attachment.ref === "A")!.rowId, 3);
++  assert.equal(results.find((r) => r.attachment.ref === "B")!.rowId, 2);
++});
++
++test("current-turn output preview never claims previous paginated turns are current results", () => {
++  const rows = [
++    { kind: "turnHeader", turnId: "turn-A" },
++    tool(1, "A"),
++    { kind: "turnHeader", turnId: "turn-B" },
++    tool(2, "B", { turnId: "turn-B" }),
++  ] as ConversationRow[];
++  assert.deepEqual(
++    currentTurnOutputs(rows).map((item) => item.attachment.ref),
++    ["B"],
++  );
++  assert.equal(currentTurnOutputs(rows.slice(1, 2)).length, 0);
++});
++
++test("media-only turn keeps a status entry in office and coding modes without a Git repository", () => {
++  const outputs = collectConversationOutputs([tool(1, "A")]);
++  for (const isOfficeMode of [false, true]) {
++    const model = buildConversationStatusPanelModel({ isOfficeMode, outputs });
++    assert.equal(model.git, null);
++    assert.equal(model.hasContent, true);
++    assert.equal(model.outputs.length, 1);
++  }
++  assert.equal(buildConversationStatusPanelModel({}).hasContent, false);
++});
+diff --git a/scripts/measure-context-projection.mts b/scripts/measure-context-projection.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1c5c78e2968e21bc4c6aebdb55087fcbd9cdd205
+--- /dev/null
++++ b/scripts/measure-context-projection.mts
+@@ -0,0 +1,46 @@
++// Scripted local fixture only: character counts, not tokens, vendor wire size or savings.
++import { fixture, reply } from "../apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts";
++const rows = [];
++for (const [name, toolAllowlist] of [
++  ["available-default-with-probe", undefined],
++  ["available-default-without-probe", undefined],
++  ["read-only-local", ["Read", "Glob", "Grep"]],
++]) {
++  const f = await fixture(undefined, false, { config: { toolAllowlist } });
++  if (name !== "available-default-with-probe") {
++    f.runtime.getToolRegistry().unregister("Probe");
++    f.runtime.invalidateToolCache();
++  }
++  try {
++    f.steps.push((r: any) => {
++      const projected = r.tools.map((t: any) => ({
++        name: t.name,
++        description: t.description ?? "",
++        inputSchema: t.inputSchema,
++      }));
++      const systems = r.messages.filter((m: any) => m.role === "system");
++      const text = (x: any) => (typeof x === "string" ? x : JSON.stringify(x));
++      rows.push({
++        profile: name,
++        toolNames: projected.map((t: any) => t.name),
++        toolCount: projected.length,
++        systemContentChars: systems.reduce((s: number, m: any) => s + text(m.content).length, 0),
++        messageJsonChars: JSON.stringify(r.messages).length,
++        modelFacingToolArrayJsonChars: JSON.stringify(projected).length,
++        modelFacingToolIndividualSumChars: projected.reduce(
++          (s: number, t: any) => s + JSON.stringify(t).length,
++          0,
++        ),
++        modelFacingEnvelopeJsonChars: JSON.stringify({ messages: r.messages, tools: projected })
++          .length,
++        allHostToolContractArrayJsonChars: JSON.stringify(r.tools).length,
++        note: "scripted inference; Host projected messages/name-description-input-schema; includes synthetic Probe only in available-default-with-probe; not tokenizer or final provider wire",
++      });
++      return reply("complete");
++    });
++    await f.runtime.executeTurn("Complete the assigned task.");
++  } finally {
++    await f.close();
++  }
++}
++console.log(JSON.stringify(rows, null, 2));
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 8dd504a92f195ac1f5451ff349f33ed5a44593c1..e34e8fdc49c2ca356612176fbb0c11ae92d09563 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -24,8 +24,33 @@ try {
+     platform: "browser",
+     format: "esm",
+     tsconfig: join(root, "packages/ui/tsconfig.json"),
+-    loader: { ".svg": "dataurl", ".png": "dataurl" },
+-    define: { "process.env.NODE_ENV": '"development"', "import.meta.env.DEV": "false", "import.meta.env.PROD": "true" },
++    plugins: [
++      {
++        name: "existing-vite-url-assets",
++        setup(api) {
++          api.onResolve({ filter: /\?url$/ }, async (args) => {
++            const resolved = await api.resolve(args.path.slice(0, -4), {
++              resolveDir: args.resolveDir,
++              kind: args.kind,
++            });
++            return resolved.errors.length
++              ? { errors: resolved.errors }
++              : { path: resolved.path, namespace: "file-url" };
++          });
++          api.onLoad({ filter: /.*/, namespace: "file-url" }, async (args) => ({
++            contents: await readFile(args.path),
++            loader: "file",
++          }));
++        },
++      },
++    ],
++    // Format-aware result viewers include the already-installed Office WASM assets.
++    loader: { ".svg": "dataurl", ".png": "dataurl", ".wasm": "file" },
++    define: {
++      "process.env.NODE_ENV": '"development"',
++      "import.meta.env.DEV": "false",
++      "import.meta.env.PROD": "true",
++    },
+   });
+   let stylesheet = process.argv[4];
+   if (stylesheet === "--desktop-styles") {
+@@ -36,7 +61,10 @@ try {
+     stylesheet = join(renderer, href);
+   }
+   if (stylesheet) await copyFile(resolve(root, stylesheet), join(profile, "test.css"));
+-  await writeFile(join(profile, "index.html"), `${stylesheet ? '<link rel="stylesheet" href="./test.css">' : ''}<script type="module" src="./test.js"></script>`);
++  await writeFile(
++    join(profile, "index.html"),
++    `${stylesheet ? '<link rel="stylesheet" href="./test.css">' : ""}<script type="module" src="./test.js"></script>`,
++  );
+   await writeFile(
+     join(profile, "main.cjs"),
+     `

@@ -1,0 +1,604 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 743598e..f2068fd 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -35,16 +35,20 @@ Cindy's `UnifiedModelList` supplies the single searchable list and inline refres
+ existing ZCode model rows retain their edit, enable, test and reorder operations. Complete discovered
+ catalogs are registered automatically; manual model-ID addition is the footer action below the list.
+ It uses the same draft controls as Add API Key: appendable input rows, persistent Add, a
+-per-row trash action, and a text Save/Cancel footer. Enter finishes input without submitting;
+-Save persists nonempty, distinct model IDs through the existing addPersonalModel command.
+-The checkmark remains a default-key marker, never a model-save action. Model drafts do not
+-commit connection drafts. Pending saves lock this draft section; on partial failure, completed
+-rows remain saved and only unsaved rows remain editable. Navigation stops further draft writes.
++per-row trash action, and an adjacent Confirm/Cancel action group. The full action group is visible
++as soon as editing starts, even for an empty model row; Confirm is disabled until its draft is valid.
++Enter performs the same confirmation, Escape cancels that draft group, and IME candidate keys do neither.
++Confirm persists nonempty, distinct model IDs through the existing addPersonalModel command;
++connection confirmation retains the existing connection transaction. These groups never commit one
++another. Default-key/account selection uses explicit text, not a checkmark that resembles confirmation.
++Pending confirmation keeps its action group visible and locked; duplicate events coalesce. On partial
++model failure, completed rows stay saved and only unsaved rows remain editable. Navigation stops
++further draft writes. Saving configuration is not connectivity validation and never runs inference.
+ No connection, credential or Session storage owner changes. The address and API
+ format remain above credentials, as the owner requested.
+ 
+ On entry and after a committed connection/account change, load the catalog read-only. Unsaved
+-connection drafts and incomplete credentials block loading; opening this list must never save a
++connection changes and incomplete credentials block loading; empty added key rows are not changes; opening this list must never save a
+ draft or run inference. A connection edit, account change or navigation invalidates late replies.
+ Model additions/reordering do not trigger repeated discovery. Search and its trailing button filter
+ the single saved list; reordering is disabled while filtering to preserve hidden rows. Refresh/loading/error/retry
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index f7be41c..530ac37 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -20,8 +20,8 @@ request protocols. Changing format does not commit unfinished credential edits.
+ The model list loads from the saved connection and automatically adds discovered models. Existing
+ order, disabled models and custom settings are preserved. Search filters this list locally. Use
+ **Add Model** below the list only for missing IDs. Like API-key editing, Add appends an input
+-row and stays available; the trash icon removes a draft row. Enter finishes typing; use the
+-model section’s Save or Cancel buttons to commit or discard its drafts. Normal addition stays inline. A configuration problem or failed explicit
++row and stays available; the trash icon removes a draft row. Confirm and Cancel appear beside
++Add immediately. Confirm (or Enter) saves this group; Cancel (or Escape) discards it. Empty or duplicate model IDs cannot be confirmed. Normal addition stays inline. A configuration problem or failed explicit
+ connection test opens model details. Discovery does not run inference; a listed model is not proof
+ of successful use. Catalog origin and available metadata depend on the connected provider.
+ 
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 3ca65c1..c5d4df6 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -16,8 +16,8 @@
+ 
+ 模型列表根据已保存的连接自动获取，并直接添加识别到的模型，保留已有顺序、停用状态和
+ 自定义配置。搜索仅筛选这份列表。未识别到的模型可点击列表下方的 **添加模型**，输入模型 ID
+-后点击模型区的“保存”。与 API 密钥一致，“添加”追加输入行，垃圾桶移除草稿；回车仅结束输入，
+-“取消”丢弃未保存的模型草稿。正常添加不弹窗；配置出错或手动测试连接失败时打开模型详情。
++后点击模型区的“确认”。与 API 密钥一致，“添加”追加输入行，垃圾桶移除草稿；添加旁立即显示
++确认与取消，回车确认、Esc 取消。空值或重复模型不能确认。正常添加不弹窗；配置出错或手动测试连接失败时打开模型详情。
+ 获取列表不会发起推理请求，列表中出现模型也不代表它已通过连接测试。目录来源和可用元数据
+ 取决于实际连接的供应商。
+ 
+diff --git a/packages/services/test/provider-settings-lifecycle.test.ts b/packages/services/test/provider-settings-lifecycle.test.ts
+index 140f27a..eb6f483 100644
+--- a/packages/services/test/provider-settings-lifecycle.test.ts
++++ b/packages/services/test/provider-settings-lifecycle.test.ts
+@@ -20,6 +20,44 @@ import {
+ import { providerSetupConfig } from "../../ui/src/settings/model-provider-section/providerSetupDraft.js";
+ import type { ProviderSettingsFormProvider } from "../../ui/src/lib/providerSettingsFormTypes.js";
+ import { guardHostConsole } from "../../desktop/src/host/hostConsoleSink.js";
++import { modelDiscoveryBlockReason } from "../../ui/src/settings/model-provider-section/modelDiscoveryActions.js";
++
++test("an empty key draft cannot be confirmed or block discovery; a real removal remains confirmable", () => {
++  const config = {
++    api: { type: "openai-chat-completions" as const, baseUrl: "https://example.test/v1" },
++    access: { type: "api-key" as const, apiKey: "synthetic-confirmation-key" },
++  };
++  const provider: ProviderSettingsFormProvider = {
++    providerId: "confirmation-fixture",
++    providerName: "Confirmation fixture",
++    templateId: null,
++    enabled: true,
++    executable: true,
++    hasPersonalConfig: true,
++    personalConfig: config,
++    config,
++    models: [],
++  };
++  const draft = {
++    nameValue: provider.providerName!,
++    apiFormat: config.api.type,
++    baseUrlValue: config.api.baseUrl,
++    apiKeyValue: config.access.apiKey,
++    additionalApiKeys: ["", "   "],
++  };
++  const pending = resolvePendingProviderDraftSave({ provider, draft, now: Date.now });
++  assert.equal(pending, null);
++  assert.equal(modelDiscoveryBlockReason(config, pending !== null), undefined);
++  const removal = resolvePendingProviderDraftSave({
++    provider,
++    draft: { ...draft, apiKeyValue: "" },
++    now: Date.now,
++  });
++  assert.ok(removal);
++  assert.equal(removal.config.access?.type, "api-key");
++  assert.equal((removal.config.access as { apiKey: string }).apiKey, "");
++  assert.ok(modelDiscoveryBlockReason(config, removal !== null));
++});
+ 
+ function deferred<T>() {
+   let resolve!: (value: T) => void;
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 2de64b7..c270741 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3,7 +3,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionsTitle": "Connected services",
+   "settings.modelProvider.connection.saveFirst":
+     "Save the connection changes before testing a model.",
+-  "settings.modelProvider.discovery.unsaved": "Unsaved model changes",
+   "settings.modelProvider.discovery.removeDraft": "Remove model draft {number}",
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6425c98..bb4d321 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2,7 +2,6 @@
+ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connectionsTitle": "已添加的服务",
+   "settings.modelProvider.connection.saveFirst": "请先保存连接更改，再测试模型。",
+-  "settings.modelProvider.discovery.unsaved": "模型更改尚未保存",
+   "settings.modelProvider.discovery.removeDraft": "移除模型草稿 {number}",
+   "settings.modelProvider.connection.unsaved": "连接更改尚未保存",
+   "settings.modelProvider.loadFailed": "无法连接模型设置服务，请重试。",
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 6fda309..e62ee0a 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,4 +1,3 @@
+-import { ProviderDraftActions } from "./ProviderDraftControls.js";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+@@ -164,6 +163,7 @@ export function InlineEditableProviderCard({
+   );
+   const [savingEnabled, setSavingEnabled] = useState(false);
+   const [savingConnection, setSavingConnection] = useState(false);
++  const savingConnectionRef = useRef(false);
+   const [connectionInvalid, setConnectionInvalid] = useState(false);
+   const authoritativeModels = useMemo(
+     () => resolveVisibleProviderModelsForEdit(provider),
+@@ -204,7 +204,21 @@ export function InlineEditableProviderCard({
+       (JSON.stringify(additionalApiKeys) !==
+         JSON.stringify(provider.config.access.additionalApiKeys ?? []) ||
+         autoSwitchCredentials !== (provider.config.access.autoSwitchCredentials === true)));
+-  const discoveryBlocked = modelDiscoveryBlockReason(provider.config, connectionDirty);
++  const pendingConnection = resolvePendingProviderDraftSave({
++    provider,
++    draft: {
++      nameValue,
++      apiFormat,
++      baseUrlValue,
++      apiKeyValue,
++      additionalApiKeys,
++      autoSwitchCredentials,
++    },
++    readOnlyEndpoints,
++    now: Date.now,
++  });
++  // 新增空行只是编辑状态；没有有效连接变更时不能阻断已保存连接的模型读取。
++  const discoveryBlocked = modelDiscoveryBlockReason(provider.config, pendingConnection !== null);
+   const providerDisplayName = resolveModelProviderDisplayName(provider);
+   const saveNotificationRef = useRef({
+     providerId: provider.providerId,
+@@ -478,8 +492,11 @@ export function InlineEditableProviderCard({
+   );
+ 
+   const saveConnection = async () => {
+-    if (savingConnection) return;
++    if (savingConnectionRef.current || pendingDraftSaveRef.current) return;
+     const draft = draftRef.current;
++    // 空白占位行不是可持久化配置；回车与置灰的确认按钮必须遵守同一规则。
++    if (!resolvePendingProviderDraftSave({ provider, draft, readOnlyEndpoints, now: Date.now }))
++      return;
+     // Creation and editing use the same endpoint/protocol/credential validation.
+     const config = providerSetupConfig(
+       {
+@@ -503,12 +520,14 @@ export function InlineEditableProviderCard({
+       return;
+     }
+     setConnectionInvalid(false);
++    savingConnectionRef.current = true;
+     setSavingConnection(true);
+     try {
+       await commitPendingDraft("save-connection");
+     } catch {
+       // Keep the complete draft for correction/retry; the shared feedback owns the error.
+     } finally {
++      savingConnectionRef.current = false;
+       setSavingConnection(false);
+     }
+   };
+@@ -606,7 +625,7 @@ export function InlineEditableProviderCard({
+ 
+   const handleApiFormatChange = useCallback(
+     async (value: ProviderApiType) => {
+-      if (readOnlyEndpoints || savingConnection || pendingDraftSaveRef.current) return;
++      if (readOnlyEndpoints || savingConnectionRef.current || pendingDraftSaveRef.current) return;
+       let next: ProviderSettingsFormProvider | null;
+       try {
+         next = resolveProviderProtocolSave({
+@@ -632,6 +651,7 @@ export function InlineEditableProviderCard({
+       setApiFormat(value);
+       setBaseUrlValue(nextUrl);
+       setConnectionInvalid(false);
++      savingConnectionRef.current = true;
+       setSavingConnection(true);
+       // 恢复原版的点击即保存，但只提交协议/地址，保留其他字段尚未完成的草稿。
+       const pending = saveProviderDraft(next);
+@@ -653,16 +673,14 @@ export function InlineEditableProviderCard({
+       } finally {
+         if (pendingDraftSaveRef.current === pending) pendingDraftSaveRef.current = null;
+         lastSubmittedDraftSignatureRef.current = null;
++        savingConnectionRef.current = false;
+         setSavingConnection(false);
+       }
+     },
+     [markDraftDirty, provider, readOnlyEndpoints, savingConnection, saveProviderDraft],
+   );
+ 
+-  const handleTextCommitKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+-    if (event.key !== "Enter") {
+-      return;
+-    }
++  const handleTextCommitKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+     // 候选确认的 Enter 不能被当作表单提交。本地 ref 覆盖
+     // Electron/macOS 上 nativeEvent.isComposing 过早变回 false 的时序。
+     if (
+@@ -673,8 +691,15 @@ export function InlineEditableProviderCard({
+     ) {
+       return;
+     }
+-    event.currentTarget.blur();
+-  }, []);
++    if (event.key === "Enter") {
++      event.preventDefault();
++      void saveConnection();
++    } else if (event.key === "Escape" && !savingConnectionRef.current) {
++      event.preventDefault();
++      restoreConnectionDraft(provider);
++      event.currentTarget.blur();
++    }
++  };
+   const handleTechnicalInputCompositionStart = useCallback(() => {
+     technicalInputCompositionActiveRef.current = true;
+   }, []);
+@@ -909,6 +934,13 @@ export function InlineEditableProviderCard({
+         {isApiKeyProvider ? (
+           <ProviderApiKeySection
+             key={`keys:${provider.providerId}`}
++            confirmation={{
++              active: connectionDirty || savingConnection,
++              saving: savingConnection,
++              disabled: !pendingConnection,
++              onCancel: () => restoreConnectionDraft(provider),
++              onSave: () => void saveConnection(),
++            }}
+             additionalApiKeys={additionalApiKeys}
+             autoSwitchCredentials={autoSwitchCredentials}
+             onCredentialsChange={(primary, additional, automatic) => {
+@@ -938,22 +970,10 @@ export function InlineEditableProviderCard({
+           />
+         ) : null}
+ 
+-        {isApiKeyProvider && connectionDirty && !savingConnection ? (
+-          <div className="space-y-2">
+-            {connectionInvalid ? (
+-              <p role="alert" className="text-ui-sm text-destructive">
+-                {intl.formatMessage({ id: "settings.modelProvider.catalog.invalid" })}
+-              </p>
+-            ) : null}
+-            <ProviderDraftActions
+-              message={intl.formatMessage({ id: "settings.modelProvider.connection.unsaved" })}
+-              saving={savingConnection}
+-              onCancel={() => restoreConnectionDraft(provider)}
+-              onSave={() => {
+-                void saveConnection();
+-              }}
+-            />
+-          </div>
++        {isApiKeyProvider && connectionInvalid ? (
++          <p role="alert" className="text-ui-sm text-destructive">
++            {intl.formatMessage({ id: "settings.modelProvider.catalog.invalid" })}
++          </p>
+         ) : null}
+       </fieldset>
+       <div className="space-y-3">
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+index 9769c8e..1823141 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+@@ -131,45 +131,45 @@ export function ModelDraftRows({
+                 })
+               )
+                 return;
+-              // 与 API 密钥一致：Enter 结束输入，显式“保存”才写入，不能把勾号混作提交。
++              // 与可见确认/取消按钮走同一条事务，候选输入不会触发保存。
+               if (event.key === "Enter") {
+                 event.preventDefault();
+-                event.currentTarget.blur();
++                void save();
++              } else if (event.key === "Escape") {
++                event.preventDefault();
++                cancel();
+               }
+             }}
+           />
+         </ProviderDraftRow>
+       ))}
+-      <ProviderDraftAdd
+-        ref={addButton}
+-        disabled={saving}
+-        data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+-        onClick={() => {
+-          if (savingRef.current) return;
+-          const id = nextId.current++;
+-          onBegin();
+-          setRows((current) => [...current, { id, value: "" }]);
+-          setFocusTarget(id);
+-        }}
++      <ProviderDraftActions
++        active={rows.length > 0}
++        saving={saving}
++        disabled={invalid || !names.some(Boolean)}
++        onCancel={cancel}
++        onSave={() => void save()}
+       >
+-        {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+-      </ProviderDraftAdd>
++        <ProviderDraftAdd
++          ref={addButton}
++          disabled={saving}
++          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
++          onClick={() => {
++            if (savingRef.current) return;
++            const id = nextId.current++;
++            onBegin();
++            setRows((current) => [...current, { id, value: "" }]);
++            setFocusTarget(id);
++          }}
++        >
++          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
++        </ProviderDraftAdd>
++      </ProviderDraftActions>
+       {invalid || error ? (
+         <p role="alert" className="text-ui-sm text-destructive">
+           {error ?? intl.formatMessage({ id: "settings.modelProvider.discovery.alreadyAdded" })}
+         </p>
+       ) : null}
+-      {names.some(Boolean) ? (
+-        <ProviderDraftActions
+-          message={intl.formatMessage({ id: "settings.modelProvider.discovery.unsaved" })}
+-          saving={saving}
+-          disabled={invalid}
+-          onCancel={cancel}
+-          onSave={() => {
+-            void save();
+-          }}
+-        />
+-      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index caf9a56..0128242 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -34,10 +34,14 @@ import {
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+-import { ProviderDraftRow, ProviderDraftAdd } from "./ProviderDraftControls.js";
++import {
++  CredentialDefaultControl,
++  ProviderDraftActions,
++  ProviderDraftRow,
++  ProviderDraftAdd,
++} from "./ProviderDraftControls.js";
+ import { ApiKeyInput } from "./ApiKeyInput.js";
+ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
+-import { Check, ArrowUp } from "lucide-react";
+ import { ModelRowInput } from "./ProviderFormControls.js";
+ import { PresetProviderApiKeyBanner } from "./PresetProviderApiKeyBanner.js";
+ import { createManualProviderModel } from "./ProviderModelMetadata.js";
+@@ -281,6 +285,7 @@ export function ProviderConnectionSection({
+ }
+ 
+ export function ProviderApiKeySection({
++  confirmation,
+   additionalApiKeys,
+   autoSwitchCredentials,
+   onCredentialsChange: commitCredentials,
+@@ -296,6 +301,13 @@ export function ProviderApiKeySection({
+   onApiKeyCompositionEnd,
+   onToggleApiKeyVisibility,
+ }: {
++  confirmation?: {
++    active: boolean;
++    saving: boolean;
++    disabled?: boolean;
++    onCancel: () => void;
++    onSave: () => void;
++  };
+   additionalApiKeys: string[];
+   autoSwitchCredentials: boolean;
+   onCredentialsChange: (primary: string, additional: string[], automatic: boolean) => void;
+@@ -348,24 +360,15 @@ export function ProviderApiKeySection({
+             actions={
+               additionalApiKeys.length > 0 ? (
+                 <>
+-                  <Button
+-                    variant="ghost"
+-                    size="icon-sm"
+-                    disabled={index === 0 || !key.trim() || readOnly}
+-                    aria-label={intl.formatMessage({
+-                      id:
+-                        index === 0
+-                          ? "settings.modelProvider.credentials.default"
+-                          : "settings.modelProvider.credentials.makeDefault",
+-                    })}
+-                    onClick={() => {
++                  <CredentialDefaultControl
++                    selected={index === 0}
++                    disabled={!key.trim() || readOnly}
++                    onSelect={() => {
+                       const keys = [apiKeyValue, ...additionalApiKeys];
+                       keys.splice(index, 1);
+                       onCredentialsChange(key, keys, autoSwitchCredentials);
+                     }}
+-                  >
+-                    {index === 0 ? <Check className="size-4" /> : <ArrowUp className="size-4" />}
+-                  </Button>
++                  />
+                 </>
+               ) : null
+             }
+@@ -399,14 +402,22 @@ export function ProviderApiKeySection({
+             />
+           </ProviderDraftRow>
+         ))}
+-        <ProviderDraftAdd
+-          disabled={readOnly || additionalApiKeys.length >= 9}
+-          onClick={() =>
+-            onCredentialsChange(apiKeyValue, [...additionalApiKeys, ""], autoSwitchCredentials)
+-          }
++        <ProviderDraftActions
++          active={confirmation?.active ?? false}
++          saving={confirmation?.saving}
++          disabled={confirmation?.disabled}
++          onCancel={() => confirmation?.onCancel()}
++          onSave={() => confirmation?.onSave()}
+         >
+-          {intl.formatMessage({ id: "settings.modelProvider.credentials.addKey" })}
+-        </ProviderDraftAdd>
++          <ProviderDraftAdd
++            disabled={readOnly || additionalApiKeys.length >= 9}
++            onClick={() =>
++              onCredentialsChange(apiKeyValue, [...additionalApiKeys, ""], autoSwitchCredentials)
++            }
++          >
++            {intl.formatMessage({ id: "settings.modelProvider.credentials.addKey" })}
++          </ProviderDraftAdd>
++        </ProviderDraftActions>
+         <CredentialAutoSwitchSection
+           kind="keys"
+           count={
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+index a393083..2180115 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+@@ -61,13 +61,15 @@ export const ProviderDraftAdd = forwardRef<
+ });
+ 
+ export function ProviderDraftActions({
+-  message,
++  children,
++  active = true,
+   saving,
+   disabled,
+   onCancel,
+   onSave,
+ }: {
+-  message: string;
++  children?: ReactNode;
++  active?: boolean;
+   saving?: boolean;
+   disabled?: boolean;
+   onCancel: () => void;
+@@ -75,16 +77,53 @@ export function ProviderDraftActions({
+ }) {
+   const { intl } = useZCodeIntl();
+   return (
+-    <div className="flex flex-wrap items-center justify-between gap-2">
+-      <p className="text-ui-sm text-foreground-subtle">{message}</p>
+-      <div className="flex items-center gap-2">
+-        <Button type="button" variant="ghost" disabled={saving} onClick={onCancel}>
+-          {intl.formatMessage({ id: "common.cancel" })}
+-        </Button>
+-        <Button type="button" disabled={disabled || saving} onClick={onSave}>
+-          {intl.formatMessage({ id: saving ? "common.saving" : "common.save" })}
+-        </Button>
+-      </div>
++    <div className="flex flex-wrap items-center justify-between gap-2" aria-busy={saving}>
++      {children}
++      {active ? (
++        <div className="ml-auto flex items-center gap-2">
++          <Button type="button" variant="ghost" disabled={saving} onClick={onCancel}>
++            {intl.formatMessage({ id: "common.cancel" })}
++          </Button>
++          <Button type="button" disabled={disabled || saving} onClick={onSave}>
++            {intl.formatMessage({ id: saving ? "common.saving" : "common.confirm" })}
++          </Button>
++        </div>
++      ) : null}
+     </div>
+   );
+ }
++
++// “默认”是选择状态，不是保存结果；密钥和订阅账号共用明确的文字动作。
++export function CredentialDefaultControl({
++  selected,
++  disabled,
++  onSelect,
++}: {
++  selected: boolean;
++  disabled?: boolean;
++  onSelect: () => void;
++}) {
++  const { intl } = useZCodeIntl();
++  return (
++    <span className="inline-grid shrink-0">
++      {/* 用同一条本地化动作测量列宽，默认状态不能让相邻输入框长短不一。 */}
++      <Button
++        type="button"
++        variant="ghost"
++        size="sm"
++        className={cn("col-start-1 row-start-1", selected && "invisible")}
++        aria-hidden={selected || undefined}
++        tabIndex={selected ? -1 : undefined}
++        disabled={selected || disabled}
++        onClick={onSelect}
++      >
++        {intl.formatMessage({ id: "settings.modelProvider.credentials.makeDefault" })}
++      </Button>
++      {selected ? (
++        <span className="col-start-1 row-start-1 self-center justify-self-center text-ui-sm text-foreground-subtle">
++          {intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}
++        </span>
++      ) : null}
++    </span>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 26834a5..574b3a4 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useEffectEvent, useRef, useState } from "react";
+-import { ExternalLinkIcon, LoaderCircleIcon, Plus, Check, ArrowUp, Trash2 } from "lucide-react";
++import { ExternalLinkIcon, LoaderCircleIcon, Plus, Trash2 } from "lucide-react";
++import { CredentialDefaultControl } from "./ProviderDraftControls.js";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
+ import { Input } from "@/components/ui/input.js";
+@@ -176,24 +177,11 @@ export function SubscriptionConnectionSection({
+                     { number: index + 1 },
+                   )}
+               </span>
+-              {account.active ? (
+-                <span className="text-ui-sm text-foreground-subtle">
+-                  {intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}
+-                </span>
+-              ) : null}
+-              <Button
+-                variant="ghost"
+-                size="icon-sm"
+-                disabled={busy || account.active}
+-                aria-label={intl.formatMessage({
+-                  id: account.active
+-                    ? "settings.modelProvider.credentials.default"
+-                    : "settings.modelProvider.credentials.makeDefault",
+-                })}
+-                onClick={() => void update({ select: account.id })}
+-              >
+-                {account.active ? <Check className="size-4" /> : <ArrowUp className="size-4" />}
+-              </Button>
++              <CredentialDefaultControl
++                selected={account.active}
++                disabled={busy}
++                onSelect={() => void update({ select: account.id })}
++              />
+               <Button
+                 variant="ghost"
+                 size="icon-sm"

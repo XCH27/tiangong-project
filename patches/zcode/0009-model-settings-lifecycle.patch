@@ -1,0 +1,2569 @@
+diff --git a/package.json b/package.json
+index 9682afa..c120e95 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
++    "test:provider-catalog": "tsx --test packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/desktop/src/host/hostConsoleSink.ts b/packages/desktop/src/host/hostConsoleSink.ts
+new file mode 100644
+index 0000000..b783b02
+--- /dev/null
++++ b/packages/desktop/src/host/hostConsoleSink.ts
+@@ -0,0 +1,37 @@
++interface ConsoleSink {
++  log(...args: unknown[]): void;
++  warn(...args: unknown[]): void;
++  error(...args: unknown[]): void;
++}
++interface ErrorStream {
++  on(event: "error", listener: (error: Error) => void): unknown;
++}
++
++/** Console is a secondary sink. Losing its pipe must not kill the RPC/settings host.
++ * The normal parent-port log relay remains active, including after EPIPE.
++ */
++export function guardHostConsole(
++  output: ConsoleSink,
++  streams: readonly (ErrorStream | undefined)[],
++): ConsoleSink {
++  let closed = false;
++  const handleError = (error: unknown) => {
++    if (error && typeof error === "object" && "code" in error && error.code === "EPIPE") {
++      closed = true;
++      return;
++    }
++    throw error;
++  };
++  for (const stream of streams) stream?.on("error", handleError);
++  const write =
++    (method: keyof ConsoleSink) =>
++    (...args: unknown[]) => {
++      if (closed) return;
++      try {
++        output[method](...args);
++      } catch (error) {
++        handleError(error);
++      }
++    };
++  return { log: write("log"), warn: write("warn"), error: write("error") };
++}
+diff --git a/packages/desktop/src/host/index.ts b/packages/desktop/src/host/index.ts
+index 9de80f6..c43e2af 100644
+--- a/packages/desktop/src/host/index.ts
++++ b/packages/desktop/src/host/index.ts
+@@ -13,6 +13,7 @@
+  * 2. main 进程只发送一次 init-local 初始化窗口 Host
+  * 3. 后续远端 connect / scoped attachment 都由同一 Host 处理
+  */
++import { guardHostConsole } from "./hostConsoleSink.js";
+ import { createHostDatabaseStartup } from "./hostDatabaseStartup.js";
+ import { randomUUID } from "node:crypto";
+ import {
+@@ -277,11 +278,14 @@ function reportHostLog(level: HostLogLevel, args: unknown[]): void {
+   }
+ }
+ 
+-const rawConsole = {
+-  log: console.log.bind(console),
+-  warn: console.warn.bind(console),
+-  error: console.error.bind(console),
+-};
++const rawConsole = guardHostConsole(
++  {
++    log: console.log.bind(console),
++    warn: console.warn.bind(console),
++    error: console.error.bind(console),
++  },
++  [process.stdout, process.stderr],
++);
+ 
+ const remoteConnectionProgressContext = createRemoteConnectionProgressContext({
+   emit: ({ requestId, level, args }) => {
+diff --git a/packages/services/test/provider-settings-lifecycle.test.ts b/packages/services/test/provider-settings-lifecycle.test.ts
+new file mode 100644
+index 0000000..68ad0f6
+--- /dev/null
++++ b/packages/services/test/provider-settings-lifecycle.test.ts
+@@ -0,0 +1,223 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { EventEmitter } from "node:events";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { parseProviderConfig, type ProviderSettingsView } from "@zcode/provider";
++import type { IProviderSettingsService } from "../src/model-provider/providerFacadeServices.js";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { readProviderSettings } from "../../ui/src/lib/providerSettingsRead.js";
++import {
++  connectProviderSettingsSnapshot,
++  getProviderSettingsSnapshot,
++} from "../../ui/src/lib/providerSettingsSnapshot.js";
++import { resolvePendingProviderDraftSave } from "../../ui/src/settings/model-provider-section/ProviderDraftSave.js";
++import { providerSetupConfig } from "../../ui/src/settings/model-provider-section/providerSetupDraft.js";
++import type { ProviderSettingsFormProvider } from "../../ui/src/lib/providerSettingsFormTypes.js";
++import { guardHostConsole } from "../../desktop/src/host/hostConsoleSink.js";
++
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  let reject!: (error: Error) => void;
++  const promise = new Promise<T>((yes, no) => {
++    resolve = yes;
++    reject = no;
++  });
++  return { promise, resolve, reject };
++}
++const view = (revision: number) => ({ revision }) as ProviderSettingsView;
++
++test("a stalled settings read expires, late results cannot win, and retry can recover", async () => {
++  const pending = deferred<ProviderSettingsView>();
++  const first = readProviderSettings(() => pending.promise, 10);
++  await assert.rejects(first, /did not respond/);
++  const next = await readProviderSettings(async () => view(2), 10);
++  pending.resolve(view(1));
++  assert.equal(next.revision, 2);
++  await assert.rejects(
++    readProviderSettings(() => {
++      throw new Error("disconnected");
++    }),
++    /disconnected/,
++  );
++});
++
++test("settings retains the last successful view on refresh failure and ignores disposed reads", async () => {
++  const pending = deferred<ProviderSettingsView>();
++  let read = async () => view(3);
++  let listener: (view: ProviderSettingsView) => void = () => {};
++  const service = {
++    getView: () => read(),
++    onDidChange: (callback: typeof listener) => {
++      listener = callback;
++      return { dispose() {} };
++    },
++  } as IProviderSettingsService;
++  const connection = connectProviderSettingsSnapshot(service);
++  await connection.ready;
++  read = async () => {
++    throw new Error("offline");
++  };
++  await assert.rejects(connection.reload(), /offline/);
++  assert.equal(getProviderSettingsSnapshot().status, "ready");
++  listener(view(2));
++  assert.equal((getProviderSettingsSnapshot() as { view: ProviderSettingsView }).view.revision, 3);
++  read = () => pending.promise;
++  const staleRead = connection.reload();
++  connection.dispose();
++  pending.resolve(view(9));
++  await staleRead;
++  assert.equal((getProviderSettingsSnapshot() as { view: ProviderSettingsView }).view.revision, 3);
++});
++
++test("a broken console pipe cannot kill the host, but unrelated failures still propagate", () => {
++  const stdout = new EventEmitter();
++  const stderr = new EventEmitter();
++  const writes: unknown[][] = [];
++  const write = (...args: unknown[]) => {
++    writes.push(args);
++  };
++  const output = guardHostConsole({ log: write, warn: write, error: write }, [stdout, stderr]);
++  output.log("before");
++  stdout.emit("error", Object.assign(new Error("closed"), { code: "EPIPE" }));
++  output.log("after");
++  output.error("still delivered separately by the parent-port relay");
++  assert.equal(writes.length, 1);
++  assert.throws(() => stderr.emit("error", new Error("unexpected I/O failure")), /unexpected/);
++  const sync = guardHostConsole(
++    {
++      log() {
++        throw Object.assign(new Error(), { code: "EPIPE" });
++      },
++      warn: write,
++      error: write,
++    },
++    [],
++  );
++  assert.doesNotThrow(() => sync.log("closed"));
++});
++
++test("editing saves endpoint and credentials together and preserves hidden settings after restart", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-model-edit-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  const runtime = createProviderConfigRuntime(options);
++  let restarted: ReturnType<typeof createProviderConfigRuntime> | undefined;
++  try {
++    await runtime.start();
++    const config = {
++      api: {
++        type: "openai-chat-completions" as const,
++        baseUrl: "https://old.example/v1",
++        headers: { "X-Route": "preserve" },
++      },
++      access: {
++        type: "api-key" as const,
++        apiKey: "old-synthetic",
++        additionalApiKeys: ["backup-synthetic"],
++        autoSwitchCredentials: false,
++      },
++    };
++    const { providerId } = await runtime.configService.createPersonalProvider({
++      providerName: "Review connection",
++      initialConfig: parseProviderConfig(config),
++    });
++    const provider: ProviderSettingsFormProvider = {
++      providerId,
++      providerName: "Review connection",
++      templateId: null,
++      enabled: true,
++      executable: false,
++      hasPersonalConfig: true,
++      personalConfig: config,
++      config,
++      models: [],
++    };
++    const before = await readFile(options.personalFilePath, "utf8");
++    const draft = {
++      nameValue: "Unconfirmed rename",
++      apiFormat: "openai-responses" as const,
++      baseUrlValue: "https://new.example/v1",
++      apiKeyValue: "  new-synthetic  ",
++      additionalApiKeys: ["backup-synthetic", " backup-synthetic "],
++      autoSwitchCredentials: true,
++    };
++    const next = resolvePendingProviderDraftSave({ provider, draft, now: Date.now })!;
++    assert.equal(
++      await readFile(options.personalFilePath, "utf8"),
++      before,
++      "typing cannot write configuration",
++    );
++    assert.equal(
++      next.providerNameUpdate,
++      undefined,
++      "saving a connection cannot commit an unfinished rename",
++    );
++    await runtime.configService.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig(next.personalConfig),
++    );
++    runtime.dispose();
++    restarted = createProviderConfigRuntime(options);
++    await restarted.start();
++    const saved = (await restarted.configService.read()).personalProviders
++      .get(providerId)!
++      .toJSON();
++    assert.equal(saved.api?.baseUrl, "https://new.example/v1");
++    assert.equal(saved.api?.type, "openai-responses");
++    assert.deepEqual(saved.api?.headers, { "X-Route": "preserve" });
++    assert.deepEqual(saved.access, {
++      type: "api-key",
++      apiKey: "new-synthetic",
++      additionalApiKeys: ["backup-synthetic"],
++      autoSwitchCredentials: true,
++    });
++  } finally {
++    runtime.dispose();
++    restarted?.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("both new and edited connections reject incomplete addresses and unsafe embedded credentials", () => {
++  const config = {
++    api: { type: "openai-responses" as const, baseUrl: "https://api.openai.com/v1" },
++    access: { type: "api-key" as const },
++  };
++  for (const baseUrl of ["", "https://", "file:///tmp/model", "https://user:pass@example.com"]) {
++    assert.equal(
++      providerSetupConfig(
++        { config },
++        {
++          baseUrl,
++          api: "openai-responses",
++          primary: "synthetic",
++          additional: [],
++          automatic: false,
++        },
++      ),
++      undefined,
++    );
++  }
++  assert.equal(
++    providerSetupConfig(
++      { config },
++      {
++        baseUrl: config.api.baseUrl,
++        api: "anthropic-messages",
++        primary: "synthetic",
++        additional: [],
++        automatic: false,
++      },
++    ),
++    undefined,
++  );
++});
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index 7622344..a6cd292 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -1,4 +1,5 @@
+-import { useState, useCallback, useMemo, useRef } from "react";
++import { readProviderSettings } from "@/lib/providerSettingsRead.js";
++import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+ import type { ProviderSettingsView } from "@zcode/services";
+@@ -54,17 +55,33 @@ export function useModelProviders(target: {
+     [providerSettingsRead.commit],
+   );
+   const [refreshing, setRefreshing] = useState(false);
++  const [refreshError, setRefreshError] = useState<Error | null>(null);
+   const latestRefreshTokenRef = useRef(0);
+ 
++  useEffect(() => {
++    latestRefreshTokenRef.current += 1;
++    setRefreshError(null);
++    setRefreshing(false);
++    return () => {
++      latestRefreshTokenRef.current += 1;
++    };
++  }, [providerSettingsService]);
++
+   const refresh = useCallback(async () => {
+     const refreshToken = latestRefreshTokenRef.current + 1;
+     latestRefreshTokenRef.current = refreshToken;
+     setRefreshing(true);
++    setRefreshError(null);
+     try {
+-      const view = await providerSettingsService.refresh("settings-manual");
++      const view = await readProviderSettings(() =>
++        providerSettingsService.refresh("settings-manual"),
++      );
+       commitProviderSettingsView(view);
+     } catch (err) {
+       logger.error("[useModelProviders] 加载模型供应商失败", err);
++      if (refreshToken === latestRefreshTokenRef.current) {
++        setRefreshError(err instanceof Error ? err : new Error(String(err)));
++      }
+     } finally {
+       // 用户连续触发刷新时，旧请求可能先返回。
+       // 若不做 token 守卫，旧请求 finally 会把 refreshing 提前置 false，导致标题 loading 提示闪灭。
+@@ -221,6 +238,7 @@ export function useModelProviders(target: {
+       providerSettingsRead.state.status === "error" ? providerSettingsRead.state.error : null,
+     reload: providerSettingsRead.reload,
+     refreshing,
++    refreshError,
+     refresh,
+     saveProvider,
+     createPersonalProvider,
+diff --git a/packages/ui/src/hooks/useProviderSettingsView.ts b/packages/ui/src/hooks/useProviderSettingsView.ts
+index 90b2fc4..5fd158d 100644
+--- a/packages/ui/src/hooks/useProviderSettingsView.ts
++++ b/packages/ui/src/hooks/useProviderSettingsView.ts
+@@ -1,3 +1,4 @@
++import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+ import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+ import type { IProviderSettingsService, ProviderSettingsView } from "@zcode/services";
+ import { logger } from "@/logger.js";
+@@ -74,7 +75,9 @@ export function useProviderSettingsServiceView(
+         return false;
+       }
+       latestRevisionRef.current = view.revision;
+-      setOwned({ service, state: { status: "ready", view } });
++      const next: OwnedProviderSettingsState = { service, state: { status: "ready", view } };
++      ownedRef.current = next;
++      setOwned(next);
+       return true;
+     },
+     [service],
+@@ -86,7 +89,12 @@ export function useProviderSettingsServiceView(
+     const previous = ownedRef.current;
+     const retainedReady =
+       previous.service === service && previous.state.status === "ready" ? previous.state : null;
+-    setOwned({ service, state: retainedReady ?? { status: "loading" } });
++    const next: OwnedProviderSettingsState = {
++      service,
++      state: retainedReady ?? { status: "loading" },
++    };
++    ownedRef.current = next;
++    setOwned(next);
+     latestRevisionRef.current = retainedReady?.view.revision ?? -1;
+     let hasReadyView = retainedReady !== null;
+     const commit = (view: ProviderSettingsView): void => {
+@@ -96,7 +104,7 @@ export function useProviderSettingsServiceView(
+       }
+     };
+     const subscription = service.onDidChange(commit);
+-    void service.getView().then(commit, (cause) => {
++    void readProviderSettings(() => service.getView()).then(commit, (cause) => {
+       if (generation !== generationRef.current) return;
+       const error = cause instanceof Error ? cause : new Error(String(cause));
+       logger.warn("[ProviderSettings] 加载目标 Environment 失败", { error });
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 3637156..31e1d14 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,9 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.connectionsTitle": "Connected services",
++  "settings.modelProvider.connection.saveFirst": "Save the connection changes before testing a model.",
++  "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
++  "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
+@@ -2808,7 +2812,7 @@ const enUS: Record<string, string> = {
+     "Disabled {plugin} in this workspace (overriding User default)",
+   "settings.plugins.toggle.failed": "Couldn't update {plugin}. Try again.",
+   "settings.modelProviderDescription":
+-    "Manage custom model providers. Once configured, they can be selected during chat.",
++    "Manage model services and subscription accounts for your conversations.",
+   "settings.modelProvider.add": "Add provider",
+   "settings.modelProvider.createCustomProvider": "Create custom provider",
+   "settings.modelProvider.templateCreateFailed":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 65dde5b..1edd645 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,9 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.connectionsTitle": "已添加的服务",
++  "settings.modelProvider.connection.saveFirst": "请先保存连接更改，再测试模型。",
++  "settings.modelProvider.connection.unsaved": "连接更改尚未保存",
++  "settings.modelProvider.loadFailed": "无法连接模型设置服务，请重试。",
+   "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
+   "settings.modelProvider.discovery.selectVisible": "全选搜索结果",
+   "settings.modelProvider.discovery.noMatches": "没有匹配的模型",
+@@ -2619,7 +2623,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.toggle.workspaceEnabled": "已在当前工作区启用 {plugin}（覆盖 User 默认）",
+   "settings.plugins.toggle.workspaceDisabled": "已在当前工作区停用 {plugin}（覆盖 User 默认）",
+   "settings.plugins.toggle.failed": "无法更新 {plugin}，请重试。",
+-  "settings.modelProviderDescription": "管理自定义模型供应商，配置后可在聊天时选择使用。",
++  "settings.modelProviderDescription": "管理模型服务与订阅账号，连接后可在对话中选择模型。",
+   "settings.modelProvider.add": "添加供应商",
+   "settings.modelProvider.createCustomProvider": "创建自定义供应商",
+   "settings.modelProvider.templateCreateFailed": "创建供应商失败：个人供应商配置格式无效",
+diff --git a/packages/ui/src/lib/providerSettingsRead.ts b/packages/ui/src/lib/providerSettingsRead.ts
+new file mode 100644
+index 0000000..121cf43
+--- /dev/null
++++ b/packages/ui/src/lib/providerSettingsRead.ts
+@@ -0,0 +1,19 @@
++/** Reads have a deadline; a disconnected host must not leave settings in an endless spinner.
++ * This only bounds reads. Mutations must not time out and then be retried as duplicate writes.
++ */
++export function readProviderSettings<T>(read: () => Promise<T>, timeoutMs = 15_000): Promise<T> {
++  return new Promise<T>((resolve, reject) => {
++    const timer = setTimeout(
++      () => reject(new Error("Provider settings service did not respond")),
++      timeoutMs,
++    );
++    try {
++      read()
++        .then(resolve, reject)
++        .finally(() => clearTimeout(timer));
++    } catch (error) {
++      clearTimeout(timer);
++      reject(error);
++    }
++  });
++}
+diff --git a/packages/ui/src/lib/providerSettingsSnapshot.ts b/packages/ui/src/lib/providerSettingsSnapshot.ts
+index d616bfa..86c1b8e 100644
+--- a/packages/ui/src/lib/providerSettingsSnapshot.ts
++++ b/packages/ui/src/lib/providerSettingsSnapshot.ts
+@@ -1,3 +1,4 @@
++import { readProviderSettings } from "./providerSettingsRead.js";
+ import type { IProviderSettingsService, ProviderSettingsView } from "@zcode/services";
+ 
+ type ProviderSettingsSnapshotListener = () => void;
+@@ -51,7 +52,7 @@ export function connectProviderSettingsSnapshot(
+ 
+   const read = async (): Promise<void> => {
+     try {
+-      commit(await service.getView());
++      commit(await readProviderSettings(() => service.getView()));
+     } catch (cause) {
+       if (generation !== connectionGeneration) throw cause;
+       const error = cause instanceof Error ? cause : new Error(String(cause));
+@@ -74,7 +75,10 @@ export function connectProviderSettingsSnapshot(
+     reload: read,
+     dispose() {
+       subscription.dispose();
+-      if (generation === connectionGeneration) activeReload = null;
++      if (generation === connectionGeneration) {
++        connectionGeneration += 1;
++        activeReload = null;
++      }
+     },
+   };
+ }
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index a7738c5..860a684 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -1,71 +1,23 @@
+ import type { ProviderConfigObject } from "@zcode/provider";
+-/* eslint-disable max-lines -- Model Provider 设置页需要集中编排导航、表单和 OAuth 交互，后续整体拆分时再收敛。 */
+-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+-import {
+-  getProviderFormApiKey,
+-  type ProviderSettingsFormProvider,
+-} from "@/lib/providerSettingsFormTypes.js";
+-import {
+-  BIGMODEL_PROVIDER_ID,
+-  BUILTIN_MODEL_PROVIDER_IDS,
+-  DesktopCommandIds,
+-  isStartPlanModelProviderId,
+-  type BuiltinModelProviderId,
+-  type ModelConnectivityResult,
+-  type ProviderFamilyConnectionSelection,
+-  type ProviderFamilyConnectionSelectionSettings,
+-  type ProviderFamilyDomain,
+-  type OAuthProviderId,
+-  resolveModelProviderFamilyIdByProviderId,
+-  resolveModelProviderFamilySpecByProviderId,
+-  resolveProviderFamilyDomainFromOAuthProvider,
+-  ZAI_PROVIDER_ID,
+-} from "@zcode/shared";
++import { useCallback, useEffect, useState } from "react";
++import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { Button } from "@/components/ui/button.js";
+ import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+ import { useModelProviders } from "@/hooks/useModelProviders.js";
+-import { resolveEntitledAccountProviderAccess } from "@/lib/accountProviderAccess.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+-import { useServices } from "@/hooks/useServices.js";
+-import { useZCodeStore } from "@/store/StoreProvider.js";
+-import { logger } from "@/logger.js";
+-import {
+-  PRESET_PROVIDER_SPECS,
+-  PRESET_SUBSCRIPTION_TIMEOUT_MS,
+-  BIGMODEL_REGISTRATION_URL,
+-  type CodingPlanStatus,
+-  type ModelProviderNavGroup,
+-} from "./model-provider-section/constants.js";
+-import { ModelProviderSectionDetail } from "./model-provider-section/Detail.js";
+-import { ModelProviderSectionLayout } from "./model-provider-section/SectionLayout.js";
+-import { ProviderTemplatePicker } from "./model-provider-section/ProviderTemplatePicker.js";
+-import type { CodingPlanLoginOptions } from "./model-provider-section/codingPlanPricingCards.js";
+-import { useModelProviderNavigation } from "./model-provider-section/useModelProviderNavigation.js";
+-import { reportPresetSubscriptionSuccess } from "./model-provider-section/oauthActions.js";
+-import {
+-  createCodingPlanProviderNodeKey,
+-  createCustomProviderNodeKey,
+-  createPresetProviderNodeKey,
+-} from "./model-provider-section/utils.js";
+-import {
+-  confirmAndDeleteModelProvider,
+-  refreshModelProviderSection,
+-  refreshProviderPanelAfterAuthChange as refreshModelProviderPanelAfterAuthChange,
+-} from "./model-provider-section/modelProviderActions.js";
+-import {
+-  useCodingPlanAccessRefresh,
+-  useCodingPlanEntitlements,
+-} from "./model-provider-section/useCodingPlanEntitlements.js";
+ import { sortModelProvidersForDisplay } from "@/lib/modelProviderOrdering.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import { resolveLogoutProviderFamilyDomain } from "@/lib/providerFamilyDomainSettings.js";
+ import {
+   addPendingSettingsSectionListener,
+   consumePendingSettingsModelProviderTarget,
+   type SettingsModelProviderTarget,
+ } from "@/lib/settingsNavigation.js";
+-import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
++import { ModelProviderSectionDetail } from "./model-provider-section/Detail.js";
++import { ModelProviderSectionLayout } from "./model-provider-section/SectionLayout.js";
++import { ProviderTemplatePicker } from "./model-provider-section/ProviderTemplatePicker.js";
++import { useModelProviderNavigation } from "./model-provider-section/useModelProviderNavigation.js";
++import { createCustomProviderNodeKey } from "./model-provider-section/utils.js";
++import { confirmAndDeleteModelProvider } from "./model-provider-section/modelProviderActions.js";
+ 
+ export {
+   fuzzyMatch,
+@@ -73,165 +25,6 @@ export {
+   resolveEndpointSuggestionOpenRequest,
+ } from "./model-provider-section/utils.js";
+ 
+-type CodingPlanConnectionNavItem = Extract<
+-  ModelProviderNavGroup["items"][number],
+-  { type: "codingPlan" | "teamPlan" }
+->;
+-
+-function resolveCodingPlanProviderSyncAttemptKey({
+-  activeOAuthProvider,
+-  oauthProviderId,
+-  providerId,
+-}: {
+-  activeOAuthProvider: OAuthProviderId | null;
+-  oauthProviderId: OAuthProviderId;
+-  providerId: BuiltinModelProviderId;
+-}): string | null {
+-  if (activeOAuthProvider !== oauthProviderId) {
+-    return null;
+-  }
+-  // 操作身份只由稳定的 provider/auth 事实组成，禁止把 checking 等展示状态放入 key。
+-  return `${providerId}:${activeOAuthProvider}`;
+-}
+-
+-function shouldRetryUnchangedCodingPlanProviderSync({
+-  attemptKey,
+-  attemptStatus,
+-  modeUnchanged,
+-  selectedKeyUnchanged,
+-}: {
+-  attemptKey: string | null;
+-  attemptStatus: "inFlight" | "succeeded" | "failed" | undefined;
+-  modeUnchanged: boolean;
+-  selectedKeyUnchanged: boolean;
+-}): boolean {
+-  return modeUnchanged && selectedKeyUnchanged && attemptKey !== null && attemptStatus === "failed";
+-}
+-
+-function resolveCodingPlanIntentProviderId(
+-  target: SettingsModelProviderTarget | undefined,
+-): BuiltinModelProviderId | null {
+-  switch (target?.providerId) {
+-    case BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan:
+-    case BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan:
+-    case BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan:
+-    case BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan:
+-    case BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan:
+-    case BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan:
+-      return target.providerId;
+-    default:
+-      return null;
+-  }
+-}
+-
+-function shouldRefreshCodingPlanEntitlementsAfterSave(
+-  previousProvider: ProviderSettingsFormProvider | undefined,
+-  nextProvider: ProviderSettingsFormProvider,
+-): boolean {
+-  const isCodingPlanProvider =
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan ||
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan ||
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan ||
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan ||
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan ||
+-    nextProvider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan;
+-  if (!isCodingPlanProvider) {
+-    return false;
+-  }
+-
+-  // enabled/name/models 这类 UI 配置不会改变权益查询凭据。
+-  // 之前保存任意 Coding Plan 字段都会刷新状态，导致侧栏短暂进入 loading 并冲掉当前选中。
+-  return (
+-    (previousProvider ? getProviderFormApiKey(previousProvider).trim() : "") !==
+-    getProviderFormApiKey(nextProvider).trim()
+-  );
+-}
+-
+-function resolveBuiltinPresetOAuthProvider(
+-  presetId: BuiltinModelProviderId,
+-): OAuthProviderId | null {
+-  if (
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan ||
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan ||
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan
+-  ) {
+-    return ZAI_PROVIDER_ID;
+-  }
+-  if (
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan ||
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan ||
+-    presetId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan
+-  ) {
+-    return BIGMODEL_PROVIDER_ID;
+-  }
+-  return null;
+-}
+-
+-function shouldShowPresetProviderForActiveOAuth(
+-  presetId: BuiltinModelProviderId,
+-  providerFamilyDomain: ProviderFamilyDomain | null | undefined,
+-): boolean {
+-  const presetOAuthProvider = resolveBuiltinPresetOAuthProvider(presetId);
+-  if (!providerFamilyDomain || !presetOAuthProvider) {
+-    return true;
+-  }
+-  return resolveModelProviderFamilyIdByProviderId(presetId) === providerFamilyDomain;
+-}
+-
+-function clearPendingProviderFamilyConnectionSelection(
+-  selections: ProviderFamilyConnectionSelectionSettings,
+-  familyId: ProviderFamilyDomain,
+-  selection: ProviderFamilyConnectionSelection,
+-): ProviderFamilyConnectionSelectionSettings {
+-  if (JSON.stringify(selections[familyId]) !== JSON.stringify(selection)) {
+-    return selections;
+-  }
+-  const { [familyId]: _removed, ...rest } = selections;
+-  return rest;
+-}
+-
+-function resolveProviderFamilySideNodeKey(providerId: BuiltinModelProviderId): string | null {
+-  if (isStartPlanModelProviderId(providerId)) return createCodingPlanProviderNodeKey(providerId);
+-  const familySpec = resolveModelProviderFamilySpecByProviderId(providerId);
+-  return familySpec ? createPresetProviderNodeKey(familySpec.startPlanProviderId) : null;
+-}
+-
+-function resolveConnectionSelectionForNavItem(
+-  item: Extract<
+-    ModelProviderNavGroup["items"][number],
+-    { type: "preset" | "codingPlan" | "teamPlan" }
+-  >,
+-): ProviderFamilyConnectionSelection | null {
+-  if (item.type === "preset") return null;
+-  if (item.type === "teamPlan") {
+-    const productId = item.currentProductId?.trim() ?? "";
+-    const organizationId = item.organizationId?.trim() ?? "";
+-    const projectId = item.projectId?.trim() ?? "";
+-    return productId && organizationId && projectId
+-      ? { kind: "team-coding-plan", productId, organizationId, projectId }
+-      : null;
+-  }
+-  return isStartPlanModelProviderId(item.presetId) ? null : { kind: "individual-coding-plan" };
+-}
+-
+-function resolveModelProviderSideSelectionKey(
+-  item: ModelProviderNavGroup["items"][number],
+-): string {
+-  if (item.type !== "preset" && item.type !== "codingPlan" && item.type !== "teamPlan") {
+-    return item.key;
+-  }
+-  if (
+-    item.type === "preset" ||
+-    (item.type === "codingPlan" && isStartPlanModelProviderId(item.presetId))
+-  )
+-    return item.key;
+-  return resolveProviderFamilySideNodeKey(item.presetId) ?? item.key;
+-}
+-
+-/**
+- * 模型 Provider 设置只由 SettingsPage 注入 Local Host；这里不接收 workspaceIdentity，
+- * 防止远程 workspace 误将 Provider Settings 的读写路由到远端 Environment。
+- */
+ export function ModelProviderSection({
+   workspacePath = "",
+   connectivityWorkspacePath,
+@@ -248,7 +41,6 @@ export function ModelProviderSection({
+   const { intl, locale } = useZCodeIntl();
+   const confirmDialog = useConfirmDialog();
+   const platform = usePlatform();
+-  const { modelSelectionService, oauthService, credentialService } = useServices();
+   const {
+     modelProviders,
+     providerTemplates,
+@@ -256,7 +48,8 @@ export function ModelProviderSection({
+     loading,
+     loadError,
+     reload,
+-    refreshing: modelProvidersRefreshing,
++    refreshing,
++    refreshError,
+     refresh,
+     saveProvider,
+     createPersonalProvider,
+@@ -278,889 +71,158 @@ export function ModelProviderSection({
+       id: "settings.modelProvider.testModel.localWorkspaceUnavailable",
+     }),
+   });
+-  const entitledAccountProviderIds = useMemo<ReadonlySet<string>>(() => {
+-    return new Set(
+-      (providerSettingsView?.providers ?? [])
+-        .filter(
+-          (provider) =>
+-            provider.effectiveConfig.access?.type === "zhipu-account" &&
+-            provider.effectiveConfig.access.entitled === true,
+-        )
+-        .map((provider) => provider.providerId),
+-    );
+-  }, [providerSettingsView]);
+-  const providerConnectionRefreshSignal = providerSettingsView?.revision;
+-  const [initialModelProviderTarget] = useState(() => consumePendingSettingsModelProviderTarget());
+-  const [invalidProviderTarget, setInvalidProviderTarget] = useState(() =>
+-    Boolean(
+-      initialModelProviderTarget && !resolveCodingPlanIntentProviderId(initialModelProviderTarget),
+-    ),
+-  );
+-  const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(() => {
+-    const providerId = resolveCodingPlanIntentProviderId(initialModelProviderTarget);
+-    return providerId ? resolveProviderFamilySideNodeKey(providerId) : null;
+-  });
+-  const [presetSubscriptionProviderId, setPresetSubscriptionProviderId] =
+-    useState<BuiltinModelProviderId | null>(null);
+-  const [codingPlanStatusSyncProviderId, setCodingPlanStatusSyncProviderId] =
+-    useState<BuiltinModelProviderId | null>(null);
+-  const [codingPlanDisconnectProviderId, setCodingPlanDisconnectProviderId] =
+-    useState<BuiltinModelProviderId | null>(null);
+-  // 死代码清理：refreshToken 只被已下线的原生购买面板消费，这里仅保留 setter 供
+-  // 登录/解绑后的 refreshCodingPlanProducts 契约调用（保持共享 helper 签名不变）。
+-  const [, setCodingPlanProductsRefreshToken] = useState(0);
+-  const [pendingCreatedProviderId, setPendingCreatedProviderId] = useState<string | null>(null);
++  const [target, setTarget] = useState(() => consumePendingSettingsModelProviderTarget());
++  const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+   const [creatingProvider, setCreatingProvider] = useState(false);
+   const [connectProviderId, setConnectProviderId] = useState<string>();
+-
++  const { navigationGroups, selectedNavItem } = useModelProviderNavigation({
++    modelProviders,
++    displayOrder,
++    selectedNodeKey,
++    setSelectedNodeKey,
++    intl,
++  });
++  // Targets are actual saved connection IDs, including custom and subscription providers.
++  // Keep a new target until the authoritative view contains it, before selecting its row.
++  const targetExists = target && modelProviders.some((p) => p.providerId === target.providerId);
+   useEffect(() => {
+-    if (
+-      !pendingCreatedProviderId ||
+-      !modelProviders.some((provider) => provider.providerId === pendingCreatedProviderId)
+-    ) {
+-      return;
+-    }
+-    // saveProvider 会先发布共享快照，再异步落盘；React 在高负载下可能先提交
+-    // selectedNodeKey、后提交 provider 列表。导航校正会把暂时不存在的 custom key 回退，
+-    // 新 provider 随后出现也不会再自动选中。只在列表事实可见后完成选中与草稿清理。
+-    setSelectedNodeKey(createCustomProviderNodeKey(pendingCreatedProviderId));
+-    setPendingCreatedProviderId(null);
+-  }, [modelProviders, pendingCreatedProviderId]);
+-
+-  const applyModelProviderTarget = useCallback(
+-    (target: SettingsModelProviderTarget | undefined) => {
+-      if (!target) return false;
+-      const providerId = resolveCodingPlanIntentProviderId(target);
+-      if (!providerId) {
+-        // 未知 ID 不能只静默忽略：pending 指令不消费的话，外部输入错误会困住导航。
+-        // 仅显示错误，保留当前可操作页面和持久连接，后续合法导航/手动选择可恢复。
+-        logger.warn("[ModelProviderSection] 无法打开目标供应商", { providerId: target.providerId });
+-        setInvalidProviderTarget(true);
+-        setTemplatePickerOpen(false);
+-        return true;
+-      }
+-
+-      setInvalidProviderTarget(false);
+-      setTemplatePickerOpen(false);
+-      setSelectedNodeKey(resolveProviderFamilySideNodeKey(providerId));
+-      return true;
+-    },
+-    [],
+-  );
+-
++    if (!target || !targetExists) return;
++    setSelectedNodeKey(createCustomProviderNodeKey(target.providerId));
++    setTemplatePickerOpen(false);
++    setTarget(undefined);
++  }, [target, targetExists]);
+   useEffect(() => {
+-    if (!pendingModelProviderTarget) {
+-      return;
+-    }
+-    if (applyModelProviderTarget(pendingModelProviderTarget)) {
+-      onConsumePendingModelProviderTarget?.();
+-    }
+-  }, [applyModelProviderTarget, onConsumePendingModelProviderTarget, pendingModelProviderTarget]);
+-
++    if (!pendingModelProviderTarget) return;
++    setTarget(pendingModelProviderTarget);
++    onConsumePendingModelProviderTarget?.();
++  }, [pendingModelProviderTarget, onConsumePendingModelProviderTarget]);
+   useEffect(
+     () =>
+       addPendingSettingsSectionListener((section, detail) => {
+-        if (section !== "modelProvider") {
+-          return;
++        if (section === "modelProvider" && detail?.modelProviderId) {
++          setTarget({ providerId: detail.modelProviderId });
+         }
+-        applyModelProviderTarget(
+-          detail?.modelProviderId
+-            ? {
+-                providerId: detail.modelProviderId,
+-              }
+-            : undefined,
+-        );
+       }),
+-    [applyModelProviderTarget],
+-  );
+-  const [
+-    codingPlanPurchaseTokenAuthenticatedByProviderId,
+-    setCodingPlanPurchaseTokenAuthenticatedByProviderId,
+-  ] = useState<Partial<Record<BuiltinModelProviderId, boolean>>>({});
+-  const [activeOAuthProvider, setActiveOAuthProvider] = useState<OAuthProviderId | null>(null);
+-  const [pendingConnectionSelections, setPendingConnectionSelections] =
+-    useState<ProviderFamilyConnectionSelectionSettings>({});
+-  const presetSubscriptionCompletionProviderIdRef = useRef<BuiltinModelProviderId | null>(null);
+-  const codingPlanStatusSyncAttemptsRef = useRef(
+-    new Map<string, "inFlight" | "succeeded" | "failed">(),
+-  );
+-  const requestLoginEntry = useZCodeStore((state) => state.requestLoginEntry);
+-  const setUser = useZCodeStore((state) => state.setUser);
+-  const oauthError = useZCodeStore((state) => state.oauthError);
+-  const setOAuthError = useZCodeStore((state) => state.setOAuthError);
+-  const {
+-    settings: sharedSettings,
+-    loading: sharedSettingsLoading,
+-    error: sharedSettingsError,
+-    update: updateSharedSettings,
+-  } = useSettings();
+-  const authenticatedEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    enabled:
+-      codingPlanPurchaseTokenAuthenticatedByProviderId[
+-        BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan
+-      ] === true,
+-    authenticated: true,
+-    family: "bigmodel",
+-  });
+-  // zai 与 bigmodel Team Plan 对称化。原仅 bigmodel 调 hook，
+-  // zai 团队订阅永远拉不到、也无法展示对应团队。
+-  // zai 独立调 hook（zai family 走 zai provider），下游合并两 family 的订阅产品。
+-  const authenticatedZaiEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    enabled:
+-      codingPlanPurchaseTokenAuthenticatedByProviderId[
+-        BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan
+-      ] === true,
+-    authenticated: true,
+-    family: "zai",
+-  });
+-  const refreshAuthenticatedEnterpriseProducts = useCallback(async () => {
+-    await Promise.all([
+-      authenticatedEnterpriseProducts.refresh(),
+-      authenticatedZaiEnterpriseProducts.refresh(),
+-    ]);
+-  }, [authenticatedEnterpriseProducts, authenticatedZaiEnterpriseProducts]);
+-  const subscribedTeamProducts = useMemo(
+-    () => [
+-      ...(authenticatedEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
+-      ...(authenticatedZaiEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
+-    ],
+-    [
+-      authenticatedEnterpriseProducts.snapshot?.productList,
+-      authenticatedZaiEnterpriseProducts.snapshot?.productList,
+-    ],
+-  );
+-  const connectionSelections = sharedSettings?.providerFamilyConnectionSelections ?? {};
+-  const familyConnectionSettingsFailed = sharedSettingsError !== null && sharedSettings === null;
+-  const effectiveConnectionSelections = useMemo(
+-    () => ({
+-      ...connectionSelections,
+-      ...pendingConnectionSelections,
+-    }),
+-    [connectionSelections, pendingConnectionSelections],
+-  );
+-  // 原仅检查 bigmodel selectedKey 是否为 team plan，zai team key
+-  // 永远不会触发已购团队 fallback（断裂）。改为任一 family 有持久化 team key 即显示。
+-  const showPurchasedTeamPlanFallback = Boolean(
+-    effectiveConnectionSelections.bigmodel?.kind === "team-coding-plan" ||
+-    effectiveConnectionSelections.zai?.kind === "team-coding-plan",
+-  );
+-  const effectiveProviderFamilyDomain =
+-    sharedSettings?.providerFamilyDomain ??
+-    resolveProviderFamilyDomainFromOAuthProvider(activeOAuthProvider);
+-  const { entitlements: codingPlanEntitlements, refresh: refreshCodingPlanEntitlements } =
+-    useCodingPlanEntitlements({
+-      providerSettingsView,
+-      connectionSelections: effectiveConnectionSelections,
+-      suppressProviderFingerprintAutoRefresh: codingPlanStatusSyncProviderId !== null,
+-    });
+-  useEffect(() => {
+-    setPendingConnectionSelections((current) => {
+-      let next = current;
+-      for (const [familyId, selection] of Object.entries(current) as Array<
+-        [ProviderFamilyDomain, ProviderFamilyConnectionSelection]
+-      >) {
+-        if (JSON.stringify(connectionSelections[familyId]) !== JSON.stringify(selection)) {
+-          continue;
+-        }
+-        // API Key/Coding Plan tab 点击后 settings 落盘和 hook 刷新是异步的。
+-        // 等持久化快照真的追上再清 pending，避免旧 mode 把选中项短暂纠偏回去造成闪烁。
+-        next = clearPendingProviderFamilyConnectionSelection(next, familyId, selection);
+-      }
+-      return next;
+-    });
+-  }, [connectionSelections]);
+-
+-  const refreshCodingPlanProducts = useCallback(() => {
+-    setCodingPlanProductsRefreshToken((current) => current + 1);
+-  }, []);
+-
+-  const refreshCodingPlanPurchaseTokenState = useCallback(
+-    async (
+-      options: {
+-        clearUserWhenLoggedOut?: boolean;
+-        shouldApply?: () => boolean;
+-      } = {},
+-    ) => {
+-      const [activeProvider, zaiToken, bigmodelToken] = await Promise.all([
+-        credentialService.load("oauth:active_provider"),
+-        credentialService.load(`oauth:${ZAI_PROVIDER_ID}:access_token`),
+-        credentialService.load(`oauth:${BIGMODEL_PROVIDER_ID}:access_token`),
+-      ]);
+-      if (options.shouldApply && !options.shouldApply()) {
+-        return null;
+-      }
+-      const normalizedActiveProvider =
+-        activeProvider === ZAI_PROVIDER_ID || activeProvider === BIGMODEL_PROVIDER_ID
+-          ? activeProvider
+-          : null;
+-      setActiveOAuthProvider(normalizedActiveProvider);
+-      setCodingPlanPurchaseTokenAuthenticatedByProviderId({
+-        [BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan]:
+-          normalizedActiveProvider === ZAI_PROVIDER_ID && (zaiToken?.trim().length ?? 0) > 0,
+-        [BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan]:
+-          normalizedActiveProvider === ZAI_PROVIDER_ID && (zaiToken?.trim().length ?? 0) > 0,
+-        [BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan]:
+-          normalizedActiveProvider === ZAI_PROVIDER_ID && (zaiToken?.trim().length ?? 0) > 0,
+-        [BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan]:
+-          normalizedActiveProvider === BIGMODEL_PROVIDER_ID &&
+-          (bigmodelToken?.trim().length ?? 0) > 0,
+-        [BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan]:
+-          normalizedActiveProvider === BIGMODEL_PROVIDER_ID &&
+-          (bigmodelToken?.trim().length ?? 0) > 0,
+-        [BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan]:
+-          normalizedActiveProvider === BIGMODEL_PROVIDER_ID &&
+-          (bigmodelToken?.trim().length ?? 0) > 0,
+-      });
+-      if (!normalizedActiveProvider && options.clearUserWhenLoggedOut) {
+-        // provider Unlink 已等价于 App logout。
+-        // 服务端 token 已清理后，设置页也要同步清掉 Zustand user，否则侧边栏会一直显示旧登录态直到重启。
+-        setUser(null);
+-        setOAuthError(null);
+-      }
+-      return normalizedActiveProvider;
+-    },
+-    [credentialService, setOAuthError, setUser],
+-  );
+-
+-  const refreshProviderPanelAfterAuthChange = useCallback(
+-    async ({
+-      refreshPlanSnapshots = true,
+-      refreshReason = "auth",
+-    }: {
+-      refreshPlanSnapshots?: boolean;
+-      refreshReason?: "auth" | "purchase";
+-    }) => {
+-      await refreshModelProviderPanelAfterAuthChange({
+-        refreshModelProviders: refresh,
+-        refreshCodingPlanEntitlements: () =>
+-          refreshCodingPlanEntitlements({ force: true, reason: refreshReason }),
+-        refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
+-        refreshCodingPlanProducts,
+-        refreshPurchaseTokenState: refreshCodingPlanPurchaseTokenState,
+-        refreshPlanSnapshots,
+-      });
+-    },
+-    [
+-      refresh,
+-      refreshAuthenticatedEnterpriseProducts,
+-      refreshCodingPlanEntitlements,
+-      refreshCodingPlanProducts,
+-      refreshCodingPlanPurchaseTokenState,
+-      refreshModelProviderPanelAfterAuthChange,
+-    ],
+-  );
+-
+-  const syncCodingPlanProviderOnce = useCallback(
+-    async (
+-      item: CodingPlanConnectionNavItem,
+-      options: { userTransition?: boolean; refreshPlanSnapshots?: boolean } = {},
+-    ) => {
+-      const attemptKey = resolveCodingPlanProviderSyncAttemptKey({
+-        activeOAuthProvider,
+-        oauthProviderId: item.oauthProviderId,
+-        providerId: item.presetId,
+-      });
+-      if (!attemptKey) {
+-        return;
+-      }
+-      if (
+-        options.userTransition !== true &&
+-        codingPlanStatusSyncAttemptsRef.current.has(attemptKey)
+-      ) {
+-        return;
+-      }
+-      codingPlanStatusSyncAttemptsRef.current.set(attemptKey, "inFlight");
+-      setCodingPlanStatusSyncProviderId(item.presetId);
+-      try {
+-        await refreshProviderPanelAfterAuthChange({
+-          refreshPlanSnapshots: options.refreshPlanSnapshots,
+-        });
+-        codingPlanStatusSyncAttemptsRef.current.set(attemptKey, "succeeded");
+-      } catch (error) {
+-        // 失败状态必须显式保留。自动水合看到 failed 后不循环重试，
+-        // 用户再次点击同一连接项时则可以按 failed 状态主动恢复。
+-        codingPlanStatusSyncAttemptsRef.current.set(attemptKey, "failed");
+-        throw error;
+-      } finally {
+-        setCodingPlanStatusSyncProviderId((current) =>
+-          current === item.presetId ? null : current,
+-        );
+-      }
+-    },
+-    [activeOAuthProvider, refreshProviderPanelAfterAuthChange],
+-  );
+-
+-  useEffect(() => {
+-    let disposed = false;
+-
+-    void refreshCodingPlanPurchaseTokenState({
+-      shouldApply: () => !disposed,
+-    });
+-
+-    return () => {
+-      disposed = true;
+-    };
+-  }, [providerConnectionRefreshSignal, refreshCodingPlanPurchaseTokenState]);
+-
+-  const presetProviders = useMemo(
+-    () =>
+-      PRESET_PROVIDER_SPECS.filter((preset) =>
+-        shouldShowPresetProviderForActiveOAuth(preset.id, effectiveProviderFamilyDomain),
+-      ).map((preset) => ({
+-        ...preset,
+-        provider: modelProviders.find((provider) => provider.providerId === preset.id) ?? null,
+-      })),
+-    [effectiveProviderFamilyDomain, modelProviders],
++    [],
+   );
+ 
+-  useEffect(() => {
+-    if (!presetSubscriptionProviderId) {
+-      return;
+-    }
+-
+-    const accountEntitled = Boolean(
+-      resolveEntitledAccountProviderAccess(providerSettingsView, presetSubscriptionProviderId),
+-    );
+-    if (accountEntitled) {
+-      if (presetSubscriptionCompletionProviderIdRef.current === presetSubscriptionProviderId) {
+-        return;
+-      }
+-
+-      presetSubscriptionCompletionProviderIdRef.current = presetSubscriptionProviderId;
+-      void (async () => {
+-        void reportPresetSubscriptionSuccess({
+-          platform,
+-          presetId: presetSubscriptionProviderId,
+-        });
+-        try {
+-          // 连接/重新授权成功后 provider apiKey 会先于权益接口结果落盘。
+-          // pending 必须等本轮权益刷新完成后再清，否则 Plan Card 会短暂显示旧套餐态或非 loading 状态。
+-          await refreshProviderPanelAfterAuthChange({});
+-        } finally {
+-          presetSubscriptionCompletionProviderIdRef.current = null;
+-          setCodingPlanStatusSyncProviderId((current) =>
+-            current === presetSubscriptionProviderId ? null : current,
+-          );
+-          setPresetSubscriptionProviderId((current) =>
+-            current === presetSubscriptionProviderId ? null : current,
+-          );
+-        }
+-      })();
+-    }
+-  }, [
+-    platform,
+-    presetSubscriptionProviderId,
+-    providerSettingsView,
+-    refreshProviderPanelAfterAuthChange,
+-  ]);
+-
+-  useEffect(() => {
+-    if (!presetSubscriptionProviderId) {
+-      return;
+-    }
+-
+-    const timeoutId = setTimeout(() => {
+-      setCodingPlanStatusSyncProviderId((current) =>
+-        current === presetSubscriptionProviderId ? null : current,
+-      );
+-      setPresetSubscriptionProviderId((current) => {
+-        if (current !== presetSubscriptionProviderId) {
+-          return current;
+-        }
+-        return null;
+-      });
+-    }, PRESET_SUBSCRIPTION_TIMEOUT_MS);
+-
+-    return () => {
+-      clearTimeout(timeoutId);
+-    };
+-  }, [presetSubscriptionProviderId]);
+-
+-  const { navigationGroups, navigationItems, selectedNavItem, navigationUnavailable } =
+-    useModelProviderNavigation({
+-      presetProviders,
+-      modelProviders,
+-      entitledAccountProviderIds,
+-      modelProvidersLoading: loading,
+-      displayOrder,
+-      codingPlanEntitlements,
+-      subscribedTeamProducts,
+-      providerFamilyDomain: effectiveProviderFamilyDomain,
+-      connectionSelections: effectiveConnectionSelections,
+-      pendingConnectionSelections,
+-      showPurchasedTeamPlanFallback,
+-      familyConnectionSettingsLoading: sharedSettingsLoading && sharedSettings === null,
+-      familyConnectionSettingsFailed,
+-      selectedNodeKey,
+-      setSelectedNodeKey,
+-      intl,
+-    });
+-  const selectedPlanAccessKey =
+-    selectedNavItem?.type === "codingPlan" || selectedNavItem?.type === "teamPlan"
+-      ? selectedNavItem.key
+-      : null;
+-  // 套餐卡每次被用户打开时按需校正；共享 freshness window 保证一分钟内切换返回
+-  // 不会放大 quota 请求。权益展示更新不等于用户重新打开套餐。
+-  useCodingPlanAccessRefresh({
+-    refresh: refreshCodingPlanEntitlements,
+-    selectedPlanKey: selectedPlanAccessKey,
+-  });
+-
+-  useEffect(() => {
+-    if (selectedNavItem?.type !== "codingPlan" && selectedNavItem?.type !== "teamPlan") {
+-      return;
+-    }
+-    if (
+-      activeOAuthProvider !== selectedNavItem.oauthProviderId ||
+-      presetSubscriptionProviderId === selectedNavItem.presetId ||
+-      codingPlanDisconnectProviderId === selectedNavItem.presetId
+-    ) {
+-      return;
+-    }
+-
+-    const accountEntitled = selectedNavItem.accountEntitled === true;
+-    if (accountEntitled) {
+-      return;
++  const handleCreateProvider = async (
++    input: { templateId?: string; providerName?: string; initialConfig?: ProviderConfigObject },
++    connect = false,
++  ) => {
++    setCreatingProvider(true);
++    try {
++      const created = await createPersonalProvider({ ...input, locale });
++      setConnectProviderId(connect ? created.providerId : undefined);
++      setTarget({ providerId: created.providerId });
++      setTemplatePickerOpen(false);
++    } finally {
++      setCreatingProvider(false);
+     }
+-
+-    // 这是首次水合校正，不是由详情 status 驱动的状态机。
+-    // 同一 provider/OAuth 组合只执行一次，checking 与最终状态来回切换不能重启刷新。
+-    void syncCodingPlanProviderOnce(selectedNavItem).catch((error) => {
+-      logger.warn("[ModelProviderSection] 自动同步 Coding Plan provider 失败", {
+-        providerId: selectedNavItem.presetId,
+-        error,
+-      });
+-    });
+-  }, [
+-    activeOAuthProvider,
+-    codingPlanDisconnectProviderId,
+-    presetSubscriptionProviderId,
+-    selectedNavItem,
+-    syncCodingPlanProviderOnce,
+-  ]);
+-
++  };
+   const handleSave = useCallback(
+-    async (config: ProviderSettingsFormProvider) => {
+-      try {
+-        const previousProvider = modelProviders.find(
+-          (provider) => provider.providerId === config.providerId,
+-        );
+-        // 配置不可执行不是用户退出账号；保存不得顺带清空账号域，否则套餐再选也无法就绪。
+-        await saveProvider(config);
+-        if (shouldRefreshCodingPlanEntitlementsAfterSave(previousProvider, config)) {
+-          refreshCodingPlanEntitlements();
+-        }
+-      } catch (error) {
+-        logger.error("[ModelProviderSection] 保存模型供应商失败", error);
+-        throw error;
+-      }
++    async (provider: ProviderSettingsFormProvider) => {
++      await saveProvider(provider);
+     },
+-    [modelProviders, refreshCodingPlanEntitlements, saveProvider],
++    [saveProvider],
+   );
+-
+   const handleDelete = useCallback(
+     async (provider: ProviderSettingsFormProvider) => {
+-      await confirmAndDeleteModelProvider({
+-        provider,
+-        confirmDialog,
+-        intl,
+-        deleteProvider,
+-      });
+-    },
+-    [confirmDialog, deleteProvider, intl],
+-  );
+-
+-  const handleOpenApiKeyUrl = useCallback(
+-    (url: string) => {
+-      const normalizedUrl = url.trim();
+-      if (!normalizedUrl) {
+-        return;
+-      }
+-      platform.openExternal(normalizedUrl);
+-    },
+-    [platform],
+-  );
+-
+-  const handleCodingPlanLogin = useCallback(
+-    (
+-      presetId: BuiltinModelProviderId,
+-      providerId: OAuthProviderId,
+-      providerName: string,
+-      status: CodingPlanStatus,
+-      options?: CodingPlanLoginOptions,
+-    ) => {
+-      setPresetSubscriptionProviderId(presetId);
+-      setCodingPlanStatusSyncProviderId(presetId);
+-      logger.info("[ModelProviderSection] 请求通过统一登录入口登录并连接 Coding Plan", {
+-        presetId,
+-        providerId,
+-        providerName,
+-        status,
+-        forceOAuth: options?.forceOAuth === true,
+-      });
+-      if (activeOAuthProvider === providerId && options?.forceOAuth !== true) {
+-        void refreshProviderPanelAfterAuthChange({}).finally(() => {
+-          setPresetSubscriptionProviderId((current) => (current === presetId ? null : current));
+-          setCodingPlanStatusSyncProviderId((current) => (current === presetId ? null : current));
+-        });
+-        return;
+-      }
+-      // ZAI/BigModel provider 不再有独立 connection，Connect 必须切换 App active provider。
+-      return requestLoginEntry(providerId);
+-    },
+-    [activeOAuthProvider, refreshProviderPanelAfterAuthChange, requestLoginEntry],
+-  );
+-
+-  const handleCodingPlanDisconnect = useCallback(
+-    async (presetId: BuiltinModelProviderId, providerId: OAuthProviderId, providerName: string) => {
+-      if (providerId !== BIGMODEL_PROVIDER_ID && providerId !== ZAI_PROVIDER_ID) {
+-        return;
+-      }
+-
+-      setCodingPlanDisconnectProviderId(presetId);
+-      setCodingPlanStatusSyncProviderId(presetId);
+-      try {
+-        logger.info("[ModelProviderSection] 请求解绑 Coding Plan provider", {
+-          presetId,
+-          providerId,
+-          providerName,
+-        });
+-        // ZAI/BigModel provider 已恢复为 App 登录镜像。
+-        // 这里的 Unlink 必须走 provider logout，退出当前 active provider 并触发另一组 provider 恢复 Connect。
+-        const nextProviderFamilyDomain = resolveLogoutProviderFamilyDomain({
+-          currentDomain: sharedSettings?.providerFamilyDomain,
+-        });
+-        await oauthService.logout(providerId);
+-        // Coding Plan 官网 webview 使用独立持久 partition，provider Unlink 也属于账号边界。
+-        if (typeof platform.executeDesktopCommand === "function") {
+-          await platform.executeDesktopCommand(DesktopCommandIds.ClearCodingPlanWebviewStorage);
+-        }
+-        await updateSharedSettings({
+-          providerFamilyDomain: (nextProviderFamilyDomain ?? "") as never,
+-          providerFamilyDomainUpdatedAt: Date.now(),
+-          providerFamilyDomainMigrated: true,
+-        });
+-        await refreshCodingPlanPurchaseTokenState({ clearUserWhenLoggedOut: true });
+-        await refresh();
+-        // 解绑后 batch-preview 的订阅/鉴权态已经失效，套餐卡片内部缓存必须刷新，
+-        // 否则按钮会继续沿用解绑前的 purchased 或 authenticated 状态。
+-        refreshCodingPlanProducts();
+-        // unlink 前的 React 闭包里仍可能保留旧 Start/Coding provider key。
+-        // 解绑按钮只等待本地 logout 和 provider 列表刷新；权益 hook 会在新 provider 快照落地后清空旧状态。
+-      } catch (error) {
+-        logger.error("[ModelProviderSection] 解绑 Coding Plan provider 失败", {
+-          presetId,
+-          providerId,
+-          providerName,
+-          error,
+-        });
+-      } finally {
+-        setCodingPlanDisconnectProviderId((current) => (current === presetId ? null : current));
+-        setCodingPlanStatusSyncProviderId((current) => (current === presetId ? null : current));
+-      }
+-    },
+-    [
+-      oauthService,
+-      platform,
+-      updateSharedSettings,
+-      sharedSettings?.providerFamilyDomain,
+-      modelSelectionService,
+-      refresh,
+-      refreshCodingPlanEntitlements,
+-      refreshCodingPlanProducts,
+-      refreshCodingPlanPurchaseTokenState,
+-    ],
+-  );
+-
+-  const persistProviderFamilyModeForNavItem = useCallback(
+-    async (item: (typeof navigationItems)[number]) => {
+-      if (item.type !== "preset" && item.type !== "codingPlan" && item.type !== "teamPlan") {
+-        return;
+-      }
+-      const familySpec = resolveModelProviderFamilySpecByProviderId(item.presetId);
+-      if (!familySpec) {
+-        return;
+-      }
+-      const selection = resolveConnectionSelectionForNavItem(item);
+-      if (!selection) return;
+-      const selectionUnchanged =
+-        JSON.stringify(connectionSelections[familySpec.id]) === JSON.stringify(selection);
+-      // 同套餐仍可能缺少持久账号域；用户重选必须补齐，不能用页面展示兜底值去重。
+-      const modeUnchanged = sharedSettings?.providerFamilyDomain === familySpec.id;
+-      const selectedKeyUnchanged = selectionUnchanged;
+-      const planSyncAttemptKey =
+-        item.type === "codingPlan" || item.type === "teamPlan"
+-          ? resolveCodingPlanProviderSyncAttemptKey({
+-              activeOAuthProvider,
+-              oauthProviderId: item.oauthProviderId,
+-              providerId: item.presetId,
+-            })
+-          : null;
+-      if (modeUnchanged && selectedKeyUnchanged) {
+-        const isPlanItem = item.type === "codingPlan" || item.type === "teamPlan";
+-        const planSyncAttemptStatus = planSyncAttemptKey
+-          ? codingPlanStatusSyncAttemptsRef.current.get(planSyncAttemptKey)
+-          : undefined;
+-        if (
+-          isPlanItem &&
+-          shouldRetryUnchangedCodingPlanProviderSync({
+-            attemptKey: planSyncAttemptKey,
+-            attemptStatus: planSyncAttemptStatus,
+-            modeUnchanged,
+-            selectedKeyUnchanged,
+-          })
+-        ) {
+-          try {
+-            await syncCodingPlanProviderOnce(item, {
+-              userTransition: true,
+-              refreshPlanSnapshots: false,
+-            });
+-          } catch (error) {
+-            logger.warn("[ModelProviderSection] 重试同步 Coding Plan provider 失败", {
+-              providerId: item.presetId,
+-              error,
+-            });
+-          }
+-        }
+-        return;
+-      }
+-      setPendingConnectionSelections((current) => ({
+-        ...current,
+-        [familySpec.id]: selection,
+-      }));
+-      if (planSyncAttemptKey) {
+-        // pending state 会先触发渲染；先占位，避免水合 effect 在设置落盘前重复发起同步。
+-        codingPlanStatusSyncAttemptsRef.current.set(planSyncAttemptKey, "inFlight");
+-      }
+-      try {
+-        await updateSharedSettings({
+-          providerFamilyDomain: familySpec.id,
+-          providerFamilyDomainUpdatedAt: Date.now(),
+-          providerFamilyDomainMigrated: true,
+-          providerFamilyConnectionSelections: {
+-            ...connectionSelections,
+-            [familySpec.id]: selection,
+-          },
+-        });
+-        if (item.type === "codingPlan" || item.type === "teamPlan") {
+-          // 用户动作拥有连接方式 transition：设置落盘后只刷新一次目标 Plan provider。
+-          await syncCodingPlanProviderOnce(item, {
+-            userTransition: true,
+-            refreshPlanSnapshots: false,
+-          });
+-        }
+-      } catch (error) {
+-        if (planSyncAttemptKey) {
+-          // 设置落盘或后续 provider 同步失败时必须允许同项重试。
+-          codingPlanStatusSyncAttemptsRef.current.set(planSyncAttemptKey, "failed");
+-        }
+-        logger.warn("[ModelProviderSection] 保存模型供应商连接方式失败", {
+-          familyId: familySpec.id,
+-          error,
+-        });
+-        setPendingConnectionSelections((current) =>
+-          clearPendingProviderFamilyConnectionSelection(current, familySpec.id, selection),
+-        );
+-      }
+-    },
+-    [
+-      activeOAuthProvider,
+-      connectionSelections,
+-      sharedSettings?.providerFamilyDomain,
+-      syncCodingPlanProviderOnce,
+-      updateSharedSettings,
+-    ],
+-  );
+-
+-  const handleSelectNavItem = useCallback(
+-    (item: (typeof navigationItems)[number]) => {
+-      setInvalidProviderTarget(false);
+-      setSelectedNodeKey(resolveModelProviderSideSelectionKey(item));
+-      setTemplatePickerOpen(false);
+-      void persistProviderFamilyModeForNavItem(item);
++      await confirmAndDeleteModelProvider({ provider, confirmDialog, intl, deleteProvider });
+     },
+-    [persistProviderFamilyModeForNavItem],
++    [confirmDialog, intl, deleteProvider],
+   );
+-
+-  const handleCreateProvider = useCallback(
+-    async (
+-      input: { templateId?: string; providerName?: string; initialConfig?: ProviderConfigObject },
+-      connect = false,
+-    ) => {
+-      setCreatingProvider(true);
+-      try {
+-        const created = await createPersonalProvider({ ...input, locale });
+-        setPendingCreatedProviderId(created.providerId);
+-        setConnectProviderId(connect ? created.providerId : undefined);
+-        setSelectedNodeKey(createCustomProviderNodeKey(created.providerId));
+-        setTemplatePickerOpen(false);
+-      } catch (error) {
+-        setPendingCreatedProviderId(null);
+-        throw error;
+-      } finally {
+-        setCreatingProvider(false);
+-      }
+-    },
+-    [createPersonalProvider, locale],
+-  );
+-
+   const handleReorderProviderIds = useCallback(
+     async (orderedGroupProviderIds: string[]) => {
+-      const groupProviderIdSet = new Set(orderedGroupProviderIds);
+-      const currentProviderIds = sortModelProvidersForDisplay(modelProviders, displayOrder).map(
++      const groupIds = new Set(orderedGroupProviderIds);
++      const currentIds = sortModelProvidersForDisplay(modelProviders, displayOrder).map(
+         (provider) => provider.providerId,
+       );
+-      const insertionIndex = currentProviderIds.findIndex((providerId) =>
+-        groupProviderIdSet.has(providerId),
+-      );
+-      if (insertionIndex < 0) {
+-        return;
+-      }
+-      const nextProviderIds = currentProviderIds.filter(
+-        (providerId) => !groupProviderIdSet.has(providerId),
+-      );
+-      nextProviderIds.splice(insertionIndex, 0, ...orderedGroupProviderIds);
+-      await saveDisplayOrder({
+-        providerIds: nextProviderIds,
+-      });
++      const insertionIndex = currentIds.findIndex((id) => groupIds.has(id));
++      if (insertionIndex < 0) return;
++      const nextIds = currentIds.filter((id) => !groupIds.has(id));
++      nextIds.splice(insertionIndex, 0, ...orderedGroupProviderIds);
++      await saveDisplayOrder({ providerIds: nextIds });
+     },
+     [displayOrder, modelProviders, saveDisplayOrder],
+   );
+ 
+-  const handleTestModel = useCallback(
+-    async (providerId: string, modelId: string): Promise<ModelConnectivityResult> => {
+-      return testModelConnectivity(providerId, modelId);
+-    },
+-    [testModelConnectivity],
+-  );
+-
+-  // 首屏慢网时之前直接 return null，导致整块模型供应商页空白，
+-  // 已有的左侧分组 loading 和刷新按钮 loading 都没有机会渲染。
+-  // 这里改为始终先渲染布局壳子，再按分组展示 loading，避免用户误以为页面坏了。
+-  const presetLoading = loading || modelProvidersRefreshing;
+-  const customLoading = loading || modelProvidersRefreshing;
+-
+   if (loadError) {
+     return (
+       <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-ui-base">
+-        <p className="text-destructive">{loadError.message}</p>
++        <p role="alert" className="text-destructive">
++          {intl.formatMessage({ id: "settings.modelProvider.loadFailed" })}
++        </p>
+         <Button type="button" variant="outline" onClick={reload}>
+           {intl.formatMessage({ id: "common.retry" })}
+         </Button>
+       </div>
+     );
+   }
+-
+   return (
+     <ModelProviderSectionLayout
+       description={intl.formatMessage({ id: "settings.modelProviderDescription" })}
+       refreshLabel={intl.formatMessage({ id: "settings.modelProvider.refresh" })}
+       loadingLabel={intl.formatMessage({ id: "common.loading" })}
+-      presetLoading={presetLoading}
+-      customLoading={customLoading}
++      presetLoading={loading || refreshing}
++      customLoading={loading || refreshing}
+       onRefresh={() => {
+-        void refreshModelProviderSection({
+-          refresh,
+-          // 手动刷新设置页时也要同时刷新 Z.ai / BigModel Team Plan 快照；
+-          // 原来只刷新 BigModel，Z.ai Team Plan 购买或订阅变化后会继续显示旧项目。
+-          refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
+-        });
+-        refreshCodingPlanEntitlements();
++        void refresh();
+       }}
+       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
+-      onAddProvider={() => setTemplatePickerOpen(true)}
++      onAddProvider={() => {
++        setTarget(undefined);
++        setTemplatePickerOpen(true);
++      }}
+       navigationGroups={navigationGroups}
+       selectedNodeKey={selectedNodeKey}
+-      onSelectNavItem={handleSelectNavItem}
++      onSelectNavItem={(item) => {
++        setTarget(undefined);
++        setSelectedNodeKey(item.key);
++        setTemplatePickerOpen(false);
++      }}
+       onReorderProviderIds={handleReorderProviderIds}
+       reorderableProviderIds={reorderableProviderIds}
+     >
+-      {(invalidProviderTarget || navigationUnavailable) && !templatePickerOpen ? (
++      {refreshError ? (
+         <p role="alert" className="mb-3 text-ui-base text-destructive">
+-          {intl.formatMessage({
+-            id: invalidProviderTarget
+-              ? "settings.modelProvider.navigationUnavailable"
+-              : "settings.modelProvider.connectionUnavailable",
+-          })}
++          {intl.formatMessage({ id: "settings.modelProvider.loadFailed" })}
+         </p>
+       ) : null}
+-      {templatePickerOpen ? (
++      {target && !targetExists && !loading && !templatePickerOpen ? (
++        <p role="alert" className="mb-3 text-ui-base text-destructive">
++          {intl.formatMessage({ id: "settings.modelProvider.navigationUnavailable" })}
++        </p>
++      ) : null}
++      {templatePickerOpen || (!loading && !selectedNavItem) ? (
+         <ProviderTemplatePicker
+           templates={providerTemplates}
+           creating={creatingProvider}
+           onBack={() => setTemplatePickerOpen(false)}
+-          onCreateFromTemplate={(templateId, initialConfig, connect) => {
+-            return handleCreateProvider({ templateId, initialConfig }, connect);
+-          }}
+-          onCreateCustom={(label, initialConfig) => {
+-            return handleCreateProvider({ providerName: label, initialConfig });
+-          }}
++          onCreateFromTemplate={(templateId, initialConfig, connect) =>
++            handleCreateProvider({ templateId, initialConfig }, connect)
++          }
++          onCreateCustom={(providerName, initialConfig) =>
++            handleCreateProvider({ providerName, initialConfig })
++          }
+         />
+       ) : (
+         <ModelProviderSectionDetail
+           connectProviderId={connectProviderId}
+           onConnectConsumed={() => setConnectProviderId(undefined)}
+-          connectionSelections={effectiveConnectionSelections}
+           providerSettingsView={providerSettingsView}
+           selectedNavItem={selectedNavItem}
+-          navigationItems={navigationItems}
+-          connectionSettingsFailed={familyConnectionSettingsFailed}
+-          startPlanSubscriptionCount={(() => {
+-            const providerId =
+-              selectedNavItem && "presetId" in selectedNavItem ? selectedNavItem.presetId : null;
+-            const family = providerId
+-              ? resolveModelProviderFamilySpecByProviderId(providerId)
+-              : null;
+-            const entitlement = family ? codingPlanEntitlements[family.startPlanProviderId] : null;
+-            // 只展示当前 Family 已查询到的权益，不用当前是否选中 Start 代替拥有数量。
+-            return entitlement?.error
+-              ? 0
+-              : (entitlement?.snapshot?.subscription?.details.length ?? 0);
+-          })()}
+-          presetLoading={presetLoading}
+-          codingPlanAuthError={oauthError}
+-          codingPlanPurchaseTokenAuthenticatedByProviderId={
+-            codingPlanPurchaseTokenAuthenticatedByProviderId
+-          }
+-          presetSubscriptionProviderId={presetSubscriptionProviderId}
+-          codingPlanStatusSyncProviderId={codingPlanStatusSyncProviderId}
+-          codingPlanDisconnectProviderId={codingPlanDisconnectProviderId}
+           onSave={handleSave}
+           onAddPersonalModel={addPersonalModel}
+           onSavePersonalModelDraft={savePersonalModelDraft}
+           onSetPersonalModelEnabled={setPersonalModelEnabled}
+           onDeletePersonalModel={deletePersonalModel}
+           onDelete={handleDelete}
+-          // Provider 的左栏排序权限被误复用成模型排序门禁，导致 Built-in / Account
+-          // Provider 的 Effective 模型无法写入 Personal modelOrder。模型调序独立于成员来源。
+           onReorderProviderModels={reorderProviderModels}
+-          onTestModel={handleTestModel}
+-          onCodingPlanLogin={handleCodingPlanLogin}
+-          onRetryCodingPlan={() => {
+-            // 取 Key 失败不等于登录失效；沿用 Host 手动刷新，不清除 OAuth 或重新登录。
+-            logger.info("[ModelProviderSection] 重试获取套餐状态");
+-            return refresh().then(() =>
+-              refreshCodingPlanEntitlements({ force: true, reason: "manual" }),
+-            );
+-          }}
+-          onCodingPlanDisconnect={handleCodingPlanDisconnect}
+-          onOpenApiKeyUrl={handleOpenApiKeyUrl}
+-          onSelectNavItem={handleSelectNavItem}
+-          onOpenBigModelRegistration={() => {
+-            // 未注册提示来自一次失败的 OAuth checking 状态；跳转注册后要恢复普通状态，避免提示卡住。
+-            setOAuthError(null);
+-            setPresetSubscriptionProviderId((current) =>
+-              current === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan ? null : current,
+-            );
+-            platform.openExternal(BIGMODEL_REGISTRATION_URL);
+-          }}
+-          onCodingPlanPurchaseComplete={async () => {
+-            await refreshProviderPanelAfterAuthChange({ refreshReason: "purchase" });
++          onTestModel={testModelConnectivity}
++          onOpenApiKeyUrl={(url) => {
++            void platform.openExternal(url);
+           }}
+         />
+       )}
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index fb8f682..f7db17f 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -1,16 +1,10 @@
+-import type {
+-  BuiltinModelProviderId,
+-  ProviderFamilyConnectionSelectionSettings,
+-  ModelConnectivityResult,
+-  OAuthProviderId,
+-} from "@zcode/shared";
++import type { ModelConnectivityResult } from "@zcode/shared";
+ import {
+   getProviderFormApiKeyManagementUrl,
+   type ProviderSettingsFormProvider,
+ } from "@/lib/providerSettingsFormTypes.js";
+-import type { CodingPlanStatus, ModelProviderNavItem } from "./constants.js";
++import type { ModelProviderNavItem } from "./constants.js";
+ import { InlineEditableProviderCard } from "./InlineEditableProviderCard.js";
+-import type { CodingPlanLoginOptions } from "./codingPlanPricingCards.js";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import type { SavePersonalModelDraftInput } from "@zcode/provider";
+ export function ModelProviderSectionDetail({
+@@ -29,18 +23,6 @@ export function ModelProviderSectionDetail({
+   onConnectConsumed,
+ }: {
+   selectedNavItem: ModelProviderNavItem | null;
+-  navigationItems?: ModelProviderNavItem[];
+-  connectionSettingsFailed?: boolean;
+-  connectionSelections?: ProviderFamilyConnectionSelectionSettings;
+-  startPlanSubscriptionCount?: number;
+-  presetLoading: boolean;
+-  codingPlanPurchaseTokenAuthenticatedByProviderId: Partial<
+-    Record<BuiltinModelProviderId, boolean>
+-  >;
+-  codingPlanAuthError?: string | null;
+-  presetSubscriptionProviderId: BuiltinModelProviderId | null;
+-  codingPlanStatusSyncProviderId: BuiltinModelProviderId | null;
+-  codingPlanDisconnectProviderId: BuiltinModelProviderId | null;
+   onSave: (config: ProviderSettingsFormProvider) => void | Promise<void>;
+   onAddPersonalModel?: (
+     providerId: string,
+@@ -58,23 +40,7 @@ export function ModelProviderSectionDetail({
+   onDelete: (provider: ProviderSettingsFormProvider) => Promise<void>;
+   onReorderProviderModels?: (providerId: string, modelIds: string[]) => Promise<void>;
+   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+-  onRetryCodingPlan?: () => void | Promise<void>;
+-  onCodingPlanLogin: (
+-    presetId: BuiltinModelProviderId,
+-    providerId: OAuthProviderId,
+-    providerName: string,
+-    status: CodingPlanStatus,
+-    options?: CodingPlanLoginOptions,
+-  ) => number | void;
+-  onCodingPlanDisconnect: (
+-    presetId: BuiltinModelProviderId,
+-    providerId: OAuthProviderId,
+-    providerName: string,
+-  ) => void;
+   onOpenApiKeyUrl: (url: string) => void;
+-  onOpenBigModelRegistration: () => void;
+-  onCodingPlanPurchaseComplete: () => void | Promise<void>;
+-  onSelectNavItem?: (item: ModelProviderNavItem) => void;
+   providerSettingsView?: ProviderSettingsView | null;
+   connectProviderId?: string;
+   onConnectConsumed?: () => void;
+@@ -95,6 +61,7 @@ export function ModelProviderSectionDetail({
+   return (
+     // 仅展示预设模板声明的入口，不根据地址猜测自定义 Provider 的 Key 控制台。
+     <InlineEditableProviderCard
++      key={customProvider.providerId}
+       provider={customProvider}
+       connectOnMount={connectProviderId === customProvider.providerId}
+       onConnectConsumed={onConnectConsumed}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 72f8394..120d5ee 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -28,11 +28,11 @@ import {
+ } from "./ProviderCardSections.js";
+ import { resolveModelProviderDisplayName } from "./constants.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+-import { useIdleTrigger } from "./useIdleTrigger.js";
++import { Button } from "@/components/ui/button.js";
++import { providerSetupConfig } from "./providerSetupDraft.js";
+ import { useOptimisticReorder } from "./useOptimisticReorder.js";
+ 
+ type ProviderNameEditKeyAction = "commit" | "cancel";
+-type ProviderDraftCleanupAction = "commit" | "skip-delete";
+ interface ProviderSaveNotificationTarget {
+   modelId?: string;
+   operation?: "delete";
+@@ -47,53 +47,6 @@ function shouldApplyProviderSaveCompletion(
+   return currentRevision === completedRevision;
+ }
+ 
+-function resolveProviderDraftCleanupAction({
+-  deleteRequested,
+-}: {
+-  deleteRequested: boolean;
+-}): ProviderDraftCleanupAction {
+-  return deleteRequested ? "skip-delete" : "commit";
+-}
+-
+-function isPromiseLike(value: unknown): value is PromiseLike<void> {
+-  return (
+-    typeof value === "object" &&
+-    value !== null &&
+-    "then" in value &&
+-    typeof (value as { then?: unknown }).then === "function"
+-  );
+-}
+-
+-function runProviderDeleteWithDraftCleanupGuard({
+-  deleteRequestedRef,
+-  onDelete,
+-}: {
+-  deleteRequestedRef: { current: boolean };
+-  onDelete?: () => void | Promise<void>;
+-}) {
+-  if (!onDelete) {
+-    return;
+-  }
+-
+-  deleteRequestedRef.current = true;
+-  try {
+-    const result = onDelete();
+-    if (isPromiseLike(result)) {
+-      void Promise.resolve(result)
+-        .catch(() => undefined)
+-        .finally(() => {
+-          deleteRequestedRef.current = false;
+-        });
+-      return;
+-    }
+-  } catch (error) {
+-    deleteRequestedRef.current = false;
+-    throw error;
+-  }
+-
+-  deleteRequestedRef.current = false;
+-}
+-
+ function resolveProviderNameEditKeyAction(event: {
+   key: string;
+   compositionActive?: boolean;
+@@ -206,6 +159,8 @@ export function InlineEditableProviderCard({
+     isApiKeyAccess(provider.config.access) && provider.config.access.autoSwitchCredentials === true,
+   );
+   const [savingEnabled, setSavingEnabled] = useState(false);
++  const [savingConnection, setSavingConnection] = useState(false);
++  const [connectionInvalid, setConnectionInvalid] = useState(false);
+   const authoritativeModels = useMemo(
+     () => resolveVisibleProviderModelsForEdit(provider),
+     [provider],
+@@ -220,8 +175,6 @@ export function InlineEditableProviderCard({
+   const nameCompositionActiveRef = useRef(false);
+   const nameEditProviderIdRef = useRef<string | null>(null);
+   const technicalInputCompositionActiveRef = useRef(false);
+-  const deleteRequestedRef = useRef(false);
+-  const selfSaveRequestedRef = useRef(false);
+   const providerIdRef = useRef(provider.providerId);
+   const dirtyProviderFieldsRef = useRef(new Set<keyof ProviderDraftValues>());
+   const draftRevisionRef = useRef(0);
+@@ -239,16 +192,15 @@ export function InlineEditableProviderCard({
+       JSON.stringify(provider.config.access),
+     ],
+   );
+-  const discoveryBlocked = modelDiscoveryBlockReason(
+-    provider.config,
++  const connectionDirty =
+     apiFormat !== (provider.config.api?.type ?? "anthropic-messages") ||
+-      baseUrlValue !== (provider.config.api?.baseUrl ?? "") ||
+-      apiKeyValue !== getProviderFormApiKey(provider) ||
+-      (isApiKeyAccess(provider.config.access) &&
+-        (JSON.stringify(additionalApiKeys) !==
+-          JSON.stringify(provider.config.access.additionalApiKeys ?? []) ||
+-          autoSwitchCredentials !== (provider.config.access.autoSwitchCredentials === true))),
+-  );
++    baseUrlValue !== (provider.config.api?.baseUrl ?? "") ||
++    apiKeyValue !== getProviderFormApiKey(provider) ||
++    (isApiKeyAccess(provider.config.access) &&
++      (JSON.stringify(additionalApiKeys) !==
++        JSON.stringify(provider.config.access.additionalApiKeys ?? []) ||
++        autoSwitchCredentials !== (provider.config.access.autoSwitchCredentials === true)));
++  const discoveryBlocked = modelDiscoveryBlockReason(provider.config, connectionDirty);
+   const providerDisplayName = resolveModelProviderDisplayName(provider);
+   const saveNotificationRef = useRef({
+     providerId: provider.providerId,
+@@ -324,14 +276,12 @@ export function InlineEditableProviderCard({
+ 
+   const markDraftDirty = useCallback((field: keyof ProviderDraftValues) => {
+     dirtyProviderFieldsRef.current.add(field);
+-    selfSaveRequestedRef.current = false;
+     draftRevisionRef.current += 1;
+     saveNotificationRef.current.dismissFeedback(`provider-save:${providerIdRef.current}`);
+   }, []);
+ 
+   const runSaveOperation = useCallback(
+     async (operation: () => Promise<void>, target: ProviderSaveNotificationTarget = {}) => {
+-      selfSaveRequestedRef.current = true;
+       const revision = draftRevisionRef.current + 1;
+       draftRevisionRef.current = revision;
+       const notification = saveNotificationRef.current;
+@@ -384,7 +334,6 @@ export function InlineEditableProviderCard({
+           state: "success",
+         });
+       } catch (error) {
+-        selfSaveRequestedRef.current = false;
+         if (shouldApplyProviderSaveCompletion(draftRevisionRef.current, revision)) {
+           notification.showFeedback({
+             key: dedupeKey,
+@@ -414,8 +363,7 @@ export function InlineEditableProviderCard({
+         throw error;
+       }
+     },
+-    // runSaveOperation 参与卸载保存 effect 的依赖链。intl/provider 随渲染换引用时，
+-    // 回调也换引用会先执行旧 effect cleanup，进而再次保存并形成循环；通知身份通过 ref 读取。
++    // Notification identity follows the current provider without retaining an old render.
+     [],
+   );
+ 
+@@ -441,13 +389,13 @@ export function InlineEditableProviderCard({
+     [authoritativeModels, optimisticModelOrder.renderedIds],
+   );
+ 
+-  const saveProviderWithCleanupGuard = useCallback(
++  const saveProviderDraft = useCallback(
+     async (nextProvider: ProviderSettingsFormProvider, onFailure?: () => void): Promise<void> => {
+       const operation = async () => {
+         await onSave(nextProvider);
+       };
+-      await runSaveOperation(operation).catch((error) => {
+-        logger.warn("[ModelProviderSection] 自动保存 Provider 草稿失败", {
++      await runSaveOperation(operation, { draftOwnsRetry: true }).catch((error) => {
++        logger.warn("[ModelProviderSection] 保存 Provider 草稿失败", {
+           providerId: provider.providerId,
+           error,
+         });
+@@ -458,11 +406,31 @@ export function InlineEditableProviderCard({
+     [onSave, provider.providerId, runSaveOperation],
+   );
+ 
+-  const cancelIdleDraftSaveRef = useRef<() => void>(() => undefined);
++  const restoreConnectionDraft = useCallback((source: ProviderSettingsFormProvider) => {
++    const access = isApiKeyAccess(source.config.access) ? source.config.access : undefined;
++    const values = {
++      ...draftRef.current,
++      apiFormat: source.config.api?.type ?? ("anthropic-messages" as const),
++      baseUrlValue: source.config.api?.baseUrl ?? "",
++      apiKeyValue: getProviderFormApiKey(source),
++      additionalApiKeys: [...(access?.additionalApiKeys ?? [])],
++      autoSwitchCredentials: access?.autoSwitchCredentials === true,
++    };
++    draftRef.current = values;
++    for (const key of Object.keys(values) as (keyof ProviderDraftValues)[]) {
++      if (key !== "nameValue") dirtyProviderFieldsRef.current.delete(key);
++    }
++    lastSubmittedDraftSignatureRef.current = null;
++    setApiFormat(values.apiFormat);
++    setBaseUrlValue(values.baseUrlValue);
++    setApiKeyValue(values.apiKeyValue);
++    setAdditionalApiKeys(values.additionalApiKeys);
++    setAutoSwitchCredentials(values.autoSwitchCredentials);
++    setConnectionInvalid(false);
++  }, []);
+ 
+   const commitPendingDraft = useCallback(
+     async (reason: string, nameConfirmed = false): Promise<void> => {
+-      cancelIdleDraftSaveRef.current();
+       const nextProvider = resolvePendingProviderDraftSave({
+         provider,
+         draft: draftRef.current,
+@@ -472,6 +440,7 @@ export function InlineEditableProviderCard({
+       });
+       if (!nextProvider) {
+         await pendingDraftSaveRef.current;
++        restoreConnectionDraft(provider);
+         return;
+       }
+       const signature = JSON.stringify({
+@@ -484,14 +453,11 @@ export function InlineEditableProviderCard({
+       }
+       lastSubmittedDraftSignatureRef.current = signature;
+ 
+-      // Linux 下点击左侧供应商切换时，输入框 blur 与 Popover 关闭顺序不稳定，
+-      // 连接草稿可能在组件卸载前还没走到 blur 保存。这里在切换/卸载前兜底提交，
+-      // 避免“新供应商接口地址一切走就恢复为空”。
+-      logger.info("[ModelProviderSection] 切换前保存未提交的供应商草稿", {
++      logger.info("[ModelProviderSection] 保存供应商连接", {
+         providerId: provider.providerId,
+         reason,
+       });
+-      const pendingSave = saveProviderWithCleanupGuard(nextProvider, () => {
++      const pendingSave = saveProviderDraft(nextProvider, () => {
+         if (lastSubmittedDraftSignatureRef.current === signature) {
+           lastSubmittedDraftSignatureRef.current = null;
+         }
+@@ -499,68 +465,62 @@ export function InlineEditableProviderCard({
+       pendingDraftSaveRef.current = pendingSave;
+       try {
+         await pendingSave;
++        restoreConnectionDraft(nextProvider);
+       } finally {
+         if (pendingDraftSaveRef.current === pendingSave) pendingDraftSaveRef.current = null;
+       }
+     },
+-    [provider, readOnlyEndpoints, saveProviderWithCleanupGuard],
++    [provider, readOnlyEndpoints, saveProviderDraft, restoreConnectionDraft],
+   );
+ 
+-  const idleDraftSave = useIdleTrigger(() => {
+-    void commitPendingDraft("idle").catch(() => undefined);
+-  });
+-  cancelIdleDraftSaveRef.current = idleDraftSave.cancel;
+-  const scheduleIdleDraftSave = idleDraftSave.schedule;
+-  const cancelIdleDraftSave = idleDraftSave.cancel;
++  const saveConnection = async () => {
++    if (savingConnection) return;
++    const draft = draftRef.current;
++    // Creation and editing use the same endpoint/protocol/credential validation.
++    const config = providerSetupConfig(
++      {
++        config: provider.templateConfig ?? provider.config,
++      },
++      {
++        baseUrl: draft.baseUrlValue,
++        api: draft.apiFormat,
++        primary: draft.apiKeyValue,
++        additional: draft.additionalApiKeys ?? [],
++        automatic: draft.autoSwitchCredentials === true,
++      },
++      [
++        ...(provider.templateApiFormats ?? []),
++        ...(provider.config.api?.type ? [provider.config.api.type] : []),
++      ],
++    );
++    if (!config) {
++      setConnectionInvalid(true);
++      return;
++    }
++    setConnectionInvalid(false);
++    setSavingConnection(true);
++    try {
++      await commitPendingDraft("save-connection");
++    } catch {
++      // Keep the complete draft for correction/retry; the shared feedback owns the error.
++    } finally {
++      setSavingConnection(false);
++    }
++  };
+ 
+   const handleProviderEnabledChange = async (enabled: boolean) => {
+-    if (savingEnabled) return;
+-    cancelIdleDraftSave();
++    if (savingEnabled || savingConnection) return;
+     setSavingEnabled(true);
+-    // 同一次保存带上尚未提交的连接草稿，避免开关保存把刚输入的 Key 覆盖回旧值。
+-    const draft =
+-      resolvePendingProviderDraftSave({
+-        provider,
+-        draft: draftRef.current,
+-        readOnlyEndpoints,
+-        now: Date.now,
+-      }) ?? provider;
+     try {
+-      await saveProviderWithCleanupGuard({ ...draft, enabledUpdate: enabled });
++      // Toggling availability must never commit a half-edited endpoint or key.
++      await saveProviderDraft({ ...provider, enabledUpdate: enabled });
+     } catch {
+-      // 统一保存入口已记录错误及可重试反馈；不乐观覆盖权威 enabled。
++      // The authoritative enabled state is unchanged on failure.
+     } finally {
+       setSavingEnabled(false);
+     }
+   };
+ 
+-  useEffect(() => {
+-    return () => {
+-      cancelIdleDraftSave();
+-      const cleanupAction = resolveProviderDraftCleanupAction({
+-        deleteRequested: deleteRequestedRef.current,
+-      });
+-      if (cleanupAction === "skip-delete") {
+-        // 确认删除会触发详情卡片卸载；如果 cleanup 继续补保存草稿，
+-        // 被删除的 provider 会在 delete 后又被 save 重新创建。
+-        logger.info("[ModelProviderSection] 删除中的供应商跳过 cleanup 草稿保存", {
+-          providerId: provider.providerId,
+-        });
+-        return;
+-      }
+-      if (selfSaveRequestedRef.current) {
+-        selfSaveRequestedRef.current = false;
+-        // 模型编辑会先保存新的有效模型列表，随后父层乐观更新会触发本组件 cleanup。
+-        // 此时如果再用旧草稿补保存，会覆盖刚提交的模型列表。
+-        logger.info("[ModelProviderSection] 内部保存触发的刷新跳过 cleanup 草稿保存", {
+-          providerId: provider.providerId,
+-        });
+-        return;
+-      }
+-      void commitPendingDraft("cleanup").catch(() => undefined);
+-    };
+-  }, [cancelIdleDraftSave, commitPendingDraft, provider.providerId]);
+-
+   const handleNameValueChange = useCallback(
+     (value: string) => {
+       markDraftDirty("nameValue");
+@@ -575,9 +535,8 @@ export function InlineEditableProviderCard({
+       markDraftDirty("baseUrlValue");
+       draftRef.current.baseUrlValue = value;
+       setBaseUrlValue(value);
+-      scheduleIdleDraftSave();
+     },
+-    [markDraftDirty, scheduleIdleDraftSave],
++    [markDraftDirty],
+   );
+ 
+   const handleApiKeyValueChange = useCallback(
+@@ -585,9 +544,8 @@ export function InlineEditableProviderCard({
+       markDraftDirty("apiKeyValue");
+       draftRef.current.apiKeyValue = value;
+       setApiKeyValue(value);
+-      scheduleIdleDraftSave();
+     },
+-    [markDraftDirty, scheduleIdleDraftSave],
++    [markDraftDirty],
+   );
+ 
+   const handleNameBlur = useCallback(() => {
+@@ -598,13 +556,17 @@ export function InlineEditableProviderCard({
+     const trimmed = draftRef.current.nameValue.trim();
+     const currentLabel = getProviderFormLabel(provider);
+     if (trimmed && trimmed !== currentLabel) {
+-      void commitPendingDraft("name-blur", true).catch(() => undefined);
++      void saveProviderDraft({
++        ...provider,
++        providerName: trimmed,
++        providerNameUpdate: trimmed,
++      }).catch(() => undefined);
+     } else {
+       draftRef.current.nameValue = currentLabel;
+       setNameValue(currentLabel);
+       dirtyProviderFieldsRef.current.delete("nameValue");
+     }
+-  }, [commitPendingDraft, provider]);
++  }, [saveProviderDraft, provider]);
+ 
+   const handleNameKeyDown = useCallback(
+     (event: React.KeyboardEvent) => {
+@@ -637,25 +599,15 @@ export function InlineEditableProviderCard({
+     requestAnimationFrame(() => nameInputRef.current?.focus());
+   }, [provider.providerId]);
+ 
+-  const saveConnection = useCallback(
+-    () => void commitPendingDraft("connection-blur").catch(() => undefined),
+-    [commitPendingDraft],
+-  );
+-
+   const handleApiFormatChange = useCallback(
+     (value: ProviderApiType) => {
+       markDraftDirty("apiFormat");
+       draftRef.current.apiFormat = value;
+       setApiFormat(value);
+-      void commitPendingDraft("api-format-change").catch(() => undefined);
+     },
+-    [commitPendingDraft, markDraftDirty],
++    [markDraftDirty],
+   );
+ 
+-  const handleApiKeyBlur = useCallback(() => {
+-    void commitPendingDraft("api-key-blur").catch(() => undefined);
+-  }, [commitPendingDraft]);
+-
+   const handleTextCommitKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+     if (event.key !== "Enter") {
+       return;
+@@ -688,13 +640,16 @@ export function InlineEditableProviderCard({
+         });
+       }
+ 
+-      // 连接测试曾把 Renderer 模型快照交给外层重新保存，绕过了模型草稿的
+-      // revision 边界。现在只 flush 本卡片唯一的 Provider 草稿；Service 会等待同一 Provider
+-      // 操作队列和 Registry 刷新完成，再按正式 providerId/modelId 创建 Model。
+-      await commitPendingDraft("connectivity-test");
++      if (connectionDirty)
++        return {
++          success: false,
++          error: {
++            message: intl.formatMessage({ id: "settings.modelProvider.connection.saveFirst" }),
++          },
++        };
+       return onTestModel(provider.providerId, model);
+     },
+-    [commitPendingDraft, onTestModel, provider.providerId],
++    [connectionDirty, intl, onTestModel, provider.providerId],
+   );
+ 
+   const handleModelCommit = useCallback(
+@@ -807,10 +762,7 @@ export function InlineEditableProviderCard({
+   );
+ 
+   const handleDeleteProvider = useCallback(() => {
+-    runProviderDeleteWithDraftCleanupGuard({
+-      deleteRequestedRef,
+-      onDelete,
+-    });
++    if (onDelete) void Promise.resolve(onDelete()).catch(() => undefined);
+   }, [onDelete]);
+ 
+   const headerProviderName = providerDisplayName;
+@@ -827,7 +779,7 @@ export function InlineEditableProviderCard({
+           editingName={editingName}
+           nameValue={nameValue}
+           nameInputRef={nameInputRef}
+-          nameEditable={nameEditable}
++          nameEditable={nameEditable && !savingConnection}
+           onNameChange={handleNameValueChange}
+           onNameBlur={handleNameBlur}
+           onNameKeyDown={handleNameKeyDown}
+@@ -862,7 +814,7 @@ export function InlineEditableProviderCard({
+                         : "settings.modelProvider.enableProvider",
+                     })}
+                     checked={provider.enabled}
+-                    disabled={savingEnabled}
++                    disabled={savingEnabled || savingConnection}
+                     onCheckedChange={(enabled) => {
+                       void handleProviderEnabledChange(enabled);
+                     }}
+@@ -876,7 +828,7 @@ export function InlineEditableProviderCard({
+ 
+       {statusSection}
+ 
+-      <div className="space-y-3">
++      <fieldset disabled={savingConnection} className="min-w-0 space-y-3">
+         {isAccountProvider || provider.config.access?.type === "subscription" ? null : (
+           <ProviderConnectionSection
+             provider={provider}
+@@ -885,7 +837,7 @@ export function InlineEditableProviderCard({
+             baseUrlValue={baseUrlValue}
+             onApiFormatChange={handleApiFormatChange}
+             onBaseUrlChange={handleBaseUrlValueChange}
+-            onBaseUrlBlur={saveConnection}
++            onBaseUrlBlur={() => undefined}
+             onBaseUrlKeyDown={handleTextCommitKeyDown}
+             onBaseUrlCompositionStart={handleTechnicalInputCompositionStart}
+             onBaseUrlCompositionEnd={handleTechnicalInputCompositionEnd}
+@@ -921,14 +873,13 @@ export function InlineEditableProviderCard({
+               setApiKeyValue(primary);
+               setAdditionalApiKeys(additional);
+               setAutoSwitchCredentials(automatic);
+-              scheduleIdleDraftSave();
+             }}
+             apiKeyValue={apiKeyValue}
+             apiKeyVisible={apiKeyVisible}
+             presetApiKeyUrl={presetApiKeyUrl}
+             onOpenPresetApiKey={onOpenPresetApiKey}
+             onApiKeyChange={handleApiKeyValueChange}
+-            onApiKeyBlur={handleApiKeyBlur}
++            onApiKeyBlur={() => undefined}
+             onApiKeyKeyDown={handleTextCommitKeyDown}
+             onApiKeyCompositionStart={handleTechnicalInputCompositionStart}
+             onApiKeyCompositionEnd={handleTechnicalInputCompositionEnd}
+@@ -936,6 +887,34 @@ export function InlineEditableProviderCard({
+           />
+         ) : null}
+ 
++        {isApiKeyProvider && connectionDirty ? (
++          <div className="space-y-2">
++            {connectionInvalid ? (
++              <p role="alert" className="text-ui-sm text-destructive">
++                {intl.formatMessage({ id: "settings.modelProvider.catalog.invalid" })}
++              </p>
++            ) : null}
++            <div className="flex flex-wrap items-center justify-between gap-2">
++              <p className="text-ui-sm text-foreground-subtle">
++                {intl.formatMessage({ id: "settings.modelProvider.connection.unsaved" })}
++              </p>
++              <div className="flex items-center gap-2">
++                <Button variant="ghost" onClick={() => restoreConnectionDraft(provider)}>
++                  {intl.formatMessage({ id: "common.cancel" })}
++                </Button>
++                <Button
++                  onClick={() => {
++                    void saveConnection();
++                  }}
++                >
++                  {intl.formatMessage({ id: savingConnection ? "common.saving" : "common.save" })}
++                </Button>
++              </div>
++            </div>
++          </div>
++        ) : null}
++      </fieldset>
++      <div className="space-y-3">
+         <ProviderModelsSection
+           // 不同 Provider 可以有同名模型；不能复用上一供应商的打开中草稿和版本。
+           key={`models:${provider.providerId}`}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 1697565..511a8a2 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { reloadProviderSettingsSnapshot } from "@/lib/providerSettingsSnapshot.js";
+ import {
+   addDiscoveredModels,
+   fetchSavedModelCatalog,
+@@ -89,11 +88,8 @@ export function ModelDiscoverySection({
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+-      try {
+-        await reloadProviderSettingsSnapshot();
+-      } catch (reason) {
+-        if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+-      }
++      // addPersonalModel publishes the current service's authoritative view. Do not
++      // refresh the unrelated root environment after editing a remote connection.
+       if (isCurrent()) {
+         setBusy(null);
+         busyRef.current = false;
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+index cce40cf..dc1cae1 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+@@ -2,7 +2,7 @@ import { isApiKeyAccess, type ProviderApiType } from "@zcode/provider";
+ import {
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+-} from "@/lib/providerSettingsFormTypes.js";
++} from "../../lib/providerSettingsFormTypes.js";
+ 
+ export interface ProviderDraftValues {
+   nameValue: string;
+@@ -47,14 +47,14 @@ export function resolvePendingProviderDraftSave({
+   const label = draft.nameValue.trim();
+   const baseURL = normalizeConfiguredBaseUrl(draft.baseUrlValue);
+   // ID 和默认协议只用于空配置的表单展示，不是用户覆盖；脏检查与表单初始化必须同源。
+-  // 名称只在 Enter/失焦确认；连接的闲时保存、测试和卸载不能夹带未确认的名称。
++  // 名称只在 Enter/失焦确认；连接的显式保存不能夹带未确认的名称。
+   const labelChanged = nameConfirmed && label !== getProviderFormLabel(provider);
+   const typeChanged =
+     !readOnlyEndpoints && draft.apiFormat !== (provider.config.api?.type ?? "anthropic-messages");
+   const urlChanged = !readOnlyEndpoints && baseURL !== (provider.config.api?.baseUrl ?? "");
++  const primaryKey = draft.apiKeyValue.trim();
+   const keyChanged =
+-    isApiKeyAccess(provider.config.access) &&
+-    draft.apiKeyValue !== (provider.config.access.apiKey ?? "");
++    isApiKeyAccess(provider.config.access) && primaryKey !== (provider.config.access.apiKey ?? "");
+   const configuredAccess = isApiKeyAccess(provider.config.access)
+     ? provider.config.access
+     : undefined;
+@@ -74,7 +74,7 @@ export function resolvePendingProviderDraftSave({
+       (automatic && additionalKeys.length > 0) !==
+         (provider.config.access.autoSwitchCredentials === true));
+   const credentialChanges = {
+-    apiKey: draft.apiKeyValue,
++    apiKey: primaryKey,
+     additionalApiKeys: additionalKeys,
+     autoSwitchCredentials: automatic && additionalKeys.length > 0,
+   };
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 6a9228c..c4bdaa6 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { reloadProviderSettingsSnapshot } from "@/lib/providerSettingsSnapshot.js";
++import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+ 
+ // Cindy's provider-scoped device flow: leaving this connection cancels only its own attempt.
+@@ -40,7 +40,9 @@ export function SubscriptionConnectionSection({
+     const load = async () => {
+       const version = ++request;
+       try {
+-        const value = await providerSettingsService.getSubscriptionAccounts(providerId);
++        const value = await readProviderSettings(() =>
++          providerSettingsService.getSubscriptionAccounts(providerId),
++        );
+         if (!active || version !== request) return;
+         setAccounts(value);
+         revisionCallback.current(value.revision);
+@@ -97,7 +99,6 @@ export function SubscriptionConnectionSection({
+       if (attempt.current !== version) return;
+       setAccounts(value);
+       onRevision(value.revision);
+-      await reloadProviderSettingsSnapshot();
+     } catch (error) {
+       showFeedback({
+         key: `subscription:${providerId}`,
+@@ -130,7 +131,6 @@ export function SubscriptionConnectionSection({
+         await providerSettingsService.finishSubscriptionLogin(providerId, next.flowId);
+       }
+       if (attempt.current !== version) return;
+-      await reloadProviderSettingsSnapshot();
+     } catch (error) {
+       if (attempt.current === version)
+         showFeedback({
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index 9567aa6..c90709b 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -1,3 +1,4 @@
++import { readProviderSettings } from "../../lib/providerSettingsRead.js";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { IProviderSettingsService } from "@zcode/services";
+ 
+@@ -10,7 +11,10 @@ export async function fetchSavedModelCatalog(input: {
+   isCurrent: () => boolean;
+ }): Promise<DiscoveredCatalog | undefined> {
+   if (input.blocked || !input.isCurrent()) return;
+-  const catalog = await input.service.discoverModels(input.providerId);
++  const catalog = await readProviderSettings(
++    () => input.service.discoverModels(input.providerId),
++    25_000,
++  );
+   return input.isCurrent() ? catalog : undefined;
+ }
+ 
+@@ -27,7 +31,7 @@ export async function addDiscoveredModels(input: {
+   for (const model of input.catalog.models) {
+     if (!input.selected.has(model.id)) continue;
+     if (!input.isCurrent()) return;
+-    const view = await input.service.getView();
++    const view = await readProviderSettings(() => input.service.getView());
+     if (!input.isCurrent()) return;
+     const provider = view.providers.find((item) => item.providerId === input.providerId);
+     if (!provider) throw new Error("Connection no longer exists");
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+index 1398c7a..6a735ae 100644
+--- a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -23,8 +23,9 @@ export function newProviderSetupDraft(template: ProviderSettingsTemplateView): P
+   };
+ }
+ export function providerSetupConfig(
+-  template: ProviderSettingsTemplateView,
++  template: Pick<ProviderSettingsTemplateView, "config">,
+   draft: ProviderSetupDraft,
++  acceptedFormats: readonly ProviderApiType[] = [],
+ ): ProviderConfigObject | undefined {
+   if (template.config.access?.type === "subscription") return {};
+   if (!isApiKeyAccess(template.config.access)) return undefined;
+@@ -41,7 +42,7 @@ export function providerSetupConfig(
+   if (!keys.length || keys.length > 10) return undefined;
+   const api = { type: draft.api, baseUrl: draft.baseUrl.trim() };
+   const policy = resolveProviderProtocolPolicy(template.config, { ...template.config, api });
+-  if (policy.mode === "override") return undefined;
++  if (policy.mode === "override" && !acceptedFormats.includes(draft.api)) return undefined;
+   // 默认连接跟随模板，避免创建时把推荐地址和协议永久复制为用户覆盖。
+   const apiOverride = {
+     ...(!template.config.api?.baseUrl || api.type !== template.config.api?.type
+diff --git a/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts b/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
+index dbefeb3..f6e8b5f 100644
+--- a/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
++++ b/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
+@@ -3,43 +3,16 @@ import {
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+ } from "@/lib/providerSettingsFormTypes.js";
+-import type {
+-  ProviderFamilyConnectionSelectionSettings,
+-  ProviderFamilyDomain,
+-} from "@zcode/shared";
+ import type { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import type {
+-  CodingPlanEntitlementState,
+-  ModelProviderNavGroup,
+-  PresetProviderSpec,
+-} from "./constants.js";
++import type { ModelProviderNavGroup } from "./constants.js";
+ import { createCustomProviderNodeKey } from "./utils.js";
+ import {
+   sortModelProvidersForDisplay,
+   type ProviderOrderView,
+ } from "@/lib/modelProviderOrdering.js";
+-import type { EnterpriseCodingPlanProductDisplay } from "./enterpriseCodingPlanProducts.js";
+-interface PresetProviderWithConfig extends PresetProviderSpec {
+-  provider: ProviderSettingsFormProvider | null;
+-}
+-
+ interface UseModelProviderNavigationOptions {
+-  presetProviders: PresetProviderWithConfig[];
+   modelProviders: ProviderSettingsFormProvider[];
+-  /**
+-   * 当前账号明确有权益的 Provider。缺省等价于尚无账号权益；生产设置页始终显式传入。
+-   */
+-  entitledAccountProviderIds?: ReadonlySet<string>;
+-  modelProvidersLoading?: boolean;
+   displayOrder?: ProviderOrderView;
+-  codingPlanEntitlements?: Partial<Record<string, CodingPlanEntitlementState>>;
+-  providerFamilyDomain?: ProviderFamilyDomain | null;
+-  connectionSelections?: ProviderFamilyConnectionSelectionSettings;
+-  pendingConnectionSelections?: ProviderFamilyConnectionSelectionSettings;
+-  familyConnectionSettingsLoading?: boolean;
+-  familyConnectionSettingsFailed?: boolean;
+-  subscribedTeamProducts?: EnterpriseCodingPlanProductDisplay[];
+-  showPurchasedTeamPlanFallback?: boolean;
+   selectedNodeKey: string | null;
+   setSelectedNodeKey: (key: string | null) => void;
+   intl: ReturnType<typeof useZCodeIntl>["intl"];
+@@ -74,7 +47,7 @@ export function useModelProviderNavigation({
+   const navigationGroups: ModelProviderNavGroup[] = [
+     {
+       id: "custom",
+-      title: intl.formatMessage({ id: "settings.modelProvider.customTitle" }),
++      title: intl.formatMessage({ id: "settings.modelProvider.connectionsTitle" }),
+       items: navigationItems,
+     },
+   ];

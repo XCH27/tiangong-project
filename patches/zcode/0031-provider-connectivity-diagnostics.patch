@@ -1,0 +1,1029 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 84372e5..0fd126b 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -558,3 +558,22 @@ dynamic workflow gating. Normal tool deny/permission rules apply. It does not cl
+ editing, automatically disable plugins, change models or allocate per-tool bills. Missing port/data
+ returns explicit unavailable/null instead of a fabricated empty account. Human and Agent statistics
+ share the same query owner and scope semantics.
++
++### Verified connection status and targeted failure feedback
++
++Registry executable means configuration can be submitted, not that authentication or inference has
++succeeded. Imported/saved connections start unverified. Only an actual completed probe may mark the
++specific tested model successful; failed/late checks cannot leave a green ready signal. UI probe
++observations include the tested model/time and expire when their host, committed configuration revision or settings mount changes. They are not durable account health facts.
++
++Retain the existing model network failure's status/reason/business code through the connectivity
++RPC as a bounded typed result, not a string-only exception. Classify authentication, explicit expired
++subscription/quota, unsupported client, absent model/endpoint, request format/parameters, timeout,
++network and provider failures without guessing expiry from 401/403. Localize summaries and next steps.
++Test failures use the original inline feedback owner; model metadata opens only on explicit edit.
++
++Acceptance: a loopback-only fixture replays the recorded Kimi `access_terminated_error` through the
++built desktop, Host, CLI and actual AI SDK stream path. The Chinese/English message identifies
++missing subscription service access, retains HTTP 403, marks the probe failed and leaves metadata
++closed. A complete synthetic successful stream marks only its tested model successful. Original
++review-profile credentials, default and model parameters are preserved; no paid probe was sent.
+diff --git a/apps/zcode-cli/packages/adapters/src/model/failure-provider-business-codes.ts b/apps/zcode-cli/packages/adapters/src/model/failure-provider-business-codes.ts
+index 20c4f6d..5d4ca99 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/failure-provider-business-codes.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/failure-provider-business-codes.ts
+@@ -313,7 +313,8 @@ for (const code of [
+   PROVIDER_BUSINESS_CODE_MAPPINGS.set(code, TERMINAL_RATE_LIMIT_MAPPING);
+ }
+ 
+-for (const code of ["1008", "1314", "1315"]) {
++// Kimi Code 明确拒绝当前订阅权益；不能丢成通用 403 认证失败或自动重试。
++for (const code of ["1008", "1314", "1315", "access_terminated_error"]) {
+   PROVIDER_BUSINESS_CODE_MAPPINGS.set(code, TERMINAL_BUSINESS_MAPPING);
+ }
+ 
+diff --git a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+index 9afc290..43a88e2 100644
+--- a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+@@ -152,3 +152,13 @@ test("monthly spend cap is permanently isolated even though upstream calls it a
+   const rejection = await readCredentialRejection(Response.json({ error: { type: "rate_limit_error", details: { error_code: "enforced_spend_limit_reached" } } }, { status:429 }), 1000);
+   assert.deepEqual(rejection, { reason:"quota", scope:"provider", retryAt:undefined });
+ });
++
++test("Kimi subscription entitlement refusal retains the provider type instead of becoming generic authentication",async()=>{
++ const {APICallError}=await import('ai');
++ const error={type:'access_terminated_error',message:'Your current subscription does not have access to Kimi Code right now.'};
++ const failure=new APICallError({message:'Forbidden',url:'https://api.kimi.com/coding/v1/chat/completions',requestBodyValues:{model:'k3-256k'},statusCode:403,responseBody:JSON.stringify({error}),data:{error}});
++ const classified=classifyModelFailure(failure);const details=inspectProviderFailure(failure);
++ assert.equal(classified.retryable,false);assert.notEqual(classified.reason,'auth_failed');assert.equal(details.providerErrorCode,'access_terminated_error');
++ const {modelConnectivityFailure}=await import('@zcode/shared');const result=modelConnectivityFailure({connectivityFailure:{...classified,...details}});
++ assert.equal(result.success,false);if(!result.success)assert.equal(result.error.kind,'subscription-access');
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/workspace-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/workspace-model-runtime.ts
+index 45b525c..54a20c5 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/workspace-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/workspace-model-runtime.ts
+@@ -3,6 +3,7 @@ import { createInMemorySessionEventStore } from "@zcode/adapters/storage";
+ import type { ModelSelection } from "@zcode/contracts";
+ import {
+   zcodeProviderTestModelConnectivityParamsSchema,
++  modelConnectivityFailure,
+   zcodeWorkspaceReadPresentationParamsSchema,
+   type ZCodeWorkspaceRef,
+ } from "@zcode/shared";
+@@ -61,6 +62,8 @@ export async function testProviderModelConnectivity(
+       { abortSignal },
+     );
+     return { success: true as const };
++  } catch (error) {
++    return modelConnectivityFailure(error);
+   } finally {
+     if (!active) await app.close?.();
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+index 4a7dcec..6751811 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+@@ -78,12 +78,14 @@ export async function testModelConnectivity(
+     ],
+   };
+   let finished = false;
++  let lastFailure: import("@zcode/contracts").ModelRequestFailedStatusEvent | undefined;
++  try {
+   await runWithModelInvocationContext(
+     {
+       metadata: traceContextToLogContext(traceContext),
+       modelRequestSessionType: "other",
+       modelCall: { operation: "workspace_generate_text" },
+-      statusSink: this.createModelStatusSink(traceContext, []),
++      statusSink: this.createModelStatusSink(traceContext, [], {onStatus: event => {if(event.type === "model_request_failed") lastFailure=event;}}),
+       traceContext,
+       refreshRuntimeHeadersBeforeAttempt: createRefreshRuntimeHeadersBeforeModelAttempt(this, {
+         abortSignal,
+@@ -99,6 +101,10 @@ export async function testModelConnectivity(
+     },
+   );
+   if (!finished) throw new Error("模型连通性测试流在 finish 事件前结束");
++  } catch (error) {
++    // 连接测试保留现有网络诊断；RPC 仅投影分类/状态码，不能退化成不可定位的英文字符串。
++    throw Object.assign(new Error("Model connectivity test failed", {cause:error}), {connectivityFailure:lastFailure??error});
++  }
+ }
+ 
+ export async function generateWorkspaceText(
+diff --git a/package.json b/package.json
+index 7a8d617..384dd99 100644
+--- a/package.json
++++ b/package.json
+@@ -49,7 +49,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
+   },
+diff --git a/packages/services/src/model-provider/providerSettingsConnectivity.ts b/packages/services/src/model-provider/providerSettingsConnectivity.ts
+index 6001deb..7488a5b 100644
+--- a/packages/services/src/model-provider/providerSettingsConnectivity.ts
++++ b/packages/services/src/model-provider/providerSettingsConnectivity.ts
+@@ -1,4 +1,4 @@
+-import type { ModelConnectivityResult } from "@zcode/shared";
++import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
+ import type { ProviderSettingsConnectivityTester } from "./providerFacadeServices.js";
+ 
+ interface FormalModelConnectivityInput {
+@@ -12,7 +12,7 @@ interface FormalModelConnectivityInput {
+ 
+ type FormalModelConnectivityExecutor = (
+   input: FormalModelConnectivityInput,
+-) => Promise<{ readonly success: true }>;
++) => Promise<ModelConnectivityResult>;
+ 
+ /**
+  * 设置页只负责把已经落盘并进入 Registry 的 ModelSelection 交给目标 Environment。
+@@ -23,7 +23,7 @@ export function createProviderSettingsConnectivityTester(dependencies: {
+ }): ProviderSettingsConnectivityTester {
+   return async (input) => {
+     try {
+-      await dependencies.testModelConnectivity({
++      return await dependencies.testModelConnectivity({
+         workspacePath: input.workspacePath,
+         ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
+         selection: {
+@@ -31,12 +31,8 @@ export function createProviderSettingsConnectivityTester(dependencies: {
+           modelId: input.modelId,
+         },
+       });
+-      return { success: true };
+     } catch (error) {
+-      return {
+-        success: false,
+-        error: { message: error instanceof Error ? error.message : String(error) },
+-      };
++      return modelConnectivityFailure(error);
+     }
+   };
+ }
+diff --git a/packages/services/test/model-connectivity-diagnostics.test.ts b/packages/services/test/model-connectivity-diagnostics.test.ts
+new file mode 100644
+index 0000000..ca6b115
+--- /dev/null
++++ b/packages/services/test/model-connectivity-diagnostics.test.ts
+@@ -0,0 +1,111 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { modelConnectivityFailure, modelConnectivityResultSchema } from "@zcode/shared";
++import { createProviderSettingsConnectivityTester } from "../src/model-provider/providerSettingsConnectivity.js";
++
++test("connectivity failures retain safe cause classes and never infer plan expiry from authorization", () => {
++  const check = (facts: unknown, kind: string) => {
++    const result = modelConnectivityFailure({ connectivityFailure: facts });
++    assert.equal(result.success, false);
++    if (!result.success) assert.equal(result.error.kind, kind);
++    assert.ok(modelConnectivityResultSchema.safeParse(result).success);
++    return result;
++  };
++  check({ statusCode: 403, reason: "auth_failed" }, "authentication");
++  check(
++    {
++      statusCode: 403,
++      providerErrorCode: "access_terminated_error",
++      providerErrorMessage:
++        "Your current subscription does not have access to Kimi Code right now.",
++    },
++    "subscription-access",
++  );
++  check({ statusCode: 403, providerErrorCode: "subscription_expired" }, "subscription-expired");
++  check({ statusCode: 429, providerErrorCode: "insufficient_quota" }, "quota");
++  check({ statusCode: 429, reason: "rate_limited" }, "rate-limit");
++  check({ statusCode: 404, errorCode: "model_not_found" }, "model");
++  check({ statusCode: 404 }, "endpoint");
++  check({ statusCode: 400, reason: "invalid_request" }, "request");
++  check({ reason: "tls_error" }, "network");
++  check({ reason: "timeout" }, "timeout");
++  check({ statusCode: 403, providerErrorCode: "unsupported_client" }, "client");
++  const secret = check(
++    { statusCode: 401, providerErrorMessage: "secret key sk-fixture-secret" },
++    "authentication",
++  );
++  assert.equal(JSON.stringify(secret).includes("sk-fixture-secret"), false);
++});
++test("the service preserves a typed failed probe instead of turning any returned RPC into success", async () => {
++  const result = modelConnectivityFailure({
++    connectivityFailure: { statusCode: 403, providerErrorCode: "unsupported_client" },
++  });
++  const tester = createProviderSettingsConnectivityTester({
++    testModelConnectivity: async () => result,
++  });
++  assert.deepEqual(
++    await tester({ workspacePath: "/fixture", providerId: "p", modelId: "m" }),
++    result,
++  );
++  const old = createProviderSettingsConnectivityTester({
++    testModelConnectivity: async () => {
++      throw Error("Provider authentication failed.");
++    },
++  });
++  const failed = await old({ workspacePath: "/fixture", providerId: "p", modelId: "m" });
++  assert.equal(failed.success, false);
++  if (!failed.success) assert.equal(failed.error.kind, "authentication");
++});
++
++test("formal runtime probe carries its network failure through the bounded result", async () => {
++  const { testModelConnectivity } =
++    await import("../../../apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.js");
++  const { getCurrentModelInvocationContext } =
++    await import("../../../apps/zcode-cli/packages/contracts/dist/index.js");
++  const model: any = {
++    providerId: "p",
++    modelId: "m",
++    properties: {},
++    optionSpecs: { reasoningLevel: { values: ["low"] } },
++    options: {},
++    bind() {
++      return this;
++    },
++    async *streamText() {
++      await getCurrentModelInvocationContext()?.statusSink?.publish({
++        type: "model_request_failed",
++        reason: "auth_failed",
++        errorCode: "provider_not_configured",
++        providerErrorCode: "unsupported_client",
++        providerErrorMessage: "unsupported client",
++        statusCode: 403,
++        retryable: false,
++        message: "Provider authentication failed.",
++      } as never);
++      yield { type: "error", error: Error("Provider authentication failed.") };
++    },
++  };
++  const runtime: any = {
++    config: {},
++    rootTraceContext: { traceId: "trace", spanId: "span", attributes: {} },
++    modelFactory: () => model,
++    createModelStatusSink: (_trace: unknown, _events: unknown, options: any) => ({
++      publish: async (event: unknown) => options.onStatus(event),
++    }),
++  };
++  let caught: unknown;
++  try {
++    await testModelConnectivity.call(runtime, {
++      selection: { providerId: "p", modelId: "m" } as never,
++    });
++  } catch (error) {
++    caught = error;
++  }
++  assert.ok(caught);
++  const result = modelConnectivityFailure(caught);
++  assert.equal(result.success, false);
++  if (!result.success) {
++    assert.equal(result.error.kind, "client");
++    assert.equal(result.error.statusCode, 403);
++  }
++});
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 64b3715..0da97f0 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -1,3 +1,4 @@
++export * from "./model-connectivity.js";
+ export type {
+   FileBinaryPreview,
+   FileEntry,
+diff --git a/packages/shared/src/model-connectivity.ts b/packages/shared/src/model-connectivity.ts
+new file mode 100644
+index 0000000..4da2068
+--- /dev/null
++++ b/packages/shared/src/model-connectivity.ts
+@@ -0,0 +1,116 @@
++import { z } from "zod";
++
++export const modelConnectivityFailureKindSchema = z.enum([
++  "authentication",
++  "subscription-expired",
++  "subscription-access",
++  "quota",
++  "rate-limit",
++  "model",
++  "endpoint",
++  "request",
++  "context",
++  "client",
++  "timeout",
++  "network",
++  "provider",
++  "cancelled",
++  "changed",
++  "unsaved",
++  "environment",
++  "unknown",
++]);
++export const modelConnectivityResultSchema = z.discriminatedUnion("success", [
++  z.object({ success: z.literal(true) }),
++  z.object({
++    success: z.literal(false),
++    error: z.object({
++      message: z.string(),
++      code: z.enum(["provider-unavailable", "model-unavailable"]).optional(),
++      kind: modelConnectivityFailureKindSchema.optional(),
++      statusCode: z.number().int().min(100).max(599).optional(),
++    }),
++  }),
++]);
++export type ModelConnectivityResult = z.infer<typeof modelConnectivityResultSchema>;
++const record = (value: unknown): Record<string, unknown> =>
++  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
++
++/** Consume classified transport facts; never expose provider bodies or infer subscription expiry from 403. */
++export function modelConnectivityFailure(error: unknown): ModelConnectivityResult {
++  const e = record(error);
++  const d = record(e.connectivityFailure ?? e.data ?? e.context);
++  const code = String(d.errorCode ?? d.code ?? e.code ?? "").toLowerCase();
++  const reason = String(d.reason ?? "").toLowerCase();
++  const providerCode = String(d.providerErrorCode ?? "").toLowerCase();
++  const message = String(d.providerErrorMessage ?? d.message ?? e.message ?? "").toLowerCase();
++  const status = typeof d.statusCode === "number" ? d.statusCode : undefined;
++  let kind: z.infer<typeof modelConnectivityFailureKindSchema> = "unknown";
++  if (reason === "cancelled" || code === "model_request_cancelled") kind = "cancelled";
++  else if (
++    /subscription_expired|plan_expired/.test(providerCode) ||
++    /subscription (?:has )?expired|订阅(?:已)?到期|套餐(?:已)?过期/.test(message)
++  )
++    kind = "subscription-expired";
++  else if (
++    providerCode === "access_terminated_error" ||
++    /subscription does not have access/.test(message)
++  )
++    kind = "subscription-access";
++  else if (
++    /insufficient_quota|quota_exceeded|insufficient_balance|balance_not_enough/.test(
++      providerCode,
++    ) ||
++    /quota (?:has been )?exceeded|insufficient (?:quota|balance)|余额不足|额度(?:已)?用尽/.test(
++      message,
++    )
++  )
++    kind = "quota";
++  else if (
++    /unsupported_client|client_not_allowed/.test(providerCode) ||
++    /unsupported client|only (?:available|accessible).*coding|user.agent.*(?:required|not allowed)/.test(
++      message,
++    )
++  )
++    kind = "client";
++  else if (code === "model_not_found" || /model_not_found|invalid_model/.test(providerCode))
++    kind = "model";
++  else if (reason === "context_exceeded" || code === "model_context_exceeded") kind = "context";
++  else if (
++    status === 401 ||
++    status === 403 ||
++    reason === "auth_failed" ||
++    code === "model_request_auth_missing" ||
++    /authentication failed/.test(message)
++  )
++    kind = "authentication";
++  else if (status === 404 || status === 405) kind = "endpoint";
++  else if (status === 429 || reason === "rate_limited") kind = "rate-limit";
++  else if (
++    reason === "timeout" ||
++    reason === "stream_idle_timeout" ||
++    code === "model_request_timeout"
++  )
++    kind = "timeout";
++  else if (
++    ["network_error", "tls_error", "proxy_error"].includes(reason) ||
++    /fetch failed|network|econnrefused|enotfound/.test(message)
++  )
++    kind = "network";
++  else if (
++    status === 400 ||
++    status === 422 ||
++    reason === "invalid_request" ||
++    code === "invalid_model_request"
++  )
++    kind = "request";
++  else if (status && status >= 500) kind = "provider";
++  return {
++    success: false,
++    error: {
++      message: "Model connectivity test failed.",
++      kind,
++      ...(status && status >= 100 && status <= 599 ? { statusCode: status } : {}),
++    },
++  };
++}
+diff --git a/packages/shared/src/model-provider-types.ts b/packages/shared/src/model-provider-types.ts
+index 259ce8e..08fcb74 100644
+--- a/packages/shared/src/model-provider-types.ts
++++ b/packages/shared/src/model-provider-types.ts
+@@ -68,14 +68,4 @@ export function isCodingPlanModelProviderId(id: string): boolean {
+   );
+ }
+ 
+-/** 一个正式 Model 的连通性测试结果。 */
+-export type ModelConnectivityResult =
+-  | { readonly success: true }
+-  | {
+-      readonly success: false;
+-      readonly error: {
+-        readonly message: string;
+-        /** 设置连接测试边界已确认的资格失败；其他执行错误保留原消息。 */
+-        readonly code?: "provider-unavailable" | "model-unavailable";
+-      };
+-    };
++export type { ModelConnectivityResult } from "./model-connectivity.js";
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index cde2fe7..bf856ad 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -1,3 +1,4 @@
++import { modelConnectivityResultSchema } from "../model-connectivity.js";
+ import {
+   databaseStartupErrorCodeSchema,
+   databaseStartupErrorDetailsSchema,
+@@ -2137,9 +2138,7 @@ export const zcodeProviderTestModelConnectivityParamsSchema = z
+     selection: modelSelectionSchema,
+   })
+   .strict();
+-export const zcodeProviderTestModelConnectivityResultSchema = z
+-  .object({ success: z.literal(true) })
+-  .strict();
++export const zcodeProviderTestModelConnectivityResultSchema = modelConnectivityResultSchema;
+ export type ZCodeProviderTestModelConnectivityParams = z.infer<
+   typeof zcodeProviderTestModelConnectivityParamsSchema
+ >;
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index 6965141..60b2ee3 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -1,7 +1,7 @@
+ import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+-import type { ModelConnectivityResult } from "@zcode/shared";
++import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import { useServices } from "@/hooks/useServices.js";
+ import { logger } from "@/logger.js";
+@@ -30,12 +30,44 @@ export function useModelProviders(target: {
+   const providerSettingsRead = useProviderSettingsServiceView(providerSettingsService);
+   const providerSettingsView =
+     providerSettingsRead.state.status === "ready" ? providerSettingsRead.state.view : null;
++  const [probeResults, setProbeResults] = useState<
++    Record<
++      string,
++      {
++        service: typeof providerSettingsService;
++        revision: number;
++        modelId: string;
++        checkedAt: number;
++        result: ModelConnectivityResult;
++      }
++    >
++  >({});
++  const currentProbeScope = useRef({
++    service: providerSettingsService,
++    revision: providerSettingsView?.revision,
++  });
++  currentProbeScope.current = {
++    service: providerSettingsService,
++    revision: providerSettingsView?.revision,
++  };
++  const probeSequence = useRef(new Map<string, number>());
+   const effectiveModelProviders = useMemo(
+     () =>
+-      resolveProviderSettingsFormProviders({
+-        view: providerSettingsView,
++      resolveProviderSettingsFormProviders({ view: providerSettingsView }).map((provider) => {
++        const probe = probeResults[provider.providerId];
++        return probe?.service === providerSettingsService &&
++          probe.revision === providerSettingsView?.revision
++          ? {
++              ...provider,
++              connectionTest: {
++                modelId: probe.modelId,
++                checkedAt: probe.checkedAt,
++                result: probe.result,
++              },
++            }
++          : provider;
+       }),
+-    [providerSettingsView],
++    [providerSettingsView, providerSettingsService, probeResults],
+   );
+   const providerOrdering = useMemo(
+     () =>
+@@ -209,20 +241,47 @@ export function useModelProviders(target: {
+         return {
+           success: false,
+           error: {
++            kind: "environment",
+             message:
+               target.connectivityUnavailableMessage ??
+               "A local workspace is unavailable for connectivity testing.",
+           },
+         };
+       }
+-      return providerSettingsService.testModelConnectivity({
+-        workspacePath: connectivityWorkspacePath || target.workspacePath,
+-        providerId,
+-        modelId,
+-      });
++      const revision = providerSettingsView?.revision ?? 0;
++      const sequence = (probeSequence.current.get(providerId) ?? 0) + 1;
++      probeSequence.current.set(providerId, sequence);
++      let result: ModelConnectivityResult;
++      try {
++        result = await providerSettingsService.testModelConnectivity({
++          workspacePath: connectivityWorkspacePath || target.workspacePath,
++          providerId,
++          modelId,
++        });
++      } catch (error) {
++        result = modelConnectivityFailure(error);
++      }
++      if (
++        currentProbeScope.current.service !== providerSettingsService ||
++        currentProbeScope.current.revision !== revision ||
++        probeSequence.current.get(providerId) !== sequence
++      )
++        return { success: false, error: { message: "Connection changed", kind: "changed" } };
++      setProbeResults((previous) => ({
++        ...previous,
++        [providerId]: {
++          service: providerSettingsService,
++          revision,
++          modelId,
++          checkedAt: Date.now(),
++          result,
++        },
++      }));
++      return result;
+     },
+     [
+       providerSettingsService,
++      providerSettingsView?.revision,
+       target.connectivityUnavailableMessage,
+       target.connectivityWorkspacePath,
+       target.connectivityWorkspaceRequired,
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 0f49d05..cdfed9b 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,45 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.testFailure.unsaved":
++    "Save the pending address or key changes before testing.",
++  "settings.modelProvider.testFailure.environment":
++    "This environment cannot run a connection test. Check the local workspace and runtime.",
++
++  "settings.modelProvider.testFailure.subscription-access":
++    "This subscription cannot access the service. Check plan entitlements or contact the provider.",
++  "settings.modelProvider.testFailure.authentication":
++    "Authentication was rejected. Check the key or account permissions.",
++  "settings.modelProvider.testFailure.subscription-expired":
++    "The provider explicitly reported an expired subscription. Check the plan term.",
++  "settings.modelProvider.testFailure.quota":
++    "The provider reported insufficient quota or balance. Check account usage.",
++  "settings.modelProvider.testFailure.rate-limit":
++    "The request hit a rate or concurrency limit. Retry later.",
++  "settings.modelProvider.testFailure.model":
++    "The provider could not find this model. Refresh its catalog and check the ID.",
++  "settings.modelProvider.testFailure.endpoint":
++    "The provider could not find the model or endpoint. Check the API address, format and model ID.",
++  "settings.modelProvider.testFailure.request":
++    "The provider rejected the request parameters. Check the API format and model options.",
++  "settings.modelProvider.testFailure.context":
++    "The request exceeded the model context limit. Check context and output settings.",
++  "settings.modelProvider.testFailure.client":
++    "The provider does not accept this client. Check the plan’s supported access methods.",
++  "settings.modelProvider.testFailure.timeout":
++    "The test timed out. Check the network, proxy and provider status.",
++  "settings.modelProvider.testFailure.network":
++    "The network, proxy or certificate connection failed. Check connection settings.",
++  "settings.modelProvider.testFailure.provider":
++    "The provider is temporarily unavailable. Retry later.",
++  "settings.modelProvider.testFailure.cancelled": "Connection test cancelled.",
++  "settings.modelProvider.testFailure.changed":
++    "The connection changed. Test the current saved configuration again.",
++  "settings.modelProvider.testFailure.unknown":
++    "The test failed, but the cause is not established. Check the provider status and retry.",
++  "settings.modelProvider.configuredStatus": "Configured; request not verified",
++  "settings.modelProvider.testPassedStatus": "Test passed: {model} · {time}",
++  "settings.modelProvider.testFailedStatus": "Test failed: {model} · {time}",
++
+   "settings.usage.costAnalysis.total": "Total cost",
+   "settings.usage.costAnalysis.unitChoice": "Cost unit",
+ 
+@@ -34,7 +74,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+-  "settings.modelProvider.discovery.alreadyAdded": "This model is already listed. Enable it to use it.",
++  "settings.modelProvider.discovery.alreadyAdded":
++    "This model is already listed. Enable it to use it.",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
+   "settings.modelProvider.discovery.loading": "Fetching models…",
+@@ -93,13 +134,16 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.allowance.hours": "hours",
+   "settings.modelProvider.allowance.unlimited": "Unlimited",
+   "settings.modelProvider.allowance.membershipRenews": "Renews in {days}d",
+-  "settings.modelProvider.allowance.membershipLiveSource": "Current subscription term reported by the provider.",
++  "settings.modelProvider.allowance.membershipLiveSource":
++    "Current subscription term reported by the provider.",
+   "settings.modelProvider.allowance.membershipStale": "Last known membership date",
+   "settings.modelProvider.allowance.remaining": "{percent}% remaining",
+   "settings.modelProvider.allowance.membershipReadFailed": "Membership date unavailable",
+   "settings.modelProvider.allowance.membershipUnknown": "Expiry unavailable",
+-  "settings.modelProvider.allowance.membershipUnavailable": "This authorization does not provide a subscription end date.",
+-  "settings.modelProvider.allowance.membershipSource": "Current term reported at authorization; renewal status is unavailable.",
++  "settings.modelProvider.allowance.membershipUnavailable":
++    "This authorization does not provide a subscription end date.",
++  "settings.modelProvider.allowance.membershipSource":
++    "Current term reported at authorization; renewal status is unavailable.",
+   "settings.modelProvider.allowance.membershipDays": "{days}d left in this term",
+   "settings.modelProvider.allowance.membershipElapsed": "Term ended; renewal unconfirmed",
+   "settings.modelProvider.allowance.used": "{percent}% used",
+@@ -3673,7 +3717,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.modelsPlaceholder": "One model name per line",
+   "settings.modelProvider.modelsCount": "{count} models",
+   "settings.modelProvider.presetTitle": "Providers",
+-  "settings.usage.accounting.catalogCoverage": "{providers} providers · {models} prices · Updated {date}",
++  "settings.usage.accounting.catalogCoverage":
++    "{providers} providers · {models} prices · Updated {date}",
+   "settings.usage.accounting.input": "Input tokens",
+   "settings.usage.accounting.output": "Output tokens",
+   "settings.usage.accounting.cache": "Cache hit rate",
+@@ -3687,12 +3732,14 @@ const enUS: Record<string, string> = {
+   "settings.usage.payments.edit": "Edit payment",
+   "settings.usage.payments.remove": "Remove payment record",
+   "settings.usage.payments.required": "Select an account and enter the amount paid.",
+-  "settings.usage.payments.overlap": "This account already has an overlapping period. Edit its existing payment.",
++  "settings.usage.payments.overlap":
++    "This account already has an overlapping period. Edit its existing payment.",
+   "settings.usage.payments.invalid": "Check the billing period and amount.",
+   "settings.usage.payments.loading": "Loading billing-period usage…",
+   "settings.usage.payments.credits": "Allocated by official credit consumption",
+   "settings.usage.payments.api": "Allocated by official API-equivalent value",
+-  "settings.usage.payments.unavailable": "Usage or pricing is incomplete for this period; payment is not allocated.",
++  "settings.usage.payments.unavailable":
++    "Usage or pricing is incomplete for this period; payment is not allocated.",
+   "settings.usage.payments.provisional": "Period in progress; allocation changes with usage",
+   "settings.usage.payments.account": "Subscription account",
+   "settings.usage.payments.start": "Period starts",
+@@ -5134,12 +5181,14 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.speed.unavailable": "This model no longer supports Fast. Turn it off to send.",
+   "chat.toolbar.speed.enable": "Enable Fast mode",
+   "chat.toolbar.speed.disable": "Disable Fast mode",
+-  "chat.toolbar.speed.codexMultiplier": "Fast uses 2.5× the Standard subscription credits. Reasoning is unchanged.",
++  "chat.toolbar.speed.codexMultiplier":
++    "Fast uses 2.5× the Standard subscription credits. Reasoning is unchanged.",
+   "chat.toolbar.speed.standard": "Standard",
+   "chat.toolbar.options.thinking": "Reasoning",
+   "chat.toolbar.options.speed": "Speed",
+   "chat.toolbar.speed.label": "Fast",
+-  "chat.toolbar.speed.description": "Request a faster service tier for the next message. Uses more subscription allowance or higher API rates; reasoning stays unchanged.",
++  "chat.toolbar.speed.description":
++    "Request a faster service tier for the next message. Uses more subscription allowance or higher API rates; reasoning stays unchanged.",
+   "chat.toolbar.thoughtLevel.placeholder": "Select reasoning level",
+   "chat.toolbar.thoughtLevel.description":
+     "Adjust how much the agent thinks before answering. Higher effort is usually steadier but slower.",
+@@ -7119,13 +7168,17 @@ const enUS: Record<string, string> = {
+   "settings.usage.accounting.hit": "Cache hits",
+   "settings.usage.accounting.miss": "Cache misses",
+   "settings.usage.accounting.help": "About these statistics",
+-  "settings.usage.accounting.cacheHelp": "Cache hit rate divides cached input by input with reported cache data. * marks partial coverage. Hover or focus a model to see its coverage.",
+-  "settings.usage.accounting.costHelp": "Uses public API rates, including Fast pricing. Saved prices stay fixed; unpriced records with sufficient usage use the current catalog. * marks partially priced requests; — means unknown. These are not actual bills. Hover or focus a model for coverage.",
+-  "settings.usage.accounting.paymentHelp": "Allocates the payment across this account’s recorded model usage in the billing period, using official credit weights where available. Usage outside this app is excluded. Open periods remain provisional.",
++  "settings.usage.accounting.cacheHelp":
++    "Cache hit rate divides cached input by input with reported cache data. * marks partial coverage. Hover or focus a model to see its coverage.",
++  "settings.usage.accounting.costHelp":
++    "Uses public API rates, including Fast pricing. Saved prices stay fixed; unpriced records with sufficient usage use the current catalog. * marks partially priced requests; — means unknown. These are not actual bills. Hover or focus a model for coverage.",
++  "settings.usage.accounting.paymentHelp":
++    "Allocates the payment across this account’s recorded model usage in the billing period, using official credit weights where available. Usage outside this app is excluded. Open periods remain provisional.",
+   "settings.usage.payments.period": "Account and billing period",
+   "settings.usage.payments.actions": "Payment actions",
+   "settings.usage.payments.empty": "No payments recorded",
+-  "settings.usage.payments.formDescription": "Record your subscription payment for an account and billing period.",
++  "settings.usage.payments.formDescription":
++    "Record your subscription payment for an account and billing period.",
+   "settings.usage.payments.unallocated": "Not yet allocated",
+   "settings.usage.costAnalysis.title": "Cost analysis",
+   "settings.usage.costAnalysis.recordPayment": "Record subscription payment",
+@@ -7150,11 +7203,13 @@ const enUS: Record<string, string> = {
+   "settings.usage.costAnalysis.empty": "No accountable usage in this scope",
+   "settings.usage.costAnalysis.allocationPending": "Allocation pending",
+   "settings.usage.costAnalysis.periodOpen": "Period to date",
+-  "settings.usage.costAnalysis.unknownAccounts": "{count} historical requests have no confirmed account. The payment is not yet allocated.",
++  "settings.usage.costAnalysis.unknownAccounts":
++    "{count} historical requests have no confirmed account. The payment is not yet allocated.",
+   "chat.allowance.lastUsed": "Last used",
+   "chat.allowance.inspect": "View:",
+   "chat.allowance.autoSwitch": "Auto switch",
+-  "settings.usage.accounting.analysisHelp": "Compare the public API value of the same account-period usage with your subscription payment. Unit cost divides allocated spend by input plus output tokens, per million. Project shares are taken after the whole-period allocation. Missing usage is not reconstructed; currencies are not mixed.",
++  "settings.usage.accounting.analysisHelp":
++    "Compare the public API value of the same account-period usage with your subscription payment. Unit cost divides allocated spend by input plus output tokens, per million. Project shares are taken after the whole-period allocation. Missing usage is not reconstructed; currencies are not mixed.",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 96eceec..6a6ba84 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,35 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.testFailure.unsaved": "连接有未保存的修改，请先保存地址或密钥，再测试。",
++  "settings.modelProvider.testFailure.environment":
++    "当前环境无法执行连接测试，请确认本地工作区和运行时已启动。",
++
++  "settings.modelProvider.testFailure.subscription-access":
++    "当前订阅暂无此服务权限，请检查套餐权益或联系服务商。",
++  "settings.modelProvider.testFailure.authentication": "认证未通过，请检查密钥或账号权限。",
++  "settings.modelProvider.testFailure.subscription-expired":
++    "服务商明确返回订阅已到期，请检查套餐有效期。",
++  "settings.modelProvider.testFailure.quota": "服务商返回额度或余额不足，请查看账号用量。",
++  "settings.modelProvider.testFailure.rate-limit": "请求受到频率或并发限制，请稍后重试。",
++  "settings.modelProvider.testFailure.model": "服务商未找到这个模型，请刷新模型目录并核对 ID。",
++  "settings.modelProvider.testFailure.endpoint":
++    "服务商未找到该模型或接口，请核对 API 地址、格式和模型 ID。",
++  "settings.modelProvider.testFailure.request":
++    "服务商拒绝了请求参数，请核对 API 格式及该模型支持的参数。",
++  "settings.modelProvider.testFailure.context": "请求超出模型上下文限制，请核对上下文或输出设置。",
++  "settings.modelProvider.testFailure.client":
++    "服务商不接受当前客户端，请检查该套餐支持的接入方式。",
++  "settings.modelProvider.testFailure.timeout": "连接测试超时，请检查网络、代理和服务商状态。",
++  "settings.modelProvider.testFailure.network": "网络、代理或证书连接失败，请检查连接设置。",
++  "settings.modelProvider.testFailure.provider": "服务商暂时异常，请稍后重试。",
++  "settings.modelProvider.testFailure.cancelled": "连接测试已取消。",
++  "settings.modelProvider.testFailure.changed": "连接配置已改变，请按当前配置重新测试。",
++  "settings.modelProvider.testFailure.unknown":
++    "测试失败，尚不能确认原因。请检查服务商状态后重试。",
++  "settings.modelProvider.configuredStatus": "已配置，尚未验证请求",
++  "settings.modelProvider.testPassedStatus": "测试通过：{model} · {time}",
++  "settings.modelProvider.testFailedStatus": "测试失败：{model} · {time}",
++
+   "settings.usage.costAnalysis.total": "总费用",
+   "settings.usage.costAnalysis.unitChoice": "费用单位",
+ 
+@@ -3446,7 +3476,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testModel.failedWithIdentity": "{provider} / {model} 连接失败：{reason}",
+   "settings.modelProvider.testModel.localWorkspaceUnavailable":
+     "本地工作区不可用，无法测试模型连通性。",
+-  "settings.usage.accounting.catalogCoverage": "{providers} 家服务商 · {models} 条定价 · 更新于 {date}",
++  "settings.usage.accounting.catalogCoverage":
++    "{providers} 家服务商 · {models} 条定价 · 更新于 {date}",
+   "settings.usage.accounting.input": "输入 Tokens",
+   "settings.usage.accounting.output": "输出 Tokens",
+   "settings.usage.accounting.cache": "缓存命中率",
+@@ -4808,7 +4839,8 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.options.thinking": "思考等级",
+   "chat.toolbar.options.speed": "速度",
+   "chat.toolbar.speed.label": "快速",
+-  "chat.toolbar.speed.description": "下次发送使用快速通道，会增加订阅额度消耗或 API 费用，思考等级保持不变。",
++  "chat.toolbar.speed.description":
++    "下次发送使用快速通道，会增加订阅额度消耗或 API 费用，思考等级保持不变。",
+   "chat.toolbar.thoughtLevel.placeholder": "选择思考档位",
+   "chat.toolbar.thoughtLevel.description":
+     "调整回答前的思考深度。通常越高越稳，但响应也会更慢一些。",
+@@ -6769,9 +6801,12 @@ const zhCN: Record<string, string> = {
+   "settings.usage.accounting.hit": "缓存命中",
+   "settings.usage.accounting.miss": "未命中",
+   "settings.usage.accounting.help": "统计说明",
+-  "settings.usage.accounting.cacheHelp": "缓存命中率 = 命中的输入 Tokens ÷ 已报告缓存信息的输入 Tokens。* 表示部分请求缺少数据；悬停或聚焦模型可查看统计范围。",
+-  "settings.usage.accounting.costHelp": "按公开 API 价目估算，包含快速模式差异。已记录的价格优先；缺价记录有足够用量信息时，参考当前目录。* 表示仅有部分请求能计价，— 表示未知；均不代表实际账单。悬停或聚焦模型可查看统计范围。",
+-  "settings.usage.accounting.paymentHelp": "将实付会员费用按该账号、该账期内记录的模型消耗分摊，优先采用官方额度权重。本软件之外的使用未计入；账期未结束时结果会变化。",
++  "settings.usage.accounting.cacheHelp":
++    "缓存命中率 = 命中的输入 Tokens ÷ 已报告缓存信息的输入 Tokens。* 表示部分请求缺少数据；悬停或聚焦模型可查看统计范围。",
++  "settings.usage.accounting.costHelp":
++    "按公开 API 价目估算，包含快速模式差异。已记录的价格优先；缺价记录有足够用量信息时，参考当前目录。* 表示仅有部分请求能计价，— 表示未知；均不代表实际账单。悬停或聚焦模型可查看统计范围。",
++  "settings.usage.accounting.paymentHelp":
++    "将实付会员费用按该账号、该账期内记录的模型消耗分摊，优先采用官方额度权重。本软件之外的使用未计入；账期未结束时结果会变化。",
+   "settings.usage.payments.period": "账号与账期",
+   "settings.usage.payments.actions": "花费记录操作",
+   "settings.usage.payments.empty": "暂无花费记录",
+@@ -6800,11 +6835,13 @@ const zhCN: Record<string, string> = {
+   "settings.usage.costAnalysis.empty": "该范围暂无可核算用量",
+   "settings.usage.costAnalysis.allocationPending": "待分摊",
+   "settings.usage.costAnalysis.periodOpen": "本期截至目前",
+-  "settings.usage.costAnalysis.unknownAccounts": "有 {count} 条历史请求无法确认账号归属，暂不将整笔会员费分摊。",
++  "settings.usage.costAnalysis.unknownAccounts":
++    "有 {count} 条历史请求无法确认账号归属，暂不将整笔会员费分摊。",
+   "chat.allowance.lastUsed": "上次使用",
+   "chat.allowance.inspect": "查看：",
+   "chat.allowance.autoSwitch": "自动切换",
+-  "settings.usage.accounting.analysisHelp": "同一账号、同一账期内，用公开 API 定价估算相同用量，再按模型消耗分摊你的实付会员费。单价为分摊费用 ÷ 输入与输出 Tokens × 100 万。项目费用先用完整账期分摊，再取各项目的份额；未记录的用量不补猜，跨币种不合并比较。",
++  "settings.usage.accounting.analysisHelp":
++    "同一账号、同一账期内，用公开 API 定价估算相同用量，再按模型消耗分摊你的实付会员费。单价为分摊费用 ÷ 输入与输出 Tokens × 100 万。项目费用先用完整账期分摊，再取各项目的份额；未记录的用量不补猜，跨币种不合并比较。",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index b145438..5ac4bf6 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -20,6 +20,11 @@ export interface ProviderSettingsFormProvider extends Pick<
+   /** 仅本次显式开关的外层补丁；普通字段编辑不复制继承启停值。 */
+   enabledUpdate?: boolean;
+   enabled: boolean;
++  connectionTest?: {
++    modelId: string;
++    checkedAt: number;
++    result: import("@zcode/shared").ModelConnectivityResult;
++  };
+   /** Registry 根据当前 Official、Personal 与 Account Facts 得出的状态。 */
+   executable: boolean;
+   accountState?: AccountProviderState;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 5742cf9..9f2782e 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -724,7 +724,7 @@ export function InlineEditableProviderCard({
+       if (!onTestModel) {
+         return Promise.resolve({
+           success: false,
+-          error: { message: "Model connectivity test is unavailable" },
++          error: { kind: "environment", message: "Model connectivity test is unavailable" },
+         });
+       }
+ 
+@@ -732,6 +732,7 @@ export function InlineEditableProviderCard({
+         return {
+           success: false,
+           error: {
++            kind: "unsaved",
+             message: intl.formatMessage({ id: "settings.modelProvider.connection.saveFirst" }),
+           },
+         };
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index f4e66a4..eda9f52 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -1,6 +1,6 @@
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+-import type { ModelConnectivityResult } from "@zcode/shared";
++import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
+ import { Loader2Icon, Unplug } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { ModelInputCapabilityBadge } from "@/components/ModelInputCapabilityBadge.js";
+@@ -46,7 +46,7 @@ export function ModelRowInput({
+   onInspectedNewModel?: () => void;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+-  const { showFeedback, dismissFeedback } = useProviderDetailFeedback();
++  const { showFeedback } = useProviderDetailFeedback();
+   const [isTesting, setIsTesting] = useState(false);
+   const testingRef = useRef(false);
+   const testGeneration = useRef(0);
+@@ -190,44 +190,58 @@ export function ModelRowInput({
+           dismissLabel: intl.formatMessage({ id: "common.close" }),
+         });
+       } else {
+-        const localizedReason =
+-          result.error.code === "provider-unavailable"
+-            ? intl.formatMessage({ id: "settings.modelProvider.testModel.providerUnavailable" })
+-            : result.error.code === "model-unavailable"
+-              ? intl.formatMessage({ id: "settings.modelProvider.testModel.modelUnavailable" })
+-              : result.error.message.trim();
+-        const reason =
+-          localizedReason || intl.formatMessage({ id: "settings.modelProvider.testModel.failed" });
+-        dismissFeedback(dedupeKey);
+-        openMetadataDialog();
+-        setCommitErrorMessage(reason);
++        const reason = intl.formatMessage({
++          id:
++            result.error.code === "provider-unavailable"
++              ? "settings.modelProvider.testModel.providerUnavailable"
++              : result.error.code === "model-unavailable"
++                ? "settings.modelProvider.testModel.modelUnavailable"
++                : `settings.modelProvider.testFailure.${result.error.kind ?? "unknown"}`,
++        });
++        showFeedback({
++          key: dedupeKey,
++          state: "failure",
++          message: intl.formatMessage(
++            { id: "settings.modelProvider.testModel.failedWithIdentity" },
++            {
++              provider: providerName,
++              model: modelId,
++              reason:
++                reason + (result.error.statusCode ? ` (HTTP ${result.error.statusCode})` : ""),
++            },
++          ),
++          durationMs: 0,
++          dismissible: true,
++          dismissLabel: intl.formatMessage({ id: "common.close" }),
++        });
+       }
+     } catch (error) {
+       if (version !== testGeneration.current) return;
+-      dismissFeedback(dedupeKey);
+-      openMetadataDialog();
+-      setCommitErrorMessage(
+-        error instanceof Error
+-          ? error.message
+-          : intl.formatMessage({ id: "settings.modelProvider.testModel.failed" }),
+-      );
++      const result = modelConnectivityFailure(error);
++      showFeedback({
++        key: dedupeKey,
++        state: "failure",
++        message: intl.formatMessage(
++          { id: "settings.modelProvider.testModel.failedWithIdentity" },
++          {
++            provider: providerName,
++            model: modelId,
++            reason: intl.formatMessage({
++              id: `settings.modelProvider.testFailure.${!result.success ? (result.error.kind ?? "unknown") : "unknown"}`,
++            }),
++          },
++        ),
++        durationMs: 0,
++        dismissible: true,
++        dismissLabel: intl.formatMessage({ id: "common.close" }),
++      });
+     } finally {
+       if (version === testGeneration.current) {
+         testingRef.current = false;
+         setIsTesting(false);
+       }
+     }
+-  }, [
+-    onTest,
+-    model.modelId,
+-    intl,
+-    providerId,
+-    providerName,
+-    providerEnabled,
+-    showFeedback,
+-    dismissFeedback,
+-    openMetadataDialog,
+-  ]);
++  }, [onTest, model.modelId, intl, providerId, providerName, providerEnabled, showFeedback]);
+ 
+   const testIcon = isTesting ? (
+     <Loader2Icon className="size-3.5 text-foreground-subtle animate-spin" />
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+index 012f579..a54625d 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+@@ -5,24 +5,50 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ const presentation = {
+   disabled: { label: "settings.modelProvider.disabledStatus", color: "text-foreground-subtlest" },
+   unavailable: { label: "settings.modelProvider.unavailableStatus", color: "text-warning" },
+-  ready: { label: "settings.modelProvider.readyStatus", color: "text-success" },
++  configured: { label: "settings.modelProvider.configuredStatus", color: "text-foreground-subtle" },
++  failed: { label: "settings.modelProvider.testFailedStatus", color: "text-warning" },
++  ready: { label: "settings.modelProvider.testPassedStatus", color: "text-success" },
+ } as const;
+ 
+ export function ProviderStatusIndicator({
+   provider,
+ }: {
+-  provider?: Pick<ProviderSettingsFormProvider, "enabled" | "executable"> | null;
++  provider?: Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest"> | null;
+ }) {
+-  const { intl } = useZCodeIntl();
++  const { intl, locale } = useZCodeIntl();
++  const time = provider?.connectionTest
++    ? new Date(provider.connectionTest.checkedAt).toLocaleTimeString(locale, {
++        hour: "2-digit",
++        minute: "2-digit",
++      })
++    : "";
+   // 只做展示映射，不能在 UI 再检查 Key、权益或模型成员。
+   const status =
+-    provider?.enabled === false ? "disabled" : provider?.executable ? "ready" : "unavailable";
++    provider?.enabled === false
++      ? "disabled"
++      : !provider?.executable
++        ? "unavailable"
++        : provider.connectionTest
++          ? provider.connectionTest.result.success
++            ? "ready"
++            : "failed"
++          : "configured";
+   const { label, color } = presentation[status];
+   return (
+     <CircleIcon
+       data-provider-status={status}
+-      aria-label={intl.formatMessage({ id: label })}
++      aria-label={intl.formatMessage(
++        { id: label },
++        { model: provider?.connectionTest?.modelId ?? "", time },
++      )}
+       className={`size-2 shrink-0 fill-current max-md:absolute max-md:right-1 max-md:bottom-1 max-md:rounded-full max-md:ring-2 max-md:ring-card ${color}`}
+-    />
++    >
++      <title>
++        {intl.formatMessage(
++          { id: label },
++          { model: provider?.connectionTest?.modelId ?? "", time },
++        )}
++      </title>
++    </CircleIcon>
+   );
+ }

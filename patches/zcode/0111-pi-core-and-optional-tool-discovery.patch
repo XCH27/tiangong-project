@@ -1,0 +1,1077 @@
+diff --git a/apps/zcode-cli/packages/core/package.json b/apps/zcode-cli/packages/core/package.json
+index 1a61706..68a8954 100644
+--- a/apps/zcode-cli/packages/core/package.json
++++ b/apps/zcode-cli/packages/core/package.json
+@@ -31,8 +31,8 @@
+     "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
++    "@earendil-works/pi-agent-core": "0.99.2",
+     "@earendil-works/pi-ai": "0.99.2",
+-    "@earendil-works/pi-coding-agent": "0.99.2",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+     "@zcode/shared": "workspace:*",
+diff --git a/apps/zcode-cli/packages/core/src/mcp/index.ts b/apps/zcode-cli/packages/core/src/mcp/index.ts
+index 01ce682..dbd8979 100644
+--- a/apps/zcode-cli/packages/core/src/mcp/index.ts
++++ b/apps/zcode-cli/packages/core/src/mcp/index.ts
+@@ -153,6 +153,7 @@ function createMcpToolEntry(
+     // serverName 仍是官方 namespaced 名时挂单向别名；provider 继续只看规范名称。
+     aliases: officialCuaProviderSpellingAliases(name, descriptor, officialCuaAuthorityVerified),
+     capability: `MCP tool exposed by ${descriptor.serverName}: ${descriptor.toolName}`,
++    deferLoading: !officialCuaAuthorityVerified,
+     // 项目级 CUA 授权只能复用不可伪造的 official authority gate。
+     // server/tool 名可以被第三方仿冒，因此绝不能用名称 wildcard 表达这一权限。
+     ...(officialCuaAuthorityVerified
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts
+new file mode 100644
+index 0000000..cf613b1
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts
+@@ -0,0 +1,127 @@
++import type { ModelToolContract } from "@zcode/contracts";
++import type { ToolEntry, ToolExecutionResult } from "../../tool/types.js";
++import {
++  SEARCH_TOOLS_NAME,
++  type SearchAvailableTools,
++  type ToolSearchResult,
++} from "../../tool/handlers/search-tools.js";
++import type { AgentRuntimeInternal } from "../internal.js";
++import type { RegularTurnLoopState } from "./turn-loop-state.js";
++
++const DEFERRED_DECLARATION_CHAR_THRESHOLD = 8192;
++const MAX_RESULT_DESCRIPTION_CHARS = 240;
++export interface DiscoveredToolBinding {
++  entry: ToolEntry;
++  handler: ToolEntry["handler"];
++  declaration: string;
++}
++const declaration = (tool: ModelToolContract) =>
++  JSON.stringify({
++    name: tool.name,
++    description: tool.description ?? "",
++    inputSchema: tool.inputSchema,
++    strict: tool.strict,
++  });
++
++/** A per-request projection of the existing Registry, never an additional tool authority. */
++export function projectDeferredTools(
++  runtime: AgentRuntimeInternal,
++  state: RegularTurnLoopState,
++  tools: ModelToolContract[],
++  native: boolean,
++): ModelToolContract[] {
++  const direct = tools.filter((tool) => tool.name !== SEARCH_TOOLS_NAME);
++  state.searchAvailableTools = undefined;
++  state.searchToolCandidates = undefined;
++  if (native || !tools.some((tool) => tool.name === SEARCH_TOOLS_NAME)) {
++    state.discoveredToolBindings?.clear();
++    return direct;
++  }
++  const deferred = direct.filter(
++    (tool) => !tool.providerNative && runtime.registry.get(tool.name)?.deferLoading === true,
++  );
++  if (
++    deferred.reduce((chars, tool) => chars + declaration(tool).length, 0) <=
++    DEFERRED_DECLARATION_CHAR_THRESHOLD
++  ) {
++    state.discoveredToolBindings?.clear();
++    return direct;
++  }
++  const candidates = new Map<string, DiscoveredToolBinding>();
++  for (const tool of deferred) {
++    const entry = runtime.registry.get(tool.name);
++    if (entry)
++      candidates.set(tool.name, { entry, handler: entry.handler, declaration: declaration(tool) });
++  }
++  state.discoveredToolBindings ??= new Map();
++  // 撤销、重注册和模型投影变化都退休旧发现；已有搜索结果不等于当前执行许可。
++  for (const [name, binding] of state.discoveredToolBindings) {
++    const current = candidates.get(name);
++    if (
++      !current ||
++      current.entry !== binding.entry ||
++      current.handler !== binding.handler ||
++      current.declaration !== binding.declaration
++    )
++      state.discoveredToolBindings.delete(name);
++  }
++  state.searchToolCandidates = candidates;
++  const snapshot = deferred.map((tool) => ({
++    name: tool.name,
++    description: tool.description ?? "",
++  }));
++  state.searchAvailableTools = (query, limit) => {
++    const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
++    const ranked = snapshot
++      .map((tool) => {
++        const text = `${tool.name} ${tool.description}`.toLocaleLowerCase();
++        const score = terms.reduce(
++          (sum, term) =>
++            sum +
++            (text.includes(term) ? 1 : 0) +
++            (tool.name.toLocaleLowerCase().includes(term) ? 2 : 0),
++          0,
++        );
++        return { tool, score };
++      })
++      .filter(
++        ({ tool, score }) =>
++          score > 0 && runtime.registry.get(tool.name) === candidates.get(tool.name)?.entry,
++      )
++      .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
++      .slice(0, limit);
++    return {
++      tools: ranked.map(({ tool }) => ({
++        name: tool.name,
++        description: tool.description.slice(0, MAX_RESULT_DESCRIPTION_CHARS),
++      })),
++    };
++  };
++  return tools.filter(
++    (tool) => !candidates.has(tool.name) || state.discoveredToolBindings!.has(tool.name),
++  );
++}
++
++/** Called after the original completed tool result has been persisted. No same-batch expansion. */
++export function acceptToolDiscovery(
++  state: RegularTurnLoopState,
++  results: readonly ToolExecutionResult[],
++): void {
++  for (const result of results) {
++    if (
++      !result.success ||
++      result.toolName !== SEARCH_TOOLS_NAME ||
++      !state.searchToolCandidates ||
++      !state.discoveredToolBindings
++    )
++      continue;
++    const output = result.output as Partial<ToolSearchResult> | null;
++    if (!output || !Array.isArray(output.tools)) continue;
++    for (const tool of output.tools) {
++      const candidate = state.searchToolCandidates.get(tool.name);
++      if (candidate) state.discoveredToolBindings.set(tool.name, candidate);
++    }
++  }
++}
++
++export type { SearchAvailableTools };
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+index 8de1353..e4910f6 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -1,14 +1,5 @@
+ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+-import {
+-  createAgentSession,
+-  DefaultResourceLoader,
+-  SessionManager,
+-  SettingsManager,
+-  type AgentSession,
+-  type ExtensionAPI,
+-  type ModelRuntime,
+-  type ToolDefinition,
+-} from "@earendil-works/pi-coding-agent";
++import { Agent, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+ import type { ToolExecutionResult } from "../deps.js";
+@@ -24,7 +15,7 @@ import { executeToolCallsForModelStep } from "./turn-tools.js";
+ import { piHostMessage, piHostModel } from "./pi-turn-message.js";
+ import type { RuntimeModelTextResult } from "../types.js";
+ 
+-/** One AgentSession schedules model/tool rounds for an admitted input in the existing CLI process.
++/** Pi Agent Core schedules model/tool rounds for an admitted input in the existing CLI process.
+  * Host preparation, retries, compaction, artifacts and durable events retain their existing owners.
+  * Native SDK state is private/in-memory; restart is hydrated by the existing canonical Session store.
+  */
+@@ -39,9 +30,9 @@ export async function runPiTurn(
+   let outcome: ModelStepResult = "continue";
+   let failure: unknown;
+   let failed = false;
+-  let session: AgentSession | undefined;
+-  let extension: ExtensionAPI | undefined;
++  let agent: Agent;
+   const registered = new Set<string>();
++  const loopTools: AgentTool[] = [];
+   const pendingStep = (): ExternalModelTools | undefined => pending;
+   const hostOutcome = (): ModelStepResult => outcome;
+ 
+@@ -56,14 +47,7 @@ export async function runPiTurn(
+             results = new Map(values.map((value) => [value.toolCallId, value]));
+           },
+         });
+-        if (
+-          session &&
+-          (session.model?.id !== String(state.model.modelId) ||
+-            session.model?.provider !== String(state.model.providerId))
+-        ) {
+-          await session.setModel(piHostModel(state.model));
+-        }
+-        if (outcome === "break") void session?.abort();
++        if (outcome === "break") agent?.abort();
+       })().catch((error) => {
+         failed = true;
+         failure = error;
+@@ -74,13 +58,13 @@ export async function runPiTurn(
+     }
+     return batch;
+   };
+-  const definition = (name: string): ToolDefinition => ({
++  const definition = (name: string): AgentTool => ({
+     name,
+     label: name,
+     description:
+       "Execute the admitted Fleet tool through its Host permission and persistence path.",
+     // Provider schemas come from prepared.tools. The Host executor validates the actual captured input.
+-    parameters: { type: "object", additionalProperties: true } as ToolDefinition["parameters"],
++    parameters: { type: "object", additionalProperties: true } as AgentTool["parameters"],
+     async execute(id) {
+       await executeBatch();
+       const result = results.get(id);
+@@ -98,51 +82,12 @@ export async function runPiTurn(
+   const register = (names: readonly string[]) => {
+     for (const name of names) {
+       if (registered.has(name)) continue;
+-      extension?.registerTool(definition(name));
++      loopTools.push(definition(name));
+       registered.add(name);
+     }
+   };
+-  const settings = SettingsManager.inMemory({
+-    retry: { enabled: false },
+-    compaction: { enabled: false },
+-    packages: [],
+-    extensions: [],
+-    skills: [],
+-    themes: [],
+-  });
+-  const loader = new DefaultResourceLoader({
+-    cwd: runtime.workingDirectory,
+-    agentDir: runtime.modelIoDir ?? runtime.workingDirectory,
+-    settingsManager: settings,
+-    noExtensions: true,
+-    noSkills: true,
+-    noPromptTemplates: true,
+-    noThemes: true,
+-    noContextFiles: true,
+-    systemPrompt: "",
+-    extensionFactories: [
+-      (api) => {
+-        extension = api;
+-        register(runtime.registry.list());
+-        api.on("agent_before_settle", () => {
+-          if (failed || state.turnAbortSignal.aborted || outcome === "break") return;
+-          return {
+-            continue: true,
+-            entries: [
+-              {
+-                type: "custom_message" as const,
+-                customType: "fleet.hostContinuation",
+-                content: "Continue the admitted operation at its next Host boundary.",
+-                display: false,
+-              },
+-            ],
+-          };
+-        });
+-      },
+-    ],
+-  });
+-  await loader.reload();
+-  const streamSimple: ModelRuntime["streamSimple"] = () => {
++  register(runtime.registry.list());
++  const streamSimple: StreamFn = () => {
+     const stream = createAssistantMessageEventStream();
+     void (async () => {
+       try {
+@@ -154,7 +99,7 @@ export async function runPiTurn(
+         results = new Map();
+         prepared ??= await prepareRegularModelStep(runtime, state);
+         register(runtime.registry.list());
+-        session?.setActiveToolsByName([...registered]);
++
+         let result: RuntimeModelTextResult | undefined;
+         const requestModel = state.model;
+         outcome = await runModelBackedTurnStep.call(runtime, state, {
+@@ -167,16 +112,9 @@ export async function runPiTurn(
+           },
+         });
+         prepared = undefined;
+-        if (
+-          session &&
+-          (session.model?.id !== String(state.model.modelId) ||
+-            session.model?.provider !== String(state.model.providerId))
+-        ) {
+-          await session.setModel(piHostModel(state.model));
+-        }
+         // Register unexpected names as routed calls too: the existing executor owns registry-miss errors.
+         register(pendingStep()?.toolCalls.map((call) => call.name) ?? []);
+-        session?.setActiveToolsByName([...registered]);
++
+         const message = piHostMessage(requestModel, result);
+         stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });
+         stream.push({
+@@ -195,27 +133,23 @@ export async function runPiTurn(
+     })();
+     return stream;
+   };
+-  const modelRuntime = {
+-    hasConfiguredAuth: () => true,
+-    checkAuth: async () => ({}),
+-    getModel: () => piHostModel(state.model),
+-    getAvailableSnapshot: () => [piHostModel(state.model)],
+-    getModels: () => [piHostModel(state.model)],
+-    getError: () => undefined,
+-    streamSimple,
+-  } as unknown as ModelRuntime;
+-  const created = await createAgentSession({
+-    cwd: runtime.workingDirectory,
+-    model: piHostModel(state.model),
+-    modelRuntime,
+-    sessionManager: SessionManager.inMemory(runtime.workingDirectory),
+-    settingsManager: settings,
+-    resourceLoader: loader,
+-    noTools: "builtin",
++  agent = new Agent({
++    initialState: {
++      model: piHostModel(state.model),
++      thinkingLevel: "off",
++      tools: loopTools,
++      messages: [],
++    },
++    streamFn: streamSimple,
++    prepareRequest: ({ context }) => ({
++      model: piHostModel(state.model),
++      context: { ...context, tools: loopTools },
++    }),
++    finishTurn: () => ({
++      action: failed || state.turnAbortSignal.aborted || outcome === "break" ? "end" : "continue",
++    }),
+   });
+-  session = created.session;
+-  await session.bindExtensions({});
+-  const unsubscribe = session.subscribe((event) => {
++  const unsubscribe = agent.subscribe((event) => {
+     // A newly discovered/invalid name may be rejected by Pi before its handler. The Host still
+     // closes that admitted batch, so canonical tool outcomes and turn phases cannot be left open.
+     if (
+@@ -227,12 +161,13 @@ export async function runPiTurn(
+     }
+   });
+   const onAbort = () => {
+-    void session?.abort();
++    agent.abort();
+   };
+   state.turnAbortSignal.addEventListener("abort", onAbort, { once: true });
+   try {
+     throwIfTurnAborted(state.turnAbortSignal);
+-    await session.prompt(state.input, { expandPromptTemplates: false, source: "rpc" });
++    await agent.prompt(state.input);
++    await agent.waitForIdle();
+     if (batch) await batch;
+     if (failed) throw failure;
+     throwIfTurnAborted(state.turnAbortSignal);
+@@ -241,7 +176,8 @@ export async function runPiTurn(
+   } finally {
+     state.turnAbortSignal.removeEventListener("abort", onAbort);
+     unsubscribe();
+-    await session.abort();
+-    session.dispose();
++    agent.abort();
++    await agent.waitForIdle();
++    agent.reset();
+   }
+ }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+index 9b65b6c..0fa0786 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+@@ -285,6 +285,7 @@ async function executeDuringStream(
+   });
+ 
+   const execution = await runtime.executeTools([toolCall], schedule, {
++    searchAvailableTools: state.searchAvailableTools,
+     allowedToolNames: state.modelStepToolNames,
+     subagentModelOverride: state.subagentModelOverride,
+     model: state.model,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
+index d103644..eac7bf4 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
+@@ -80,6 +80,7 @@ export async function executeTools(
+   });
+ 
+   const generator = this.executor.executeSchedule(executableCalls, schedule, {
++    searchAvailableTools: options?.searchAvailableTools,
+     allowedToolNames: options?.allowedToolNames,
+     automationTurn: options?.automationTurn,
+     offPeakTurn: options?.offPeakTurn,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+index 8b8d419..c576764 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+@@ -74,6 +74,9 @@ export interface TurnRequestState {
+ }
+ 
+ export interface RegularTurnLoopState {
++  searchAvailableTools?: import("./deferred-tools.js").SearchAvailableTools;
++  searchToolCandidates?: ReadonlyMap<string, import("./deferred-tools.js").DiscoveredToolBinding>;
++  discoveredToolBindings?: Map<string, import("./deferred-tools.js").DiscoveredToolBinding>;
+   activeTurn?: ActiveTurnSteeringState;
+   /** Host admission 显式传入的本轮 automation 身份；不能从持久 task metadata 推断。 */
+   automationId?: string;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+index b798a92..956aa6e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+@@ -35,6 +35,7 @@ import {
+ } from "./turn-loop-state.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+ import { projectContextPrefixForTools } from "./context-refresh.js";
++import { projectDeferredTools } from "./deferred-tools.js";
+ import {
+   appendTurnRequestEntries,
+   commitTurnRequestEntries,
+@@ -120,11 +121,12 @@ export async function prepareRegularModelStep(
+   // automation 派发到已 active 会话或重试恢复时，入口 metadata 可能没有带到
+   // loop state；但 queryId 仍是 automation-*。provider 请求边界必须按 queryId 再硬过滤
+   // automation 写工具，否则模型会先看到并创建、修改或删除任务定义。
+-  const tools = state.automationCreateLimitReached
++  const eligibleTools = state.automationCreateLimitReached
+     ? []
+     : turnDisallowedTools
+       ? runtime.getTools(state.model).filter((tool) => !turnDisallowedTools.has(tool.name))
+       : runtime.getTools(state.model);
++  const tools = projectDeferredTools(runtime, state, eligibleTools, nativeContext);
+   state.modelStepToolNames = Object.freeze(tools.map((tool) => tool.name));
+   state.turnRequestState.entries = projectContextPrefixForTools(
+     runtime,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+index 68d44ce..c47fe27 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+@@ -40,6 +40,7 @@ import { recordToolUsageFromResult } from "./turn-tool-usage.js";
+ import { recordBrowserTurnToolResult } from "../../repl/browser-turn-state.js";
+ import { createRuntimeToolResultEntry } from "../../agent/message-history.js";
+ import { commitTurnRequestEntries } from "./turn-output-token-continuation.js";
++import { acceptToolDiscovery } from "./deferred-tools.js";
+ export async function executeToolCallsForModelStep(
+   this: AgentRuntimeInternal,
+   state: RegularTurnLoopState,
+@@ -178,6 +179,7 @@ export async function executeToolCallsForModelStep(
+       tools: pendingToolCalls.map((tc) => tc.name),
+     });
+     const execution = await this.executeTools(pendingToolCalls, pendingSchedule, {
++      searchAvailableTools: state.searchAvailableTools,
+       allowedToolNames: state.modelStepToolNames,
+       automationTurn: isAutomationMutationRestrictedTurn(state),
+       offPeakTurn: isOffPeakCreateRestrictedTurn(state),
+@@ -424,6 +426,7 @@ export async function executeToolCallsForModelStep(
+     );
+   }
+ 
++  acceptToolDiscovery(state, results);
+   options.onResults?.(results);
+   if (deferredCheckpointCancellation) {
+     throw deferredCheckpointCancellation;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 659af30..b0e79ee 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -742,6 +742,7 @@ export interface PermissionDecisionResult {
+ }
+ 
+ export interface ExecuteToolsOptions {
++  searchAvailableTools?: import("../tool/handlers/search-tools.js").SearchAvailableTools;
+   allowedToolNames?: readonly string[];
+   automationTurn?: boolean;
+   offPeakTurn?: boolean;
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
+index 10a791c..726800b 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
+@@ -40,6 +40,7 @@ export async function executeToolBatch(
+       batch.map((tc) =>
+         executeOne(tc, {
+           allowedToolNames: options?.allowedToolNames,
++          searchAvailableTools: options?.searchAvailableTools,
+           automationTurn: options?.automationTurn,
+           offPeakTurn: options?.offPeakTurn,
+           signal: options?.signal,
+@@ -80,6 +81,7 @@ export async function* executeToolSchedule(
+ 
+     const groupResults = await executeBatch(groupTools, {
+       allowedToolNames: options?.allowedToolNames,
++      searchAvailableTools: options?.searchAvailableTools,
+       automationTurn: options?.automationTurn,
+       offPeakTurn: options?.offPeakTurn,
+       signal: options?.signal,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 81d0dc5..d375f0d 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -465,6 +465,7 @@ async function executeToolCallImpl(
+       deliveryKind: deps.deliveryKind,
+       memoryRoot: deps.getMemoryRoot?.(),
+       runtimeScope: deps.runtimeScope,
++      searchAvailableTools: options?.searchAvailableTools,
+       providerVisibleToolNames: deps.registry
+         .list()
+         .filter((name) => deps.registry.getMetadata(name)?.providerVisible !== false),
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/types.ts b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+index b6098eb..114631c 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+@@ -170,6 +170,7 @@ export interface ToolExecutor {
+ }
+ 
+ export interface ToolExecuteOptions {
++  searchAvailableTools?: import("../handlers/search-tools.js").SearchAvailableTools;
+   /** Omitted for non-model domain callers; supplied model names never override current policy. */
+   allowedToolNames?: readonly string[];
+   automationTurn?: boolean;
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+index 237f6ca..5514219 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+@@ -61,6 +61,7 @@ export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry
+     {
+       capability:
+         "Generate a video using an admitted media model; retain the external request through stop/restart",
++      deferLoading: true,
+       metadata: {
+         ...common,
+         name: GENERATE_VIDEO_TOOL_NAME,
+@@ -232,6 +233,7 @@ export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry
+     {
+       capability:
+         "Retrieve an existing media request or its saved artifact without another paid submission",
++      deferLoading: true,
+       metadata: {
+         ...common,
+         name: RESUME_MEDIA_JOB_TOOL_NAME,
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+index eb8e00a..1f69b9f 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+@@ -74,11 +74,13 @@ import { getWorkflowRunToolEntry } from "./get-workflow-run.js";
+ import { resumeWorkflowRunToolEntry } from "./resume-workflow-run.js";
+ // import { workflowToolEntry } from "./workflow.js";
+ import { createToolRuleNameSet } from "../tool-visibility.js";
++import { searchToolsEntry } from "./search-tools.js";
+ 
+ // direct 分支保留 Glob/Grep 工具实现；embedded search 分支由 registerBuiltInTools
+ // 统一隐藏 Glob/Grep，并通过 Bash find/grep 接管搜索。
+ 
+ export const builtInTools: ToolEntry[] = [
++  searchToolsEntry,
+   readToolEntry,
+   writeToolEntry,
+   editToolEntry,
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index fbf2d7f..92903e4 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -265,6 +265,7 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+   return [
+     {
+       capability: "List image/video generation models reported for connected API credentials",
++      deferLoading: true,
+       metadata: {
+         name: LIST_MEDIA_MODELS_TOOL_NAME,
+         description:
+@@ -315,6 +316,7 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+     {
+       capability:
+         "Generate one image using a selected paid API media model and save the result in this Session",
++      deferLoading: true,
+       metadata: {
+         name: GENERATE_IMAGE_TOOL_NAME,
+         description:
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/search-tools.ts b/apps/zcode-cli/packages/core/src/tool/handlers/search-tools.ts
+new file mode 100644
+index 0000000..9b43b1f
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/search-tools.ts
+@@ -0,0 +1,88 @@
++import { z } from "zod";
++import type { ToolEntry } from "../types.js";
++
++export const SEARCH_TOOLS_NAME = "SearchTools";
++const input = z
++  .object({
++    query: z.string().trim().min(1).max(256),
++    limit: z.number().int().min(1).max(5).optional(),
++  })
++  .strict();
++export interface ToolSearchResult {
++  tools: { name: string; description: string }[];
++}
++export type SearchAvailableTools = (query: string, limit: number) => ToolSearchResult;
++
++/** Discovery only; the next request calls the original tool through its original permission path. */
++export const searchToolsEntry: ToolEntry = {
++  capability: "Discover selected optional tools without executing them",
++  metadata: {
++    name: SEARCH_TOOLS_NAME,
++    description:
++      "Find optional connected tools for browser, media, documents or external services. Use a concise query with relevant English tool or capability terms. Matching tool definitions load in the next request; call their original names then. Discovery grants no permission. If no match, try a different query or explain the missing capability.",
++    readOnly: true,
++    destructive: false,
++    concurrentSafe: true,
++    sideEffectScope: "none",
++    riskLevel: "low",
++    needsApproval: false,
++  },
++  inputSchema: {
++    type: "object",
++    properties: {
++      query: { type: "string", minLength: 1, maxLength: 256 },
++      limit: { type: "integer", minimum: 1, maximum: 5 },
++    },
++    required: ["query"],
++    additionalProperties: false,
++  },
++  runtimeInputSchema: input,
++  outputSchema: {
++    type: "object",
++    properties: {
++      tools: {
++        type: "array",
++        items: {
++          type: "object",
++          properties: { name: { type: "string" }, description: { type: "string" } },
++          required: ["name", "description"],
++        },
++      },
++    },
++    required: ["tools"],
++  },
++  handler: async (value, context) => {
++    const request = input.parse(value);
++    context.abortSignal.throwIfAborted();
++    if (!context.searchAvailableTools)
++      throw new Error("Tool discovery is unavailable in this request");
++    return context.searchAvailableTools(request.query, request.limit ?? 5);
++  },
++  permission: {
++    permission: "tools.search",
++    riskLevel: "low",
++    sideEffectScope: "none",
++    needsApproval: false,
++    reason: "Discover available optional tools",
++    patternSources: ["toolName"],
++    denyPriority: "beforeAsk",
++  },
++  resultBudget: {
++    maxInlineBytes: 4096,
++    maxModelBytes: 4096,
++    strategy: "truncate",
++    preview: { maxBytes: 4096, direction: "head" },
++  },
++  timeout: { kind: "timed", defaultMs: 10000, maxMs: 10000, allowCallOverride: false },
++  cancellation: {
++    supported: true,
++    cleanup: "none",
++    userVisibleMessage: "Tool discovery cancelled",
++  },
++  trace: {
++    required: true,
++    propagateToAdapters: false,
++    recordInput: "summary",
++    recordOutput: "summary",
++  },
++};
+diff --git a/apps/zcode-cli/packages/core/src/tool/types.ts b/apps/zcode-cli/packages/core/src/tool/types.ts
+index 7aac7d1..3ae00d8 100644
+--- a/apps/zcode-cli/packages/core/src/tool/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/types.ts
+@@ -131,6 +131,7 @@ export interface BackgroundTaskControlPort {
+ }
+ 
+ export interface ToolExecutionContext {
++  searchAvailableTools?: import("./handlers/search-tools.js").SearchAvailableTools;
+   toolCallId: string;
+   /**
+    * 当前 Tool 的实时观测写入器。Handler 只能通过窄接口写事实，不能接触原始 OTel Span。
+@@ -284,6 +285,8 @@ export type ToolHandler<TInput = unknown, TOutput = unknown> = (
+ // -----------------------------------------------
+ 
+ export interface ToolEntry extends ToolContractDeclaration {
++  /** Explicit optional capability metadata; changes projection, never permission. */
++  deferLoading?: boolean;
+   aliases?: readonly string[];
+   /**
+    * Host-issued atomicity policy for model content. Only an authority-verified
+diff --git a/apps/zcode-cli/packages/core/test/deferred-tools.test.ts b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+new file mode 100644
+index 0000000..354077a
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+@@ -0,0 +1,336 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++import type { ToolEntry } from "../src/tool/types.js";
++import { registerMcpTools } from "../src/mcp/index.js";
++
++const optionalName = (index: number) => `mcp__fixture__export_${index}`;
++const search = (id = "search", query = optionalName(0)) => ({
++  id,
++  name: "SearchTools",
++  input: { query, limit: 1 },
++});
++const invoke = (id = "invoke", name = optionalName(0)) => ({
++  id,
++  name,
++  input: { value: "document-saved" },
++});
++async function catalog(streaming = false, count = 25) {
++  const f = await fixture(undefined, streaming, {
++    config: { toolAllowlist: ["Probe", "SearchTools"] },
++  });
++  let optionalEffects = 0;
++  const install = () => {
++    const registry = f.runtime.getToolRegistry();
++    const template = registry.get("Probe")!;
++    for (let index = 0; index < count; index++)
++      registry.register({
++        ...template,
++        deferLoading: true,
++        metadata: {
++          ...template.metadata,
++          name: optionalName(index),
++          description:
++            `Export a document with formatter ${index}. ` +
++            "Detailed optional formatter instructions. ".repeat(30),
++        },
++        handler: async (input: unknown) => {
++          optionalEffects++;
++          return { saved: (input as { value: string }).value };
++        },
++      } as ToolEntry);
++    f.runtime.invalidateToolCache();
++  };
++  install();
++  return { f, install, effects: () => optionalEffects, close: () => f.close() };
++}
++const wireChars = (tools: any[]) =>
++  JSON.stringify(
++    tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
++  ).length;
++
++for (const streaming of [false, true])
++  test(`optional discovery loads one exact tool through original permission and receipts (${streaming ? "streaming" : "non-streaming"})`, async () => {
++    const c = await catalog(streaming),
++      { f } = c;
++    const originalChars = wireChars(f.runtime.getTools());
++    let initialChars = 0;
++    try {
++      f.steps.push(
++        (request) => {
++          initialChars = wireChars(request.tools);
++          assert.deepEqual(
++            request.tools.map((tool: any) => tool.name),
++            ["SearchTools", "Probe"],
++          );
++          // A hallucinated hidden operation is rejected even alongside a valid search.
++          return reply("find formatter", [search(), invoke("too-early")]);
++        },
++        (request) => {
++          assert.ok(request.tools.some((tool: any) => tool.name === optionalName(0)));
++          assert.equal(
++            request.tools.filter((tool: any) => tool.name.startsWith("mcp__")).length,
++            1,
++          );
++          assert.equal(c.effects(), 0);
++          assert.ok(
++            JSON.stringify(request.messages).includes(
++              "not available in this admitted model request",
++            ),
++          );
++          return reply("export", [invoke()]);
++        },
++        (request) => {
++          assert.ok(JSON.stringify(request.messages).includes("document-saved"));
++          return reply("complete");
++        },
++      );
++      assert.equal(
++        (await f.runtime.executeTurn("Export the document with formatter zero")).response,
++        "complete",
++      );
++      assert.equal(c.effects(), 1);
++      assert.equal(f.permissionCalls, 1);
++      assert.equal(f.requests.length, 3);
++      assert.ok(
++        initialChars < originalChars / 5,
++        `Projection grew: ${initialChars}/${originalChars}`,
++      );
++      console.log(
++        JSON.stringify({
++          fixture: "optional-tools",
++          streaming,
++          fullDeclarationChars: originalChars,
++          initialDeclarationChars: initialChars,
++          loadedTools: 1,
++          providerCalls: f.requests.length,
++        }),
++      );
++      const ledger = await f.store.queryAppUsage({
++        since: 0,
++        until: Date.now() + 1,
++        tzOffsetMs: 0,
++      });
++      assert.equal(ledger.toolTotals.toolCallCount, 3); // search + denied early invoke + admitted invoke
++      assert.equal(ledger.totals.modelRequestCount, 3);
++      await f.reopen();
++      c.install();
++      f.steps.push((request) => {
++        assert.ok(
++          !request.tools.some((tool: any) => tool.name === optionalName(0)),
++          "Cold new input borrowed an earlier discovery",
++        );
++        assert.ok(JSON.stringify(request.messages).includes("document-saved"));
++        return reply("history retained");
++      });
++      assert.equal(
++        (await f.runtime.executeTurn("Continue reading history")).response,
++        "history retained",
++      );
++      assert.equal(c.effects(), 1);
++    } finally {
++      await c.close();
++    }
++  });
++
++test("discovered operations still require the original permission decision", async () => {
++  const c = await catalog(),
++    { f } = c;
++  try {
++    f.deny();
++    f.steps.push(
++      () => reply("find", [search()]),
++      () => reply("try", [invoke()]),
++      (request) => {
++        assert.ok(JSON.stringify(request.messages).includes("denied"));
++        return reply("refused");
++      },
++    );
++    await f.runtime.executeTurn("Try a document export");
++    assert.equal(c.effects(), 0);
++    assert.equal(f.permissionCalls, 1);
++  } finally {
++    await c.close();
++  }
++});
++
++for (const change of ["replace", "handler", "schema", "remove"] as const)
++  test(`a ${change} after discovery retires the old tool binding`, async () => {
++    const c = await catalog(),
++      { f } = c;
++    try {
++      let changed = false;
++      const runtime = f.runtime as any,
++        persist = runtime.persistPart.bind(runtime);
++      runtime.persistPart = async (part: any, ...args: any[]) => {
++        const result = await persist(part, ...args);
++        if (
++          !changed &&
++          part.type === "tool" &&
++          part.tool === "SearchTools" &&
++          part.state?.status === "completed"
++        ) {
++          changed = true;
++          const registry = f.runtime.getToolRegistry(),
++            entry = registry.get(optionalName(0))!;
++          if (change === "remove") registry.unregister(optionalName(0));
++          else if (change === "replace")
++            registry.register(
++              {
++                ...entry,
++                handler: async () => {
++                  throw new Error("replacement must not run");
++                },
++              },
++              { silentDuplicateWarning: true },
++            );
++          else if (change === "handler")
++            entry.handler = async () => {
++              throw new Error("Changed handler must not run");
++            };
++          else
++            entry.inputSchema = {
++              type: "object",
++              properties: { replacement: { type: "string" } },
++              required: ["replacement"],
++            };
++          f.runtime.invalidateToolCache();
++        }
++        return result;
++      };
++      f.steps.push(
++        () => reply("find", [search()]),
++        (request) => {
++          assert.ok(changed);
++          assert.ok(!request.tools.some((tool: any) => tool.name === optionalName(0)));
++          return reply("rediscover", [search("again")]);
++        },
++        (request) => {
++          const tool = request.tools.find((tool: any) => tool.name === optionalName(0));
++          if (change === "remove") assert.equal(tool, undefined);
++          else {
++            assert.ok(tool);
++            if (change === "schema") assert.deepEqual(tool.inputSchema.required, ["replacement"]);
++          }
++          return reply("reconciled");
++        },
++      );
++      await f.runtime.executeTurn("Discover without stale execution");
++      assert.equal(c.effects(), 0);
++      assert.equal(f.permissionCalls, 0);
++    } finally {
++      await c.close();
++    }
++  });
++
++test("turn restrictions remain undiscoverable and unavailable", async () => {
++  const c = await catalog(),
++    { f } = c;
++  try {
++    f.steps.push(
++      () => reply("find", [search()]),
++      (request) => {
++        assert.ok(!request.tools.some((tool: any) => tool.name === optionalName(0)));
++        const results = request.messages.filter((message: any) => message.role === "tool");
++        assert.deepEqual(JSON.parse(results[0].content), { tools: [] });
++        return reply("unavailable");
++      },
++    );
++    await f.runtime.executeTurn("Find a restricted tool", undefined, {
++      toolDisallowlist: [optionalName(0)],
++    });
++    assert.equal(c.effects(), 0);
++  } finally {
++    await c.close();
++  }
++});
++
++test("small optional catalog preserves direct tools without a search step", async () => {
++  const c = await catalog(false, 1),
++    { f } = c;
++  try {
++    f.steps.push(
++      (request) => {
++        assert.ok(request.tools.some((tool: any) => tool.name === optionalName(0)));
++        assert.ok(!request.tools.some((tool: any) => tool.name === "SearchTools"));
++        return reply("direct", [invoke()]);
++      },
++      () => reply("complete"),
++    );
++    await f.runtime.executeTurn("Export directly");
++    assert.equal(c.effects(), 1);
++  } finally {
++    await c.close();
++  }
++});
++
++test("real MCP registration is deferred and invokes its existing semantic transport once", async () => {
++  const f = await fixture(undefined, true, { config: { toolAllowlist: ["Probe", "SearchTools"] } });
++  const calls: unknown[] = [];
++  const port = {
++    callTool: async (input: unknown) => {
++      calls.push(input);
++      return { content: [{ type: "text", text: "MCP_DOCUMENT_RECEIPT" }] };
++    },
++  };
++  const descriptors = Array.from({ length: 20 }, (_, i) => ({
++    serverName: "documents",
++    toolName: `export_${i}`,
++    description: `Document export ${i}. ` + "Optional operation specification. ".repeat(30),
++    inputSchema: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
++    annotations: { readOnlyHint: false, destructiveHint: false },
++  }));
++  try {
++    registerMcpTools(f.runtime.getToolRegistry(), port as never, descriptors);
++    f.runtime.invalidateToolCache();
++    const name = "mcp__documents__export_0";
++    assert.equal(f.runtime.getToolRegistry().get(name)?.deferLoading, true);
++    f.steps.push(
++      (request) => {
++        assert.ok(!request.tools.some((t: any) => t.name === name));
++        return reply("search", [search("actual", name)]);
++      },
++      (request) => {
++        assert.ok(request.tools.some((t: any) => t.name === name));
++        return reply("invoke", [invoke("actual-call", name)]);
++      },
++      (request) => {
++        assert.ok(JSON.stringify(request.messages).includes("MCP_DOCUMENT_RECEIPT"));
++        return reply("complete");
++      },
++    );
++    await f.runtime.executeTurn("Export through the connected document service");
++    assert.equal(calls.length, 1);
++    assert.equal(f.permissionCalls, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("failed search-result persistence cannot expose tools or execute a later request", async () => {
++  const c = await catalog(),
++    { f } = c;
++  try {
++    const runtime = f.runtime as any,
++      persist = runtime.persistPart.bind(runtime);
++    runtime.persistPart = async (part: any, ...args: any[]) => {
++      if (part.type === "tool" && part.tool === "SearchTools" && part.state?.status === "completed")
++        throw new Error("Fixture discovery save failed");
++      return persist(part, ...args);
++    };
++    f.steps.push(() => reply("search", [search()]));
++    await assert.rejects(f.runtime.executeTurn("Discover a formatter"));
++    assert.equal(f.requests.length, 1);
++    assert.equal(c.effects(), 0);
++    await f.reopen();
++    c.install();
++    f.steps.push((request) => {
++      assert.ok(!request.tools.some((t: any) => t.name === optionalName(0)));
++      return reply("fresh input");
++    });
++    await f.runtime.executeTurn("Start again after recovery");
++    assert.equal(c.effects(), 0);
++  } finally {
++    await c.close();
++  }
++});
+diff --git a/package.json b/package.json
+index 5665dd7..f9d23e8 100644
+--- a/package.json
++++ b/package.json
+@@ -55,7 +55,7 @@
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 8d4ed2d..d7d4853 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -371,9 +371,9 @@ importers:
+       '@earendil-works/pi-ai':
+         specifier: 0.99.2
+         version: 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+-      '@earendil-works/pi-coding-agent':
++      '@earendil-works/pi-agent-core':
+         specifier: 0.99.2
+-        version: 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)
++        version: 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@zcode/contracts':
+         specifier: workspace:*
+         version: link:../contracts

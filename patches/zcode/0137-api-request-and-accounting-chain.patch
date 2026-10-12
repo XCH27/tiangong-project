@@ -1,0 +1,390 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 421f4ee..f97eaa6 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -36,6 +36,14 @@ changes another model's corrections or adds a storage owner. The existing
+ `model-discovery-persistence.test.ts` exercises these distinct operations with synthetic
+ catalog transport and the real personal repository.
+ 
++The enabled-key guard inspects effective Headers without transferring a Request body. Normal
++failover/revocation and network owners remain unchanged; an exhausted pool keeps its typed stop
++identity through final error normalization to workflow recovery. Successful accounting merges
++existing provider observations with actual billing/speed/media facts. SDK7 finish-step metadata
++is carried within one attempt into final finish, cleared on a new step/error/retry, and never
++used to establish completion by itself. Generate/stream tests include real local POSTs in all
++three formats and reported zero/nonzero cost, not vendor entitlement or invoices.
++
+ ## Media input admission and wire projection
+ 
+ The existing executable Model validates inputs with the shared contracts media policy
+diff --git a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+index b454048..4126a1e 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+@@ -363,10 +363,14 @@ export class AiSdkModelExecution {
+     const networkTransport: ProviderFetch =
+       enabledKeys && this.isApiKeyEnabled
+         ? (input, init) => {
+-            const request = new Request(input, init);
+-            const authorization = request.headers.get("authorization");
++            // 这里只检查头部；new Request(input) 会转移自动切换传来的 POST body，
++            // 再把原 Request 交给 transport 会在实际发送前报 body 已使用。
++            const headers = new Headers(
++              init?.headers ?? (input instanceof Request ? input.headers : undefined),
++            );
++            const authorization = headers.get("authorization");
+             const key =
+-              request.headers.get("x-api-key") ?? authorization?.replace(/^Bearer\s+/i, "");
++              headers.get("x-api-key") ?? authorization?.replace(/^Bearer\s+/i, "");
+             if (!key || !this.isApiKeyEnabled!(providerId, key.trim())) {
+               throw new CredentialPoolStoppedError(
+                 "The API key is disabled or no longer configured",
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-retry.ts b/apps/zcode-cli/packages/adapters/src/model/runner-retry.ts
+index e6ab329..6fb47bb 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-retry.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-retry.ts
+@@ -2,7 +2,8 @@ import { ModelErrorCode, ModelFailureReason, type Logger } from "@zcode/contract
+ import { isProviderBusinessError } from "./model-execution.js";
+ import { findProviderBusinessError, type ClassifiedModelFailure } from "./failure-classifier.js";
+ import { readMappedAiSdkProviderBusinessError } from "./failure-ai-sdk-provider-error.js";
+-import { unwrapRetryError } from "./failure-inspection.js";
++import { getErrorCode, unwrapRetryError } from "./failure-inspection.js";
++import { CREDENTIAL_POOL_STOPPED } from "./credential-rejection.js";
+ import {
+   AiSdkModelAdapterError,
+   ModelErrorSource,
+@@ -123,6 +124,11 @@ export function toAdapterError(
+     modelId: statusContext.modelId,
+     ...modelFailureAttributionFields(unwrapped, failure, additionalContext?.errorPhase),
+     ...providerBusinessErrorContext(providerBusinessError),
++    // 凭据池停止不是 ProviderBusinessError；最终错误也必须保留既有停止码，
++    // 否则 workflow driver 只看到 unknown，又会重驱已经耗尽的同一请求。
++    ...(getErrorCode(unwrapped) === CREDENTIAL_POOL_STOPPED
++      ? { providerCode: CREDENTIAL_POOL_STOPPED }
++      : {}),
+     providerId: statusContext.providerId,
+     // 错误离开 adapter 后无法再反推出实际协议与传输方式；在归一化边界保留安全事实。
+     providerKind: statusContext.providerKind,
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts b/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
+index 44b6f70..0d243f3 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
+@@ -53,6 +53,7 @@ import {
+   retryBudgetMaxAttempts,
+ } from "./retry-budget.js";
+ import { toModelStreamEvent } from "./runner-normalization.js";
++import { asRecord } from "./runner-record.js";
+ import type { EnvRecord } from "./model-execution.js";
+ import { detectProviderBusinessFinishError } from "./provider-finish-business-error.js";
+ import {
+@@ -178,6 +179,10 @@ export async function* runStreamText(input: {
+     let streamMaxIdleMs = 0;
+     let streamStallCount = 0;
+     let streamOutputCommitted = false;
++    let completedStepMetadata: Extract<
++      TextStreamPart<ToolSet>,
++      { type: "finish-step" }
++    >["providerMetadata"];
+     const repairThinkingSignatureRejection = (error: unknown): boolean => {
+       if (signatureRepairAttempted || resolved.providerKind !== "anthropic") {
+         return false;
+@@ -352,12 +357,27 @@ export async function* runStreamText(input: {
+           );
+         }
+ 
++        // SDK 7 只在 finish-step 提供供应商 metadata，最终 finish 不再带它。
++        // 仅在本次 attempt/step 内携带；新 step、错误和重试不能借用旧实报事实。
++        if (next.value.type === "start-step" || next.value.type === "error") {
++          completedStepMetadata = undefined;
++        } else if (next.value.type === "finish-step") {
++          completedStepMetadata = next.value.providerMetadata;
++        }
++        const chunk =
++          next.value.type === "finish" && completedStepMetadata !== undefined
++            ? {
++                ...next.value,
++                providerMetadata:
++                  asRecord(next.value).providerMetadata ?? completedStepMetadata,
++              }
++            : next.value;
+         let event: Awaited<ReturnType<typeof handleStreamChunk>>;
+         try {
+           event = await handleStreamChunk({
+             admission,
+             attempt,
+-            chunk: next.value,
++            chunk,
+             diagnostics,
+             emittedRetryBoundaryEvent,
+             input,
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner.ts b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+index b6d3bdd..f0e07d3 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+@@ -38,6 +38,7 @@ import { DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS } from "./stream-idle-timeout.js";
+ import { runGenerateText } from "./runner-generate.js";
+ import { runStreamText } from "./runner-stream.js";
+ import { normalizeReasoningHistory } from "./reasoning-history-normalization.js";
++import { asRecord } from "./runner-record.js";
+ import {
+   defaultRuntime,
+   type AiSdkModelRuntime,
+@@ -283,7 +284,9 @@ export class AiSdkModelAdapter {
+       const servedSpeedMode=tier === "priority" || tier === "fast" ? "fast" : tier === "default" ? "standard" : tier;
+       const hasTieredMediaInput=request.messages.some(message=>Array.isArray(message.content) && message.content.some(part=>
+         part.type === "video" || (part.type === "file" && /^(audio|video)\//.test(part.mediaType))));
+-      return {...metadata,fleetAccounting:{billingProvider,authKind:"api-key",servedSpeedMode,hasTieredMediaInput}};
++      // SDK 适配器已保留供应商实报费用；补充本轮事实不能覆盖整个 accounting，
++      // 否则成功 result/finish 会丢失 reportedRequestUsd（包括真实零值）。
++      return {...metadata,fleetAccounting:{...asRecord(metadata?.fleetAccounting),billingProvider,authKind:"api-key",servedSpeedMode,hasTieredMediaInput}};
+     };
+     return createModel({
+       providerId: resolved.providerId,
+diff --git a/apps/zcode-cli/packages/adapters/test/api-request-chain.test.ts b/apps/zcode-cli/packages/adapters/test/api-request-chain.test.ts
+new file mode 100644
+index 0000000..113a5dc
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/api-request-chain.test.ts
+@@ -0,0 +1,231 @@
++import assert from "node:assert/strict";
++import { createServer } from "node:http";
++import test from "node:test";
++import { generateText, streamText } from "ai";
++import { ModelRetryBudget, runWithModelInvocationContext, type Model } from "@zcode/contracts";
++import {
++  createRegistryModelConfig,
++  createRegistryProviderConfig,
++  ModelConfig,
++  parseProviderConfig,
++} from "@zcode/provider";
++import { AiSdkModelAdapter } from "../src/model/runner.js";
++import { CREDENTIAL_POOL_STOPPED } from "../src/model/credential-rejection.js";
++import { inspectWorkflowModelFailure } from "../src/model/workflow-model-failure-policy.js";
++
++type Api = "openai-chat-completions" | "openai-responses" | "anthropic-messages";
++type Mode = "generate" | "stream";
++type Wire = { path: string; key: string; body: Record<string, unknown> };
++const MODEL = "synthetic-request-chain-model";
++const PRIMARY = "synthetic-primary";
++const BACKUP = "synthetic-backup";
++const APIS: readonly Api[] = ["openai-chat-completions", "openai-responses", "anthropic-messages"];
++const MODES: readonly Mode[] = ["generate", "stream"];
++
++function responseBody(api: Api, cost: number | undefined, text = "OK") {
++  if (api === "openai-chat-completions") return {
++    id: "synthetic", model: MODEL,
++    choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: text ? "stop" : "length" }],
++    usage: { prompt_tokens: text ? 2 : 0, completion_tokens: text ? 1 : 0, total_tokens: text ? 3 : 0, ...(cost === undefined ? {} : { cost }) },
++  };
++  if (api === "openai-responses") return {
++    id: "synthetic", object: "response", model: MODEL, status: "completed",
++    output: [{ type: "message", id: "message", role: "assistant", status: "completed",
++      content: [{ type: "output_text", text: "OK", annotations: [] }] }],
++    usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 },
++  };
++  return { id: "synthetic", type: "message", role: "assistant", model: MODEL,
++    content: [{ type: "text", text: "OK" }], stop_reason: "end_turn", stop_sequence: null,
++    usage: { input_tokens: 2, output_tokens: 1 } };
++}
++
++function streamBody(api: Api, cost: number | undefined, text = "OK") {
++  const frame = (value: unknown, event?: string) =>
++    `${event ? `event: ${event}\n` : ""}data: ${JSON.stringify(value)}\n\n`;
++  if (api === "openai-chat-completions") {
++    const body = responseBody(api, cost, text);
++    return frame({ id: "synthetic", model: MODEL, choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] }) +
++      frame({ id: "synthetic", model: MODEL, choices: [{ index: 0, delta: {}, finish_reason: text ? "stop" : "length" }], usage: body.usage }) +
++      "data: [DONE]\n\n";
++  }
++  if (api === "openai-responses") return [
++    { type: "response.created", response: { id: "synthetic", created_at: 1, model: MODEL, status: "in_progress" } },
++    { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "message", role: "assistant", content: [] } },
++    { type: "response.output_text.delta", item_id: "message", output_index: 0, content_index: 0, delta: "OK" },
++    { type: "response.output_item.done", output_index: 0, item: { type: "message", id: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "OK", annotations: [] }] } },
++    { type: "response.completed", response: responseBody(api, cost) },
++  ].map((value) => frame(value, value.type)).join("");
++  return [
++    { type: "message_start", message: { id: "synthetic", type: "message", role: "assistant", model: MODEL, content: [], usage: { input_tokens: 2, output_tokens: 0 } } },
++    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
++    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "OK" } },
++    { type: "content_block_stop", index: 0 },
++    { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
++    { type: "message_stop" },
++  ].map((value) => frame(value, value.type)).join("");
++}
++
++async function fixture(api: Api, options: {
++  rejectionCount?: number;
++  cost?: number;
++  openRouter?: boolean;
++  emptyFirstCost?: number;
++  onRequest?: (wire: Wire, allowed: Set<string>) => void;
++} = {}) {
++  const allowed = new Set([PRIMARY, BACKUP]);
++  const wires: Wire[] = [];
++  const statuses: string[] = [];
++  const server = createServer(async (request, response) => {
++    const chunks: Buffer[] = [];
++    for await (const chunk of request) chunks.push(Buffer.from(chunk));
++    const wire: Wire = {
++      path: request.url!,
++      key: String(request.headers[api === "anthropic-messages" ? "x-api-key" : "authorization"]),
++      body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
++    };
++    wires.push(wire);
++    options.onRequest?.(wire, allowed);
++    if (wires.length <= (options.rejectionCount ?? 0)) {
++      response.writeHead(401, { "content-type": "application/json" });
++      response.end(JSON.stringify({ error: { type: "authentication_error", message: "Synthetic rejection" } }));
++      return;
++    }
++    const empty = wires.length === 1 && options.emptyFirstCost !== undefined;
++    const cost = empty ? options.emptyFirstCost : options.cost;
++    const text = empty ? "" : "OK";
++    response.setHeader("content-type", wire.body.stream ? "text/event-stream" : "application/json");
++    response.end(wire.body.stream ? streamBody(api, cost, text) : JSON.stringify(responseBody(api, cost, text)));
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address();
++  assert.ok(address && typeof address !== "string");
++  const origin = `http://127.0.0.1:${address.port}`;
++  const config = createRegistryProviderConfig(parseProviderConfig({
++    group: "standard-personal",
++    access: { type: "api-key", apiKey: PRIMARY, additionalApiKeys: [BACKUP], autoSwitchCredentials: !options.openRouter },
++    api: { type: api, baseUrl: options.openRouter ? "https://openrouter.ai/api/v1" : `${origin}/v1` },
++  }));
++  assert.ok(config.ok);
++  const modelConfig = createRegistryModelConfig(ModelConfig.fromData({
++    enabled: true,
++    properties: { requiresMfjsToolSchema: false, contextWindow: 8192,
++      inputFormat: { supportsText: true, supportsImage: false, supportsVideo: false, supportsAudio: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall: true, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: false },
++    optionSpecs: { reasoningLevel: { values: ["auto"], map: "{}" },
++      maxOutputTokens: { max: 4096, map: api === "openai-responses" ? '{"max_output_tokens": maxOutputTokens}' : '{"max_tokens": maxOutputTokens}' } },
++  }));
++  assert.ok(modelConfig.ok);
++  const adapter = new AiSdkModelAdapter({
++    env: {}, network: { noProxy: "*" },
++    isApiKeyEnabled: (_provider, key) => allowed.has(key),
++    retry: { maxAttempts: 2, baseDelayMs: 0, jitter: false },
++    statusSink: { publish: (event) => { statuses.push(event.type); } },
++    runtime: { generateText, streamText: (input) => streamText({ ...input, onError: () => {} }) },
++    ...(options.openRouter ? { transport: async (input: RequestInfo | URL, init?: RequestInit) => {
++      // 只把合成 OpenRouter 响应送到本地 HTTP；该测试绝不访问官方服务。
++      const request = new Request(input, init);
++      assert.equal(new URL(request.url).origin, "https://openrouter.ai");
++      return globalThis.fetch(origin + new URL(request.url).pathname, {
++        method: request.method, headers: request.headers, body: await request.text(), signal: request.signal,
++      });
++    } } : {}),
++  });
++  const model = adapter.createModel({ providerId: "loopback", modelId: MODEL,
++    providerConfig: config.config, modelConfig: modelConfig.config });
++  return { model, allowed, wires, statuses, async close() {
++    server.closeAllConnections();
++    await new Promise<void>((resolve) => server.close(() => resolve()));
++  } };
++}
++
++async function request(model: Model, mode: Mode) {
++  const input = { messages: [{ role: "user" as const, content: "Synthetic prompt" }], tools: [],
++    options: { reasoningLevel: "auto", maxOutputTokens: 12 } };
++  if (mode === "generate") return model.generateText(input);
++  const events = [];
++  for await (const event of model.streamText(input)) events.push(event);
++  const finish = events.find((event) => event.type === "finish");
++  assert.ok(finish, "The complete provider stream must produce its normal finish receipt");
++  return { ...finish, text: events.filter((event) => event.type === "text_delta").map((event) => event.text).join("") };
++}
++
++for (const api of APIS) for (const mode of MODES) {
++  test(`real ${api} ${mode} POST retains its body through enabled-key guard and recovery`, async () => {
++    const f = await fixture(api, { rejectionCount: 1 });
++    try {
++      const result = await request(f.model, mode);
++      assert.equal(result.text, "OK");
++      assert.equal(f.wires.length, 2);
++      assert.deepEqual(f.wires.map((wire) => wire.key), api === "anthropic-messages" ? [PRIMARY, BACKUP] : [`Bearer ${PRIMARY}`, `Bearer ${BACKUP}`]);
++      assert.deepEqual(f.wires[0]!.body, f.wires[1]!.body);
++      assert.equal(f.wires[0]!.body.model, MODEL);
++      assert.equal(f.wires[0]!.body[api === "openai-responses" ? "max_output_tokens" : "max_tokens"], 12);
++      assert.ok(f.wires.every((wire) => wire.path === `/v1/${api === "openai-responses" ? "responses" : api === "anthropic-messages" ? "messages" : "chat/completions"}`));
++      assert.equal(f.statuses.filter((status) => status === "model_request_completed").length, 1);
++    } finally { await f.close(); }
++  });
++
++  test(`real ${api} ${mode} refuses a backup revoked after primary dispatch`, async () => {
++    const f = await fixture(api, { rejectionCount: 1, onRequest: (_wire, allowed) => { allowed.delete(BACKUP); } });
++    try {
++      await assert.rejects(request(f.model, mode), /disabled|no longer configured|not replayed/);
++      assert.equal(f.wires.length, 1, "Revocation must stop the physical backup POST");
++      assert.equal(f.statuses.includes("model_request_completed"), false);
++    } finally { await f.close(); }
++  });
++
++  test(`real ${api} ${mode} exhaustion stays terminal through final workflow inspection`, async () => {
++    const f = await fixture(api, { rejectionCount: 2 });
++    try {
++      await assert.rejects(runWithModelInvocationContext({ modelRetryBudget: ModelRetryBudget.Unbounded }, () => request(f.model, mode)), (error: unknown) => {
++        const inspected = inspectWorkflowModelFailure(error);
++        assert.equal(inspected?.providerCode, CREDENTIAL_POOL_STOPPED);
++        assert.deepEqual(inspected?.policy, { decision: "stop", kind: "other" });
++        return true;
++      });
++      assert.equal(f.wires.length, 2);
++      assert.equal(f.statuses.includes("model_retry_scheduled"), false);
++      assert.equal(f.statuses.includes("model_request_completed"), false);
++    } finally { await f.close(); }
++  });
++}
++
++test("a captured API binding with all keys later disabled dispatches no POST", async () => {
++  const f = await fixture("openai-chat-completions");
++  try {
++    f.allowed.clear();
++    await assert.rejects(request(f.model, "generate"), /No enabled API key/);
++    assert.equal(f.wires.length, 0);
++  } finally { await f.close(); }
++});
++
++for (const mode of MODES) for (const cost of [0, 0.25]) {
++  test(`reported OpenRouter cost ${cost} survives normal ${mode} receipt wrapping`, async () => {
++    const f = await fixture("openai-chat-completions", { openRouter: true, cost });
++    try {
++      const result = await request(f.model, mode);
++      assert.equal(result.text, "OK");
++      assert.deepEqual(result.usage?.inputTokens, 2);
++      const accounting = result.providerMetadata?.fleetAccounting as Record<string, unknown>;
++      assert.equal(accounting.reportedRequestUsd, cost);
++      assert.equal(accounting.billingProvider, "openrouter");
++      assert.equal(accounting.authKind, "api-key");
++      assert.equal(accounting.hasTieredMediaInput, false);
++      assert.equal(f.wires.length, 1);
++    } finally { await f.close(); }
++  });
++}
++
++test("a retried stream cannot borrow the previous attempt's reported cost", async () => {
++  const f = await fixture("openai-chat-completions", { openRouter: true, emptyFirstCost: 0.25 });
++  try {
++    const result = await request(f.model, "stream");
++    assert.equal(result.text, "OK");
++    assert.equal(f.wires.length, 2);
++    assert.equal(f.statuses.filter((status) => status === "model_retry_scheduled").length, 1);
++    const accounting = result.providerMetadata?.fleetAccounting as Record<string, unknown>;
++    assert.equal(accounting.reportedRequestUsd, undefined);
++    assert.equal(accounting.billingProvider, "openrouter");
++  } finally { await f.close(); }
++});
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+index f9de179..5071911 100644
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -1,5 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import "./api-request-chain.test.js";
+ import { readFile } from "node:fs/promises";
+ import { generateText, streamText } from "ai";
+ import {

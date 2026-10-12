@@ -1,0 +1,528 @@
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+index 5514219..b211656 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+@@ -143,33 +143,52 @@ export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry
+             updatedAt: Date.now(),
+             message: reason.slice(0, 500),
+           };
+-          const failed = await writeMediaReceipt(
+-            context,
+-            receipt,
+-            notStarted ? "failed" : "unknown",
+-          );
+-          await store.recordModelUsage({
+-            id: jobId,
+-            logicalRequestId: jobId,
+-            sessionID: context.sessionId,
+-            querySource: "media_video",
+-            providerId: request.providerId,
+-            modelId: request.modelId,
+-            status: "error",
+-            startedAt: now,
+-            completedAt: Date.now(),
+-            errorMessage: receipt.message,
+-            providerMetadata: {
+-              fleetAccounting: {
+-                billingProvider: "xai",
+-                authKind: "api-key",
+-                workspacePath: context.workspaceRoot,
+-                mediaReceiptUri: failed.uri,
+-                mediaSubmission: notStarted ? "not-started" : "unknown",
++          let receiptUri = claim.uri;
++          const persistenceFailures: unknown[] = [];
++          try {
++            const failed = await writeMediaReceipt(
++              context,
++              receipt,
++              notStarted ? "failed" : "unknown",
++            );
++            receiptUri = failed.uri;
++          } catch (receiptError) {
++            persistenceFailures.push(receiptError);
++          }
++          try {
++            await store.recordModelUsage({
++              id: jobId,
++              logicalRequestId: jobId,
++              sessionID: context.sessionId,
++              querySource: "media_video",
++              providerId: request.providerId,
++              modelId: request.modelId,
++              status: "error",
++              startedAt: now,
++              completedAt: Date.now(),
++              errorMessage: receipt.message,
++              providerMetadata: {
++                fleetAccounting: {
++                  billingProvider: "xai",
++                  authKind: "api-key",
++                  workspacePath: context.workspaceRoot,
++                  mediaReceiptUri: receiptUri,
++                  mediaSubmission: notStarted ? "not-started" : "unknown",
++                },
+               },
+-            },
+-          });
+-          return mediaJobOutput(receipt, failed.uri);
++            });
++          } catch (usageError) {
++            persistenceFailures.push(usageError);
++          }
++          // 记录失败不能掩盖 not-started/HTTP 原因，也不能让原 paid operation 重发。
++          // 保留原错误与每个写入错误，并由既有 cause 投影传递原始诊断。
++          if (persistenceFailures.length)
++            throw new AggregateError(
++              [error, ...persistenceFailures],
++              `${reason}. Failed to retain media submission records: ${persistenceFailures.map((failure) => (failure instanceof Error ? failure.message : String(failure))).join("; ")}. Receipt: ${receiptUri}. Never resubmit this request automatically.`,
++              { cause: error },
++            );
++          return mediaJobOutput(receipt, receiptUri);
+         } // An uncertain POST is never repeated.
+         receipt = {
+           ...receipt,
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index 5b69f8d..dbfed37 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -173,6 +173,7 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+     } catch (error) {
+       const notStarted = error instanceof MediaSubmissionNotStartedError;
+       let receiptUri = claim.uri;
++      const persistenceFailures: unknown[] = [];
+       try {
+         const failed = await writeMediaReceipt(
+           context,
+@@ -194,23 +195,34 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+           notStarted ? "failed" : "unknown",
+         );
+         receiptUri = failed.uri;
+-      } finally {
+-        await usageStore
+-          .recordModelUsage({
+-            ...usageBase,
+-            status: context.abortSignal.aborted ? "cancelled" : "error",
+-            completedAt: Date.now(),
+-            errorMessage: error instanceof Error ? error.message : String(error),
+-            providerMetadata: {
+-              fleetAccounting: {
+-                ...usageBase.providerMetadata.fleetAccounting,
+-                mediaReceiptUri: receiptUri,
+-                mediaSubmission: notStarted ? "not-started" : "unknown",
+-              },
++      } catch (receiptError) {
++        persistenceFailures.push(receiptError);
++      }
++      try {
++        await usageStore.recordModelUsage({
++          ...usageBase,
++          status: context.abortSignal.aborted ? "cancelled" : "error",
++          completedAt: Date.now(),
++          errorMessage: error instanceof Error ? error.message : String(error),
++          providerMetadata: {
++            fleetAccounting: {
++              ...usageBase.providerMetadata.fleetAccounting,
++              mediaReceiptUri: receiptUri,
++              mediaSubmission: notStarted ? "not-started" : "unknown",
+             },
+-          })
+-          .catch(() => undefined);
++          },
++        });
++      } catch (usageError) {
++        persistenceFailures.push(usageError);
+       }
++      // provider 的原始失败不能被回执/统计写入失败替换；两条恢复写入都尝试一次，
++      // 沿用 AggregateError 保留全部原因，cause 让现有工具错误投影保留 provider code。
++      if (persistenceFailures.length)
++        throw new AggregateError(
++          [error, ...persistenceFailures],
++          `${error instanceof Error ? error.message : String(error)}. Failed to retain media submission records: ${persistenceFailures.map((failure) => (failure instanceof Error ? failure.message : String(failure))).join("; ")}. Receipt: ${receiptUri}. Never resubmit this request automatically.`,
++          { cause: error },
++        );
+       throw error;
+     }
+     const completedAt = Date.now();
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+index 34322bf..dbf81f0 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+@@ -199,18 +199,22 @@ export async function waitForMediaJob(
+   const found = await latestMediaReceipt(context, original, uri);
+   let receipt = found.receipt;
+   uri = found.uri;
+-  if (receipt.kind === "image" && receipt.status === "unknown") {
++  // 完成回执可能在二进制发布后失败；视频与图片一样先按原 operation 找本地结果，
++  // 不能因为临时 provider URL 已过期而丢掉已保存的文件，也不能从字节推断账单。
++  if (
++    (receipt.kind === "image" && receipt.status === "unknown") ||
++    (receipt.kind === "video" && receipt.status !== "completed")
++  ) {
+     const artifact = await context.artifactStore?.findToolResultBinaryArtifactOnce?.({
+       sessionId: context.sessionId,
+       idempotencyKey: receipt.jobId,
+     });
+     if (artifact) {
+-      if (
+-        !artifact.bytes ||
+-        !["image/png", "image/jpeg", "image/webp"].includes(artifact.contentType)
+-      )
++      const supportedMimeTypes =
++        receipt.kind === "video" ? ["video/mp4"] : ["image/png", "image/jpeg", "image/webp"];
++      if (!artifact.bytes || !supportedMimeTypes.includes(artifact.contentType))
+         throw new Error(
+-          "Saved image operation has no valid image artifact; original files were preserved",
++          `Saved ${receipt.kind} operation has no valid ${receipt.kind} artifact; original files were preserved`,
+         );
+       receipt = {
+         ...receipt,
+@@ -219,8 +223,7 @@ export async function waitForMediaJob(
+         mimeType: artifact.contentType,
+         updatedAt: Date.now(),
+         recoveredFromArtifact: true,
+-        message:
+-          "Restored the already saved image. Provider completion details are unavailable; existing usage records were preserved.",
++        message: `Restored the already saved ${receipt.kind}. Provider completion details are unavailable; existing usage records were preserved.`,
+       };
+       const saved = await writeMediaReceipt(context, receipt, "completed");
+       receipt = await readMediaReceipt(context, saved.uri);
+@@ -254,22 +257,11 @@ export async function waitForMediaJob(
+       signal: context.abortSignal,
+     });
+     if (result.status === "done") {
+-      // Once downloaded, commit bytes even if the user stops the surrounding conversation.
+-      const artifact = await context.artifactStore.writeToolResultBinaryArtifact({
+-        content: result.bytes,
+-        contentType: result.mimeType,
+-        sessionId: context.sessionId,
+-        toolCallId: receipt.jobId,
+-        toolName: "GenerateVideo",
+-        retention: "session",
+-        idempotencyKey: receipt.jobId,
+-        trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
+-      });
+       receipt = {
+         ...receipt,
+         status: "completed",
++        recoveredFromArtifact: undefined,
+         updatedAt: Date.now(),
+-        artifactUri: artifact.uri,
+         mimeType: result.mimeType,
+         ...(result.reportedModelId ? { reportedModelId: result.reportedModelId } : {}),
+         ...(result.reportedCostUsd === undefined
+@@ -277,12 +269,31 @@ export async function waitForMediaJob(
+           : { reportedCostUsd: result.reportedCostUsd }),
+         providerUsage: result.providerUsage,
+       };
++      let usageRecorded = false;
++      try {
++        // Once downloaded, commit bytes even if the user stops the surrounding conversation.
++        const artifact = await context.artifactStore.writeToolResultBinaryArtifact({
++          content: result.bytes,
++          contentType: result.mimeType,
++          sessionId: context.sessionId,
++          toolCallId: receipt.jobId,
++          toolName: "GenerateVideo",
++          retention: "session",
++          idempotencyKey: receipt.jobId,
++          trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
++        });
++        receipt = { ...receipt, artifactUri: artifact.uri };
++      } finally {
++        // provider 已返回的消耗不能依赖完成回执成功；沿用同一 ledger ID，
++        // 即使文件或回执落盘失败，也保留已观测的费用。字节恢复不覆盖这条事实。
++        usageRecorded = await recordMediaReceiptUsage(context, receipt, uri);
++      }
+       const saved = await writeMediaReceipt(context, receipt, "completed");
+       receipt = await readMediaReceipt(context, saved.uri);
+       uri = saved.uri;
+       return {
+         ...mediaJobOutput(receipt, uri),
+-        usageRecorded: await recordMediaReceiptUsage(context, receipt, uri),
++        usageRecorded,
+       };
+     }
+     if (result.status === "failed" || result.status === "expired") {
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index c2647f0..115521a 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -716,3 +716,82 @@ test("local image refusal retains a failed not-started receipt instead of uncert
+     await rm(root, { recursive: true, force: true });
+   }
+ });
++
++for (const fault of ["receipt", "ledger", "both"] as const) {
++  for (const notStarted of [false, true]) {
++    test(`image submission error remains visible when ${fault} persistence fails (${notStarted ? "not started" : "uncertain"})`, async () => {
++      const { createErrorResult } = await import("../src/tool/executor/errors.js");
++      const f = await fixture();
++      await f.store.createSession({
++        id: "session" as never, projectID: "project" as never, slug: "fixture",
++        directory: f.dir, title: "fixture", version: "fixture",
++      });
++      const artifacts = new NodeToolArtifactStore({
++        rootDir: join(f.dir, "artifacts"), imageCacheRootDir: join(f.dir, "images"),
++        videoCacheRootDir: join(f.dir, "videos"),
++      });
++      const original = notStarted
++        ? new MediaSubmissionNotStartedError("Original image confirmation expired; no request was submitted")
++        : Object.assign(new Error("Media request failed (HTTP 503)"), { code: "provider_unavailable" });
++      const receiptFailure = new Error("Injected image receipt write failure");
++      const ledgerFailure = new Error("Injected image usage write failure");
++      let submissions = 0;
++      const tools = createMediaGenerationToolEntries({
++        listModels: () => [], prepareImage: async () => "binding",
++        generateImage: async () => { submissions++; throw original; },
++      });
++      const generate = tools.find((tool) => tool.metadata.name === "GenerateImage")!;
++      const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++      const faultyArtifacts = new Proxy(artifacts, {
++        get(target, name) {
++          if (name === "writeToolResultArtifactOnce") return async (input: any) => {
++            if (fault !== "ledger" && !input.idempotencyKey.endsWith(":intent")) throw receiptFailure;
++            return target.writeToolResultArtifactOnce(input);
++          };
++          const value = target[name as keyof NodeToolArtifactStore];
++          return typeof value === "function" ? value.bind(target) : value;
++        },
++      });
++      const record = f.store.recordModelUsage.bind(f.store);
++      f.store.recordModelUsage = async (input) => {
++        if (fault !== "receipt") throw ledgerFailure;
++        return record(input);
++      };
++      const context = (artifactStore = artifacts) => ({
++        artifactStore, sessionStore: f.store, abortSignal: new AbortController().signal,
++        sessionId: "session", toolCallId: "call", turnId: "turn", workspaceRoot: f.dir,
++        traceContext: { traceId: "trace", attributes: { assistantMessageId: "assistant" } },
++      }) as unknown as ToolExecutionContext;
++      const request = { providerId: "xai", modelId: "image", prompt: "fixture", binding: "binding" };
++      try {
++        await assert.rejects(generate.handler(request, context(faultyArtifacts)), (error: unknown) => {
++          assert.ok(error instanceof AggregateError, `Submission diagnostic was replaced by: ${error instanceof Error ? error.message : String(error)}`);
++          assert.equal(error.cause, original);
++          assert.deepEqual(error.errors, [original,
++            ...(fault !== "ledger" ? [receiptFailure] : []),
++            ...(fault !== "receipt" ? [ledgerFailure] : []),
++          ]);
++          const result = createErrorResult({ id: "call", name: "GenerateImage", input: {} }, error);
++          assert.match(`${result.error?.message} ${result.error?.detail}`, notStarted ? /Original image confirmation expired/ : /HTTP 503/);
++          assert.match(result.error!.message, /Failed to retain media submission/);
++          assert.match(result.error!.message, /Never resubmit/);
++          if (!notStarted) assert.equal(result.error?.code, "provider_unavailable");
++          return true;
++        });
++        await f.reopen();
++        const files = await artifacts.listMediaJobArtifacts({ sessionId: "session" as never });
++        const intent = (await Promise.all(files.map(async (file) => ({ ...file,
++          receipt: JSON.parse((await artifacts.readToolResultArtifact({ uri: file.uri })).content),
++        })))).find((file) => file.receipt.status === "unknown")!;
++        const resumed = await resume.handler({ receiptUri: intent.uri, waitSeconds: 0 }, context()) as any;
++        assert.equal(resumed.status, fault === "ledger" && notStarted ? "failed" : "unknown");
++        assert.equal(resumed.artifactUri, undefined);
++        await assert.rejects(generate.handler(request, context()), /never generate it again automatically/);
++        assert.equal(submissions, 1);
++        const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++        assert.equal(ledger.accounting?.[0]?.requestCount, 1);
++        assert.equal(ledger.accounting?.[0]?.pricedCount, 0);
++      } finally { await f.close(); }
++    });
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+index 404d8fa..e7ff53e 100644
+--- a/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+@@ -293,6 +293,115 @@ test("receipt recovery repairs a failed usage write while preserving the saved v
+   }
+ });
+ 
++for (const retainUsage of [true, false]) {
++  test(
++    `saved video survives a failed completion receipt and provider expiry with ${retainUsage ? "its durable charge" : "unknown completion facts"}`,
++    async () => {
++      const f = await setup();
++      const controller = new AbortController();
++      let submissions = 0;
++      let polls = 0;
++      let failCompletion = true;
++      const providerUsage = { outputSeconds: 6, billedUnits: 3 };
++      const port: MediaGenerationPort = {
++        listModels: () => [],
++        prepareImage: async () => "unused",
++        generateImage: async () => { throw new Error("unused"); },
++        submitVideo: async () => {
++          submissions++;
++          return { requestId: "original-provider-request" };
++        },
++        readVideo: async (input) => {
++          polls++;
++          assert.equal(input.requestId, "original-provider-request");
++          assert.equal(input.credentialReference, "original-key");
++          if (polls > 1) return { status: "expired" };
++          controller.abort(); // Returned bytes must still finish local publication after Stop.
++          return {
++            status: "done", bytes: mp4, mimeType: "video/mp4",
++            reportedModelId: "reported-video", reportedCostUsd: 0.2, providerUsage,
++          };
++        },
++      };
++      const tools = createMediaGenerationToolEntries(port);
++      const generate = tools.find((tool) => tool.metadata.name === "GenerateVideo")!;
++      const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++      const originalRecord = f.store.recordModelUsage.bind(f.store);
++      f.store.recordModelUsage = async (record) => {
++        if (!retainUsage && record.rawUsage) throw new Error("completion ledger unavailable");
++        return originalRecord(record);
++      };
++      const readLedger = async () => {
++        const { DatabaseSync } = await import("node:sqlite");
++        const db = new DatabaseSync(join(f.root, "session.sqlite"), { readOnly: true });
++        try { return db.prepare("select * from model_usage").all(); }
++        finally { db.close(); }
++      };
++      try {
++        const context = f.context(controller.signal);
++        const artifacts = context.artifactStore as NodeToolArtifactStore;
++        context.artifactStore = new Proxy(artifacts, {
++          get(target, name) {
++            if (name === "writeToolResultArtifactOnce") return async (input: any) => {
++              if (input.idempotencyKey.endsWith(":completed") && failCompletion) {
++                failCompletion = false;
++                throw new Error("completion receipt unavailable");
++              }
++              return target.writeToolResultArtifactOnce(input);
++            };
++            const value = target[name as keyof NodeToolArtifactStore];
++            return typeof value === "function" ? value.bind(target) : value;
++          },
++        });
++        await assert.rejects(generate.handler(request, context), /completion receipt unavailable/);
++        const receipts = await artifacts.listMediaJobArtifacts({ sessionId: "session" as never });
++        const parsed = await Promise.all(receipts.map(async (file) => ({
++          uri: file.uri,
++          receipt: JSON.parse((await artifacts.readToolResultArtifact({ uri: file.uri })).content),
++        })));
++        const accepted = parsed.find(({ receipt }) => receipt.status === "pending")!;
++        assert.equal(accepted.receipt.requestId, "original-provider-request");
++        assert.equal(accepted.receipt.credentialReference, "original-key");
++        const saved = await artifacts.findToolResultBinaryArtifactOnce({
++          sessionId: "session" as never, idempotencyKey: accepted.receipt.jobId,
++        });
++        assert.ok(saved);
++        const before = await readLedger();
++        await f.reopen();
++        const recovered = await resume.handler(
++          { receiptUri: accepted.uri, waitSeconds: 0 }, f.context(),
++        ) as any;
++        assert.equal(recovered.status, "completed");
++        assert.equal(recovered.artifactUri, saved.uri);
++        assert.equal(recovered.mimeType, "video/mp4");
++        assert.match(recovered.message, /already saved video.*completion details are unavailable/);
++        assert.equal(recovered.reportedCostUsd, undefined, "Bytes do not prove provider cost");
++        assert.equal(recovered.reportedModelId, undefined, "Bytes do not prove the effective model");
++        assert.deepEqual(Buffer.from((await f.context().artifactStore.readToolResultBinaryArtifact({
++          uri: recovered.artifactUri,
++        })).bytes), mp4);
++        const again = await resume.handler(
++          { receiptUri: accepted.uri, waitSeconds: 0 }, f.context(),
++        ) as any;
++        assert.equal(again.artifactUri, saved.uri);
++        assert.equal(submissions, 1, "Saved-video recovery resubmitted a paid request");
++        assert.equal(polls, 1, "Saved-video recovery queried an expired provider result");
++        assert.deepEqual(await readLedger(), before, "Byte recovery replaced observed usage");
++        const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++        const row = ledger.accounting?.[0];
++        assert.ok(row);
++        assert.equal(row.requestCount, 1);
++        assert.equal(row.pricedCount, retainUsage ? 1 : 0);
++        if (retainUsage) {
++          assert.equal(row.estimatedUsd, 0.2);
++          assert.equal(row.modelId, "reported-video");
++          assert.deepEqual(JSON.parse(String(before[0]!.raw_usage_json)), providerUsage);
++        }
++      } finally { await f.close(); }
++    },
++  );
++}
++
+ test("generated binary images and videos use the original materialization path after reopen", async () => {
+   const f = await setup();
+   try {
+@@ -345,3 +454,75 @@ test("a known local refusal is diagnosed as not submitted and survives replay",
+     assert.equal(repeated.message, result.message); assert.equal(calls, 1);
+   } finally { await f.close(); }
+ });
++
++for (const fault of ["receipt", "ledger", "both"] as const) {
++  for (const notStarted of [false, true]) {
++    test(`video submission error remains visible when ${fault} persistence fails (${notStarted ? "not started" : "uncertain"})`, async () => {
++      const { MediaSubmissionNotStartedError } = await import("@zcode/contracts");
++      const { createErrorResult } = await import("../src/tool/executor/errors.js");
++      const f = await setup();
++      const original = notStarted
++        ? new MediaSubmissionNotStartedError("Original video confirmation expired; no request was submitted")
++        : Object.assign(new Error("Media request failed (HTTP 503)"), { code: "provider_unavailable" });
++      const receiptFailure = new Error("Injected video receipt write failure");
++      const ledgerFailure = new Error("Injected video usage write failure");
++      let submissions = 0;
++      const port: MediaGenerationPort = {
++        listModels: () => [], prepareImage: async () => "unused",
++        generateImage: async () => { throw new Error("unused"); },
++        submitVideo: async () => { submissions++; throw original; },
++        readVideo: async () => { throw new Error("No confirmed request to query"); },
++      };
++      const tools = createMediaGenerationToolEntries(port);
++      const generate = tools.find((tool) => tool.metadata.name === "GenerateVideo")!;
++      const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++      const context = f.context();
++      const artifacts = context.artifactStore as NodeToolArtifactStore;
++      context.artifactStore = new Proxy(artifacts, {
++        get(target, name) {
++          if (name === "writeToolResultArtifactOnce") return async (input: any) => {
++            if (fault !== "ledger" && !input.idempotencyKey.endsWith(":intent")) throw receiptFailure;
++            return target.writeToolResultArtifactOnce(input);
++          };
++          const value = target[name as keyof NodeToolArtifactStore];
++          return typeof value === "function" ? value.bind(target) : value;
++        },
++      });
++      const record = f.store.recordModelUsage.bind(f.store);
++      f.store.recordModelUsage = async (input) => {
++        if (fault !== "receipt") throw ledgerFailure;
++        return record(input);
++      };
++      try {
++        await assert.rejects(generate.handler(request, context), (error: unknown) => {
++          assert.ok(error instanceof AggregateError, `Submission diagnostic was replaced by: ${error instanceof Error ? error.message : String(error)}`);
++          assert.equal(error.cause, original);
++          assert.deepEqual(error.errors, [original,
++            ...(fault !== "ledger" ? [receiptFailure] : []),
++            ...(fault !== "receipt" ? [ledgerFailure] : []),
++          ]);
++          const result = createErrorResult({ id: "call", name: "GenerateVideo", input: {} }, error);
++          assert.match(`${result.error?.message} ${result.error?.detail}`, notStarted ? /Original video confirmation expired/ : /HTTP 503/);
++          assert.match(result.error!.message, /Failed to retain media submission/);
++          assert.match(result.error!.message, /Never resubmit/);
++          if (!notStarted) assert.equal(result.error?.code, "provider_unavailable");
++          return true;
++        });
++        await f.reopen();
++        const files = await artifacts.listMediaJobArtifacts({ sessionId: "session" as never });
++        const intent = (await Promise.all(files.map(async (file) => ({ ...file,
++          receipt: JSON.parse((await artifacts.readToolResultArtifact({ uri: file.uri })).content),
++        })))).find((file) => file.receipt.status === "unknown")!;
++        const resumed = await resume.handler({ receiptUri: intent.uri, waitSeconds: 0 }, f.context()) as any;
++        assert.equal(resumed.status, fault === "ledger" && notStarted ? "failed" : "unknown");
++        assert.equal(resumed.artifactUri, undefined);
++        const replay = await generate.handler(request, f.context()) as any;
++        assert.equal(replay.status, resumed.status);
++        assert.equal(submissions, 1);
++        const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++        assert.equal(ledger.accounting?.[0]?.requestCount, 1);
++        assert.equal(ledger.accounting?.[0]?.pricedCount, 0);
++      } finally { await f.close(); }
++    });
++  }
++}

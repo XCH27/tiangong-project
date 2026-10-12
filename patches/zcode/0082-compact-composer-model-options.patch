@@ -1,0 +1,679 @@
+diff --git a/packages/ui/src/ModelConfigSelect.tsx b/packages/ui/src/ModelConfigSelect.tsx
+index b8b9302..f20164d 100644
+--- a/packages/ui/src/ModelConfigSelect.tsx
++++ b/packages/ui/src/ModelConfigSelect.tsx
+@@ -135,6 +135,7 @@ function getModelTriggerLabelClassName({
+ interface ModelConfigSelectProps {
+   /** Existing host menus can contribute scoped options without another toolbar trigger. */
+   leadingContent?: ReactNode;
++  modelSubmenu?: { label: string; value: string };
+   triggerIcon?: ReactNode;
+   modelGroups: readonly ModelSelectGroup[];
+   normalizedValue: string;
+@@ -188,6 +189,7 @@ interface ModelConfigSelectProps {
+ 
+ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+   leadingContent,
++  modelSubmenu,
+   triggerIcon,
+   modelGroups,
+   normalizedValue,
+@@ -484,6 +486,97 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+     return actions;
+   }, [footerActions, manageModelsLabel, onManageModels, showManageModelsAction]);
+ 
++  const modelOptions = open ? (
++    <>
++      {leadingItems !== undefined && leadingItems.length > 0 ? (
++        <>
++          {renderModelItems(leadingItems)}
++          {hasSelectableModel ? <DropdownMenuSeparator /> : null}
++        </>
++      ) : null}
++      {hasSelectableModel && shouldShowProviderLevel
++        ? modelGroups.map((group, index) => {
++            const groupSeparator = shouldRenderModelGroupSeparator(
++              modelGroups[index - 1],
++              group,
++            ) ? (
++              <DropdownMenuSeparator />
++            ) : null;
++            if (group.directItems) {
++              return (
++                <Fragment key={group.key}>
++                  {groupSeparator}
++                  <div>
++                    <DropdownMenuLabel
++                      className="flex min-h-8 items-center px-2 py-1"
++                      data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
++                      data-model-provider-key={group.key}
++                    >
++                      {renderGroupLabel(group)}
++                    </DropdownMenuLabel>
++                    {renderProviderConnectionHeader(group)}
++                    <DropdownMenuRadioGroup value={normalizedValue}>
++                      {group.items.map((item) => renderModelItem(item))}
++                    </DropdownMenuRadioGroup>
++                  </div>
++                </Fragment>
++              );
++            }
++
++            const groupSelected = isModelSelectGroupSelected(group, normalizedValue);
++            return (
++              <Fragment key={group.key}>
++                {groupSeparator}
++                <DropdownMenuSub>
++                  <DropdownMenuSubTrigger
++                    className="min-h-8"
++                    data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
++                    data-model-provider-key={group.key}
++                    data-model-provider-selected={groupSelected ? "true" : undefined}
++                  >
++                    {renderGroupLabel(group)}
++                    {groupSelected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
++                  </DropdownMenuSubTrigger>
++                  <DropdownMenuSubContent
++                    className={cn(
++                      "max-h-72 overflow-y-auto",
++                      // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
++                      providerSubmenuClassName ??
++                        "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
++                    )}
++                  >
++                    {renderModelItems(group.items)}
++                  </DropdownMenuSubContent>
++                </DropdownMenuSub>
++              </Fragment>
++            );
++          })
++        : hasSelectableModel
++          ? renderModelItems(modelGroups[0]?.items ?? [])
++          : null}
++      {renderedFooterActions.length > 0 ? (
++        <div className="sticky bottom-0 z-10 bg-menu after:absolute after:left-0 after:top-full after:h-1 after:w-full after:bg-menu after:content-['']">
++          {hasSelectableModel ? <DropdownMenuSeparator /> : null}
++          {renderedFooterActions.map((action) => (
++            <DropdownMenuItem
++              key={action.key}
++              className="min-h-8 gap-2 px-2"
++              data-model-footer-action={action.key}
++              data-model-footer-action-selected={action.selected ? "true" : undefined}
++              onSelect={() => {
++                handlePopoverOpenChange(false);
++                action.onSelect?.();
++              }}
++            >
++              <span className="min-w-0 flex-1 truncate">{action.label}</span>
++              {action.selected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
++            </DropdownMenuItem>
++          ))}
++        </div>
++      ) : null}
++    </>
++  ) : null;
++
+   const modelTrigger = (
+     <DropdownMenuTrigger asChild>
+       <Button
+@@ -549,9 +642,11 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+       {open ? (
+         <DropdownMenuContent
+           className={cn(
+-            shouldShowProviderLevel
+-              ? "w-max min-w-48 max-w-[calc(100vw-2rem)]"
+-              : "w-48 max-h-72 overflow-y-auto",
++            modelSubmenu
++              ? "w-64 max-w-[calc(100vw-2rem)]"
++              : shouldShowProviderLevel
++                ? "w-max min-w-48 max-w-[calc(100vw-2rem)]"
++                : "w-48 max-h-72 overflow-y-auto",
+           )}
+           align={contentAlign}
+           side={contentSide}
+@@ -576,94 +671,28 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+           }}
+         >
+           {leadingContent}
+-          {leadingItems !== undefined && leadingItems.length > 0 ? (
++          {modelSubmenu ? (
+             <>
+-              {renderModelItems(leadingItems)}
+-              {hasSelectableModel ? <DropdownMenuSeparator /> : null}
+-            </>
+-          ) : null}
+-          {hasSelectableModel && shouldShowProviderLevel
+-            ? modelGroups.map((group, index) => {
+-                const groupSeparator = shouldRenderModelGroupSeparator(
+-                  modelGroups[index - 1],
+-                  group,
+-                ) ? (
+-                  <DropdownMenuSeparator />
+-                ) : null;
+-                if (group.directItems) {
+-                  return (
+-                    <Fragment key={group.key}>
+-                      {groupSeparator}
+-                      <div>
+-                        <DropdownMenuLabel
+-                          className="flex min-h-8 items-center px-2 py-1"
+-                          data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
+-                          data-model-provider-key={group.key}
+-                        >
+-                          {renderGroupLabel(group)}
+-                        </DropdownMenuLabel>
+-                        {renderProviderConnectionHeader(group)}
+-                        <DropdownMenuRadioGroup value={normalizedValue}>
+-                          {group.items.map((item) => renderModelItem(item))}
+-                        </DropdownMenuRadioGroup>
+-                      </div>
+-                    </Fragment>
+-                  );
+-                }
+-
+-                const groupSelected = isModelSelectGroupSelected(group, normalizedValue);
+-                return (
+-                  <Fragment key={group.key}>
+-                    {groupSeparator}
+-                    <DropdownMenuSub>
+-                      <DropdownMenuSubTrigger
+-                        className="min-h-8"
+-                        data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
+-                        data-model-provider-key={group.key}
+-                        data-model-provider-selected={groupSelected ? "true" : undefined}
+-                      >
+-                        {renderGroupLabel(group)}
+-                        {groupSelected ? (
+-                          <CheckIcon className="size-4 text-foreground-subtle" />
+-                        ) : null}
+-                      </DropdownMenuSubTrigger>
+-                      <DropdownMenuSubContent
+-                        className={cn(
+-                          "max-h-72 overflow-y-auto",
+-                          // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
+-                          providerSubmenuClassName ??
+-                            "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
+-                        )}
+-                      >
+-                        {renderModelItems(group.items)}
+-                      </DropdownMenuSubContent>
+-                    </DropdownMenuSub>
+-                  </Fragment>
+-                );
+-              })
+-            : hasSelectableModel
+-              ? renderModelItems(modelGroups[0]?.items ?? [])
+-              : null}
+-          {renderedFooterActions.length > 0 ? (
+-            <div className="sticky bottom-0 z-10 bg-menu after:absolute after:left-0 after:top-full after:h-1 after:w-full after:bg-menu after:content-['']">
+-              {hasSelectableModel ? <DropdownMenuSeparator /> : null}
+-              {renderedFooterActions.map((action) => (
+-                <DropdownMenuItem
+-                  key={action.key}
+-                  className="min-h-8 gap-2 px-2"
+-                  data-model-footer-action={action.key}
+-                  data-model-footer-action-selected={action.selected ? "true" : undefined}
+-                  onSelect={() => {
+-                    handlePopoverOpenChange(false);
+-                    action.onSelect?.();
+-                  }}
++              <DropdownMenuSeparator />
++              <DropdownMenuSub>
++                <DropdownMenuSubTrigger
++                  disabled={!hasSelectableModel}
++                  className="min-h-9 gap-3"
++                  data-composer-model-submenu="true"
+                 >
+-                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+-                  {action.selected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
+-                </DropdownMenuItem>
+-              ))}
+-            </div>
+-          ) : null}
++                  <span className="flex-1">{modelSubmenu.label}</span>
++                  <span className="max-w-40 truncate text-foreground-subtle">
++                    {modelSubmenu.value}
++                  </span>
++                </DropdownMenuSubTrigger>
++                <DropdownMenuSubContent className="max-h-72 min-w-48 max-w-[calc(100vw-2rem)] overflow-y-auto">
++                  {modelOptions}
++                </DropdownMenuSubContent>
++              </DropdownMenuSub>
++            </>
++          ) : (
++            modelOptions
++          )}
+         </DropdownMenuContent>
+       ) : null}
+     </DropdownMenu>
+diff --git a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+index eb73743..cb76fab 100644
+--- a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+@@ -6,14 +6,17 @@ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import {
+   DropdownMenuItem,
+-  DropdownMenuLabel,
++  DropdownMenuCheckboxItem,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
+-  DropdownMenuSeparator,
++  DropdownMenuSub,
++  DropdownMenuSubContent,
++  DropdownMenuSubTrigger,
+ } from "@/components/ui/dropdown-menu.js";
++import { Switch } from "@/components/ui/switch.js";
++import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
+ import { getThoughtLevelLabel } from "./thoughtLevelOptions.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { cn } from "@/components/lib/utils.js";
+ 
+ /** One host model picker; effort/Fast remain independent, composer-owned request fields. */
+ export function ComposerModelControl({
+@@ -22,12 +25,14 @@ export function ComposerModelControl({
+   provider,
+   onThoughtChange,
+   speed,
++  contextTokens,
+ }: {
+   model: ComponentProps<typeof ModelConfigSelect>;
+   thought?: ZCodeConfigOption | null;
+   provider?: ZCodeProvider;
+   onThoughtChange(value: string): void;
+   speed?: { value: "standard" | "fast"; note: string; onChange(value: "standard" | "fast"): void };
++  contextTokens?: number | null;
+ }) {
+   const { intl } = useZCodeIntl();
+   const entries = thought?.type === "select" ? (thought.options ?? []) : [];
+@@ -45,71 +50,101 @@ export function ComposerModelControl({
+   ]
+     .filter(Boolean)
+     .join(" · ");
+-  const menuOptions =
+-    entries.length || speed ? (
+-      <>
+-        <div className="flex items-center justify-between gap-2 pr-1">
+-          <DropdownMenuLabel>
+-            {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
+-          </DropdownMenuLabel>
+-          {speed ? (
+-            <ControlHintTooltip
+-              title={intl.formatMessage({ id: "chat.toolbar.speed.tooltipTitle" })}
+-              description={speed.note}
+-              side="left"
+-              align="start"
+-              className="z-[70]"
+-            >
+-              <DropdownMenuItem
+-                disabled={model.disabled}
+-                aria-label={intl.formatMessage({
+-                  id:
+-                    speed.value === "fast"
+-                      ? "chat.toolbar.speed.disable"
+-                      : "chat.toolbar.speed.enable",
+-                })}
+-                className={cn(
+-                  "size-7 min-h-7 justify-center p-0",
+-                  speed.value === "fast" && "bg-menu-hover",
+-                )}
+-                onSelect={(event) => {
+-                  event.preventDefault();
+-                  speed.onChange(speed.value === "fast" ? "standard" : "fast");
+-                }}
+-              >
+-                <ZapIcon
+-                  className={cn(
+-                    "size-4",
+-                    speed.value === "fast" ? "fill-current" : "text-foreground-subtle",
+-                  )}
+-                />
+-              </DropdownMenuItem>
+-            </ControlHintTooltip>
+-          ) : null}
+-        </div>
+-        <DropdownMenuRadioGroup
+-          value={current?.value ?? ""}
+-          onValueChange={(next) => {
+-            if (entries.some((entry) => entry.value === next)) onThoughtChange(next);
+-          }}
++  const menuOptions = (
++    <>
++      {speed ? (
++        <ControlHintTooltip
++          title={intl.formatMessage({ id: "chat.toolbar.speed.tooltipTitle" })}
++          description={speed.note}
++          side="left"
++          align="start"
++          className="z-[70]"
+         >
+-          {entries.map((entry) => (
+-            <DropdownMenuRadioItem
+-              key={entry.value}
+-              value={entry.value}
+-              disabled={model.disabled}
+-              data-testid={testId(TID_CHAT_THOUGHT_LEVEL_SELECT_ITEM, entry.value)}
++          <DropdownMenuCheckboxItem
++            disabled={model.disabled}
++            checked={speed.value === "fast"}
++            aria-label={intl.formatMessage({
++              id:
++                speed.value === "fast" ? "chat.toolbar.speed.disable" : "chat.toolbar.speed.enable",
++            })}
++            className="min-h-9 justify-between pr-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden"
++            onCheckedChange={(checked) => speed.onChange(checked ? "fast" : "standard")}
++            onSelect={(event) => {
++              event.preventDefault();
++            }}
++          >
++            <span className="flex-1">{intl.formatMessage({ id: "chat.toolbar.speed.label" })}</span>
++            <Switch
++              checked={speed.value === "fast"}
++              aria-hidden="true"
++              tabIndex={-1}
++              className="pointer-events-none"
++            />
++          </DropdownMenuCheckboxItem>
++        </ControlHintTooltip>
++      ) : null}
++      <ControlHintTooltip
++        title={intl.formatMessage({ id: "chat.toolbar.modelOptions.context" })}
++        description={intl.formatMessage({ id: "chat.toolbar.modelOptions.contextDescription" })}
++        side="left"
++      >
++        <DropdownMenuItem
++          className="min-h-9 justify-between"
++          onSelect={(event) => event.preventDefault()}
++        >
++          <span>{intl.formatMessage({ id: "chat.toolbar.modelOptions.context" })}</span>
++          <span className="text-foreground-subtle">
++            {typeof contextTokens === "number" && contextTokens > 0
++              ? formatModelContextWindowLabel(contextTokens)
++              : "—"}
++          </span>
++        </DropdownMenuItem>
++      </ControlHintTooltip>
++      {entries.length ? (
++        <DropdownMenuSub>
++          <DropdownMenuSubTrigger
++            disabled={model.disabled}
++            className="min-h-9 gap-3"
++            data-composer-effort-submenu="true"
++          >
++            <span className="flex-1">
++              {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
++            </span>
++            <span className="text-foreground-subtle">{thoughtLabel}</span>
++          </DropdownMenuSubTrigger>
++          <DropdownMenuSubContent className="min-w-32">
++            <DropdownMenuRadioGroup
++              value={current?.value ?? ""}
++              onValueChange={(next) => {
++                if (entries.some((entry) => entry.value === next)) onThoughtChange(next);
++              }}
+             >
+-              {getThoughtLevelLabel(intl, provider, thought!, entry)}
+-            </DropdownMenuRadioItem>
+-          ))}
+-        </DropdownMenuRadioGroup>
+-        <DropdownMenuSeparator />
+-      </>
+-    ) : undefined;
++              {entries.map((entry) => (
++                <DropdownMenuRadioItem
++                  key={entry.value}
++                  value={entry.value}
++                  disabled={model.disabled}
++                  data-testid={testId(TID_CHAT_THOUGHT_LEVEL_SELECT_ITEM, entry.value)}
++                >
++                  {getThoughtLevelLabel(intl, provider, thought!, entry)}
++                </DropdownMenuRadioItem>
++              ))}
++            </DropdownMenuRadioGroup>
++          </DropdownMenuSubContent>
++        </DropdownMenuSub>
++      ) : null}
++    </>
++  );
+   return (
+     <ModelConfigSelect
+       {...model}
++      showManageModelsAction={false}
++      footerActions={[]}
++      showProviderLevel={model.modelGroups.length > 1}
++      modelSubmenu={{
++        label: intl.formatMessage({ id: "chat.toolbar.modelOptions.model" }),
++        value: model.triggerLabel,
++      }}
+       tooltipTitle={fullLabel}
+       leadingContent={menuOptions}
+       triggerIcon={
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 1723f0c..2b7231a 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7295,6 +7295,9 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.assistant.conflict": "The settings changed after this request. Review the current page before asking for another change.",
+   "settings.modelProvider.assistant.targetLost": "The selected provider or model is no longer available. No replacement target was chosen.",
+   "settings.modelProvider.assistant.operationFailed": "This operation did not complete. Check the current page before retrying.",
++  "chat.toolbar.modelOptions.context": "Context",
++  "chat.toolbar.modelOptions.contextDescription": "The selected model’s confirmed context capacity. Detailed occupancy stays in the Token ring; an unknown capacity is shown as —.",
++  "chat.toolbar.modelOptions.model": "Model",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 60c1e75..37844b0 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6908,6 +6908,9 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.assistant.conflict": "配置在请求之后发生了变化。请先查看当前页面，再提出修改要求。",
+   "settings.modelProvider.assistant.targetLost": "选中的供应商或模型已不可用，没有切换到其他目标。",
+   "settings.modelProvider.assistant.operationFailed": "本次操作未完成，请先查看当前页面，再决定是否重试。",
++  "chat.toolbar.modelOptions.context": "上下文",
++  "chat.toolbar.modelOptions.contextDescription": "当前模型已确认的上下文容量。详细占用仍在 Token 环中查看；未确认时显示 —。",
++  "chat.toolbar.modelOptions.model": "模型",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 4dc2d65..69427fe 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -56,13 +56,8 @@ import { getNextThoughtLevelValue } from "@/chat-input-toolbar/thoughtLevelOptio
+ import { modelSupportsFast } from "@/lib/modelThoughtOption.js";
+ import type { V4ComposerConfigPicker } from "@/v4/composer/configPickerState.js";
+ import { useToolbarShortcutBindings } from "@/v4/composer/toolbarShortcuts.js";
+-import {
+-  resolveModelSelectTriggerDisplay,
+-  shouldShowManageModelsAction,
+-} from "@/chat-input-toolbar/modelSelection.js";
++import { resolveModelSelectTriggerDisplay } from "@/chat-input-toolbar/modelSelection.js";
+ import { resolveV4ModelTriggerDisplay } from "@/v4/composer/modelTriggerDisplay.js";
+-import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
+-import { useTabStore } from "@/store/TabStoreProvider.js";
+ import type { ModelSelectionView } from "@zcode/services";
+ import type { ModelSelectionState } from "@/hooks/useModelSelectionView.js";
+ import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
+@@ -405,7 +400,6 @@ function V4ComposerModelControlsImpl({
+     // Context 只在用户 hover/open 时刷新，不在 composer 挂载时请求额度。
+     suppressProviderFingerprintAutoRefresh: true,
+   });
+-  const openSettingsTab = useTabStore((state) => state.openSettingsTab);
+   const modelTriggerRef = useRef<HTMLSpanElement | null>(null);
+   // Ctrl+M 热键：递增 openRequestKey 请求 ModelConfigSelect 打开菜单（旧 handleOpenModelMenuShortcut 语义）。
+   const [modelMenuOpenRequestKey, setModelMenuOpenRequestKey] = useState(0);
+@@ -716,16 +710,6 @@ function V4ComposerModelControlsImpl({
+     });
+   }, [displayProvider, intl, modelSelectionView]);
+ 
+-  // 修复：恢复「管理模型」入口（老版 onManageModels = 打开设置页并定位模型供应商区）。
+-  const handleOpenModelProviderSettings = useCallback(() => {
+-    setPendingSettingsSectionIntent("modelProvider");
+-    openSettingsTab();
+-  }, [openSettingsTab]);
+-  const showManageModelsAction = shouldShowManageModelsAction(handleOpenModelProviderSettings);
+-  const manageModelsLabel = intl.formatMessage({
+-    id: "chat.toolbar.model.manageModels",
+-  });
+-
+   // 当前投影模型的编码值：provider 命中目录则按自定义模型编码，否则回落裸 model id。
+   const rawModelValue = useMemo(() => {
+     if (!effectiveConfig || !effectiveConfig.model) return "";
+@@ -742,14 +726,8 @@ function V4ComposerModelControlsImpl({
+   // 不在可选组（失效/下线/退登）→ 回落占位/默认「选择模型」，不直显协议内部占位符或失效
+   // 模型 id。复用存活的 resolveModelSelectTriggerDisplay。
+   const triggerDisplay = useMemo(
+-    () =>
+-      resolveModelSelectTriggerDisplay(
+-        rawModelValue,
+-        modelSelectGroups,
+-        showManageModelsAction,
+-        manageModelsLabel,
+-      ),
+-    [manageModelsLabel, modelSelectGroups, rawModelValue, showManageModelsAction],
++    () => resolveModelSelectTriggerDisplay(rawModelValue, modelSelectGroups, false, ""),
++    [modelSelectGroups, rawModelValue],
+   );
+   const normalizedModelValue = triggerDisplay.value ?? "";
+ 
+@@ -1001,8 +979,8 @@ function V4ComposerModelControlsImpl({
+   // 键盘热键（旧 useToolbarShortcutBindings）：Ctrl+M 打开模型菜单、Ctrl+T 循环思考深度。
+   // 模式循环（Ctrl+Shift+M）由 V4ComposerModeSwitch 单独绑定（modeOption 在彼处）。
+   // 模型留空是正常的待选择状态，包括已有会话；不能因为没有已选模型隐藏重选入口。
+-  // 有可选组时正常显示；无组但有「管理模型」入口时也显示，避免用户零模型入口。
+-  const modelMenuVisible = modelSelectGroups.length > 0 || showManageModelsAction;
++  // 未接入模型也保留选择入口；配置由既有设置侧栏/首次接入反馈处理，菜单不再跳转设置。
++  const modelMenuVisible = true;
+   const providerSubmenuClassName = undefined;
+   useToolbarShortcutBindings({
+     hasAnyOption: Boolean(modelOption) || Boolean(thoughtOption),
+@@ -1077,6 +1055,11 @@ function V4ComposerModelControlsImpl({
+       ) : modelMenuVisible ? (
+         <ComposerModelControl
+           thought={thoughtOption}
++          contextTokens={
++            selectedSubscriptionProvider?.models.find(
++              (model) => model.modelId === effectiveConfig?.model,
++            )?.evidenceConfig?.properties?.contextWindow
++          }
+           provider={displayProvider}
+           onThoughtChange={handleThoughtValueChange}
+           speed={
+@@ -1093,9 +1076,7 @@ function V4ComposerModelControlsImpl({
+             normalizedValue: normalizedModelValue,
+             triggerLabel: modelTriggerDisplay.modelLabel,
+             triggerLabelValue: modelTriggerDisplay.modelLabel,
+-            showManageModelsAction: showManageModelsAction,
+-            manageModelsLabel: manageModelsLabel,
+-            onManageModels: handleOpenModelProviderSettings,
++            showManageModelsAction: false,
+             lockReasonMessage: intl.formatMessage({
+               id: "chat.toolbar.modelSwitch.lockedByRunningTask",
+             }),
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 098e257..7c87079 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -27,6 +27,7 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+           <button style={{ width: 28 }}>+</button>
+           <ComposerModelControl
+             provider="zcode"
++            contextTokens={256000}
+             thought={
+               {
+                 type: "select",
+@@ -62,7 +63,8 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+               ],
+               normalizedValue: model,
+               triggerLabel: model === "a" ? "A deliberately long model name" : "Another model",
+-              showManageModelsAction: false,
++              showManageModelsAction: true,
++              manageModelsLabel: "Manage models",
+               lockReasonMessage: "Locked",
+               isItemLocked: () => false,
+               onValueChange: (next) => {
+@@ -99,7 +101,9 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+           await act(async () =>
+             root.render(
+               <ZCodeIntlProvider initialLocale={locale}>
+-                <TooltipProvider><Fixture width={width} /></TooltipProvider>
++                <TooltipProvider>
++                  <Fixture width={width} />
++                </TooltipProvider>
+               </ZCodeIntlProvider>,
+             ),
+           );
+@@ -138,13 +142,40 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+               new PointerEvent("pointerup", { bubbles: true, button: 0, pointerType: "mouse" }),
+             );
+           });
+-          const fast = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+-            (element) =>
+-              element.getAttribute("aria-label")?.toLowerCase().includes(locale === "zh-CN" ? "快速" : "fast"),
++          const fast = [
++            ...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'),
++          ].find((element) =>
++            element
++              .getAttribute("aria-label")
++              ?.toLowerCase()
++              .includes(locale === "zh-CN" ? "快速" : "fast"),
+           );
+           check(fast, "The menu lost its Fast action");
++          const thumb = fast!.querySelector<HTMLElement>('[data-slot="switch-thumb"]');
++          check(
++            thumb && thumb.getBoundingClientRect().width > 0,
++            "The Fast switch lost its visible thumb",
++          );
+           await act(async () => fast!.click());
+           check(writes.at(-1) === "speed:fast", "Fast was translated into an effort change");
++          check(
++            !document.querySelector('[data-model-footer-action="manage-models"]'),
++            "The retired settings shortcut survived",
++          );
++          const menu = document.querySelector('[data-slot="dropdown-menu-content"]')!;
++          check(menu.textContent?.includes("256K"), "Confirmed context capacity is missing");
++          check(
++            !menu.querySelector('[role="menuitemradio"]'),
++            "Effort/model lists still expand the root menu",
++          );
++          const effort = menu.querySelector<HTMLElement>("[data-composer-effort-submenu]")!;
++          check(effort, "The effort row is missing");
++          await act(async () => {
++            effort.focus();
++            effort.dispatchEvent(
++              new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
++            );
++          });
+           const high = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+             (element) => element.textContent?.trim() === (locale === "zh-CN" ? "高" : "High"),
+           );
+@@ -154,6 +185,28 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+             writes.at(-1) === "thought:high",
+             "Effort selection did not use its existing callback",
+           );
++          await act(async () => {
++            trigger!.dispatchEvent(
++              new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++            );
++            trigger!.dispatchEvent(
++              new PointerEvent("pointerup", { bubbles: true, button: 0, pointerType: "mouse" }),
++            );
++          });
++          const modelRow = document.querySelector<HTMLElement>("[data-composer-model-submenu]")!;
++          check(modelRow, "Model row disappeared after changing effort");
++          await act(async () => {
++            modelRow.focus();
++            modelRow.dispatchEvent(
++              new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
++            );
++          });
++          const otherModel = [
++            ...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
++          ].find((element) => element.textContent?.trim() === "Another model");
++          check(otherModel, "A single provider needs a redundant third menu level");
++          await act(async () => otherModel!.click());
++          check(writes.at(-1) === "model:b", "Model selection lost its wire identity callback");
+           results.push({ name });
+         } catch (error) {
+           results.push({ name, error: String(error) });

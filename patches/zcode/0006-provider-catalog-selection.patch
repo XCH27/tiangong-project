@@ -1,0 +1,2290 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 3749dd5..6b663ae 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -65,9 +65,31 @@ files are read. A pinned adapter model catalog remains labelled as such, not acc
+ 
+ Kimi Code membership uses its official third-party API-key endpoint, not a copied official-client OAuth identity.
+ 
+-The existing template registry distinguishes subscription accounts, subscription plan keys and
+-ordinary API services. Optional `category: subscription-plan` is presentation metadata on a
+-template, not a credential type or another connection store. Plan templates retain regional
++The provider picker presents one entry per explicitly declared vendor, with search and a custom
++provider action. Cindy supplies vendor-first selection; the owner's follow-up requires no dialog
++or dropdown for choosing a connection. NewMax's installed model setup keeps selection and the
++connection form in one content slot. Fleet therefore replaces the gallery in place with a local
++setup draft: visible service/plan choices, regional choices only when multiple regions exist,
++then address and segmented API formats, followed by the existing multi-key controls. The visual
++values/primitives remain ZCode's. Subscription choices show account connection instead of API fields.
++Selecting a vendor or switching a route never writes a Provider. Back discards only the local
++setup draft. Existing providers and their credentials are not changed. An explicit Add persists
++API credentials through the existing initialConfig facade; explicit Connect continues through
++the existing subscription control. No automatic model inference or paid validation is introduced.
++
++Optional template catalog metadata declares vendor identity/name, service identity/name and
++region. The existing schema, template and facade carry it; grouping is only a UI projection.
++Legacy category remains readable but no longer determines presentation. Templates without
++metadata remain independent. Search matches vendor and variant names in both locales.
++Service/region changes select only declared routes and keep drafts isolated by template ID, so
++keys do not silently cross regions or API/subscription boundaries. Protocol switching among
++explicit route variants selects the actual matching template; custom API configuration remains
++available. Creation has an immediate local lock, preserves the draft/error on failure and retries
++only the selected route. Invalid or removed selections cannot create a different provider.
++Regression checks cover route reachability, locale search, domain roundtrip, draft validation and
++credential isolation. Native desktop inspection checks the in-place choices and existing editor.
++
++Plan templates retain regional
+ endpoints and explicit API-key authentication: GLM, Kimi Code, MiniMax Token Plan, Alibaba Coding
+ Plan / Token Plan, MiMo Token Plan and OpenCode Go. China/global keys are not interchangeable;
+ existing saved instances are never rewritten by template updates. Empty catalogs remain manual
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 6a49835..e93248f 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -25,7 +25,20 @@
+               "key": "zai"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "Coding Plan",
++              "en-US": "Coding Plan"
++            },
++            "region": "global"
++          }
+         },
+         {
+           "templateId": "zai-standard-api",
+@@ -72,6 +85,19 @@
+               "type": "builtin",
+               "key": "zai"
+             }
++          },
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "global"
+           }
+         },
+         {
+@@ -95,7 +121,20 @@
+               "key": "bigmodel"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "Coding Plan",
++              "en-US": "Coding Plan"
++            },
++            "region": "cn"
++          }
+         },
+         {
+           "templateId": "bigmodel-standard-api",
+@@ -142,6 +181,19 @@
+               "type": "builtin",
+               "key": "bigmodel"
+             }
++          },
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -171,6 +223,19 @@
+               "type": "builtin",
+               "key": "moonshot-kimi"
+             }
++          },
++          "catalog": {
++            "vendorId": "kimi",
++            "vendorNameMap": {
++              "zh-CN": "Kimi",
++              "en-US": "Kimi"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -202,6 +267,19 @@
+               "type": "builtin",
+               "key": "minimax"
+             }
++          },
++          "catalog": {
++            "vendorId": "minimax",
++            "vendorNameMap": {
++              "zh-CN": "MiniMax",
++              "en-US": "MiniMax"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -224,6 +302,18 @@
+               "type": "builtin",
+               "key": "deepseek"
+             }
++          },
++          "catalog": {
++            "vendorId": "deepseek",
++            "vendorNameMap": {
++              "zh-CN": "DeepSeek",
++              "en-US": "DeepSeek"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -260,6 +350,19 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
++          },
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -297,6 +400,19 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
++          },
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "global"
+           }
+         },
+         {
+@@ -319,6 +435,18 @@
+               "type": "builtin",
+               "key": "xiaomi-mimo"
+             }
++          },
++          "catalog": {
++            "vendorId": "xiaomi",
++            "vendorNameMap": {
++              "zh-CN": "小米 MiMo",
++              "en-US": "Xiaomi MiMo"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -352,6 +480,18 @@
+               "type": "builtin",
+               "key": "openai"
+             }
++          },
++          "catalog": {
++            "vendorId": "openai",
++            "vendorNameMap": {
++              "zh-CN": "OpenAI",
++              "en-US": "OpenAI"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -380,6 +520,18 @@
+               "type": "builtin",
+               "key": "anthropic"
+             }
++          },
++          "catalog": {
++            "vendorId": "anthropic",
++            "vendorNameMap": {
++              "zh-CN": "Anthropic",
++              "en-US": "Anthropic"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -402,6 +554,18 @@
+               "type": "builtin",
+               "key": "xai"
+             }
++          },
++          "catalog": {
++            "vendorId": "xai",
++            "vendorNameMap": {
++              "zh-CN": "xAI",
++              "en-US": "xAI"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -484,6 +648,18 @@
+               "type": "builtin",
+               "key": "openrouter"
+             }
++          },
++          "catalog": {
++            "vendorId": "openrouter",
++            "vendorNameMap": {
++              "zh-CN": "OpenRouter",
++              "en-US": "OpenRouter"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -523,7 +699,19 @@
+               "key": "opencode"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "go",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Go",
++              "en-US": "OpenCode Go"
++            }
++          }
+         },
+         {
+           "templateId": "opencode-go-messages",
+@@ -555,7 +743,19 @@
+               "key": "opencode"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "go",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Go",
++              "en-US": "OpenCode Go"
++            }
++          }
+         },
+         {
+           "templateId": "opencode-go-responses",
+@@ -578,7 +778,19 @@
+               "key": "opencode"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "go",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Go",
++              "en-US": "OpenCode Go"
++            }
++          }
+         },
+         {
+           "templateId": "opencode-zen-responses",
+@@ -615,6 +827,18 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
++          },
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "zen",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Zen",
++              "en-US": "OpenCode Zen"
++            }
+           }
+         },
+         {
+@@ -653,6 +877,18 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
++          },
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "zen",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Zen",
++              "en-US": "OpenCode Zen"
++            }
+           }
+         },
+         {
+@@ -690,6 +926,18 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
++          },
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "zen",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode Zen",
++              "en-US": "OpenCode Zen"
++            }
+           }
+         },
+         {
+@@ -713,6 +961,18 @@
+               "type": "builtin",
+               "key": "openai"
+             }
++          },
++          "catalog": {
++            "vendorId": "openai",
++            "vendorNameMap": {
++              "zh-CN": "OpenAI",
++              "en-US": "OpenAI"
++            },
++            "serviceId": "chatgpt",
++            "serviceNameMap": {
++              "zh-CN": "ChatGPT / Codex 订阅",
++              "en-US": "ChatGPT / Codex subscription"
++            }
+           }
+         },
+         {
+@@ -736,6 +996,18 @@
+               "type": "builtin",
+               "key": "github"
+             }
++          },
++          "catalog": {
++            "vendorId": "github",
++            "vendorNameMap": {
++              "zh-CN": "GitHub Copilot",
++              "en-US": "GitHub Copilot"
++            },
++            "serviceId": "copilot",
++            "serviceNameMap": {
++              "zh-CN": "GitHub Copilot 订阅",
++              "en-US": "GitHub Copilot subscription"
++            }
+           }
+         },
+         {
+@@ -758,6 +1030,18 @@
+               "type": "builtin",
+               "key": "groq"
+             }
++          },
++          "catalog": {
++            "vendorId": "groq",
++            "vendorNameMap": {
++              "zh-CN": "Groq",
++              "en-US": "Groq"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -780,6 +1064,18 @@
+               "type": "builtin",
+               "key": "cerebras"
+             }
++          },
++          "catalog": {
++            "vendorId": "cerebras",
++            "vendorNameMap": {
++              "zh-CN": "Cerebras",
++              "en-US": "Cerebras"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -802,6 +1098,18 @@
+               "type": "builtin",
+               "key": "mistral"
+             }
++          },
++          "catalog": {
++            "vendorId": "mistral",
++            "vendorNameMap": {
++              "zh-CN": "Mistral",
++              "en-US": "Mistral"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -824,6 +1132,18 @@
+               "type": "builtin",
+               "key": "nvidia"
+             }
++          },
++          "catalog": {
++            "vendorId": "nvidia",
++            "vendorNameMap": {
++              "zh-CN": "NVIDIA",
++              "en-US": "NVIDIA"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -846,6 +1166,18 @@
+               "type": "builtin",
+               "key": "together"
+             }
++          },
++          "catalog": {
++            "vendorId": "together",
++            "vendorNameMap": {
++              "zh-CN": "Together AI",
++              "en-US": "Together AI"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -869,7 +1201,20 @@
+               "key": "moonshot-kimi"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "kimi",
++            "vendorNameMap": {
++              "zh-CN": "Kimi",
++              "en-US": "Kimi"
++            },
++            "serviceId": "kimi",
++            "serviceNameMap": {
++              "zh-CN": "Kimi Code",
++              "en-US": "Kimi Code"
++            },
++            "region": "cn"
++          }
+         },
+         {
+           "templateId": "fleet-qwen-token-plan-cn",
+@@ -892,7 +1237,20 @@
+               "key": "alibaba-model-studio"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "token",
++            "serviceNameMap": {
++              "zh-CN": "Token Plan",
++              "en-US": "Token Plan"
++            },
++            "region": "cn"
++          }
+         },
+         {
+           "templateId": "fleet-qwen-token-plan",
+@@ -915,7 +1273,20 @@
+               "key": "alibaba-model-studio"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "token",
++            "serviceNameMap": {
++              "zh-CN": "Token Plan",
++              "en-US": "Token Plan"
++            },
++            "region": "global"
++          }
+         },
+         {
+           "templateId": "fleet-xiaomi-token-plan-cn",
+@@ -938,7 +1309,20 @@
+               "key": "xiaomi-mimo"
+             }
+           },
+-          "category": "subscription-plan"
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "xiaomi",
++            "vendorNameMap": {
++              "zh-CN": "小米 MiMo",
++              "en-US": "Xiaomi MiMo"
++            },
++            "serviceId": "token",
++            "serviceNameMap": {
++              "zh-CN": "Token Plan",
++              "en-US": "Token Plan"
++            },
++            "region": "cn"
++          }
+         },
+         {
+           "templateId": "fleet-google",
+@@ -960,6 +1344,18 @@
+               "type": "builtin",
+               "key": "google"
+             }
++          },
++          "catalog": {
++            "vendorId": "google",
++            "vendorNameMap": {
++              "zh-CN": "Google Gemini",
++              "en-US": "Google Gemini"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -982,6 +1378,18 @@
+               "type": "builtin",
+               "key": "siliconflow"
+             }
++          },
++          "catalog": {
++            "vendorId": "siliconflow",
++            "vendorNameMap": {
++              "zh-CN": "硅基流动",
++              "en-US": "SiliconFlow"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
+           }
+         },
+         {
+@@ -1004,6 +1412,19 @@
+               "type": "builtin",
+               "key": "minimax"
+             }
++          },
++          "catalog": {
++            "vendorId": "minimax",
++            "vendorNameMap": {
++              "zh-CN": "MiniMax",
++              "en-US": "MiniMax"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            },
++            "region": "global"
+           }
+         },
+         {
+@@ -1027,6 +1448,19 @@
+               "type": "builtin",
+               "key": "minimax"
+             }
++          },
++          "catalog": {
++            "vendorId": "minimax",
++            "vendorNameMap": {
++              "zh-CN": "MiniMax",
++              "en-US": "MiniMax"
++            },
++            "serviceId": "token",
++            "serviceNameMap": {
++              "zh-CN": "Token Plan",
++              "en-US": "Token Plan"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -1050,6 +1484,19 @@
+               "type": "builtin",
+               "key": "minimax"
+             }
++          },
++          "catalog": {
++            "vendorId": "minimax",
++            "vendorNameMap": {
++              "zh-CN": "MiniMax",
++              "en-US": "MiniMax"
++            },
++            "serviceId": "token",
++            "serviceNameMap": {
++              "zh-CN": "Token Plan",
++              "en-US": "Token Plan"
++            },
++            "region": "global"
+           }
+         },
+         {
+@@ -1073,6 +1520,19 @@
+               "type": "builtin",
+               "key": "moonshot-kimi"
+             }
++          },
++          "catalog": {
++            "vendorId": "kimi",
++            "vendorNameMap": {
++              "zh-CN": "Kimi",
++              "en-US": "Kimi"
++            },
++            "serviceId": "kimi",
++            "serviceNameMap": {
++              "zh-CN": "Kimi Code",
++              "en-US": "Kimi Code"
++            },
++            "region": "global"
+           }
+         },
+         {
+@@ -1096,6 +1556,19 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
++          },
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "Coding Plan",
++              "en-US": "Coding Plan"
++            },
++            "region": "cn"
+           }
+         },
+         {
+@@ -1119,6 +1592,19 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
++          },
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "Coding Plan",
++              "en-US": "Coding Plan"
++            },
++            "region": "global"
+           }
+         }
+       ],
+diff --git a/package.json b/package.json
+index 98d2b0a..595730e 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run lint && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run lint && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -47,7 +47,8 @@
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+-    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts"
++    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/provider-catalog.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/provider/src/config/provider-config.ts b/packages/provider/src/config/provider-config.ts
+index 17449da..54e497e 100644
+--- a/packages/provider/src/config/provider-config.ts
++++ b/packages/provider/src/config/provider-config.ts
+@@ -324,12 +324,20 @@ export class ProviderTemplate {
+   readonly templateId: ProviderTemplateId;
+   readonly templateNameMap: ProviderTemplateNameMap;
+   readonly category?: "subscription-plan";
++  readonly catalog?: ProviderTemplateObject["catalog"];
+   readonly config: ProviderConfig;
+ 
+   constructor(input: ProviderTemplateInput) {
+     this.templateId = input.templateId;
+     this.templateNameMap = Object.freeze({ ...input.templateNameMap });
+     this.category = input.category;
++    this.catalog = input.catalog
++      ? Object.freeze({
++          ...input.catalog,
++          vendorNameMap: Object.freeze({ ...input.catalog.vendorNameMap }),
++          serviceNameMap: Object.freeze({ ...input.catalog.serviceNameMap }),
++        })
++      : undefined;
+     this.config = input.config;
+     Object.freeze(this);
+   }
+@@ -339,6 +347,7 @@ export class ProviderTemplate {
+       templateId: this.templateId,
+       templateNameMap: this.templateNameMap,
+       ...(this.category ? { category: this.category } : {}),
++      ...(this.catalog ? { catalog: this.catalog } : {}),
+       config: this.config.toJSON(),
+     };
+   }
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 130d59c..9a06ad7 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -123,6 +123,16 @@ export const providerTemplateDataSchema = z
+     templateId: z.string().min(1),
+     templateNameMap: providerTemplateNameMapDataSchema,
+     category: z.literal("subscription-plan").optional(),
++    catalog: z
++      .object({
++        vendorId: z.string().min(1),
++        vendorNameMap: providerTemplateNameMapDataSchema,
++        serviceId: z.string().min(1),
++        serviceNameMap: providerTemplateNameMapDataSchema,
++        region: z.enum(["cn", "global"]).optional(),
++      })
++      .strict()
++      .optional(),
+     config: providerConfigDataSchema,
+   })
+   .strict();
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 7ce96c3..6b0cebe 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -9,6 +9,7 @@ import type {
+   ProviderConfigObject,
+   ProviderId,
+   ProviderTemplateId,
++  ProviderTemplateObject,
+ } from "./config/index.js";
+ import {
+   ModelConfigRules,
+@@ -166,6 +167,7 @@ export interface ProviderSettingsTemplateView {
+   readonly templateId: ProviderTemplateId;
+   readonly templateNameMap: ProviderTemplateNameMap;
+   readonly category?: "subscription-plan";
++  readonly catalog?: ProviderTemplateObject["catalog"];
+   readonly config: ProviderConfigObject;
+ }
+ 
+@@ -676,6 +678,7 @@ function createProviderSettingsView(input: {
+             templateId,
+             templateNameMap: template.templateNameMap,
+             ...(template.category ? { category: template.category } : {}),
++            ...(template.catalog ? { catalog: template.catalog } : {}),
+             config: template.config.toJSON(),
+           }),
+         ),
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+new file mode 100644
+index 0000000..518ecf9
+--- /dev/null
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -0,0 +1,227 @@
++import assert from "node:assert/strict";
++import { readFile } from "node:fs/promises";
++import test from "node:test";
++import {
++  newProviderSetupDraft,
++  providerSetupConfig,
++} from "../../ui/src/settings/model-provider-section/providerSetupDraft.js";
++import {
++  parseProviderTemplateMap,
++  ProviderSettingsFacade,
++  type ProviderRegistryFacadeSource,
++} from "@zcode/provider";
++import {
++  groupProviderTemplates,
++  selectProviderTemplate,
++} from "../../ui/src/settings/model-provider-section/providerTemplateCatalog.js";
++
++const builtin = JSON.parse(
++  await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
++);
++const map = parseProviderTemplateMap(builtin.config.providerConfigRules.templateRules);
++// Exercise the actual settings projection, so catalog metadata cannot disappear in the host RPC view.
++const facade = new ProviderSettingsFacade({
++  getSnapshot: () => ({
++    registry: { revision: 1 },
++    config: { zcodeBuiltinProviderTemplates: parseProviderTemplateMap(map.toJSON()) },
++    resolution: { registryProviders: [], resolvedProviders: [] },
++    account: { states: {} },
++  }),
++} as unknown as ProviderRegistryFacadeSource);
++const templates = facade.getView().providerTemplates;
++const vendors = groupProviderTemplates(templates, "zh-CN");
++const family = (id: string) => vendors.find((vendor) => vendor.id === `vendor:${id}`)!.templates;
++
++test("registry serialization and settings projection retain every route under one vendor", () => {
++  assert.equal(templates.length, 39);
++  assert.equal(vendors.length, 19);
++  assert.equal(
++    new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
++      .size,
++    39,
++  );
++  for (const template of templates) {
++    assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
++    assert.deepEqual(template.config, map.get(template.templateId)?.config.toJSON());
++    assert.ok(template.catalog, template.templateId);
++  }
++});
++
++test("all OpenCode services and protocols remain reachable, with no duplicate vendor cards", () => {
++  const routes = family("opencode");
++  assert.equal(routes.length, 6);
++  for (const target of routes) {
++    const selected = selectProviderTemplate(routes, routes[0]!.templateId, {
++      serviceId: target.catalog!.serviceId,
++      api: target.config.api!.type!,
++    });
++    assert.equal(selected?.templateId, target.templateId);
++    assert.deepEqual(selected?.config, target.config);
++  }
++  const zen = selectProviderTemplate(routes, "opencode-go-responses", { serviceId: "zen" });
++  assert.equal(zen?.templateId, "opencode-zen-responses");
++});
++
++test("MiniMax service changes preserve region and choose declared plan endpoints", () => {
++  const routes = family("minimax");
++  const cn = selectProviderTemplate(routes, "minimax", { serviceId: "token" });
++  assert.equal(cn?.templateId, "fleet-minimax-token-plan-cn");
++  const global = selectProviderTemplate(routes, cn!.templateId, {
++    serviceId: "token",
++    region: "global",
++  });
++  assert.equal(global?.templateId, "fleet-minimax-token-plan");
++  assert.notEqual(global?.config.api?.baseUrl, cn?.config.api?.baseUrl);
++  assert.equal(
++    selectProviderTemplate(routes, global!.templateId, { serviceId: "api" })?.templateId,
++    "fleet-minimax",
++  );
++});
++
++test("every declared service, region and protocol combination is reachable without synthesis", () => {
++  for (const vendor of vendors)
++    for (const target of vendor.templates) {
++      const selected = selectProviderTemplate(vendor.templates, vendor.templates[0]!.templateId, {
++        serviceId: target.catalog!.serviceId,
++        region: target.catalog!.region ?? "",
++        api: target.config.api?.type ?? "",
++      });
++      assert.equal(selected?.templateId, target.templateId);
++      assert.equal(selected, target);
++    }
++});
++
++test("API and subscription authentication remain different choices for OpenAI", () => {
++  const routes = family("openai");
++  const subscription = selectProviderTemplate(routes, "openai", { serviceId: "chatgpt" });
++  assert.equal(subscription?.config.access?.type, "subscription");
++  const api = selectProviderTemplate(routes, subscription!.templateId, { serviceId: "api" });
++  assert.equal(api?.templateId, "openai");
++  assert.equal(api?.config.access?.type, "api-key");
++});
++
++test("search matches services and both locales without dropping the rest of a vendor's routes", () => {
++  for (const query of ["ChatGPT", "  CHATGPT  "]) {
++    const matches = groupProviderTemplates(templates, "zh-CN", query);
++    assert.equal(matches.length, 1);
++    assert.equal(matches[0]?.id, "vendor:openai");
++    assert.equal(matches[0]?.templates.length, 2);
++  }
++  assert.equal(groupProviderTemplates(templates, "en-US", "阿里云")[0]?.label, "Alibaba Cloud");
++  assert.equal(groupProviderTemplates(templates, "zh-CN", "SiliconFlow")[0]?.label, "硅基流动");
++  assert.equal(groupProviderTemplates(templates, "zh-CN", "not-a-vendor").length, 0);
++});
++
++test("undeclared legacy templates are never merged by matching name, logo or endpoint", () => {
++  const a = { ...templates[0]!, catalog: undefined, templateId: "first" };
++  const b = { ...a, templateId: "second" };
++  const groups = groupProviderTemplates([a, b], "zh-CN");
++  assert.equal(groups.length, 2);
++  assert.notEqual(groups[0]?.id, groups[1]?.id);
++  assert.equal(groups[0]?.label, groups[1]?.label);
++});
++
++test("missing selections and impossible combinations cannot resolve into another route", () => {
++  assert.equal(
++    selectProviderTemplate(family("minimax"), "removed-template", { region: "cn" }),
++    undefined,
++  );
++  assert.equal(
++    selectProviderTemplate(family("kimi"), "fleet-kimi-coding-global", {
++      serviceId: "api",
++      region: "global",
++    }),
++    undefined,
++  );
++  assert.equal(
++    selectProviderTemplate(family("kimi"), "fleet-kimi-coding-global", { serviceId: "api" })
++      ?.templateId,
++    "moonshot-kimi",
++  );
++  const invalid = { ...templates[0], catalog: { ...templates[0]!.catalog, region: "guessed" } };
++  assert.throws(() => parseProviderTemplateMap([invalid]));
++});
++
++test("setup validates the draft before creation and does not silently accept embedded credentials", () => {
++  const template = family("minimax")[0]!;
++  const draft = newProviderSetupDraft(template);
++  assert.equal(providerSetupConfig(template, draft), undefined);
++  for (const baseUrl of [
++    "",
++    "not-a-url",
++    "file:///tmp/server",
++    "https://user:password@example.test",
++  ]) {
++    assert.equal(
++      providerSetupConfig(template, { ...draft, primary: "synthetic", baseUrl }),
++      undefined,
++    );
++  }
++  assert.equal(
++    providerSetupConfig(template, {
++      ...draft,
++      primary: "synthetic",
++      baseUrl: "http://localhost:1234/v1",
++    })?.api?.baseUrl,
++    "http://localhost:1234/v1",
++  );
++});
++
++test("creation sends only a personal overlay, preserving template ownership and model defaults", () => {
++  const template = family("minimax")[0]!;
++  const draft = {
++    ...newProviderSetupDraft(template),
++    primary: " primary ",
++    additional: ["primary", " backup ", ""],
++    automatic: true,
++  };
++  const config = providerSetupConfig(template, draft)!;
++  assert.deepEqual(config.access, {
++    type: "api-key",
++    apiKey: "primary",
++    additionalApiKeys: ["backup"],
++    autoSwitchCredentials: true,
++  });
++  assert.equal(config.group, undefined);
++  assert.equal(config.builtinModelIds, undefined);
++  assert.equal(draft.primary, " primary ");
++  assert.equal(
++    providerSetupConfig(template, { ...draft, additional: ["primary"] })?.access?.type,
++    "api-key",
++  );
++  assert.equal(
++    (
++      providerSetupConfig(template, { ...draft, additional: ["primary"] })?.access as {
++        autoSwitchCredentials: boolean;
++      }
++    ).autoSwitchCredentials,
++    false,
++  );
++});
++
++test("fresh region and service drafts never inherit another connection's secrets", () => {
++  const cn = family("minimax").find((template) => template.templateId === "minimax")!;
++  const global = family("minimax").find((template) => template.templateId === "fleet-minimax")!;
++  const a = newProviderSetupDraft(cn);
++  a.primary = "synthetic-cn";
++  a.additional.push("synthetic-backup");
++  const b = newProviderSetupDraft(global);
++  assert.equal(b.primary, "");
++  assert.deepEqual(b.additional, []);
++  assert.notEqual(a.baseUrl, b.baseUrl);
++  assert.deepEqual(newProviderSetupDraft(cn).additional, []);
++});
++
++test("subscription setup cannot persist an API key or overridden endpoint into its native adapter", () => {
++  const subscription = family("openai").find(
++    (template) => template.templateId === "fleet-openai-codex",
++  )!;
++  assert.deepEqual(
++    providerSetupConfig(subscription, {
++      ...newProviderSetupDraft(subscription),
++      primary: "must-not-leak",
++      baseUrl: "https://another.example",
++    }),
++    {},
++  );
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index f1273fa..5375a58 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -63,7 +63,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.subscription.connectFirst": "Connect a subscription account first",
+   "settings.modelProvider.subscription.login": "Connect subscription",
+   "settings.modelProvider.subscription.disconnect": "Disconnect account",
+-  "settings.modelProvider.templateGroup.subscription": "Subscription accounts",
+ 
+   "startPlan.recommendation.subagentDescription":
+     "Your Start Plan has quota available for {model}. Switch this subagent’s model to the Start Plan?",
+@@ -2829,10 +2828,20 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.catalogProviderSearch": "Search providers",
+   "settings.modelProvider.catalogProviderEmpty": "No providers found",
+   "settings.modelProvider.addProviderAction": "Add provider",
++  "settings.modelProvider.catalog.back": "Back to providers",
++  "settings.modelProvider.catalog.service": "Connection method",
++  "settings.modelProvider.catalog.invalidName": "Enter a name.",
++  "settings.modelProvider.catalog.name": "Name",
++  "settings.modelProvider.catalog.subscription": "Connect using your subscription account.",
++  "settings.modelProvider.catalog.invalid": "Enter a valid API address and at least one API key.",
++  "settings.modelProvider.catalog.connect": "Connect subscription account",
++  "settings.modelProvider.catalog.save": "Add and configure models",
++  "settings.modelProvider.catalog.search": "Search providers or services",
++  "settings.modelProvider.catalog.empty": "No providers found",
++  "settings.modelProvider.catalog.region": "Region",
++  "settings.modelProvider.catalog.cn": "China",
++  "settings.modelProvider.catalog.global": "Global",
+   "settings.modelProvider.templatePickerTitle": "Add provider",
+-  "settings.modelProvider.templateGroup.zhipu": "Zhipu",
+-  "settings.modelProvider.templateGroup.plan": "Subscription plans (plan keys)",
+-  "settings.modelProvider.templateGroup.other": "API services",
+   "settings.modelProvider.templatePickerBack": "Back to provider details",
+   "settings.modelProvider.addProviderModelReminder":
+     "Add at least one model before adding the provider.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 173d129..25a226b 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -56,7 +56,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.subscription.connectFirst": "请先连接订阅账号",
+   "settings.modelProvider.subscription.login": "连接订阅账号",
+   "settings.modelProvider.subscription.disconnect": "退出此账号",
+-  "settings.modelProvider.templateGroup.subscription": "订阅账号",
+ 
+   "startPlan.recommendation.subagentDescription":
+     "你的体验套餐中，{model} 仍有可用额度，是否将此子智能体的模型切换到体验套餐？",
+@@ -2643,10 +2642,20 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.catalogProviderSearch": "搜索供应商",
+   "settings.modelProvider.catalogProviderEmpty": "未找到供应商",
+   "settings.modelProvider.addProviderAction": "添加供应商",
++  "settings.modelProvider.catalog.back": "返回供应商列表",
++  "settings.modelProvider.catalog.service": "连接方式",
++  "settings.modelProvider.catalog.invalidName": "请填写名称。",
++  "settings.modelProvider.catalog.name": "名称",
++  "settings.modelProvider.catalog.subscription": "使用订阅账号授权连接。",
++  "settings.modelProvider.catalog.invalid": "请填写有效的 API 地址和至少一个 API 密钥。",
++  "settings.modelProvider.catalog.connect": "连接订阅账号",
++  "settings.modelProvider.catalog.save": "添加并配置模型",
++  "settings.modelProvider.catalog.search": "搜索供应商或服务",
++  "settings.modelProvider.catalog.empty": "没有找到供应商",
++  "settings.modelProvider.catalog.region": "地区",
++  "settings.modelProvider.catalog.cn": "中国",
++  "settings.modelProvider.catalog.global": "国际",
+   "settings.modelProvider.templatePickerTitle": "添加供应商",
+-  "settings.modelProvider.templateGroup.zhipu": "智谱",
+-  "settings.modelProvider.templateGroup.plan": "订阅套餐（会员密钥）",
+-  "settings.modelProvider.templateGroup.other": "API 服务",
+   "settings.modelProvider.templatePickerBack": "返回供应商详情",
+   "settings.modelProvider.addProviderModelReminder": "添加供应商前，请至少添加一个模型。",
+   "settings.modelProvider.baseUrl": "Base URL",
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 5a89c39..a7738c5 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -1,3 +1,4 @@
++import type { ProviderConfigObject } from "@zcode/provider";
+ /* eslint-disable max-lines -- Model Provider 设置页需要集中编排导航、表单和 OAuth 交互，后续整体拆分时再收敛。 */
+ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import {
+@@ -311,6 +312,7 @@ export function ModelProviderSection({
+   const [pendingCreatedProviderId, setPendingCreatedProviderId] = useState<string | null>(null);
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+   const [creatingProvider, setCreatingProvider] = useState(false);
++  const [connectProviderId, setConnectProviderId] = useState<string>();
+ 
+   useEffect(() => {
+     if (
+@@ -986,11 +988,15 @@ export function ModelProviderSection({
+   );
+ 
+   const handleCreateProvider = useCallback(
+-    async (input: { templateId?: string; providerName?: string }) => {
++    async (
++      input: { templateId?: string; providerName?: string; initialConfig?: ProviderConfigObject },
++      connect = false,
++    ) => {
+       setCreatingProvider(true);
+       try {
+         const created = await createPersonalProvider({ ...input, locale });
+         setPendingCreatedProviderId(created.providerId);
++        setConnectProviderId(connect ? created.providerId : undefined);
+         setSelectedNodeKey(createCustomProviderNodeKey(created.providerId));
+         setTemplatePickerOpen(false);
+       } catch (error) {
+@@ -1088,15 +1094,17 @@ export function ModelProviderSection({
+           templates={providerTemplates}
+           creating={creatingProvider}
+           onBack={() => setTemplatePickerOpen(false)}
+-          onCreateFromTemplate={(templateId) => {
+-            return handleCreateProvider({ templateId });
++          onCreateFromTemplate={(templateId, initialConfig, connect) => {
++            return handleCreateProvider({ templateId, initialConfig }, connect);
+           }}
+-          onCreateCustom={(label) => {
+-            return handleCreateProvider({ providerName: label });
++          onCreateCustom={(label, initialConfig) => {
++            return handleCreateProvider({ providerName: label, initialConfig });
+           }}
+         />
+       ) : (
+         <ModelProviderSectionDetail
++          connectProviderId={connectProviderId}
++          onConnectConsumed={() => setConnectProviderId(undefined)}
+           connectionSelections={effectiveConnectionSelections}
+           providerSettingsView={providerSettingsView}
+           selectedNavItem={selectedNavItem}
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index 330a43f..fb8f682 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -25,6 +25,8 @@ export function ModelProviderSectionDetail({
+   onTestModel,
+   onOpenApiKeyUrl,
+   providerSettingsView: providerSettingsViewOverride,
++  connectProviderId,
++  onConnectConsumed,
+ }: {
+   selectedNavItem: ModelProviderNavItem | null;
+   navigationItems?: ModelProviderNavItem[];
+@@ -74,6 +76,8 @@ export function ModelProviderSectionDetail({
+   onCodingPlanPurchaseComplete: () => void | Promise<void>;
+   onSelectNavItem?: (item: ModelProviderNavItem) => void;
+   providerSettingsView?: ProviderSettingsView | null;
++  connectProviderId?: string;
++  onConnectConsumed?: () => void;
+ }) {
+   const providerSettingsView = providerSettingsViewOverride;
+   const modelEditingProps = {
+@@ -92,6 +96,8 @@ export function ModelProviderSectionDetail({
+     // 仅展示预设模板声明的入口，不根据地址猜测自定义 Provider 的 Key 控制台。
+     <InlineEditableProviderCard
+       provider={customProvider}
++      connectOnMount={connectProviderId === customProvider.providerId}
++      onConnectConsumed={onConnectConsumed}
+       onSave={onSave}
+       {...modelEditingProps}
+       onDelete={() => onDelete(customProvider)}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index c7156c9..f9e95c3 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -154,6 +154,8 @@ export function InlineEditableProviderCard({
+   headerVisible = true,
+   headerActionsVisible,
+   settingsRevision,
++  connectOnMount,
++  onConnectConsumed,
+ }: {
+   provider: ProviderSettingsFormProvider;
+   onSave: (config: ProviderSettingsFormProvider) => void | Promise<void>;
+@@ -181,6 +183,8 @@ export function InlineEditableProviderCard({
+   headerVisible?: boolean;
+   headerActionsVisible?: boolean;
+   settingsRevision?: number;
++  connectOnMount?: boolean;
++  onConnectConsumed?: () => void;
+ }) {
+   const { intl } = useZCodeIntl();
+   const { dismissFeedback, showFeedback } = useProviderDetailFeedback();
+@@ -889,6 +893,8 @@ export function InlineEditableProviderCard({
+             providerId={provider.providerId}
+             connected={provider.config.access.connected === true}
+             onRevision={setSubscriptionRevision}
++            connectOnMount={connectOnMount}
++            onConnectConsumed={onConnectConsumed}
+           />
+         ) : null}
+         {isApiKeyProvider ? (
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+index 07dc0fa..64fe5f3 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+@@ -1,18 +1,6 @@
+ import type { ProviderApiType } from "@zcode/provider";
+-import {
+-  Select,
+-  SelectContent,
+-  SelectItem,
+-  SelectTrigger,
+-  SelectValue,
+-} from "@/components/ui/select.js";
++import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import {
+-  TID_MODEL_PROVIDER_API_FORMAT_ITEM,
+-  TID_MODEL_PROVIDER_API_FORMAT_TRIGGER,
+-  testId,
+-} from "@zcode/shared";
+-
+ const PROVIDER_CONNECTION_API_FORMATS: readonly ProviderApiType[] = [
+   "anthropic-messages",
+   "openai-chat-completions",
+@@ -59,26 +47,16 @@ export function ProviderApiFormatSelect({
+   const { intl } = useZCodeIntl();
+ 
+   return (
+-    <Select value={value} onValueChange={(nextValue) => onChange(nextValue as ProviderApiType)}>
+-      <SelectTrigger
+-        id={triggerId}
+-        data-testid={TID_MODEL_PROVIDER_API_FORMAT_TRIGGER}
+-        size="lg"
+-        className="w-full justify-between"
+-      >
+-        <SelectValue />
+-      </SelectTrigger>
+-      <SelectContent align="start">
+-        {apiFormatOptions.map((format) => (
+-          <SelectItem
+-            key={format}
+-            value={format}
+-            data-testid={testId(TID_MODEL_PROVIDER_API_FORMAT_ITEM, format)}
+-          >
+-            {resolveProviderConnectionApiFormatDisplayLabel(intl, format)}
+-          </SelectItem>
+-        ))}
+-      </SelectContent>
+-    </Select>
++    <div id={triggerId}>
++      <ProviderConnectionChoices
++        label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++        value={value}
++        items={apiFormatOptions.map((format) => ({
++          value: format,
++          label: intl.formatMessage({ id: PROVIDER_CONNECTION_API_FORMAT_TITLE_IDS[format] }),
++        }))}
++        onChange={(format) => onChange(format as ProviderApiType)}
++      />
++    </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index b0c7532..b063381 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -267,12 +267,7 @@ export function ProviderConnectionSection({
+         />
+       </div>
+       {showApiFormat ? (
+-        <div>
+-          <label className="mb-1 block text-ui-base text-foreground-subtle">
+-            {intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
+-          </label>
+-          <ProviderApiFormatSelect value={apiFormat} onChange={onApiFormatChange} />
+-        </div>
++        <ProviderApiFormatSelect value={apiFormat} onChange={onApiFormatChange} />
+       ) : null}
+     </>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderConnectionChoices.tsx b/packages/ui/src/settings/model-provider-section/ProviderConnectionChoices.tsx
+new file mode 100644
+index 0000000..b022051
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ProviderConnectionChoices.tsx
+@@ -0,0 +1,40 @@
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
++
++// SettingsSegmentedTabs 的视觉值；连接选项在窄窗口换行，保留原生键盘与选中状态。
++export function ProviderConnectionChoices({
++  label,
++  value,
++  items,
++  disabled,
++  onChange,
++}: {
++  label: string;
++  value: string;
++  items: readonly { value: string; label: string }[];
++  disabled?: boolean;
++  onChange: (value: string) => void;
++}) {
++  if (items.length < 2) return null;
++  return (
++    <div className="space-y-2">
++      <div className="text-ui-base text-foreground-subtle">{label}</div>
++      <Tabs value={value} onValueChange={onChange} className="gap-0">
++        <TabsList
++          aria-label={label}
++          className="flex h-auto max-w-full flex-wrap justify-start rounded-lg bg-surface p-0.5 group-data-horizontal/tabs:h-auto"
++        >
++          {items.map((item) => (
++            <TabsTrigger
++              key={item.value}
++              value={item.value}
++              disabled={disabled}
++              className="h-7 flex-none rounded-md border-transparent bg-transparent px-2.5 text-ui-base font-medium text-foreground-subtle data-active:border-transparent data-active:bg-background data-active:text-foreground data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-background"
++            >
++              {item.label}
++            </TabsTrigger>
++          ))}
++        </TabsList>
++      </Tabs>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index fa8b3a2..91e2d68 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -1,7 +1,7 @@
++import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import { ArrowLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+-import { resolveProviderTemplateName } from "@zcode/provider";
+-import type { ReactNode } from "react";
++import { useRef, useState, type ReactNode } from "react";
+ import {
+   TID_MODEL_PROVIDER_TEMPLATE_BACK_BUTTON,
+   TID_MODEL_PROVIDER_TEMPLATE_ITEM,
+@@ -9,14 +9,21 @@ import {
+   testId,
+ } from "@zcode/shared";
+ import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { logger } from "@/logger.js";
+ import { ProviderLogo } from "./ProviderLogo.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
++import { groupProviderTemplates } from "./providerTemplateCatalog.js";
++import { ProviderTemplateSetup } from "./ProviderTemplateSetup.js";
+ 
+-type ProviderTemplateCreate = (templateId: string) => Promise<void>;
+-type CustomProviderCreate = (label: string) => Promise<void>;
++type ProviderTemplateCreate = (
++  templateId: string,
++  initialConfig: ProviderConfigObject,
++  connect: boolean,
++) => Promise<void>;
++type CustomProviderCreate = (label: string, initialConfig: ProviderConfigObject) => Promise<void>;
+ 
+ export function ProviderTemplatePicker({
+   templates,
+@@ -32,47 +39,83 @@ export function ProviderTemplatePicker({
+   creating: boolean;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+-  const { dismissFeedback, showFeedback } = useProviderDetailFeedback();
++  const { dismissFeedback } = useProviderDetailFeedback();
+   const customLabel = intl.formatMessage({ id: "settings.modelProvider.newProviderName" });
+-  const groups = [
+-    {
+-      id: "subscription",
+-      templates: templates.filter((template) => template.config.access?.type === "subscription"),
+-    },
+-    {
+-      id: "plan",
+-      templates: templates.filter((template) => template.category === "subscription-plan"),
+-    },
+-    {
+-      id: "other",
+-      templates: templates.filter(
+-        (template) =>
+-          template.config.access?.type !== "subscription" &&
+-          template.category !== "subscription-plan",
+-      ),
+-    },
+-  ] as const;
+-  const createWithFeedback = async (create: () => Promise<void>) => {
++  const [query, setQuery] = useState("");
++  const [selectedId, setSelectedId] = useState<string>();
++  const [busy, setBusy] = useState(false);
++  const [routeError, setRouteError] = useState(false);
++  const creationLock = useRef(false);
++  const vendors = groupProviderTemplates(templates, locale, query);
++  const selectedVendor =
++    selectedId === "custom"
++      ? {
++          id: "custom",
++          label: customLabel,
++          templates: [
++            {
++              templateId: "custom",
++              templateNameMap: { "zh-CN": customLabel, "en-US": customLabel },
++              config: {
++                access: { type: "api-key" as const },
++                api: { type: "openai-chat-completions" as const },
++              },
++            },
++          ],
++        }
++      : groupProviderTemplates(templates, locale).find((vendor) =>
++          vendor.templates.some((template) => template.templateId === selectedId),
++        );
++  const disabled = creating || busy;
++  const createWithFeedback = async (initialConfig: ProviderConfigObject, name?: string) => {
++    const templateId = selectedId === "custom" ? undefined : selectedId;
++    if (creationLock.current || creating || !selectedId) return;
++    if (templateId && !templates.some((template) => template.templateId === templateId)) return;
++    creationLock.current = true;
++    setBusy(true);
++    setRouteError(false);
+     const feedbackKey = "provider-template-create";
+     dismissFeedback(feedbackKey);
+     try {
+-      await create();
++      if (templateId)
++        await onCreateFromTemplate(
++          templateId,
++          initialConfig,
++          templates.find((item) => item.templateId === templateId)?.config.access?.type ===
++            "subscription",
++        );
++      else await onCreateCustom(name ?? customLabel, initialConfig);
++      setSelectedId(undefined);
+     } catch (error) {
+-      // Template 创建失败过去只写日志，用户留在选择页却看不到任何结果。
+-      // 失败继续留在当前页，并复用详情栏底部反馈横幅提供同一次创建的重试入口。
+-      // 完整 Schema issues 只进入统一 UI 日志；横幅保持可读摘要，避免原始数组撑满详情区。
+       logger.error("[ProviderTemplatePicker] 创建供应商失败", error);
+-      const retry = () => void createWithFeedback(create);
+-      showFeedback({
+-        key: feedbackKey,
+-        state: "failure",
+-        message: intl.formatMessage({ id: "settings.modelProvider.templateCreateFailed" }),
+-        actionLabel: intl.formatMessage({ id: "settings.modelProvider.templateCreateRetry" }),
+-        onAction: retry,
+-        dismissible: true,
+-      });
++      setRouteError(true);
++    } finally {
++      creationLock.current = false;
++      setBusy(false);
+     }
+   };
++  if (selectedVendor && selectedId)
++    return (
++      <ProviderTemplateSetup
++        key={selectedVendor.id}
++        vendor={selectedVendor}
++        selectedId={selectedId}
++        custom={selectedId === "custom"}
++        busy={disabled}
++        error={routeError}
++        onSelect={(id) => {
++          setSelectedId(id);
++          setRouteError(false);
++        }}
++        onBack={() => {
++          if (!creationLock.current) {
++            setSelectedId(undefined);
++            setRouteError(false);
++          }
++        }}
++        onCreate={(config, name) => void createWithFeedback(config, name)}
++      />
++    );
+   return (
+     <section className="space-y-5" data-testid={TID_MODEL_PROVIDER_TEMPLATE_PICKER}>
+       <div className="flex items-center gap-3">
+@@ -82,6 +125,7 @@ export function ProviderTemplatePicker({
+           size="icon-sm"
+           data-testid={TID_MODEL_PROVIDER_TEMPLATE_BACK_BUTTON}
+           aria-label={intl.formatMessage({ id: "settings.modelProvider.templatePickerBack" })}
++          disabled={disabled}
+           onClick={onBack}
+         >
+           <ArrowLeftIcon className="size-4" aria-hidden="true" />
+@@ -91,49 +135,51 @@ export function ProviderTemplatePicker({
+         </h2>
+       </div>
+ 
+-      <div className="space-y-6">
+-        {groups.map((group) => (
+-          <section key={group.id} data-provider-template-group={group.id} className="space-y-3">
+-            <h3 className="text-ui-base font-medium text-foreground-subtle">
+-              {intl.formatMessage({ id: `settings.modelProvider.templateGroup.${group.id}` })}
+-            </h3>
+-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+-              {group.id === "other" ? (
+-                <ProviderTemplateCard
+-                  label={intl.formatMessage({ id: "settings.modelProvider.createCustomProvider" })}
+-                  disabled={creating}
+-                  testId={testId(TID_MODEL_PROVIDER_TEMPLATE_ITEM, "custom")}
+-                  icon={
+-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-hover">
+-                      <PlusIcon className="size-4" aria-hidden="true" />
+-                    </span>
+-                  }
+-                  onClick={() => void createWithFeedback(() => onCreateCustom(customLabel))}
+-                />
+-              ) : null}
+-              {group.templates.map((template) => {
+-                const label = resolveProviderTemplateName(template.templateId, template, locale);
+-                return (
+-                  <ProviderTemplateCard
+-                    key={template.templateId}
+-                    label={label}
+-                    disabled={creating}
+-                    testId={testId(TID_MODEL_PROVIDER_TEMPLATE_ITEM, template.templateId)}
+-                    icon={
+-                      <span className="flex size-9 shrink-0 items-center justify-center">
+-                        <ProviderLogo logo={template.config.logo} className="size-8" />
+-                      </span>
+-                    }
+-                    onClick={() =>
+-                      void createWithFeedback(() => onCreateFromTemplate(template.templateId))
+-                    }
+-                  />
+-                );
+-              })}
+-            </div>
+-          </section>
++      <Input
++        value={query}
++        onChange={(event) => setQuery(event.target.value)}
++        placeholder={intl.formatMessage({ id: "settings.modelProvider.catalog.search" })}
++        aria-label={intl.formatMessage({ id: "settings.modelProvider.catalog.search" })}
++      />
++      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
++        {vendors.map((vendor) => (
++          <ProviderTemplateCard
++            key={vendor.id}
++            label={vendor.label}
++            disabled={disabled}
++            testId={testId(TID_MODEL_PROVIDER_TEMPLATE_ITEM, vendor.id)}
++            icon={
++              <span className="flex size-9 shrink-0 items-center justify-center">
++                <ProviderLogo logo={vendor.templates[0]?.config.logo} className="size-8" />
++              </span>
++            }
++            onClick={() => {
++              const first = vendor.templates[0];
++              if (!first) return;
++              dismissFeedback("provider-template-create");
++              setRouteError(false);
++              setSelectedId(first.templateId);
++            }}
++          />
+         ))}
+       </div>
++      {vendors.length === 0 ? (
++        <p className="text-ui-base text-foreground-subtle" role="status">
++          {intl.formatMessage({ id: "settings.modelProvider.catalog.empty" })}
++        </p>
++      ) : null}
++      <Button
++        variant="secondary"
++        disabled={disabled}
++        data-testid={testId(TID_MODEL_PROVIDER_TEMPLATE_ITEM, "custom")}
++        onClick={() => {
++          setRouteError(false);
++          setSelectedId("custom");
++        }}
++      >
++        <PlusIcon data-icon="inline-start" aria-hidden="true" />
++        {intl.formatMessage({ id: "settings.modelProvider.createCustomProvider" })}
++      </Button>
+     </section>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+new file mode 100644
+index 0000000..aab85a7
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -0,0 +1,228 @@
++import { useState } from "react";
++import { ArrowLeftIcon } from "lucide-react";
++import {
++  resolveProviderTemplateName,
++  type ProviderApiType,
++  type ProviderConfigObject,
++} from "@zcode/provider";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { ProviderApiKeySection } from "./ProviderCardSections.js";
++import { ProviderLogo } from "./ProviderLogo.js";
++import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
++import {
++  newProviderSetupDraft,
++  providerSetupConfig,
++  type ProviderSetupDraft,
++} from "./providerSetupDraft.js";
++import { selectProviderTemplate, type ProviderVendor } from "./providerTemplateCatalog.js";
++
++export function ProviderTemplateSetup({
++  vendor,
++  selectedId,
++  custom,
++  busy,
++  error,
++  onSelect,
++  onBack,
++  onCreate,
++}: {
++  vendor: ProviderVendor;
++  selectedId: string;
++  custom: boolean;
++  busy: boolean;
++  error: boolean;
++  onSelect: (id: string) => void;
++  onBack: () => void;
++  onCreate: (config: ProviderConfigObject, name?: string) => void;
++}) {
++  const { intl, locale } = useZCodeIntl();
++  const platform = usePlatform();
++  const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.catalog.${key}` });
++  const [drafts, setDrafts] = useState<Record<string, ProviderSetupDraft>>({});
++  const [name, setName] = useState(vendor.label);
++  const [visible, setVisible] = useState(false);
++  const [invalid, setInvalid] = useState(false);
++  const selected = vendor.templates.find((template) => template.templateId === selectedId);
++  if (!selected) return null;
++  const draft = drafts[selectedId] ?? newProviderSetupDraft(selected);
++  const patch = (values: Partial<ProviderSetupDraft>) => {
++    setInvalid(false);
++    setDrafts((previous) => ({ ...previous, [selectedId]: { ...draft, ...values } }));
++  };
++  const serviceId = selected.catalog?.serviceId ?? selected.templateId;
++  const subscription = selected.config.access?.type === "subscription";
++  const services = [
++    ...new Map(
++      vendor.templates.map((template) => [
++        template.catalog?.serviceId ?? template.templateId,
++        resolveProviderTemplateName(
++          template.templateId,
++          { templateNameMap: template.catalog?.serviceNameMap ?? template.templateNameMap },
++          locale,
++        ),
++      ]),
++    ).entries(),
++  ].map(([value, label]) => ({ value, label }));
++  const serviceTemplates = vendor.templates.filter(
++    (template) => (template.catalog?.serviceId ?? template.templateId) === serviceId,
++  );
++  const regions = [...new Set(serviceTemplates.map((template) => template.catalog?.region))].filter(
++    (region): region is "cn" | "global" => region !== undefined,
++  );
++  const protocolRoutes = serviceTemplates.filter(
++    (template) => template.catalog?.region === selected.catalog?.region,
++  );
++  const declaredFormats = [
++    ...new Set(protocolRoutes.map((template) => template.config.api?.type)),
++  ].filter((api): api is ProviderApiType => api != null);
++  const formats: ProviderApiType[] =
++    declaredFormats.length > 1
++      ? declaredFormats
++      : ["anthropic-messages", "openai-chat-completions", "openai-responses"];
++  const choose = (change: Parameters<typeof selectProviderTemplate>[2]) => {
++    if (busy) return;
++    const next = selectProviderTemplate(vendor.templates, selectedId, change);
++    if (!next) return;
++    // 协议变体属于同一服务/地区，沿用本次输入的密钥；跨地区/套餐则恢复各自草稿。
++    if (change.api)
++      setDrafts((previous) => ({
++        ...previous,
++        [next.templateId]: {
++          ...draft,
++          api: next.config.api!.type!,
++          baseUrl: next.config.api!.baseUrl ?? "",
++        },
++      }));
++    setVisible(false);
++    setInvalid(false);
++    onSelect(next.templateId);
++  };
++  const keyUrl =
++    selected.config.access && "apiKeyManagementUrl" in selected.config.access
++      ? selected.config.access.apiKeyManagementUrl
++      : undefined;
++  const submit = () => {
++    if (busy) return;
++    const config = providerSetupConfig(selected, draft);
++    if (!config || (custom && !name.trim())) {
++      setInvalid(true);
++      return;
++    }
++    onCreate(config, custom ? name.trim() : undefined);
++  };
++  return (
++    <section className="space-y-5" data-testid="provider-connection-setup">
++      <div className="flex items-center gap-3">
++        <Button
++          type="button"
++          variant="ghost"
++          size="icon-sm"
++          disabled={busy}
++          onClick={onBack}
++          aria-label={t("back")}
++        >
++          <ArrowLeftIcon className="size-4" />
++        </Button>
++        <ProviderLogo logo={selected.config.logo} className="size-5" />
++        <h2 className="text-ui-lg font-semibold text-foreground">{vendor.label}</h2>
++      </div>
++      <fieldset disabled={busy} className="min-w-0 space-y-4">
++        {custom ? (
++          <div className="space-y-2">
++            <label htmlFor="provider-setup-name" className="text-ui-base text-foreground-subtle">
++              {t("name")}
++            </label>
++            <Input
++              id="provider-setup-name"
++              value={name}
++              onChange={(event) => setName(event.target.value)}
++            />
++          </div>
++        ) : null}
++        <ProviderConnectionChoices
++          label={t("service")}
++          value={serviceId}
++          items={services}
++          disabled={busy}
++          onChange={(value) => choose({ serviceId: value })}
++        />
++        <ProviderConnectionChoices
++          label={t("region")}
++          value={selected.catalog?.region ?? ""}
++          items={regions.map((region) => ({ value: region, label: t(region) }))}
++          disabled={busy}
++          onChange={(region) => choose({ serviceId, region })}
++        />
++        {!subscription ? (
++          <>
++            <div className="space-y-2">
++              <label htmlFor="provider-setup-url" className="text-ui-base text-foreground-subtle">
++                {intl.formatMessage({ id: "settings.modelProvider.baseUrl" })}
++              </label>
++              <Input
++                id="provider-setup-url"
++                size="lg"
++                autoComplete="off"
++                spellCheck={false}
++                value={draft.baseUrl}
++                onChange={(event) => patch({ baseUrl: event.target.value })}
++                placeholder="https://api.example.com/v1"
++              />
++            </div>
++            <ProviderConnectionChoices
++              label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++              value={draft.api}
++              items={formats.map((format) => ({
++                value: format,
++                label: intl.formatMessage({
++                  id: `settings.modelProvider.apiFormat.title.${format === "anthropic-messages" ? "anthropicMessages" : format === "openai-responses" ? "responses" : "chatCompletions"}`,
++                }),
++              }))}
++              disabled={busy}
++              onChange={(api) => {
++                if (declaredFormats.length > 1)
++                  choose({ serviceId, region: selected.catalog?.region ?? "", api });
++                else patch({ api: api as ProviderApiType });
++              }}
++            />
++            <ProviderApiKeySection
++              apiKeyValue={draft.primary}
++              additionalApiKeys={draft.additional}
++              autoSwitchCredentials={draft.automatic}
++              apiKeyVisible={visible}
++              readOnly={busy}
++              onToggleApiKeyVisibility={() => setVisible(!visible)}
++              onApiKeyChange={(primary) => patch({ primary })}
++              onApiKeyBlur={() => {}}
++              onCredentialsChange={(primary, additional, automatic) =>
++                patch({ primary, additional, automatic })
++              }
++              presetApiKeyUrl={keyUrl ?? undefined}
++              onOpenPresetApiKey={keyUrl ? () => void platform.openExternal(keyUrl) : undefined}
++            />
++          </>
++        ) : (
++          <p className="text-ui-base text-foreground-subtle">{t("subscription")}</p>
++        )}
++      </fieldset>
++      {error || invalid ? (
++        <p role="alert" className="text-ui-base text-destructive">
++          {invalid
++            ? t(custom && !name.trim() ? "invalidName" : "invalid")
++            : intl.formatMessage({ id: "settings.modelProvider.templateCreateFailed" })}
++        </p>
++      ) : null}
++      <div className="flex justify-end gap-2">
++        <Button type="button" variant="secondary" disabled={busy} onClick={onBack}>
++          {intl.formatMessage({ id: "common.cancel" })}
++        </Button>
++        <Button type="button" disabled={busy} onClick={submit}>
++          {t(subscription ? "connect" : "save")}
++        </Button>
++      </div>
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index e2aa7dd..9c5f775 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useRef, useState } from "react";
++import { useEffect, useEffectEvent, useRef, useState } from "react";
+ import { ExternalLinkIcon, LoaderCircleIcon, Plus, Check, ArrowUp, Trash2 } from "lucide-react";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
+@@ -14,10 +14,14 @@ export function SubscriptionConnectionSection({
+   providerId,
+   connected,
+   onRevision,
++  connectOnMount = false,
++  onConnectConsumed,
+ }: {
+   providerId: string;
+   connected: boolean;
+   onRevision: (revision: string) => void;
++  connectOnMount?: boolean;
++  onConnectConsumed?: () => void;
+ }) {
+   const { providerSettingsService } = useServices();
+   const platform = usePlatform();
+@@ -135,6 +139,16 @@ export function SubscriptionConnectionSection({
+       }
+     }
+   };
++  const connectRequested = useEffectEvent(() => {
++    onConnectConsumed?.();
++    void run();
++  });
++  useEffect(() => {
++    if (!connectOnMount) return;
++    // 下一事件周期启动，使 StrictMode 的探测挂载能撤销，而不会发起两次授权。
++    const timer = setTimeout(() => connectRequested(), 0);
++    return () => clearTimeout(timer);
++  }, [connectOnMount]);
+   return (
+     <section className="space-y-3" data-testid="subscription-connection">
+       <div className="text-ui-base text-foreground-subtle">
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+new file mode 100644
+index 0000000..d31702a
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -0,0 +1,50 @@
++import {
++  isApiKeyAccess,
++  type ProviderApiType,
++  type ProviderConfigObject,
++  type ProviderSettingsTemplateView,
++} from "@zcode/provider";
++
++export interface ProviderSetupDraft {
++  baseUrl: string;
++  api: ProviderApiType;
++  primary: string;
++  additional: string[];
++  automatic: boolean;
++}
++export function newProviderSetupDraft(template: ProviderSettingsTemplateView): ProviderSetupDraft {
++  return {
++    baseUrl: template.config.api?.baseUrl ?? "",
++    api: template.config.api?.type ?? "openai-chat-completions",
++    primary: "",
++    additional: [],
++    automatic: false,
++  };
++}
++export function providerSetupConfig(
++  template: ProviderSettingsTemplateView,
++  draft: ProviderSetupDraft,
++): ProviderConfigObject | undefined {
++  if (template.config.access?.type === "subscription") return {};
++  if (!isApiKeyAccess(template.config.access)) return undefined;
++  let url: URL;
++  try {
++    url = new URL(draft.baseUrl.trim());
++  } catch {
++    return undefined;
++  }
++  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return undefined;
++  const keys = [
++    ...new Set([draft.primary, ...draft.additional].map((key) => key.trim()).filter(Boolean)),
++  ];
++  if (!keys.length || keys.length > 10) return undefined;
++  return {
++    api: { type: draft.api, baseUrl: draft.baseUrl.trim() },
++    access: {
++      type: template.config.access.type,
++      apiKey: keys[0],
++      additionalApiKeys: keys.slice(1),
++      autoSwitchCredentials: draft.automatic && keys.length > 1,
++    },
++  };
++}
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+new file mode 100644
+index 0000000..9c96103
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -0,0 +1,78 @@
++import {
++  resolveProviderTemplateName,
++  type ProviderSettingsTemplateView,
++  type ProviderTemplateLocale,
++} from "@zcode/provider";
++
++export interface ProviderVendor {
++  id: string;
++  label: string;
++  templates: ProviderSettingsTemplateView[];
++}
++
++export function groupProviderTemplates(
++  templates: readonly ProviderSettingsTemplateView[],
++  locale: ProviderTemplateLocale,
++  query = "",
++): ProviderVendor[] {
++  const groups = new Map<string, ProviderVendor>();
++  for (const template of templates) {
++    const catalog = template.catalog;
++    // 未声明品牌的旧模板保留独立入口，不按名称、端点或图标碰撞合并。
++    const id = catalog ? `vendor:${catalog.vendorId}` : `template:${template.templateId}`;
++    const label = resolveProviderTemplateName(
++      template.templateId,
++      { templateNameMap: catalog?.vendorNameMap ?? template.templateNameMap },
++      locale,
++    );
++    const group = groups.get(id) ?? { id, label, templates: [] };
++    group.templates.push(template);
++    groups.set(id, group);
++  }
++  const search = query.trim().toLocaleLowerCase();
++  return [...groups.values()].filter(
++    (group) =>
++      !search ||
++      group.templates.some((template) =>
++        [
++          group.label,
++          template.templateId,
++          ...Object.values(template.templateNameMap),
++          ...Object.values(template.catalog?.vendorNameMap ?? {}),
++          ...Object.values(template.catalog?.serviceNameMap ?? {}),
++        ].some((value) => value?.toLocaleLowerCase().includes(search)),
++      ),
++  );
++}
++
++type RouteChoice = { serviceId?: string; region?: string; api?: string };
++export function selectProviderTemplate(
++  templates: readonly ProviderSettingsTemplateView[],
++  currentId: string,
++  change: RouteChoice,
++): ProviderSettingsTemplateView | undefined {
++  const current = templates.find((template) => template.templateId === currentId);
++  if (!current) return undefined;
++  const dimensions = (template: ProviderSettingsTemplateView) => ({
++    serviceId: template.catalog?.serviceId ?? template.templateId,
++    region: template.catalog?.region ?? "",
++    api: template.config.api?.type ?? "",
++  });
++  const previous = dimensions(current);
++  const candidates = templates.filter((template) => {
++    const values = dimensions(template);
++    return Object.entries(change).every(
++      ([key, value]) => values[key as keyof RouteChoice] === value,
++    );
++  });
++  // 只选目录中确实存在的组合；保留兼容地域/协议，不拼接或猜测新的 URL。
++  const score = (template: ProviderSettingsTemplateView) => {
++    const values = dimensions(template);
++    return (
++      (values.serviceId === previous.serviceId ? 4 : 0) +
++      (values.region === previous.region ? 2 : 0) +
++      (values.api === previous.api ? 1 : 0)
++    );
++  };
++  return candidates.sort((a, b) => score(b) - score(a))[0];
++}
+diff --git a/scripts/provider-catalog-metadata.mjs b/scripts/provider-catalog-metadata.mjs
+new file mode 100644
+index 0000000..d5f9dda
+--- /dev/null
++++ b/scripts/provider-catalog-metadata.mjs
+@@ -0,0 +1,118 @@
++// 显式声明品牌与接入选项；不能把协议后缀、地域或相同 logo 猜成供应商身份。
++const services = {
++  api: ["API", "API"],
++  coding: ["Coding Plan", "Coding Plan"],
++  token: ["Token Plan", "Token Plan"],
++  kimi: ["Kimi Code", "Kimi Code"],
++  chatgpt: ["ChatGPT / Codex 订阅", "ChatGPT / Codex subscription"],
++  copilot: ["GitHub Copilot 订阅", "GitHub Copilot subscription"],
++  go: ["OpenCode Go", "OpenCode Go"],
++  zen: ["OpenCode Zen", "OpenCode Zen"],
++};
++const vendors = [
++  [
++    "zhipu",
++    "智谱 / Z.ai",
++    "Z.ai / BigModel",
++    [
++      ["zai-api", "coding", "global"],
++      ["zai-standard-api", "api", "global"],
++      ["bigmodel-api", "coding", "cn"],
++      ["bigmodel-standard-api", "api", "cn"],
++    ],
++  ],
++  [
++    "kimi",
++    "Kimi",
++    "Kimi",
++    [
++      ["moonshot-kimi", "api", "cn"],
++      ["fleet-kimi-coding", "kimi", "cn"],
++      ["fleet-kimi-coding-global", "kimi", "global"],
++    ],
++  ],
++  [
++    "minimax",
++    "MiniMax",
++    "MiniMax",
++    [
++      ["minimax", "api", "cn"],
++      ["fleet-minimax", "api", "global"],
++      ["fleet-minimax-token-plan-cn", "token", "cn"],
++      ["fleet-minimax-token-plan", "token", "global"],
++    ],
++  ],
++  [
++    "alibaba",
++    "阿里云百炼",
++    "Alibaba Cloud",
++    [
++      ["qwen-alibaba-model-studio-cn", "api", "cn"],
++      ["qwen-alibaba-model-studio-intl", "api", "global"],
++      ["fleet-qwen-token-plan-cn", "token", "cn"],
++      ["fleet-qwen-token-plan", "token", "global"],
++      ["fleet-qwen-coding-plan-cn", "coding", "cn"],
++      ["fleet-qwen-coding-plan", "coding", "global"],
++    ],
++  ],
++  [
++    "xiaomi",
++    "小米 MiMo",
++    "Xiaomi MiMo",
++    [
++      ["xiaomi-mimo", "api"],
++      ["fleet-xiaomi-token-plan-cn", "token", "cn"],
++    ],
++  ],
++  [
++    "openai",
++    "OpenAI",
++    "OpenAI",
++    [
++      ["openai", "api"],
++      ["fleet-openai-codex", "chatgpt"],
++    ],
++  ],
++  [
++    "opencode",
++    "OpenCode",
++    "OpenCode",
++    [
++      ["opencode-go-chat", "go"],
++      ["opencode-go-messages", "go"],
++      ["opencode-go-responses", "go"],
++      ["opencode-zen-chat", "zen"],
++      ["opencode-zen-messages", "zen"],
++      ["opencode-zen-responses", "zen"],
++    ],
++  ],
++  ["deepseek", "DeepSeek", "DeepSeek", [["deepseek", "api"]]],
++  ["anthropic", "Anthropic", "Anthropic", [["anthropic", "api"]]],
++  ["xai", "xAI", "xAI", [["xai", "api"]]],
++  ["openrouter", "OpenRouter", "OpenRouter", [["openrouter", "api"]]],
++  ["github", "GitHub Copilot", "GitHub Copilot", [["fleet-github-copilot", "copilot"]]],
++  ["groq", "Groq", "Groq", [["fleet-groq", "api"]]],
++  ["cerebras", "Cerebras", "Cerebras", [["fleet-cerebras", "api"]]],
++  ["mistral", "Mistral", "Mistral", [["fleet-mistral", "api"]]],
++  ["nvidia", "NVIDIA", "NVIDIA", [["fleet-nvidia", "api"]]],
++  ["together", "Together AI", "Together AI", [["fleet-together", "api"]]],
++  ["google", "Google Gemini", "Google Gemini", [["fleet-google", "api"]]],
++  ["siliconflow", "硅基流动", "SiliconFlow", [["fleet-siliconflow", "api"]]],
++];
++
++export function applyProviderCatalogMetadata(templates) {
++  const byId = new Map(templates.map((template) => [template.templateId, template]));
++  for (const [vendorId, zh, en, routes] of vendors) {
++    for (const [templateId, serviceId, region] of routes) {
++      const template = byId.get(templateId);
++      if (!template) continue;
++      template.catalog = {
++        vendorId,
++        vendorNameMap: { "zh-CN": zh, "en-US": en },
++        serviceId,
++        serviceNameMap: { "zh-CN": services[serviceId][0], "en-US": services[serviceId][1] },
++        ...(region ? { region } : {}),
++      };
++    }
++  }
++}
+diff --git a/scripts/sync-fleet-provider-catalog.mjs b/scripts/sync-fleet-provider-catalog.mjs
+index 1451666..ff4a9dd 100644
+--- a/scripts/sync-fleet-provider-catalog.mjs
++++ b/scripts/sync-fleet-provider-catalog.mjs
+@@ -1,6 +1,7 @@
+ // Endpoints come from the pinned Pi catalog; this updates ZCode's existing template owner.
+ import { readFile, writeFile } from "node:fs/promises";
+ import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
++import { applyProviderCatalogMetadata } from "./provider-catalog-metadata.mjs";
+ const file = new URL("../config/provider/zcode-builtin.json", import.meta.url);
+ const data = JSON.parse(await readFile(file, "utf8"));
+ data.config.providerConfigRules.templateRules =
+@@ -176,6 +177,7 @@ const planIds = new Set([
+ for (const template of rules) {
+   if (planIds.has(template.templateId)) template.category = "subscription-plan";
+ }
++applyProviderCatalogMetadata(rules);
+ await writeFile(file, JSON.stringify(data, null, 2) + "\n");
+ console.log(
+   `Updated ${entries.length + planEntries.length + 2} Fleet templates; ${rules.length} total.`,

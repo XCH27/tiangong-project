@@ -1,0 +1,1360 @@
+diff --git a/package.json b/package.json
+index 2b38815..274fe31 100644
+--- a/package.json
++++ b/package.json
+@@ -57,7 +57,7 @@
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+-    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
++    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+     "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts",
+@@ -76,7 +76,8 @@
+     "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles",
+     "test:decision-classifier": "tsx --test apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+-    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts"
++    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
++    "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index 2c63c96..607e401 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -2,7 +2,6 @@ import {
+   ContextMenu,
+   ContextMenuTrigger,
+   ContextMenuContent,
+-  ContextMenuItem,
+ } from "@/components/ui/context-menu.js";
+ /* oxlint-disable eslint(max-lines) */
+ import { ArrowLeft, Rocket, type LucideIcon } from "lucide-react";
+@@ -240,7 +239,7 @@ function SettingsSidebarButton({
+   icon: Icon,
+   label,
+   active,
+-  onOpenContext,
++  contextMenuEnabled,
+   children,
+   className,
+   ...buttonProps
+@@ -248,7 +247,7 @@ function SettingsSidebarButton({
+   icon: LucideIcon;
+   label: string;
+   active?: boolean;
+-  onOpenContext?: () => void;
++  contextMenuEnabled?: boolean;
+   children?: ReactNode;
+   className?: string;
+ } & ButtonHTMLAttributes<HTMLButtonElement>) {
+@@ -275,17 +274,13 @@ function SettingsSidebarButton({
+       </button>
+     </ControlHintTooltip>
+   );
+-  const { intl } = useZCodeIntl();
+-  return onOpenContext ? (
++  return contextMenuEnabled ? (
+     <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild>
+         <div>{control}</div>
+       </ContextMenuTrigger>
+       <ContextMenuContent>
+-        <ContextMenuItem onSelect={onOpenContext}>
+-          {intl.formatMessage({ id: "common.open" })}
+-        </ContextMenuItem>
+-        <PageAssistantMenuItem />
++        <PageAssistantMenuItem separator={false} />
+       </ContextMenuContent>
+     </ContextMenu>
+   ) : (
+@@ -1527,7 +1522,7 @@ export function SettingsPage({
+                                 label,
+                               )}
+                               onClick={openSection}
+-                              onOpenContext={openSection}
++                              contextMenuEnabled
+                             >
+                               <span className="block text-ui-base text-foreground">{label}</span>
+                             </SettingsSidebarButton>
+diff --git a/packages/ui/src/components/ai-elements/message.tsx b/packages/ui/src/components/ai-elements/message.tsx
+index df6b652..8ee5fda 100644
+--- a/packages/ui/src/components/ai-elements/message.tsx
++++ b/packages/ui/src/components/ai-elements/message.tsx
+@@ -1069,7 +1069,7 @@ function MessageExternalLink({
+       </ContextMenuTrigger>
+       <ContextMenuContent className="w-44">
+         <ContextMenuItem onSelect={() => handleOpen({ forceInApp: true })}>
+-          {intl.formatMessage({ id: "common.open" })}
++          {intl.formatMessage({ id: "workspaceFileTree.openInBrowser" })}
+         </ContextMenuItem>
+         <ContextMenuSeparator />
+         <ContextMenuItem onSelect={() => handleOpen({ forceExternal: true })}>
+@@ -1217,10 +1217,6 @@ function MessageFileLink({ className, fileIconSrc, fileLink, onOpen }: MessageFi
+         </MessageFileLinkButton>
+       </ContextMenuTrigger>
+       <ContextMenuContent className="w-52">
+-        <ContextMenuItem onSelect={onOpen}>
+-          {intl.formatMessage({ id: "common.open" })}
+-        </ContextMenuItem>
+-        <ContextMenuSeparator />
+         {selectedEditor ? (
+           sortedEditors.map((editor) => (
+             <ContextMenuItem key={editor.id} onSelect={() => handleOpenInEditor(editor)}>
+diff --git a/packages/ui/src/hooks/useAppPanels.ts b/packages/ui/src/hooks/useAppPanels.ts
+index 91f542a..53ba280 100644
+--- a/packages/ui/src/hooks/useAppPanels.ts
++++ b/packages/ui/src/hooks/useAppPanels.ts
+@@ -16,8 +16,6 @@ import {
+ import {
+   closeSidePaneTab,
+   closeSidePaneTabForParent,
+-  closeVisibleOtherSidePaneTabs,
+-  closeVisibleSidePaneTabs,
+   closeGitSidePane,
+   closeCodeViewerSidePane,
+   openWhiteboardSidePane,
+@@ -105,6 +103,28 @@ export interface RecentClosedSidePaneTab {
+ 
+ const RECENT_CLOSED_SIDE_PANE_TAB_LIMIT = 8;
+ 
++function matchesPendingSidePaneClose(
++  current: WorkspaceSidePaneTab,
++  captured: WorkspaceSidePaneTab,
++) {
++  // Presentation/residency events may clone a tab while its native close is pending.
++  // Everything else, including source, owner and openedAt, identifies the captured resource.
++  const presentationFields = new Set([
++    "title",
++    "faviconUrl",
++    "residency",
++    "residencyGeneration",
++    "browserUseOperationUntil",
++    "browserUseResizeBaselineVersion",
++    "focusPhaseId",
++  ]);
++  const left = current as unknown as Record<string, unknown>;
++  const right = captured as unknown as Record<string, unknown>;
++  return [...new Set([...Object.keys(left), ...Object.keys(right)])].every(
++    (key) => presentationFields.has(key) || Object.is(left[key], right[key]),
++  );
++}
++
+ function createTerminalSidePaneTitle(
+   current: WorkspaceSidePaneState | null,
+   workspaceAbsPath: string,
+@@ -216,6 +236,30 @@ export function useAppPanels(options: {
+   activeWorkspaceKeyRef.current = activeWorkspaceKey;
+   const activeTabByOwnerRef = useRef<Map<string, string>>(new Map());
+   const activeSidePaneMemoryKeyRef = useRef<string | null>(sidePaneMemoryKey);
++  const sidePaneCloseScope = useMemo(
++    () => ({
++      sidePaneMemoryKey,
++      activeWorkspaceKey,
++      sidePaneOwnerId,
++      activeTaskId,
++      workspaceRemoteSessionId,
++    }),
++    [
++      sidePaneMemoryKey,
++      activeWorkspaceKey,
++      sidePaneOwnerId,
++      activeTaskId,
++      workspaceRemoteSessionId,
++    ],
++  );
++  const sidePaneCloseScopeRef = useRef<typeof sidePaneCloseScope | null>(sidePaneCloseScope);
++  sidePaneCloseScopeRef.current = sidePaneCloseScope;
++  useEffect(() => {
++    sidePaneCloseScopeRef.current = sidePaneCloseScope;
++    return () => {
++      sidePaneCloseScopeRef.current = null;
++    };
++  }, [sidePaneCloseScope]);
+   const latestSidePaneMemoryRef = useRef({
+     sidePaneState,
+     isSidePaneCollapsed,
+@@ -1438,76 +1482,89 @@ export function useAppPanels(options: {
+     ],
+   );
+ 
+-  const handleCloseOtherSidePaneTabs = useCallback(
+-    (tabId: string) => {
+-      const visibleTabs =
+-        sidePaneState?.tabs.filter((tab) => isSidePaneTabVisibleForParent(tab, activeTaskId)) ?? [];
+-      const targetExists = visibleTabs.some((tab) => tab.id === tabId);
+-      const closingTabs = targetExists ? visibleTabs.filter((tab) => tab.id !== tabId) : [];
+-      void closeBrowserTabsWithAuthority(closingTabs).then((authorized) => {
+-        if (!authorized) return;
+-        for (const tab of closingTabs) {
+-          if (tab.type === "selection-side-chat") closeSelectionSideChatRuntime(tab);
+-        }
+-        // 保活：批量关闭其他 tab 时，回收其中 terminal tab 的常驻 PTY/xterm。
++  const closeCapturedSidePaneTabs = useCallback(
++    async (capturedTabs: readonly WorkspaceSidePaneTab[], retainedTabId?: string) => {
++      const scope = sidePaneCloseScope;
++      if (
++        sidePaneCloseScopeRef.current !== scope ||
++        activeSidePaneMemoryKeyRef.current !== scope.sidePaneMemoryKey ||
++        capturedTabs.length === 0
++      )
++        return;
++      const authorized = await closeBrowserTabsWithAuthority(capturedTabs);
++      // A late close never targets the newly selected owner, even after switching away and back.
++      if (
++        !authorized ||
++        sidePaneCloseScopeRef.current !== scope ||
++        activeSidePaneMemoryKeyRef.current !== scope.sidePaneMemoryKey
++      )
++        return;
++      const current = latestSidePaneMemoryRef.current.sidePaneState;
++      const capturedById = new Map(capturedTabs.map((tab) => [tab.id, tab]));
++      const closingTabs =
++        current?.tabs.filter((tab) => {
++          const captured = capturedById.get(tab.id);
++          return captured && matchesPendingSidePaneClose(tab, captured);
++        }) ?? [];
++      // Main may publish its close event before the RPC resolves. Keep those exact
++      // browser snapshots reopenable, but never record a replacement with the same id.
++      const nativeClosedTabs = capturedTabs.filter(
++        (tab) =>
++          (tab.type === "browser" || tab.type === "browser-use") &&
++          !current?.tabs.some((candidate) => candidate.id === tab.id),
++      );
++      rememberClosedSidePaneTabs([...closingTabs, ...nativeClosedTabs]);
++      if (closingTabs.length === 0) return;
++      for (const tab of closingTabs) {
++        if (tab.type === "selection-side-chat") closeSelectionSideChatRuntime(tab);
++        if (tab.type === "terminal") sidePaneTerminalSessionRegistry.release(tab.id);
++      }
++      const closingIds = new Set(closingTabs.map((tab) => tab.id));
++      const next = commitSidePaneState((state) => {
++        let result = state;
+         for (const tab of closingTabs) {
+-          if (tab.type === "terminal") {
+-            sidePaneTerminalSessionRegistry.release(tab.id);
+-          }
++          result = closeSidePaneTabForParent(result, tab.id, activeTaskId);
+         }
+-        rememberClosedSidePaneTabs(closingTabs);
+-        commitSidePaneState((current) => {
+-          const next = closeVisibleOtherSidePaneTabs(current, tabId, activeTaskId);
+-          logger.info(
+-            `[App] 关闭其他右侧面板 tab=${tabId} workspace=${workspaceAbsPath} tabs=${next?.tabs.length ?? 0}`,
+-          );
+-          return next;
+-        });
++        // Preserve a later user activation; otherwise Close Others still focuses its retained tab.
++        return retainedTabId && state && closingIds.has(state.activeTabId)
++          ? setActiveSidePaneTab(result, retainedTabId)
++          : result;
+       });
++      syncSidePaneCollapsedWithTabs(next);
+     },
+     [
+       activeTaskId,
+-      closeSelectionSideChatRuntime,
+       closeBrowserTabsWithAuthority,
++      closeSelectionSideChatRuntime,
+       commitSidePaneState,
+       rememberClosedSidePaneTabs,
+-      sidePaneState?.tabs,
+-      workspaceAbsPath,
++      sidePaneCloseScope,
++      syncSidePaneCollapsedWithTabs,
+     ],
+   );
+ 
++  const handleCloseOtherSidePaneTabs = useCallback(
++    (tabId: string) => {
++      const visibleTabs =
++        latestSidePaneMemoryRef.current.sidePaneState?.tabs.filter((tab) =>
++          isSidePaneTabVisibleForParent(tab, activeTaskId),
++        ) ?? [];
++      if (!visibleTabs.some((tab) => tab.id === tabId)) return;
++      void closeCapturedSidePaneTabs(
++        visibleTabs.filter((tab) => tab.id !== tabId),
++        tabId,
++      );
++    },
++    [activeTaskId, closeCapturedSidePaneTabs],
++  );
++
+   const handleCloseAllSidePaneTabs = useCallback(() => {
+     const visibleTabs =
+-      sidePaneState?.tabs.filter((tab) => isSidePaneTabVisibleForParent(tab, activeTaskId)) ?? [];
+-    void closeBrowserTabsWithAuthority(visibleTabs).then((authorized) => {
+-      if (!authorized) return;
+-      for (const tab of visibleTabs) {
+-        if (tab.type === "selection-side-chat") closeSelectionSideChatRuntime(tab);
+-      }
+-      // 保活：关闭全部 tab 时，回收其中 terminal tab 的常驻 PTY/xterm。
+-      for (const tab of visibleTabs) {
+-        if (tab.type === "terminal") {
+-          sidePaneTerminalSessionRegistry.release(tab.id);
+-        }
+-      }
+-      rememberClosedSidePaneTabs(visibleTabs);
+-      commitSidePaneState((current) => {
+-        logger.info(`[App] 关闭全部右侧面板 tabs workspace=${workspaceAbsPath}`);
+-        const next = closeVisibleSidePaneTabs(current, activeTaskId);
+-        syncSidePaneCollapsedWithTabs(next);
+-        return next;
+-      });
+-    });
+-  }, [
+-    activeTaskId,
+-    closeSelectionSideChatRuntime,
+-    closeBrowserTabsWithAuthority,
+-    commitSidePaneState,
+-    rememberClosedSidePaneTabs,
+-    sidePaneState?.tabs,
+-    syncSidePaneCollapsedWithTabs,
+-    workspaceAbsPath,
+-  ]);
++      latestSidePaneMemoryRef.current.sidePaneState?.tabs.filter((tab) =>
++        isSidePaneTabVisibleForParent(tab, activeTaskId),
++      ) ?? [];
++    void closeCapturedSidePaneTabs(visibleTabs);
++  }, [activeTaskId, closeCapturedSidePaneTabs]);
+ 
+   const handleReopenClosedSidePaneTab = useCallback(
+     (tabId: string) => {
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 70c5b0d..a28ea56 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -78,6 +78,7 @@ export function ModelProviderSection({
+   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+   const [defaultsOpen, setDefaultsOpen] = useState(false);
++  const [renameRequest, setRenameRequest] = useState<{ providerId: string; id: string }>();
+   const [creatingProvider, setCreatingProvider] = useState(false);
+   const [connectProviderId, setConnectProviderId] = useState<string>();
+   const [expandedAccountByProvider, setExpandedAccountByProvider] = useState<
+@@ -198,11 +199,22 @@ export function ModelProviderSection({
+       navigationGroups={navigationGroups}
+       selectedNodeKey={defaultsOpen ? null : selectedNodeKey}
+       onSelectNavItem={(item) => {
++        setRenameRequest(undefined);
+         setDefaultsOpen(false);
+         setTarget(undefined);
+         setSelectedNodeKey(item.key);
+         setTemplatePickerOpen(false);
+       }}
++      providerActions={{
++        rename: (provider) => {
++          setDefaultsOpen(false);
++          setTarget(undefined);
++          setSelectedNodeKey(createCustomProviderNodeKey(provider.providerId));
++          setTemplatePickerOpen(false);
++          setRenameRequest({ providerId: provider.providerId, id: crypto.randomUUID() });
++        },
++        delete: handleDelete,
++      }}
+       onReorderProviderIds={handleReorderProviderIds}
+       reorderableProviderIds={reorderableProviderIds}
+       navigationFooter={
+@@ -264,6 +276,8 @@ export function ModelProviderSection({
+           )}
+         >
+           <ModelProviderSectionDetail
++            renameRequest={renameRequest}
++            onRenameConsumed={() => setRenameRequest(undefined)}
+             connectProviderId={connectProviderId}
+             onConnectConsumed={() => setConnectProviderId(undefined)}
+             providerSettingsView={providerSettingsView}
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index 0a53344..8631587 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -11,6 +11,8 @@ import type { ProviderSettingsView } from "@zcode/services";
+ import type { SavePersonalModelDraftInput } from "@zcode/provider";
+ export function ModelProviderSectionDetail({
+   selectedNavItem,
++  renameRequest,
++  onRenameConsumed,
+   onSave,
+   onAddPersonalModel,
+   onSavePersonalModelDraft,
+@@ -27,6 +29,8 @@ export function ModelProviderSectionDetail({
+   onConnectConsumed,
+ }: {
+   selectedNavItem: ModelProviderNavItem | null;
++  renameRequest?: { providerId: string; id: string };
++  onRenameConsumed?: () => void;
+   onSave: ProviderSettingsSaveHandler;
+   onAddPersonalModel?: (
+     providerId: string,
+@@ -73,6 +77,10 @@ export function ModelProviderSectionDetail({
+     <InlineEditableProviderCard
+       key={customProvider.providerId}
+       provider={customProvider}
++      renameRequestId={
++        renameRequest?.providerId === customProvider.providerId ? renameRequest.id : undefined
++      }
++      onRenameConsumed={onRenameConsumed}
+       connectOnMount={connectProviderId === customProvider.providerId}
+       onConnectConsumed={onConnectConsumed}
+       onSave={onSave}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 5c6d0d4..ce1a33b 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -2,7 +2,15 @@ import { NativeCliConnectionSection } from "./NativeCliConnectionSection.js";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
++import {
++  useCallback,
++  useEffect,
++  useLayoutEffect,
++  useMemo,
++  useRef,
++  useState,
++  type ReactNode,
++} from "react";
+ import {
+   getProviderFormApiKey,
+   getProviderFormLabel,
+@@ -128,6 +136,8 @@ export function InlineEditableProviderCard({
+   settingsRevision,
+   connectOnMount,
+   onConnectConsumed,
++  renameRequestId,
++  onRenameConsumed,
+ }: {
+   provider: ProviderSettingsFormProvider;
+   onSave: ProviderSettingsSaveHandler;
+@@ -159,6 +169,8 @@ export function InlineEditableProviderCard({
+   headerVisible?: boolean;
+   headerActionsVisible?: boolean;
+   settingsRevision?: number;
++  renameRequestId?: string;
++  onRenameConsumed?: () => void;
+   connectOnMount?: boolean;
+   onConnectConsumed?: () => void;
+ }) {
+@@ -685,9 +697,26 @@ export function InlineEditableProviderCard({
+     nameEditProviderIdRef.current = provider.providerId;
+     nameCompositionActiveRef.current = false;
+     setEditingName(true);
+-    requestAnimationFrame(() => nameInputRef.current?.focus());
+   }, [provider.providerId]);
+ 
++  useLayoutEffect(() => {
++    if (editingName) nameInputRef.current?.focus();
++  }, [editingName]);
++
++  const consumedRenameRequest = useRef<string | undefined>(undefined);
++  useEffect(() => {
++    if (
++      !renameRequestId ||
++      consumedRenameRequest.current === renameRequestId ||
++      !nameEditable ||
++      savingConnection
++    )
++      return;
++    consumedRenameRequest.current = renameRequestId;
++    handleStartEditName();
++    onRenameConsumed?.();
++  }, [renameRequestId, nameEditable, savingConnection, handleStartEditName, onRenameConsumed]);
++
+   const handleApiFormatChange = useCallback(
+     async (value: ProviderApiType) => {
+       if (readOnlyEndpoints || savingConnectionRef.current || pendingDraftSaveRef.current) return;
+diff --git a/packages/ui/src/settings/model-provider-section/Navigation.tsx b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+index 774d04d..a15c5c6 100644
+--- a/packages/ui/src/settings/model-provider-section/Navigation.tsx
++++ b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+@@ -1,8 +1,12 @@
++import {
++  ProviderActionsMenuItems,
++  type ProviderNavigationActions,
++} from "./ProviderActionsMenuItems.js";
++import { useRef } from "react";
+ import {
+   ContextMenu,
+   ContextMenuTrigger,
+   ContextMenuContent,
+-  ContextMenuItem,
+ } from "@/components/ui/context-menu.js";
+ import {
+   PageAssistantMenuItem,
+@@ -96,15 +100,17 @@ function resolveModelProviderSideNavLabel(item: ModelProviderNavItem): string {
+ function ProviderNavigationMenu({
+   item,
+   label,
+-  onSelectNavItem,
++  providerActions,
+   children,
+ }: {
+   item: ModelProviderNavItem;
+   label: string;
+-  onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+   children: import("react").ReactNode;
+ }) {
+-  const { intl } = useZCodeIntl();
++  const renaming = useRef(false);
++  const provider = item.type === "custom" ? item.provider : undefined;
++  const actions = provider && providerActions ? providerActions : undefined;
+   return (
+     <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild>
+@@ -119,14 +125,34 @@ function ProviderNavigationMenu({
+           {children}
+         </div>
+       </ContextMenuTrigger>
+-      <ContextMenuContent>
+-        <ContextMenuItem
+-          disabled={item.type === "codingPlanLoading"}
+-          onSelect={() => onSelectNavItem(item)}
+-        >
+-          {intl.formatMessage({ id: "common.open" })}
+-        </ContextMenuItem>
+-        <PageAssistantMenuItem messageId="pageAssistant.configureProvider" />
++      <ContextMenuContent
++        onCloseAutoFocus={(event) => {
++          if (renaming.current) {
++            event.preventDefault();
++            renaming.current = false;
++          }
++        }}
++      >
++        {provider && actions ? (
++          <ProviderActionsMenuItems
++            kind="context"
++            onRename={() => {
++              renaming.current = true;
++              actions.rename(provider);
++            }}
++            onDelete={
++              provider.config.group === "zai-family" || provider.config.group === "bigmodel-family"
++                ? undefined
++                : () => {
++                    void actions.delete(provider);
++                  }
++            }
++          />
++        ) : null}
++        <PageAssistantMenuItem
++          messageId="pageAssistant.configureProvider"
++          separator={Boolean(actions)}
++        />
+       </ContextMenuContent>
+     </ContextMenu>
+   );
+@@ -137,12 +163,14 @@ function ModelProviderNavigationButton({
+   label,
+   selectedNodeKey,
+   onSelectNavItem,
++  providerActions,
+   showIcon = true,
+ }: {
+   item: ModelProviderNavItem;
+   label: string;
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+   showIcon?: boolean;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+@@ -153,7 +181,7 @@ function ModelProviderNavigationButton({
+     "provider" in item ? (item.type === "preset" ? item.statusProvider : item.provider) : undefined;
+ 
+   return (
+-    <ProviderNavigationMenu item={item} label={label} onSelectNavItem={onSelectNavItem}>
++    <ProviderNavigationMenu item={item} label={label} providerActions={providerActions}>
+       <ControlHintTooltip
+         title={label}
+         description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
+@@ -216,12 +244,14 @@ function SortableModelProviderNavigationButton({
+   label,
+   selectedNodeKey,
+   onSelectNavItem,
++  providerActions,
+ }: {
+   providerId: string;
+   item: ModelProviderNavItem;
+   label: string;
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+@@ -242,7 +272,7 @@ function SortableModelProviderNavigationButton({
+   };
+ 
+   return (
+-    <ProviderNavigationMenu item={item} label={label} onSelectNavItem={onSelectNavItem}>
++    <ProviderNavigationMenu item={item} label={label} providerActions={providerActions}>
+       <ControlHintTooltip
+         title={label}
+         description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
+@@ -282,10 +312,12 @@ function PresetProviderCardNavigation({
+   group,
+   selectedNodeKey,
+   onSelectNavItem,
++  providerActions,
+ }: {
+   group: ModelProviderNavGroup;
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+ }) {
+   return (
+     <div className="flex flex-col gap-2">
+@@ -296,6 +328,7 @@ function PresetProviderCardNavigation({
+           label={resolveModelProviderSideNavLabel(item)}
+           selectedNodeKey={selectedNodeKey}
+           onSelectNavItem={onSelectNavItem}
++          providerActions={providerActions}
+         />
+       ))}
+     </div>
+@@ -306,6 +339,7 @@ function SortableProviderNavigationGroup({
+   group,
+   selectedNodeKey,
+   onSelectNavItem,
++  providerActions,
+   onReorderProviderIds,
+   reorderableProviderIds,
+   sensors,
+@@ -313,6 +347,7 @@ function SortableProviderNavigationGroup({
+   group: ModelProviderNavGroup;
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+   reorderableProviderIds?: ReadonlySet<string>;
+   sensors: ReturnType<typeof useSensors>;
+@@ -377,6 +412,7 @@ function SortableProviderNavigationGroup({
+                   label={item.label}
+                   selectedNodeKey={selectedNodeKey}
+                   onSelectNavItem={onSelectNavItem}
++                  providerActions={providerActions}
+                 />
+               );
+             }
+@@ -388,6 +424,7 @@ function SortableProviderNavigationGroup({
+                 label={item.label}
+                 selectedNodeKey={selectedNodeKey}
+                 onSelectNavItem={onSelectNavItem}
++                providerActions={providerActions}
+               />
+             );
+           })}
+@@ -426,6 +463,7 @@ export function ModelProviderSectionNavigation({
+   presetLoading,
+   customLoading,
+   onSelectNavItem,
++  providerActions,
+   onReorderProviderIds,
+   reorderableProviderIds,
+ }: {
+@@ -434,6 +472,7 @@ export function ModelProviderSectionNavigation({
+   presetLoading: boolean;
+   customLoading: boolean;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
++  providerActions?: ProviderNavigationActions;
+   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+   reorderableProviderIds?: ReadonlySet<string>;
+ }) {
+@@ -467,12 +506,14 @@ export function ModelProviderSectionNavigation({
+                   group={group}
+                   selectedNodeKey={selectedNodeKey}
+                   onSelectNavItem={onSelectNavItem}
++                  providerActions={providerActions}
+                 />
+               ) : (
+                 <SortableProviderNavigationGroup
+                   group={group}
+                   selectedNodeKey={selectedNodeKey}
+                   onSelectNavItem={onSelectNavItem}
++                  providerActions={providerActions}
+                   onReorderProviderIds={onReorderProviderIds}
+                   reorderableProviderIds={reorderableProviderIds}
+                   sensors={sensors}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderActionsMenuItems.tsx b/packages/ui/src/settings/model-provider-section/ProviderActionsMenuItems.tsx
+new file mode 100644
+index 0000000..3908e5c
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ProviderActionsMenuItems.tsx
+@@ -0,0 +1,46 @@
++import { Pencil, Trash2 } from "lucide-react";
++import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu.js";
++import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { TID_MODEL_PROVIDER_NAME_EDIT_BUTTON } from "@zcode/shared";
++import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
++
++export interface ProviderNavigationActions {
++  rename(provider: ProviderSettingsFormProvider): void;
++  delete(provider: ProviderSettingsFormProvider): Promise<void>;
++}
++
++/** The provider header's existing actions, shared by ellipsis and regional menus. */
++export function ProviderActionsMenuItems({
++  kind,
++  onRename,
++  onDelete,
++}: {
++  kind: "dropdown" | "context";
++  onRename?: () => void;
++  onDelete?: () => void;
++}) {
++  const { intl } = useZCodeIntl();
++  const Item = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
++  const Separator = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
++  return (
++    <>
++      {onRename ? (
++        <Item
++          data-testid={kind === "dropdown" ? TID_MODEL_PROVIDER_NAME_EDIT_BUTTON : undefined}
++          onSelect={onRename}
++        >
++          <Pencil className="size-3.5" />
++          {intl.formatMessage({ id: "settings.modelProvider.renameProvider" })}
++        </Item>
++      ) : null}
++      {onRename && onDelete ? <Separator /> : null}
++      {onDelete ? (
++        <Item variant="destructive" onSelect={onDelete}>
++          <Trash2 className="size-3.5" />
++          {intl.formatMessage({ id: "common.delete" })}
++        </Item>
++      ) : null}
++    </>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 4b18695..f8628f6 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -1,10 +1,9 @@
++import { ProviderActionsMenuItems } from "./ProviderActionsMenuItems.js";
+ import { PageAssistantMenuItem } from "@/page-assistant/PageAssistantContext.js";
+ import {
+   ContextMenu,
+   ContextMenuTrigger,
+   ContextMenuContent,
+-  ContextMenuItem,
+-  ContextMenuSeparator,
+ } from "@/components/ui/context-menu.js";
+ import { ModelDiscoverySection } from "./ModelDiscoverySection.js";
+ /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
+@@ -25,11 +24,10 @@ import { resolveProviderProtocolPolicy, type ProviderApiType } from "@zcode/prov
+ import {
+   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+   TID_MODEL_PROVIDER_MODEL_INPUT,
+-  TID_MODEL_PROVIDER_NAME_EDIT_BUTTON,
+   TID_MODEL_PROVIDER_NAME_INPUT,
+   testId,
+ } from "@zcode/shared";
+-import { InfoIcon, LockKeyholeIcon, Pencil, Trash2, MoreHorizontal } from "lucide-react";
++import { InfoIcon, LockKeyholeIcon, MoreHorizontal } from "lucide-react";
+ import { cn } from "@/components/lib/utils.js";
+ import { Switch } from "@/components/ui/switch.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -38,8 +36,6 @@ import {
+   DropdownMenu,
+   DropdownMenuTrigger,
+   DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuSeparator,
+ } from "@/components/ui/dropdown-menu.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { useServices } from "@/hooks/useServices.js";
+@@ -117,34 +113,20 @@ export function ProviderCardHeader({
+   const renameRequestedRef = useRef(false);
+   const secondaryActionsVisible = actionsVisible && (nameEditable || Boolean(onDelete));
+ 
+-  // Both menu presentations invoke the same existing rename/delete operations.
+-  const renderActions = (kind: "dropdown" | "context") => {
+-    const Item = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
+-    const Separator = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
+-    return (
+-      <>
+-        {nameEditable ? (
+-          <Item
+-            data-testid={kind === "dropdown" ? TID_MODEL_PROVIDER_NAME_EDIT_BUTTON : undefined}
+-            onSelect={() => {
++  const renderActions = (kind: "dropdown" | "context") => (
++    <ProviderActionsMenuItems
++      kind={kind}
++      onRename={
++        nameEditable
++          ? () => {
+               renameRequestedRef.current = true;
+               onStartEditName();
+-            }}
+-          >
+-            <Pencil className="size-3.5" />
+-            {intl.formatMessage({ id: "settings.modelProvider.renameProvider" })}
+-          </Item>
+-        ) : null}
+-        {nameEditable && onDelete ? <Separator /> : null}
+-        {onDelete ? (
+-          <Item variant="destructive" onSelect={onDelete}>
+-            <Trash2 className="size-3.5" />
+-            {intl.formatMessage({ id: "common.delete" })}
+-          </Item>
+-        ) : null}
+-      </>
+-    );
+-  };
++            }
++          : undefined
++      }
++      onDelete={onDelete}
++    />
++  );
+   const retainRenameFocus = (event: Event) => {
+     if (renameRequestedRef.current) {
+       event.preventDefault();
+diff --git a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+index dfb58e2..7ecab25 100644
+--- a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
++++ b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+@@ -1,3 +1,4 @@
++import type { ProviderNavigationActions } from "./ProviderActionsMenuItems.js";
+ import type { ReactNode } from "react";
+ import { TID_MODEL_PROVIDER_ADD_PROVIDER_BUTTON } from "@zcode/shared";
+ import type { ModelProviderNavGroup } from "@/settings/model-provider-section/constants.js";
+@@ -17,6 +18,7 @@ interface ModelProviderSectionLayoutProps {
+   navigationGroups: ModelProviderNavGroup[];
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;
++  providerActions?: ProviderNavigationActions;
+   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+   reorderableProviderIds?: ReadonlySet<string>;
+   navigationFooter?: ReactNode;
+@@ -42,6 +44,7 @@ export function ModelProviderSectionLayout({
+   navigationGroups,
+   selectedNodeKey,
+   onSelectNavItem,
++  providerActions,
+   onReorderProviderIds,
+   reorderableProviderIds,
+   navigationFooter,
+@@ -83,6 +86,7 @@ export function ModelProviderSectionLayout({
+               presetLoading={presetLoading}
+               customLoading={customLoading}
+               onSelectNavItem={onSelectNavItem}
++              providerActions={providerActions}
+               onReorderProviderIds={onReorderProviderIds}
+               reorderableProviderIds={reorderableProviderIds}
+             />
+diff --git a/packages/ui/src/workspace-file-tree/WorkspaceFileTreeRowView.tsx b/packages/ui/src/workspace-file-tree/WorkspaceFileTreeRowView.tsx
+index 695dcbd..0f5fb70 100644
+--- a/packages/ui/src/workspace-file-tree/WorkspaceFileTreeRowView.tsx
++++ b/packages/ui/src/workspace-file-tree/WorkspaceFileTreeRowView.tsx
+@@ -157,16 +157,6 @@ export function WorkspaceFileTreeRowView({
+   const handleCopyRelativePath = async () => {
+     await fileActions.copyRelativePath({ path: row.path, relativePath });
+   };
+-  const handleOpenPrimary = () => {
+-    if (isDeletedFile) {
+-      return;
+-    }
+-    if (isDirectory) {
+-      onToggleDirectory(row);
+-      return;
+-    }
+-    onOpenPreview(row);
+-  };
+   const handleOpenInEditor = async (editor: EditorInfo) => {
+     if (isDeletedFile) {
+       return;
+@@ -337,7 +327,6 @@ export function WorkspaceFileTreeRowView({
+       path: row.path,
+       deleted: isDeletedFile,
+     });
+-  const canOpenPrimary = !isDeletedFile;
+   const canOpenInBrowser =
+     !isDeletedFile &&
+     !isRemoteWorkspaceFileTree &&
+@@ -352,11 +341,6 @@ export function WorkspaceFileTreeRowView({
+       <ContextMenu>
+         <ContextMenuTrigger asChild>{rowElement}</ContextMenuTrigger>
+         <ContextMenuContent className="w-52">
+-          <ContextMenuItem disabled={!canOpenPrimary} onSelect={handleOpenPrimary}>
+-            {/* 修复：第一项之前复用了默认外部应用文案，Finder/Explorer 置顶后会显示成“在 Finder 中打开”。
+-                这里改为复用行主动作：文件打开预览，目录走当前行的展开/收起逻辑。 */}
+-            {contextMenuLabels.open}
+-          </ContextMenuItem>
+           <ContextMenuSub>
+             <ContextMenuSubTrigger disabled={isDeletedFile || installedEditors.length === 0}>
+               {contextMenuLabels.openWith}
+diff --git a/packages/ui/test/helpers/providerDraftFixture.tsx b/packages/ui/test/helpers/providerDraftFixture.tsx
+index 99d2244..d853b35 100644
+--- a/packages/ui/test/helpers/providerDraftFixture.tsx
++++ b/packages/ui/test/helpers/providerDraftFixture.tsx
+@@ -78,7 +78,7 @@ export async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
+     modelWrites,
+     modelActions,
+     conflictText: locale === "zh-CN" ? "设置已变更" : "Settings changed",
+-    async render(value: ProviderSettingsFormProvider, revision: number) {
++    async render(value: ProviderSettingsFormProvider, revision: number, renameRequestId?: string) {
+       currentModel = value.models[0];
+       await act(async () => {
+         root.render(
+@@ -88,6 +88,7 @@ export async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
+                 <ProviderDetailFeedbackBoundary>
+                   <InlineEditableProviderCard
+                     provider={value}
++                    renameRequestId={renameRequestId}
+                     settingsRevision={revision}
+                     nameEditable
+                     onSavePersonalModelDraft={(input) => {
+diff --git a/packages/ui/test/pageAssistant.browser.test.tsx b/packages/ui/test/pageAssistant.browser.test.tsx
+index 84030c2..2f6755f 100644
+--- a/packages/ui/test/pageAssistant.browser.test.tsx
++++ b/packages/ui/test/pageAssistant.browser.test.tsx
+@@ -61,6 +61,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+   const defaultWrites: unknown[] = [];
+   const workspacePath = `/page-assistant-test/${crypto.randomUUID()}`;
+   let nativeActions = 0;
++  const providerActions: Array<{ action: string; providerId: string }> = [];
+   let secretReads = 0;
+   const settings = appSettingsSchema.parse({ locale });
+   const services = {
+@@ -181,6 +182,13 @@ async function fixture(locale: "zh-CN" | "en-US") {
+                     customLoading={false}
+                     reorderableProviderIds={new Set(["nav-sortable"])}
+                     onSelectNavItem={() => nativeActions++}
++                    providerActions={{
++                      rename: (provider) =>
++                        providerActions.push({ action: "rename", providerId: provider.providerId }),
++                      delete: async (provider) => {
++                        providerActions.push({ action: "delete", providerId: provider.providerId });
++                      },
++                    }}
+                   />
+                   <section {...pageAssistantScope(general, "General target")}>
+                     <button data-test-page="general">General</button>
+@@ -268,6 +276,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+     popover,
+     windowPanel: () => popover()?.querySelector<HTMLElement>('[data-slot="page-assistant-window"]'),
+     tick,
++    providerActions,
+     get nativeActions() {
+       return nativeActions;
+     },
+@@ -747,8 +756,11 @@ async function run() {
+       check(
+         document
+           .querySelector('[data-slot="context-menu-content"][data-state="open"]')
+-          ?.textContent?.includes(locale === "zh-CN" ? "打开" : "Open"),
+-        "Fixed provider row lost its actual Open action",
++          ?.textContent?.includes(locale === "zh-CN" ? "重命名" : "Rename") &&
++          ![...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]')].some(
++            (item) => item.textContent === (locale === "zh-CN" ? "打开" : "Open"),
++          ),
++        "Provider menu must reuse useful actions without duplicating left-click Open",
+       );
+       await right("nav-sortable", 220, 240);
+       const after = document
+@@ -765,6 +777,33 @@ async function run() {
+         f.nativeActions === 0 && f.commands.length === 0,
+         "Opening the menu or assistant changed provider state",
+       );
++      await f.closePopover();
++      await right("nav-fixed", 24, 80);
++      const rename = [
++        ...document
++          .querySelector<HTMLElement>('[data-slot="context-menu-content"][data-state="open"]')!
++          .querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
++      ].find((item) => item.textContent?.trim() === (locale === "zh-CN" ? "重命名" : "Rename"));
++      check(rename, "Provider rename action missing");
++      await act(async () => rename!.click());
++      await f.tick();
++      await right("nav-sortable", 220, 240);
++      const remove = [
++        ...document
++          .querySelector<HTMLElement>('[data-slot="context-menu-content"][data-state="open"]')!
++          .querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
++      ].find((item) => item.textContent?.trim() === (locale === "zh-CN" ? "删除" : "Delete"));
++      check(remove, "Provider delete action missing");
++      await act(async () => remove!.click());
++      await f.tick();
++      check(
++        JSON.stringify(f.providerActions) ===
++          JSON.stringify([
++            { action: "rename", providerId: "nav-fixed" },
++            { action: "delete", providerId: "nav-sortable" },
++          ]),
++        `Provider menu action borrowed a different row target: ${JSON.stringify(f.providerActions)}`,
++      );
+       results.push({
+         name: `${locale}: real fixed/sortable provider menus share actions, relocate and retain the latest target`,
+       });
+diff --git a/packages/ui/test/providerDrafts.browser.tsx b/packages/ui/test/providerDrafts.browser.tsx
+index 1c57802..fb4aa8f 100644
+--- a/packages/ui/test/providerDrafts.browser.tsx
++++ b/packages/ui/test/providerDrafts.browser.tsx
+@@ -3,6 +3,32 @@ import { check, fixture, provider } from "./helpers/providerDraftFixture.js";
+ 
+ async function run() {
+   const cases: Record<string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>> = {
++    "navigation rename opens the original editor once and preserves provider identity/revision":
++      async (f) => {
++        await f.render(provider("A"), 31, "rename-a");
++        await act(async () => {
++          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
++        });
++        const input = f.input('[data-testid="model-provider-name-input"]');
++        await f.type(input, "Renamed A");
++        await f.key(input, "Enter");
++        check(
++          f.writes.length === 1 &&
++            f.writes[0]!.provider.providerId === "A" &&
++            f.writes[0]!.revision === 31,
++          `Navigation rename changed target/revision: ${JSON.stringify(f.writes.map(({ provider, revision }) => ({ id: provider.providerId, revision })))}`,
++        );
++        await f.settle(0, { provider: f.writes[0]!.provider, revision: 32 });
++        await f.render(f.writes[0]!.provider, 32, "rename-a");
++        check(
++          !f.container.querySelector('[data-testid="model-provider-name-input"]'),
++          "Consumed request reopened the name editor",
++        );
++        await f.render(f.writes[0]!.provider, 32, "rename-b");
++        const next = f.input('[data-testid="model-provider-name-input"]');
++        await f.key(next, "Escape");
++        check(f.writes.length === 1, "Cancelling a new rename wrote provider settings");
++      },
+     "dirty endpoint keeps its original revision after a concurrent view; Esc restores the latest and permits a fresh save":
+       async (f) => {
+         await f.render(provider(), 4);
+diff --git a/packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx b/packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx
+new file mode 100644
+index 0000000..b11b24f
+--- /dev/null
++++ b/packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx
+@@ -0,0 +1,320 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { useAppPanels } from "../src/hooks/useAppPanels.js";
++import { saveTaskSidePaneMemoryState } from "../src/lib/taskSidePaneMemory.js";
++import { openBrowserSidePane, openCodeViewerSidePane } from "../src/lib/workspaceSidePane.js";
++
++(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++let fixtureId = 0;
++
++async function fixture() {
++  const path = `/close-snapshot-${++fixtureId}`;
++  const owner = "parent-a";
++  let initial = openBrowserSidePane(null, {
++    tabId: "browser:closing",
++    workspaceKey: path,
++    ownerTaskId: owner,
++  });
++  initial = openCodeViewerSidePane(
++    initial,
++    { type: "file", path: `${path}/keep.md`, title: "Keep" },
++    owner,
++  );
++  initial.tabs = initial.tabs.map((tab) => ({ ...tab, ownerTaskId: owner, workspaceKey: path }));
++  initial.tabs.push({
++    id: "workflow-directory:hidden",
++    type: "workflow-directory",
++    parentSessionId: "other-parent",
++    workspaceKey: path,
++    workspacePath: path,
++    ownerTaskId: "other-parent",
++  });
++  const keepId = initial.activeTabId;
++  saveTaskSidePaneMemoryState(path, { sidePaneState: initial, isSidePaneCollapsed: false });
++  const node = document.createElement("div");
++  document.body.append(node);
++  const root = createRoot(node);
++  let latest!: ReturnType<typeof useAppPanels>;
++  const pending: Array<{ input: any; resolve: () => void; reject: (reason: Error) => void }> = [];
++  let nativeClosed: ((event: any) => void) | undefined;
++  const platform = {
++    browserViewCloseTab: (input: any) =>
++      new Promise<void>((resolve, reject) => pending.push({ input, resolve, reject })),
++    onBrowserViewCloseTab(listener: (event: any) => void) {
++      nativeClosed = listener;
++      return () => {
++        if (nativeClosed === listener) nativeClosed = undefined;
++      };
++    },
++  };
++  function Probe({
++    workspace,
++    session,
++    remote,
++  }: {
++    workspace: string;
++    session: string;
++    remote?: string;
++  }) {
++    latest = useAppPanels({
++      workspaceAbsPath: workspace,
++      activeTaskId: session,
++      sidePaneOwnerId: session,
++      workspaceRemoteSessionId: remote,
++      isDesktop: true,
++      defaultWhiteboardNamePrefix: "Board",
++      platform: platform as never,
++    });
++    return null;
++  }
++  const render = async (workspace = path, session = owner, remote?: string) => {
++    await act(async () =>
++      root.render(
++        <ServiceProvider
++          services={
++            {
++              zcodeAgentService: {},
++              zcodeSessionService: { closeSession: async () => {} },
++            } as never
++          }
++        >
++          <Probe workspace={workspace} session={session} remote={remote} />
++        </ServiceProvider>,
++      ),
++    );
++  };
++  await render();
++  return {
++    path,
++    owner,
++    keepId,
++    pending,
++    render,
++    get latest() {
++      return latest;
++    },
++    get state() {
++      return latest.sidePaneState;
++    },
++    async run(operation: () => void) {
++      await act(async () => operation());
++    },
++    async resolve() {
++      await act(async () => {
++        pending.forEach((entry) => entry.resolve());
++        await Promise.resolve();
++      });
++    },
++    async reject() {
++      await act(async () => {
++        pending.forEach((entry) => entry.reject(new Error("native-close-failed")));
++        await Promise.resolve();
++      });
++    },
++    async nativeClose() {
++      await act(async () => nativeClosed?.({ tabId: "browser:closing", workspaceKey: path }));
++    },
++    async close() {
++      await act(async () => root.unmount());
++      node.remove();
++    },
++  };
++}
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++
++(window as any).__sidePaneCloseTests = (async () => {
++  for (const mode of ["all", "others"] as const) {
++    await test(`Close ${mode}: a tab opened during native close survives and remains active`, async () => {
++      const f = await fixture();
++      try {
++        await f.run(() =>
++          mode === "all"
++            ? f.latest.handleCloseAllSidePaneTabs()
++            : f.latest.handleCloseOtherSidePaneTabs(f.keepId),
++        );
++        check(f.pending.length === 1, "one captured native browser close");
++        await f.run(() =>
++          f.latest.handleOpenCodeViewer({ type: "file", path: `${f.path}/new.md`, title: "New" }),
++        );
++        const newId = f.state!.activeTabId;
++        await f.resolve();
++        check(
++          f.state?.tabs.some((tab) => tab.id === newId),
++          "new tab survives",
++        );
++        check(f.state?.activeTabId === newId, "later activation preserved");
++        check(
++          !f.state?.tabs.some((tab) => tab.id === "browser:closing"),
++          "captured browser removed",
++        );
++        check(
++          f.state?.tabs.some((tab) => tab.id === "workflow-directory:hidden"),
++          "hidden owner tab survives",
++        );
++        check(
++          f.state?.tabs.some((tab) => tab.id === f.keepId) === (mode === "others"),
++          "retained target semantics",
++        );
++      } finally {
++        await f.close();
++      }
++    });
++  }
++
++  for (const transition of ["owner", "workspace", "away-and-back", "remote"] as const) {
++    await test(`Pending batch close cannot cross ${transition} scope`, async () => {
++      const f = await fixture();
++      try {
++        await f.run(() => f.latest.handleCloseAllSidePaneTabs());
++        if (transition === "workspace") await f.render(`${f.path}-other`);
++        else if (transition === "remote") await f.render(f.path, f.owner, "remote-replacement");
++        else {
++          await f.render(f.path, "parent-b");
++          if (transition === "away-and-back") await f.render();
++        }
++        await f.run(() =>
++          f.latest.handleOpenCodeViewer({
++            type: "file",
++            path: `${f.path}/later.md`,
++            title: "Later",
++          }),
++        );
++        const before = f.state;
++        const recentBefore = f.latest.recentClosedSidePaneTabs;
++        await f.resolve();
++        check(f.state === before, "late close leaves new scope state unchanged");
++        check(f.latest.recentClosedSidePaneTabs === recentBefore, "no new owner recovery records");
++      } finally {
++        await f.close();
++      }
++    });
++  }
++
++  await test("A reused code-viewer id with a replaced source survives the pending batch", async () => {
++    const f = await fixture();
++    try {
++      await f.run(() => f.latest.handleCloseAllSidePaneTabs());
++      await f.run(() =>
++        f.latest.handleOpenCodeViewer({
++          type: "file",
++          path: `${f.path}/keep.md`,
++          title: "Replaced",
++        }),
++      );
++      check(f.state!.activeTabId === f.keepId, "existing id reused");
++      await f.resolve();
++      const replacement = f.state?.tabs.find((tab) => tab.id === f.keepId);
++      check(
++        replacement?.type === "code-viewer" && replacement.source.title === "Replaced",
++        "replacement resource preserved",
++      );
++      check(
++        !f.latest.recentClosedSidePaneTabs.some((entry) => entry.tab.id === f.keepId),
++        "replacement not recorded as closed",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++
++  await test("Metadata refresh does not strand a legitimately closed native browser", async () => {
++    const f = await fixture();
++    try {
++      await f.run(() => f.latest.handleCloseAllSidePaneTabs());
++      await f.run(() =>
++        f.latest.handleBrowserPageMetadataChange("browser:closing", { title: "Updated title" }),
++      );
++      await f.resolve();
++      check(
++        !f.state?.tabs.some((tab) => tab.id === "browser:closing"),
++        "metadata clone still closes",
++      );
++      const entry = f.latest.recentClosedSidePaneTabs.find(
++        (entry) => entry.tab.id === "browser:closing",
++      );
++      check(
++        entry?.tab.type === "browser" && entry.tab.title === "Updated title",
++        "updated display metadata retained",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++
++  await test("Native close notification before RPC completion retains the exact recovery snapshot", async () => {
++    const f = await fixture();
++    try {
++      await f.run(() => f.latest.handleCloseOtherSidePaneTabs(f.keepId));
++      await f.nativeClose();
++      check(
++        !f.state?.tabs.some((tab) => tab.id === "browser:closing"),
++        "native notification removed shell",
++      );
++      await f.resolve();
++      check(
++        f.latest.recentClosedSidePaneTabs.some((entry) => entry.tab.id === "browser:closing"),
++        "closed browser remains reopenable",
++      );
++      check(f.state?.activeTabId === f.keepId, "retained target remains active");
++    } finally {
++      await f.close();
++    }
++  });
++
++  await test("Close Others preserves its retained target and hidden tabs without collapsing the pane", async () => {
++    const f = await fixture();
++    try {
++      await f.run(() => f.latest.handleActivateSidePaneTab("browser:closing"));
++      await f.run(() => f.latest.handleCloseOtherSidePaneTabs(f.keepId));
++      await f.resolve();
++      check(f.state?.activeTabId === f.keepId, "existing retained-target fallback");
++      check(f.state?.tabs.length === 2, "only captured visible others removed");
++      check(!f.latest.isSidePaneCollapsed, "remaining visible pane stays expanded");
++    } finally {
++      await f.close();
++    }
++  });
++
++  await test("Close All preserves hidden records and collapses only when no visible tab remains", async () => {
++    const f = await fixture();
++    try {
++      await f.run(() => f.latest.handleCloseAllSidePaneTabs());
++      await f.resolve();
++      check(
++        f.state?.tabs.length === 1 && f.state.tabs[0]!.id === "workflow-directory:hidden",
++        "hidden record retained",
++      );
++      check(f.state?.activeTabId === "", "no unrelated hidden active tab");
++      check(f.latest.isSidePaneCollapsed, "empty visible pane collapsed");
++    } finally {
++      await f.close();
++    }
++  });
++
++  await test("Failed native close leaves all captured tabs and recovery state intact", async () => {
++    const f = await fixture();
++    try {
++      const before = f.state;
++      await f.run(() => f.latest.handleCloseAllSidePaneTabs());
++      await f.reject();
++      check(f.state === before, "no UI-only close after native failure");
++      check(f.latest.recentClosedSidePaneTabs.length === 0, "no false recovery records");
++    } finally {
++      await f.close();
++    }
++  });
++
++  return results;
++})();

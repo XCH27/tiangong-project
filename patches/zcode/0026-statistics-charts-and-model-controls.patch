@@ -1,0 +1,1684 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index cde785d284a97a0a3dbd9cc85ad90f08a22b4080..1df25e7b1b5ed473c6647c672bfe8d2afa3f7b22 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -423,3 +423,21 @@ sum currencies, guess other-app usage, or claim an unfinished billing period is
+ change only the amount preserve original absolute date boundaries after timezone changes.
+ Overlap is rejected by both form and settings validation; deleting a payment uses a keyed
+ tombstone without modifying the request ledger. Closing an unfinished form writes nothing.
++
++### Original-style statistics and model controls (OV-049)
++
++Use the original AppUsagePanel sequence (summary, heatmap, trend, model chart). The model chart
++owns Token/cache/cost metric tabs; remove the separate accounting table. Reuse its donut, palette,
++legend layout and chart tooltip, with per-model cache bars and unknown/partial coverage in focused
++hints. Keep only the selected metric and actionable state visible, not report-style prose or a
++source-link footer. Pricing source links move to the existing popover pattern. Payment records
++select one account-period, graph its allocation in the same chart pattern, and keep edits in the
++existing form. Currency and exact period remain visible; unavailable allocations never get a pie.
++These are projections of the existing ledger and settings writer, not new accounting state.
++
++The model list uses enable/disable to control availability; remove row deletion controls without
++deleting data or the existing management API. Editing remains the correction path for a mistyped
++manual ID. A native subscription's authenticated catalog owns its models, so hide manual Add there;
++its refresh action reads the account catalog. API connections retain inline manual-ID entry below
++the list, labelled explicitly. Enter confirms only that draft, Escape cancels it, duplicate IDs
++point to the existing list, and failed saves retain input. Adding never invokes paid inference.
+diff --git a/package.json b/package.json
+index 874f7d5d12d22ef37006c93d24e4fe05b2040a95..b61e6852c2f7878e5ab1a0d4ac4ef56c42294691 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-price.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-price.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 456e51f0a2d5089fb46f4065ee7211f5f168b6d9..af5d8af139b3fe42f3fddf5bbbbce6e0d215edab 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7,7 +7,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+-  "settings.modelProvider.discovery.alreadyAdded": "This model is already added",
++  "settings.modelProvider.discovery.alreadyAdded": "This model is already listed. Enable it to use it.",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
+   "settings.modelProvider.discovery.loading": "Fetching models…",
+@@ -3647,24 +3647,18 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.modelsCount": "{count} models",
+   "settings.modelProvider.presetTitle": "Providers",
+   "settings.usage.accounting.verified": "Official rates checked: 2026-09-27",
+-  "settings.usage.accounting.title": "Model usage and estimated cost",
+-  "settings.usage.accounting.model": "Model",
+   "settings.usage.accounting.input": "Input tokens",
+   "settings.usage.accounting.output": "Output tokens",
+   "settings.usage.accounting.cache": "Cache hit rate",
+   "settings.usage.accounting.fast": "Fast / known requests",
+-  "settings.usage.accounting.estimate": "API-equivalent estimate",
+   "settings.usage.accounting.partial": "Reported",
+   "settings.usage.accounting.priced": "Priced",
+-  "settings.usage.accounting.empty": "No recorded usage",
+-  "settings.usage.accounting.note": "Official-rate estimate, not a bill. Cache is included in input. Reported speed takes precedence; otherwise selected speed is estimated. Missing facts are unpriced, not free.",
+   "settings.usage.payments.noAccounts": "Connect a subscription account in Model settings first.",
+   "settings.usage.payments.connection": "Entire connection",
+   "settings.usage.payments.title": "Actual subscription spend",
+   "settings.usage.payments.add": "Record payment",
+   "settings.usage.payments.edit": "Edit payment",
+   "settings.usage.payments.remove": "Remove payment record",
+-  "settings.usage.payments.description": "Enter the actual payment for an account billing period. Allocation covers usage recorded by this app only.",
+   "settings.usage.payments.required": "Select an account and enter the amount paid.",
+   "settings.usage.payments.overlap": "This account already has an overlapping period. Edit its existing payment.",
+   "settings.usage.payments.invalid": "Check the billing period and amount.",
+@@ -7089,6 +7083,23 @@ const enUS: Record<string, string> = {
+   "scheduledPreview.addSchedule": "Add schedule",
+   "offPeak.create.unavailableInFleet":
+     "Hosted idle-time service is unavailable in Fleet. Use a local scheduled automation.",
++  "settings.modelProvider.discovery.manualAdd": "Add model manually",
++  "settings.modelProvider.discovery.manualPlaceholder": "Enter the model ID from your provider",
++  "settings.usage.accounting.tokensTab": "Tokens",
++  "settings.usage.accounting.cacheTab": "Cache hits",
++  "settings.usage.accounting.costTab": "Estimated cost",
++  "settings.usage.accounting.partialCost": "Partial cost · USD",
++  "settings.usage.accounting.hit": "Cache hits",
++  "settings.usage.accounting.miss": "Cache misses",
++  "settings.usage.accounting.help": "About these statistics",
++  "settings.usage.accounting.cacheHelp": "Cache hit rate divides cached input by input with reported cache data. * marks partial coverage. Hover or focus a model to see its coverage.",
++  "settings.usage.accounting.costHelp": "Estimates recorded usage at official API prices, including Fast pricing. * marks partially priced requests; — means unknown. These are not actual bills. Hover or focus a model for coverage.",
++  "settings.usage.accounting.paymentHelp": "Allocates the payment across this account’s recorded model usage in the billing period, using official credit weights where available. Usage outside this app is excluded. Open periods remain provisional.",
++  "settings.usage.payments.period": "Account and billing period",
++  "settings.usage.payments.actions": "Payment actions",
++  "settings.usage.payments.empty": "No payments recorded",
++  "settings.usage.payments.formDescription": "Record your subscription payment for an account and billing period.",
++  "settings.usage.payments.unallocated": "Not yet allocated",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 5fcc366a3ae3c94dbdd4f2d9acb6dc4494e718db..e65dfbc8b8d24cac0d128119c768f4bbbc04e8a2 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6,7 +6,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connection.unsaved": "连接更改尚未保存",
+   "settings.modelProvider.loadFailed": "无法连接模型设置服务，请重试。",
+   "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
+-  "settings.modelProvider.discovery.alreadyAdded": "该模型已添加",
++  "settings.modelProvider.discovery.alreadyAdded": "列表中已有此模型，可直接开启使用",
+   "settings.modelProvider.discovery.selectVisible": "全选搜索结果",
+   "settings.modelProvider.discovery.noMatches": "没有匹配的模型",
+   "settings.modelProvider.discovery.loading": "正在获取模型…",
+@@ -3421,24 +3421,18 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testModel.localWorkspaceUnavailable":
+     "本地工作区不可用，无法测试模型连通性。",
+   "settings.usage.accounting.verified": "官方价格核对：2026-09-27",
+-  "settings.usage.accounting.title": "模型用量与估算费用",
+-  "settings.usage.accounting.model": "模型",
+   "settings.usage.accounting.input": "输入 Tokens",
+   "settings.usage.accounting.output": "输出 Tokens",
+   "settings.usage.accounting.cache": "缓存命中率",
+   "settings.usage.accounting.fast": "快速 / 已知请求",
+-  "settings.usage.accounting.estimate": "API 等价估算",
+   "settings.usage.accounting.partial": "已报告",
+   "settings.usage.accounting.priced": "已计价",
+-  "settings.usage.accounting.empty": "暂无记录",
+-  "settings.usage.accounting.note": "按已核实的官方价格估算，不是账单。缓存包含在输入内；快速费用优先用返回档位，否则按所选模式估算。缺失信息的请求不按零费用计算。",
+   "settings.usage.payments.noAccounts": "请先在模型设置中连接订阅账号。",
+   "settings.usage.payments.connection": "连接合计",
+   "settings.usage.payments.title": "订阅实际花费",
+   "settings.usage.payments.add": "记录花费",
+   "settings.usage.payments.edit": "修改花费",
+   "settings.usage.payments.remove": "移除花费记录",
+-  "settings.usage.payments.description": "填写该账号一个账期的实际支付金额，按本软件记录的模型用量分摊；不含其他软件的使用。",
+   "settings.usage.payments.required": "请选择账号并填写实付金额。",
+   "settings.usage.payments.overlap": "该账号已有重叠账期，请修改现有记录。",
+   "settings.usage.payments.invalid": "请检查账期和金额。",
+@@ -6740,6 +6734,23 @@ const zhCN: Record<string, string> = {
+   "scheduledPreview.toast.view": "查看",
+   "scheduledPreview.addSchedule": "添加计划",
+   "offPeak.create.unavailableInFleet": "Fleet 未接入云端闲时任务服务，请使用本地定时自动化。",
++  "settings.modelProvider.discovery.manualAdd": "手动添加模型",
++  "settings.modelProvider.discovery.manualPlaceholder": "输入服务商提供的模型 ID",
++  "settings.usage.accounting.tokensTab": "Token 用量",
++  "settings.usage.accounting.cacheTab": "缓存命中",
++  "settings.usage.accounting.costTab": "估算费用",
++  "settings.usage.accounting.partialCost": "部分费用 · USD",
++  "settings.usage.accounting.hit": "缓存命中",
++  "settings.usage.accounting.miss": "未命中",
++  "settings.usage.accounting.help": "统计说明",
++  "settings.usage.accounting.cacheHelp": "缓存命中率 = 命中的输入 Tokens ÷ 已报告缓存信息的输入 Tokens。* 表示部分请求缺少数据；悬停或聚焦模型可查看统计范围。",
++  "settings.usage.accounting.costHelp": "按官方 API 价格估算已记录的用量，并计入快速模式的价格差异。* 表示仅有部分请求能计价，— 表示未知；均不代表实际账单。悬停或聚焦模型可查看统计范围。",
++  "settings.usage.accounting.paymentHelp": "将实付会员费用按该账号、该账期内记录的模型消耗分摊，优先采用官方额度权重。本软件之外的使用未计入；账期未结束时结果会变化。",
++  "settings.usage.payments.period": "账号与账期",
++  "settings.usage.payments.actions": "花费记录操作",
++  "settings.usage.payments.empty": "暂无花费记录",
++  "settings.usage.payments.formDescription": "按账号和账期记录已支付的会员费用。",
++  "settings.usage.payments.unallocated": "暂无法分摊",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 81cb49666fddeeea15e0df0313c8eecc3a8612b0..73c015410c10602082d1cd6029470ac2c01c71e9 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -56,7 +56,6 @@ export function ModelProviderSection({
+     addPersonalModel,
+     savePersonalModelDraft,
+     setPersonalModelEnabled,
+-    deletePersonalModel,
+     deleteProvider,
+     reorderProviderModels,
+     saveDisplayOrder,
+@@ -224,7 +223,6 @@ export function ModelProviderSection({
+           onAddPersonalModel={addPersonalModel}
+           onSavePersonalModelDraft={savePersonalModelDraft}
+           onSetPersonalModelEnabled={setPersonalModelEnabled}
+-          onDeletePersonalModel={deletePersonalModel}
+           onDelete={handleDelete}
+           onReorderProviderModels={reorderProviderModels}
+           onTestModel={testModelConnectivity}
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index e0006c993b841bb83aa7590fda8708657fdb3d88..751b8c3d491d3a720049b68c872800437137fb35 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -14,7 +14,6 @@ export function ModelProviderSectionDetail({
+   onAddPersonalModel,
+   onSavePersonalModelDraft,
+   onSetPersonalModelEnabled,
+-  onDeletePersonalModel,
+   onDelete,
+   onReorderProviderModels,
+   onTestModel,
+@@ -37,7 +36,6 @@ export function ModelProviderSectionDetail({
+     modelId: string,
+     enabled: boolean,
+   ) => Promise<unknown>;
+-  onDeletePersonalModel?: (providerId: string, modelId: string) => Promise<unknown>;
+   onDelete: (provider: ProviderSettingsFormProvider) => Promise<void>;
+   onReorderProviderModels?: (providerId: string, modelIds: string[]) => Promise<void>;
+   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+@@ -51,8 +49,7 @@ export function ModelProviderSectionDetail({
+     onAddPersonalModel,
+     onSavePersonalModelDraft,
+     onSetPersonalModelEnabled,
+-    onDeletePersonalModel,
+-    settingsRevision: providerSettingsView?.revision,
++      settingsRevision: providerSettingsView?.revision,
+   };
+   if (selectedNavItem?.type !== "custom" || !selectedNavItem.provider) return null;
+   const customProvider = selectedNavItem.provider;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 63ec64e99fb16e1edd4e800409ebe7ad9612af4d..5742cf9ebd97c60f63f94978158bd6f97cb74013 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -105,7 +105,6 @@ export function InlineEditableProviderCard({
+   onAddPersonalModel,
+   onSavePersonalModelDraft,
+   onSetPersonalModelEnabled,
+-  onDeletePersonalModel,
+   onDelete,
+   onTestModel,
+   onReorderModelIds,
+@@ -134,7 +133,6 @@ export function InlineEditableProviderCard({
+     modelId: string,
+     enabled: boolean,
+   ) => Promise<unknown>;
+-  onDeletePersonalModel?: (providerId: string, modelId: string) => Promise<unknown>;
+   onDelete?: () => void | Promise<void>;
+   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+   onReorderModelIds?: (modelIds: string[]) => Promise<void>;
+@@ -778,34 +776,6 @@ export function InlineEditableProviderCard({
+     [models, onSavePersonalModelDraft, provider.providerId, runSaveOperation],
+   );
+ 
+-  const handleDeleteModel = useCallback(
+-    (modelId: string) => {
+-      const index = models.findIndex((model) => model.modelId === modelId);
+-      const model = models[index];
+-      if (!model) {
+-        return;
+-      }
+-      if (!model.builtin) {
+-        void runSaveOperation(
+-          async () => {
+-            if (!onDeletePersonalModel)
+-              throw new Error("当前设置入口未装配 Personal Model 删除能力");
+-            await onDeletePersonalModel(provider.providerId, model.modelId);
+-          },
+-          { modelId: model.modelId, operation: "delete" },
+-        ).catch((error) => {
+-          logger.warn("[ModelProviderSection] 删除 Personal Model 失败", {
+-            providerId: provider.providerId,
+-            modelId: model.modelId,
+-            error,
+-          });
+-        });
+-        return;
+-      }
+-    },
+-    [models, onDeletePersonalModel, provider.providerId, runSaveOperation],
+-  );
+-
+   const handleModelEnabledChange = useCallback(
+     async (modelId: string, enabled: boolean) => {
+       if (!onSetPersonalModelEnabled) throw new Error("当前设置入口未装配 Model 启停能力");
+@@ -1002,7 +972,6 @@ export function InlineEditableProviderCard({
+           onTestModel={onTestModel ? handleTestModel : undefined}
+           onModelCommit={handleModelCommit}
+           onModelEnabledChange={handleModelEnabledChange}
+-          onDeleteModel={handleDeleteModel}
+           onAddModel={handleAddModel}
+           onReorderModelIds={onReorderModelIds ? handleReorderModelIds : undefined}
+           settingsRevision={settingsRevision ?? 0}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 32e45ad00d40cbd18297cd83aa043eebed71befb..a431c3363e197d14b72ce2c9f4a66b9ffdb768ae 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -13,6 +13,7 @@ export function ModelDiscoverySection({
+   disabledReason,
+   connectionIdentity,
+   discoveryEnabled = true,
++  manualAddEnabled = true,
+   modelIds,
+   onAddModel,
+   renderConfiguredModels,
+@@ -21,6 +22,7 @@ export function ModelDiscoverySection({
+   disabledReason?: string;
+   connectionIdentity?: object;
+   discoveryEnabled?: boolean;
++  manualAddEnabled?: boolean;
+   modelIds: readonly string[];
+   onAddModel: (modelId: string) => Promise<void>;
+   renderConfiguredModels: (query: string) => ReactNode;
+@@ -123,12 +125,14 @@ export function ModelDiscoverySection({
+       ) : modelIds.length === 0 && error ? null : (
+         renderConfiguredModels(query)
+       )}
+-      <ModelDraftRows
+-        key={providerId}
+-        modelIds={modelIds}
+-        onAddModel={onAddModel}
+-        onBegin={() => setQuery("")}
+-      />
++      {manualAddEnabled ? (
++        <ModelDraftRows
++          key={providerId}
++          modelIds={modelIds}
++          onAddModel={onAddModel}
++          onBegin={() => setQuery("")}
++        />
++      ) : null}
+       {disabledReason ? (
+         <p role="status" className="text-ui-caption text-foreground-subtle">
+           {disabledReason}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+index 241414b4545ff9aa3d4b51f2326ffb715c8e1fda..b374a486abc1bf9ffdeded52e08e7b8c50510be7 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+@@ -105,7 +105,7 @@ export function ModelDraftRows({
+             }}
+             value={row.value}
+             disabled={saving}
+-            placeholder={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
++            placeholder={intl.formatMessage({ id: "settings.modelProvider.discovery.manualPlaceholder" })}
+             aria-label={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
+             aria-invalid={duplicate(row.value.trim())}
+             onChange={(event) => {
+@@ -159,7 +159,7 @@ export function ModelDraftRows({
+           setFocusTarget(id);
+         }}
+       >
+-        {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
++        {intl.formatMessage({ id: "settings.modelProvider.discovery.manualAdd" })}
+       </ProviderDraftAdd>
+ 
+       {invalid || error ? (
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 30364f37866222a8447a590e67593564d037e961..dcc2487334568ab537b70ff58b2a9d21b36e323a 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -16,7 +16,6 @@ import type { ModelConnectivityResult } from "@zcode/shared";
+ import { resolveProviderProtocolPolicy, type ProviderApiType } from "@zcode/provider";
+ import {
+   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+-  TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON,
+   TID_MODEL_PROVIDER_MODEL_INPUT,
+   TID_MODEL_PROVIDER_NAME_EDIT_BUTTON,
+   TID_MODEL_PROVIDER_NAME_INPUT,
+@@ -569,7 +568,6 @@ export function ProviderModelsSection({
+   onTestModel,
+   onModelCommit,
+   onModelEnabledChange,
+-  onDeleteModel,
+   onAddModel,
+   onReorderModelIds,
+   settingsRevision = 0,
+@@ -587,7 +585,6 @@ export function ProviderModelsSection({
+     model: ProviderSettingsFormModel,
+     basedOnRevision: number,
+   ) => void | Promise<void>;
+-  onDeleteModel: (modelId: string) => void;
+   onModelEnabledChange?: (modelId: string, enabled: boolean) => void | Promise<void>;
+   onAddModel: (model: ProviderSettingsFormModel) => void | Promise<void>;
+   onReorderModelIds?: (modelIds: string[]) => void;
+@@ -636,7 +633,6 @@ export function ProviderModelsSection({
+                       providerEnabled={providerEnabled}
+                       providerAccess={providerAccess}
+                       inputTestId={testId(TID_MODEL_PROVIDER_MODEL_INPUT, String(index))}
+-                      deleteTestId={testId(TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON, String(index))}
+                       model={model}
+                       onCommit={(value, basedOnRevision) =>
+                         onModelCommit(model.modelId, value, basedOnRevision)
+@@ -650,7 +646,6 @@ export function ProviderModelsSection({
+                         })
+                       }
+                       settingsRevision={settingsRevision}
+-                      onDelete={!model.builtin ? () => onDeleteModel(model.modelId) : undefined}
+                       onEnabledChange={(enabled) => {
+                         void Promise.resolve(onModelEnabledChange?.(model.modelId, enabled)).catch(
+                           () => undefined,
+@@ -697,6 +692,9 @@ export function ProviderModelsSection({
+       <ModelDiscoverySection
+         providerId={providerId}
+         discoveryEnabled={providerAccess?.type !== "zhipu-account"}
++        manualAddEnabled={
++          providerAccess?.type !== "subscription" && providerAccess?.type !== "zhipu-account"
++        }
+         disabledReason={
+           discoveryBlockedReason
+             ? intl.formatMessage({
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 52d413a954f0bb932e5cbe611bd72a5ed7995f73..f4e66a4cfd2c6e428e83c422e56f757379648aab 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -1,7 +1,7 @@
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+-import { Loader2Icon, Trash2, Unplug } from "lucide-react";
++import { Loader2Icon, Unplug } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { ModelInputCapabilityBadge } from "@/components/ModelInputCapabilityBadge.js";
+ import { Switch } from "@/components/ui/switch.js";
+@@ -20,11 +20,9 @@ export function ModelRowInput({
+   providerEnabled = true,
+   providerAccess,
+   inputTestId,
+-  deleteTestId,
+   onCommit,
+   onResolveDraft,
+   settingsRevision = 0,
+-  onDelete,
+   onEnabledChange,
+   onTest,
+   inspectNewModel = false,
+@@ -36,14 +34,12 @@ export function ModelRowInput({
+   providerEnabled?: boolean;
+   providerAccess?: ProviderConfigObject["access"];
+   inputTestId?: string;
+-  deleteTestId?: string;
+   onCommit: (model: ProviderSettingsFormModel, basedOnRevision: number) => void | Promise<void>;
+   onResolveDraft?: (
+     nextModelId: string,
+     personalConfig: ProviderSettingsFormModel["personalConfig"],
+   ) => Promise<ModelConfigResolution>;
+   settingsRevision?: number;
+-  onDelete?: () => void;
+   onEnabledChange?: (enabled: boolean) => void;
+   onTest?: (model: string) => Promise<ModelConnectivityResult>;
+   inspectNewModel?: boolean;
+@@ -330,24 +326,6 @@ export function ModelRowInput({
+           }}
+           modelIdReadOnly={model.builtin}
+         />
+-        {onDelete ? (
+-          <Button
+-            type="button"
+-            variant="ghost"
+-            size="icon-sm"
+-            className="shrink-0 text-foreground-subtle"
+-            data-testid={deleteTestId}
+-            aria-label={intl.formatMessage({ id: "settings.modelProvider.delete" })}
+-            title={intl.formatMessage({ id: "settings.modelProvider.delete" })}
+-            onMouseDown={(event) => {
+-              // 输入框聚焦时点击删除会先触发 blur 保存，父层刷新后原按钮的 click 会丢失。
+-              event.preventDefault();
+-            }}
+-            onClick={onDelete}
+-          >
+-            <Trash2 className="size-3.5" />
+-          </Button>
+-        ) : null}
+         {onEnabledChange ? (
+           <Switch
+             size="sm"
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx b/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
+index b913feac77b23369d6fec485c409a5c159012b76..90c7b67136d5b710496d9d74f3837d6d33a2b71f 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
+@@ -1,135 +1,155 @@
+-import { useCallback, useMemo } from "react";
+-import { Cell, Pie, PieChart } from "recharts";
++import { useMemo, useState } from "react";
+ import type { AppUsageSnapshot } from "@zcode/shared";
+-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart.js";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import {
+-  buildAppUsageModelPieChartViewModel,
+-  type AppUsageModelPieSlice,
+-} from "@/settings/usage-stats/appUsageModelPieChartViewModel.js";
++import { buildAppUsageModelPieChartViewModel } from "./appUsageModelPieChartViewModel.js";
++import { getAppUsageModelChartColor } from "./appUsageChartPalette.js";
++import { aggregateUsageAccounting } from "./usageAccountingViewModel.js";
++import { UsageDistributionChart, type UsageChartLegendRow } from "./UsageDistributionChart.js";
++import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+ import {
+   UsageEmptyState,
+   formatCompactTokenUsage,
+   formatPercent,
+-} from "@/settings/usage-stats/usageStatsUiParts.js";
++  USAGE_STATS_TABS_LIST_CLASS,
++  USAGE_STATS_TABS_TRIGGER_CLASS,
++} from "./usageStatsUiParts.js";
+ 
+-const APP_USAGE_MODEL_PIE_CHART_MARGIN = {
+-  top: 4,
+-  right: 4,
+-  bottom: 4,
+-  left: 4,
+-} as const;
++type Metric = "tokens" | "cache" | "cost";
+ 
+ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSnapshot }) {
+   const { intl, locale } = useZCodeIntl();
+-  const { chartConfig, chartData, totalModelTokens } = useMemo(
+-    // Recharts 会镜像 data/config props 到内部 store；稳定饼图数据可避免设置页刷新时重复派发。
++  const [metric, setMetric] = useState<Metric>("tokens");
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
++  const original = useMemo(
+     () => buildAppUsageModelPieChartViewModel({ intl, snapshot }),
+     [intl, snapshot],
+   );
+-  const tokenUnit = intl.formatMessage({ id: "settings.usage.tokenUnit" });
+-  const formatTooltipItem = useCallback(
+-    (value: unknown, _name: unknown, item: { color?: string; payload?: unknown }) => {
+-      const slice = item.payload as AppUsageModelPieSlice | undefined;
+-      const totalTokens = typeof value === "number" ? value : (slice?.totalTokens ?? 0);
+-      const share = slice?.share ?? 0;
+-      return (
+-        <>
+-          <span
+-            className="size-2 shrink-0 self-center rounded-full"
+-            style={{ backgroundColor: item.color ?? slice?.color }}
+-          />
+-          <div className="grid min-w-0 flex-1 gap-1">
+-            <div className="truncate text-foreground-subtle">{slice?.label ?? String(_name)}</div>
+-            <div className="flex items-center justify-between gap-3">
+-              <span className="flex items-baseline gap-1 text-foreground">
+-                <span className="font-mono font-medium tabular-nums">
+-                  {formatCompactTokenUsage(locale, totalTokens)}
+-                </span>
+-                <span className="text-foreground-subtle">{tokenUnit}</span>
+-              </span>
+-              <span className="font-mono text-foreground-subtle tabular-nums">
+-                {formatPercent(locale, share)}
+-              </span>
+-            </div>
+-          </div>
+-        </>
+-      );
+-    },
+-    [locale, tokenUnit],
+-  );
+-  const tooltipContent = useMemo(
+-    () => <ChartTooltipContent hideLabel indicator="line" formatter={formatTooltipItem} />,
+-    [formatTooltipItem],
++  const accounting = useMemo(
++    () => aggregateUsageAccounting(snapshot.accounting ?? []),
++    [snapshot.accounting],
+   );
+-
++  const view = useMemo(() => {
++    const tokens = (value: number) => formatCompactTokenUsage(locale, value);
++    const percent = (value: number) => formatPercent(locale, value);
++    const cachePercent = (value: number) =>
++      new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(value);
++    const money = (value: number) =>
++      new Intl.NumberFormat(locale, {
++        style: "currency",
++        currency: "USD",
++        maximumFractionDigits: 4,
++      }).format(value);
++    const unit = intl.formatMessage({ id: "settings.usage.tokenUnit" });
++    const name = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
++    if (metric === "tokens")
++      return {
++        value: tokens(original.totalModelTokens),
++        label: unit,
++        segments: original.chartData.map((item) => ({
++          ...item,
++          value: item.totalTokens,
++          displayValue: `${tokens(item.totalTokens)} ${unit} · ${percent(item.share)}`,
++        })),
++        rows: original.chartData.map((item) => ({
++          ...item,
++          value: percent(item.share),
++          detail: `${tokens(item.totalTokens)} ${unit}`,
++        })),
++        empty: original.totalModelTokens <= 0,
++      };
++    const { total, models } = accounting;
++    const colorFor = (id: string, index: number) => {
++      const position = snapshot.models.findIndex((model) => model.modelId === id);
++      return getAppUsageModelChartColor(position < 0 ? index : position);
++    };
++    const rows: UsageChartLegendRow[] = models.map((model, index) => {
++      const known = metric === "cache" ? model.cacheReports : model.priced;
++      const complete = known === model.requests;
++      const measured = metric === "cache" ? model.cacheInput > 0 : model.priced > 0;
++      const value =
++        metric === "cache"
++          ? cachePercent(model.cacheInput > 0 ? model.cache / model.cacheInput : 0)
++          : money(model.usd);
++      const coverage = `${name(metric === "cache" ? "partial" : "priced")}: ${known}/${model.requests}`;
++      const hint = `${coverage}\n${name("input")}: ${model.reports ? tokens(model.input) : "—"} · ${name("output")}: ${model.reports ? tokens(model.output) : "—"}\n${name("fast")}: ${model.speedReports ? `${model.fast}/${model.speedReports}` : "—"}`;
++      return {
++        key: `model${index}`,
++        label: model.modelId,
++        color: colorFor(model.modelId, index),
++        value: measured ? `${value}${complete ? "" : " *"}` : "—",
++        hint,
++        ...(metric === "cache" && measured ? { ratio: model.cache / model.cacheInput } : {}),
++      };
++    });
++    if (metric === "cost")
++      return {
++        rows,
++        empty: models.length === 0,
++        value: total.priced
++          ? `${money(total.usd)}${total.priced < total.requests ? " *" : ""}`
++          : "—",
++        label: name(total.priced < total.requests ? "partialCost" : "costTab"),
++        segments: models.map((model, index) => ({
++          key: `model${index}`,
++          label: model.modelId,
++          value: model.usd,
++          color: colorFor(model.modelId, index),
++          displayValue: money(model.usd),
++        })),
++      };
++    return {
++      rows,
++      empty: models.length === 0,
++      value:
++        total.cacheInput > 0
++          ? `${cachePercent(total.cache / total.cacheInput)}${total.cacheReports < total.requests ? " *" : ""}`
++          : "—",
++      label: name("cache"),
++      segments: [
++        {
++          key: "hit",
++          label: name("hit"),
++          value: total.cache,
++          color: getAppUsageModelChartColor(1),
++          displayValue: tokens(total.cache),
++        },
++        {
++          key: "miss",
++          label: name("miss"),
++          value: Math.max(0, total.cacheInput - total.cache),
++          color: "var(--color-border)",
++          displayValue: tokens(Math.max(0, total.cacheInput - total.cache)),
++        },
++      ],
++    };
++  }, [metric, accounting, original, snapshot.models, intl, locale]);
+   return (
+     <section className="space-y-3 rounded-xl bg-surface p-4">
+-      <h3 className="text-ui-base font-medium text-foreground">
+-        {intl.formatMessage({ id: "settings.usage.modelChartTitle" })}
+-      </h3>
+-      {totalModelTokens <= 0 ? (
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <div className="flex items-center gap-1">
++          <h3 className="text-ui-base font-medium text-foreground">
++            {intl.formatMessage({ id: "settings.usage.modelChartTitle" })}
++          </h3>
++          {metric !== "tokens" ? <UsageAccountingHelp metric={metric} /> : null}
++        </div>
++        <Tabs value={metric} onValueChange={(value) => setMetric(value as Metric)}>
++          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
++            {(["tokens", "cache", "cost"] as const).map((value) => (
++              <TabsTrigger key={value} value={value} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++                {t(`${value}Tab`)}
++              </TabsTrigger>
++            ))}
++          </TabsList>
++        </Tabs>
++      </div>
++      {view.empty ? (
+         <UsageEmptyState
+           title={intl.formatMessage({ id: "settings.usage.emptyTitle" })}
+-          description={intl.formatMessage({
+-            id: "settings.usage.emptyDescription",
+-          })}
++          description={intl.formatMessage({ id: "settings.usage.emptyDescription" })}
+         />
+       ) : (
+-        <div className="grid gap-4 px-3 py-3 md:grid-cols-2">
+-          <div className="relative mx-auto h-56 w-full max-w-64 self-center md:h-64 md:max-w-72">
+-            <ChartContainer config={chartConfig} className="relative z-20 h-56 w-full md:h-64">
+-              <PieChart accessibilityLayer margin={APP_USAGE_MODEL_PIE_CHART_MARGIN}>
+-                <ChartTooltip cursor={false} content={tooltipContent} />
+-                <Pie
+-                  data={chartData}
+-                  dataKey="totalTokens"
+-                  nameKey="key"
+-                  innerRadius="56%"
+-                  outerRadius="86%"
+-                  paddingAngle={chartData.length > 1 ? 2 : 0}
+-                  stroke="var(--color-surface)"
+-                  strokeWidth={2}
+-                >
+-                  {chartData.map((slice) => (
+-                    <Cell key={slice.key} fill={`var(--color-${slice.key})`} />
+-                  ))}
+-                </Pie>
+-              </PieChart>
+-            </ChartContainer>
+-            <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center px-8 text-center">
+-              <div className="max-w-full truncate text-ui-sm font-semibold text-foreground">
+-                {formatCompactTokenUsage(locale, totalModelTokens)}
+-              </div>
+-              <div className="max-w-full truncate text-ui-sm text-foreground-subtle">
+-                {tokenUnit}
+-              </div>
+-            </div>
+-          </div>
+-          <div className="min-w-0 self-center" role="list">
+-            {chartData.map((slice) => (
+-              <div
+-                key={slice.key}
+-                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 border-b border-border/70 py-2 last:border-b-0"
+-                role="listitem"
+-              >
+-                <span
+-                  className="size-2.5 shrink-0 rounded-sm"
+-                  style={{ backgroundColor: slice.color }}
+-                />
+-                <span className="min-w-0 truncate font-mono text-ui-sm text-foreground">
+-                  {slice.label}
+-                </span>
+-                <span className="font-mono text-ui-sm text-foreground-subtle tabular-nums">
+-                  {formatPercent(locale, slice.share)}
+-                </span>
+-                <span className="col-start-2 min-w-0 truncate text-ui-sm text-foreground-subtle">
+-                  {formatCompactTokenUsage(locale, slice.totalTokens)} {tokenUnit}
+-                </span>
+-              </div>
+-            ))}
+-          </div>
+-        </div>
++        <UsageDistributionChart {...view} />
+       )}
+     </section>
+   );
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index 8bb9c535ca57559d76f848b79b20d2e305ab8eb5..d9d704eefbc9c5bb97cef9fa4b134ad1e746291b 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -1,4 +1,3 @@
+-import { UsageAccountingPanel } from "./UsageAccountingPanel.js";
+ import { SubscriptionPaymentsPanel } from "./SubscriptionPaymentsPanel.js";
+ import { RefreshCcw } from "lucide-react";
+ import { Fragment, lazy, useState } from "react";
+@@ -43,7 +42,6 @@ export function AppUsagePanel() {
+     return (
+       <div className="space-y-5">
+         <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} />
+-        <SubscriptionPaymentsPanel />
+         <div className="flex flex-wrap items-center justify-between gap-2">
+           <div className="text-ui-base font-medium text-foreground">
+             {intl.formatMessage({ id: "settings.usage.appUsageRangeTitle" })}
+@@ -57,6 +55,7 @@ export function AppUsagePanel() {
+             id: "settings.usage.appUsageLoadingDescription",
+           })}
+         />
++        <SubscriptionPaymentsPanel />
+       </div>
+     );
+   }
+@@ -65,7 +64,6 @@ export function AppUsagePanel() {
+     return (
+       <div className="space-y-5">
+         <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} />
+-        <SubscriptionPaymentsPanel />
+         <div className="flex flex-wrap items-center justify-between gap-2">
+           <div className="text-ui-base font-medium text-foreground">
+             {intl.formatMessage({ id: "settings.usage.appUsageRangeTitle" })}
+@@ -79,6 +77,7 @@ export function AppUsagePanel() {
+             id: "settings.usage.emptyDescription",
+           })}
+         />
++        <SubscriptionPaymentsPanel />
+       </div>
+     );
+   }
+@@ -97,8 +96,6 @@ export function AppUsagePanel() {
+       </div>
+       {error ? <UsageStatsErrorNotice error={error} /> : null}
+ 
+-      <UsageAccountingPanel snapshot={snapshot} />
+-      <SubscriptionPaymentsPanel />
+       <UsageChartLoadBoundary
+         scope="settings.usage.app-daily-model-chart"
+         resetKeys={[snapshot.range, snapshot.generatedAt]}
+@@ -118,6 +115,7 @@ export function AppUsagePanel() {
+         <AppUsageModelUsagePieChart snapshot={snapshot} />
+       </UsageChartLoadBoundary>
+ 
++      <SubscriptionPaymentsPanel />
+       <div className="flex justify-end">
+         <Button
+           type="button"
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b962562b508cf06b45fe95635fcbe1e73c62339
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx
+@@ -0,0 +1,68 @@
++import { useMemo } from "react";
++import type { allocateSubscriptionPayment, SubscriptionPayment } from "@zcode/shared";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { UsageDistributionChart } from "./UsageDistributionChart.js";
++import { getAppUsageModelChartColor } from "./appUsageChartPalette.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++
++export function SubscriptionPaymentChart({
++  payment,
++  allocation,
++}: {
++  payment: SubscriptionPayment;
++  allocation: ReturnType<typeof allocateSubscriptionPayment>;
++}) {
++  const { intl, locale } = useZCodeIntl();
++  const view = useMemo(() => {
++    const money = (value: number) =>
++      new Intl.NumberFormat(locale, {
++        style: "currency",
++        currency: payment.currency,
++        maximumFractionDigits: 4,
++      }).format(value);
++    const basis = intl.formatMessage({
++      id: `settings.usage.payments.${allocation.basis === "credits" ? "credits" : "api"}`,
++    });
++    const segments = allocation.models.map((model, index) => ({
++      key: `model${index}`,
++      label: model.modelId,
++      value: model.amount,
++      color: getAppUsageModelChartColor(index),
++      displayValue: money(model.amount),
++    }));
++    return {
++      value: money(payment.amount),
++      label: intl.formatMessage({ id: "settings.usage.payments.amount" }),
++      segments,
++      rows: allocation.models.map((model, index) => ({
++        key: `model${index}`,
++        label: model.modelId,
++        color: getAppUsageModelChartColor(index),
++        value: money(model.amount),
++        detail:
++          model.perMillionTokens !== null
++            ? `${money(model.perMillionTokens)} / 1M Tokens`
++            : undefined,
++        hint:
++          payment.end > Date.now()
++            ? `${basis}\n${intl.formatMessage({ id: "settings.usage.payments.provisional" })}`
++            : basis,
++      })),
++    };
++  }, [allocation, payment, intl, locale]);
++  return allocation.basis === "unavailable" ? (
++    <div className="flex items-center justify-between gap-3 px-3 py-3">
++      <div className="flex items-baseline gap-2">
++        <span className="text-ui-base text-foreground-subtle">{view.label}</span>
++        <span className="text-ui-lg font-medium tabular-nums">{view.value}</span>
++      </div>
++      <ControlHintTooltip title={intl.formatMessage({ id: "settings.usage.payments.unavailable" })}>
++        <span tabIndex={0} className="text-ui-sm text-foreground-subtle">
++          {intl.formatMessage({ id: "settings.usage.payments.unallocated" })}
++        </span>
++      </ControlHintTooltip>
++    </div>
++  ) : (
++    <UsageDistributionChart {...view} />
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
+index 391eef36389c3413f6901d41319a509d0c8ae0d9..88ad64f3f51b1b83ce232ed552fd46590465fd78 100644
+--- a/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
++++ b/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
+@@ -1,11 +1,19 @@
+-import { useEffect, useMemo, useState } from "react";
+-import { Plus, Pencil, Trash2 } from "lucide-react";
++import { lazy, useEffect, useMemo, useState } from "react";
++import { Plus, MoreHorizontal } from "lucide-react";
+ import {
+   allocateSubscriptionPayment,
+   subscriptionPaymentSchema,
+   type SubscriptionPayment,
+   type UsageAccountingRow,
+ } from "@zcode/shared";
++import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
++import { UsageChartLoadBoundary } from "./UsageChartLoadBoundary.js";
++import {
++  DropdownMenu,
++  DropdownMenuTrigger,
++  DropdownMenuContent,
++  DropdownMenuItem,
++} from "@/components/ui/dropdown-menu.js";
+ import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useSettings } from "@/hooks/useSettingService.js";
+@@ -28,6 +36,11 @@ import {
+   SelectValue,
+ } from "@/components/ui/select.js";
+ 
++const SubscriptionPaymentChart = lazy(() =>
++  import("./SubscriptionPaymentChart.js").then((module) => ({
++    default: module.SubscriptionPaymentChart,
++  })),
++);
+ const dateText = (time: number) => {
+   const d = new Date(time);
+   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+@@ -39,7 +52,7 @@ const nextDay = (text: string) => {
+ };
+ 
+ export function SubscriptionPaymentsPanel() {
+-  const { intl, locale } = useZCodeIntl();
++  const { intl } = useZCodeIntl();
+   const t = (key: string) => intl.formatMessage({ id: `settings.usage.payments.${key}` });
+   const { settings, update } = useSettings();
+   const { providerSettingsService, usageStatsService } = useServices();
+@@ -70,7 +83,7 @@ export function SubscriptionPaymentsPanel() {
+     rows: UsageAccountingRow[];
+   }>();
+   const [reading, setReading] = useState(false);
+-  const payment = payments.find((p) => p.id === selected);
++  const payment = payments.find((p) => p.id === selected) ?? payments[0];
+   const scope = payment
+     ? JSON.stringify([
+         payment.id,
+@@ -135,12 +148,6 @@ export function SubscriptionPaymentsPanel() {
+     };
+   }, [payment, scope, usageStatsService]);
+   const allocation = payment && rows ? allocateSubscriptionPayment(payment, rows) : undefined;
+-  const money = (value: number, unit: SubscriptionPayment["currency"]) =>
+-    new Intl.NumberFormat(locale, {
+-      style: "currency",
+-      currency: unit,
+-      maximumFractionDigits: 4,
+-    }).format(value);
+   const edit = (item?: SubscriptionPayment) => {
+     setEditing(item);
+     setError(undefined);
+@@ -213,75 +220,69 @@ export function SubscriptionPaymentsPanel() {
+   };
+   return (
+     <section className="space-y-3 rounded-xl bg-surface p-4">
+-      <div className="flex items-center justify-between gap-2">
+-        <h3 className="text-ui-base font-medium">{t("title")}</h3>
+-        <Button variant="outline" onClick={() => edit()}>
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <div className="flex items-center gap-1">
++          <h3 className="text-ui-base font-medium">{t("title")}</h3>
++          <UsageAccountingHelp metric="payment" />
++        </div>
++        <Button variant="outline" size="sm" onClick={() => edit()}>
+           <Plus className="size-3.5" />
+           {t("add")}
+         </Button>
+       </div>
+-      <p className="text-ui-sm text-foreground-subtle">{t("description")}</p>
+-      {payments.map((item) => (
+-        <div
+-          key={item.id}
+-          className="flex flex-wrap items-center gap-2 border-t border-border pt-3"
+-        >
+-          <Button
+-            variant="ghost"
+-            className="min-w-0 flex-1 justify-start text-left"
+-            onClick={() => setSelected(item.id)}
+-          >
+-            <span className="truncate">{item.accountLabel}</span>
+-          </Button>
+-          <span className="text-ui-sm text-foreground-subtle">
+-            {dateText(item.start)} — {dateText(item.end - 1)}
+-          </span>
+-          <span className="text-ui-sm font-medium tabular-nums">
+-            {money(item.amount, item.currency)}
+-          </span>
+-          <Button variant="ghost" size="icon-sm" aria-label={t("edit")} onClick={() => edit(item)}>
+-            <Pencil className="size-3.5" />
+-          </Button>
+-          <Button
+-            variant="ghost"
+-            size="icon-sm"
+-            aria-label={t("remove")}
+-            onClick={() =>
+-              void update({ subscriptionPayments: { [item.id]: null } }).catch((reason) =>
+-                setError(String(reason)),
+-              )
+-            }
+-          >
+-            <Trash2 className="size-3.5" />
+-          </Button>
+-        </div>
+-      ))}
+-      {reading ? <p className="text-ui-sm text-foreground-subtle">{t("loading")}</p> : null}
+-      {payment && allocation ? (
+-        <div className="space-y-2 border-t border-border pt-3">
+-          <p className="text-ui-sm text-foreground-subtle">
+-            {t(
+-              allocation.basis === "credits"
+-                ? "credits"
+-                : allocation.basis === "api-value"
+-                  ? "api"
+-                  : "unavailable",
+-            )}
+-            {payment.end > Date.now() ? ` · ${t("provisional")}` : ""}
+-          </p>
+-          {allocation.models.map((model) => (
+-            <div key={model.modelId} className="flex flex-wrap justify-between gap-2 text-ui-sm">
+-              <span className="font-mono">{model.modelId}</span>
+-              <span>
+-                {money(model.amount, payment.currency)}
+-                {model.perMillionTokens !== null
+-                  ? ` · ${money(model.perMillionTokens, payment.currency)} / 1M Tokens`
+-                  : ""}
+-              </span>
+-            </div>
+-          ))}
+-        </div>
+-      ) : null}
++      {payment ? (
++        <>
++          <div className="flex items-center gap-2">
++            <Select value={payment.id} onValueChange={setSelected}>
++              <SelectTrigger className="min-w-0 flex-1" aria-label={t("period")}>
++                <SelectValue />
++              </SelectTrigger>
++              <SelectContent>
++                {payments.map((item) => (
++                  <SelectItem key={item.id} value={item.id}>
++                    {item.accountLabel} · {dateText(item.start)} — {dateText(item.end - 1)}
++                  </SelectItem>
++                ))}
++              </SelectContent>
++            </Select>
++            <DropdownMenu>
++              <DropdownMenuTrigger asChild>
++                <Button variant="ghost" size="icon-sm" aria-label={t("actions")}>
++                  <MoreHorizontal className="size-4" />
++                </Button>
++              </DropdownMenuTrigger>
++              <DropdownMenuContent align="end">
++                <DropdownMenuItem onSelect={() => edit(payment)}>{t("edit")}</DropdownMenuItem>
++                <DropdownMenuItem
++                  variant="destructive"
++                  onSelect={() =>
++                    void update({ subscriptionPayments: { [payment.id]: null } }).catch((reason) =>
++                      setError(String(reason)),
++                    )
++                  }
++                >
++                  {t("remove")}
++                </DropdownMenuItem>
++              </DropdownMenuContent>
++            </DropdownMenu>
++          </div>
++          {reading ? (
++            <p role="status" className="text-ui-sm text-foreground-subtle">
++              {t("loading")}
++            </p>
++          ) : allocation ? (
++            <UsageChartLoadBoundary
++              scope="settings.usage.payment-chart"
++              resetKeys={[scope]}
++              loadingDescription={t("loading")}
++            >
++              <SubscriptionPaymentChart payment={payment} allocation={allocation} />
++            </UsageChartLoadBoundary>
++          ) : null}
++        </>
++      ) : (
++        <div className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</div>
++      )}
+       {error && !open ? (
+         <p role="alert" className="text-ui-sm text-destructive">
+           {error}
+@@ -296,7 +297,7 @@ export function SubscriptionPaymentsPanel() {
+         <DialogContent className="sm:max-w-[480px]">
+           <DialogHeader>
+             <DialogTitle>{t(editing ? "edit" : "add")}</DialogTitle>
+-            <DialogDescription>{t("description")}</DialogDescription>
++            <DialogDescription>{t("formDescription")}</DialogDescription>
+           </DialogHeader>
+           <div className="space-y-3">
+             <label className="block space-y-1 text-ui-sm">
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe239dbc190de2987a7ab81218c5d4d95dbaf264
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+@@ -0,0 +1,52 @@
++import { Info } from "lucide-react";
++import { Button } from "@/components/ui/button.js";
++import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++
++export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "payment" }) {
++  const { intl } = useZCodeIntl();
++  const platform = usePlatform();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
++  return (
++    <Popover>
++      <PopoverTrigger asChild>
++        <Button
++          variant="ghost"
++          size="icon-sm"
++          className="text-foreground-subtle"
++          aria-label={t("help")}
++        >
++          <Info className="size-3.5" />
++        </Button>
++      </PopoverTrigger>
++      <PopoverContent
++        align="start"
++        className="w-80 max-w-[calc(100vw-1.5rem)] space-y-3 p-3 text-ui-sm leading-relaxed"
++      >
++        <p>{t(`${metric}Help`)}</p>
++        {metric === "cost" ? (
++          <>
++            <p className="text-foreground-subtle">{t("verified")}</p>
++            <div className="flex flex-wrap gap-3">
++              {[
++                ["OpenAI", "https://developers.openai.com/api/docs/pricing"],
++                ["ChatGPT", "https://learn.chatgpt.com/docs/pricing"],
++                ["DeepSeek", "https://api-docs.deepseek.com/quick_start/pricing"],
++              ].map(([name, url]) => (
++                <Button
++                  key={name}
++                  variant="link"
++                  className="h-auto p-0 text-ui-sm"
++                  onClick={() => void platform.openExternal(url!)}
++                >
++                  {name}
++                </Button>
++              ))}
++            </div>
++          </>
++        ) : null}
++      </PopoverContent>
++    </Popover>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx
+deleted file mode 100644
+index 39145cc3f6106a17cb10cecc8b438596f3818313..0000000000000000000000000000000000000000
+--- a/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx
++++ /dev/null
+@@ -1,152 +0,0 @@
+-import { useMemo } from "react";
+-import type { AppUsageSnapshot } from "@zcode/shared";
+-import { usePlatform } from "@/hooks/usePlatform.js";
+-import { Button } from "@/components/ui/button.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-
+-export function UsageAccountingPanel({ snapshot }: { snapshot: AppUsageSnapshot }) {
+-  const { intl, locale } = useZCodeIntl();
+-  const platform = usePlatform();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
+-  const rows = useMemo(() => {
+-    const groups = new Map<
+-      string,
+-      {
+-        modelId: string;
+-        requests: number;
+-        reports: number;
+-        input: number;
+-        output: number;
+-        cache: number;
+-        cacheInput: number;
+-        cacheReports: number;
+-        usd: number;
+-        priced: number;
+-        fast: number;
+-        speedReports: number;
+-      }
+-    >();
+-    for (const row of snapshot.accounting ?? []) {
+-      const item = groups.get(row.modelId) ?? {
+-        modelId: row.modelId,
+-        requests: 0,
+-        reports: 0,
+-        input: 0,
+-        output: 0,
+-        cache: 0,
+-        cacheInput: 0,
+-        cacheReports: 0,
+-        usd: 0,
+-        priced: 0,
+-        fast: 0,
+-        speedReports: 0,
+-      };
+-      item.requests += row.requestCount;
+-      item.reports += row.reportedCount;
+-      item.input += row.inputTokens;
+-      item.output += row.outputTokens;
+-      item.cache += row.cacheReadTokens;
+-      item.cacheInput += row.cacheInputTokens;
+-      item.cacheReports += row.cacheReportedCount;
+-      item.usd += row.estimatedUsd;
+-      item.priced += row.pricedCount;
+-      if (row.speedMode === "fast") item.fast += row.requestCount;
+-      if (row.speedMode) item.speedReports += row.requestCount;
+-      groups.set(row.modelId, item);
+-    }
+-    return [...groups.values()];
+-  }, [snapshot.accounting]);
+-  const number = (value: number) =>
+-    new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+-  const money = (value: number) =>
+-    new Intl.NumberFormat(locale, {
+-      style: "currency",
+-      currency: "USD",
+-      maximumFractionDigits: 4,
+-    }).format(value);
+-  return (
+-    <section className="space-y-3 rounded-xl bg-surface p-4">
+-      <h3 className="text-ui-base font-medium">{t("title")}</h3>
+-      <div className="overflow-x-auto">
+-        <table className="w-full text-left text-ui-sm">
+-          <thead className="text-foreground-subtle">
+-            <tr>
+-              {["model", "input", "output", "cache", "fast", "estimate"].map((key) => (
+-                <th key={key} className="whitespace-nowrap px-2 py-2 font-medium">
+-                  {t(key)}
+-                </th>
+-              ))}
+-            </tr>
+-          </thead>
+-          <tbody>
+-            {rows.map((row) => (
+-              <tr key={row.modelId} className="border-t border-border">
+-                <td className="px-2 py-3 font-mono">{row.modelId}</td>
+-                <td className="px-2 py-3 tabular-nums">
+-                  {row.reports > 0 ? number(row.input) : "—"}
+-                </td>
+-                <td className="px-2 py-3 tabular-nums">
+-                  {row.reports > 0 ? number(row.output) : "—"}
+-                </td>
+-                <td className="px-2 py-3 tabular-nums">
+-                  {row.cacheInput > 0
+-                    ? new Intl.NumberFormat(locale, {
+-                        style: "percent",
+-                        maximumFractionDigits: 1,
+-                      }).format(row.cache / row.cacheInput)
+-                    : "—"}
+-                  {row.cacheReports < row.requests ? (
+-                    <div className="text-ui-xs text-foreground-subtle">
+-                      {t("partial")}: {row.cacheReports}/{row.requests}
+-                    </div>
+-                  ) : null}
+-                </td>
+-                <td className="px-2 py-3 tabular-nums">
+-                  {row.speedReports > 0 ? `${row.fast}/${row.speedReports}` : "—"}
+-                </td>
+-                <td className="px-2 py-3 tabular-nums">
+-                  {row.priced > 0 ? money(row.usd) : "—"}
+-                  {row.priced < row.requests ? (
+-                    <div className="text-ui-xs text-foreground-subtle">
+-                      {t("priced")}: {row.priced}/{row.requests}
+-                    </div>
+-                  ) : null}
+-                </td>
+-              </tr>
+-            ))}
+-          </tbody>
+-        </table>
+-      </div>
+-      {!rows.length ? <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p> : null}
+-      <p className="text-ui-xs text-foreground-subtle">{t("note")}</p>
+-      <div className="flex flex-wrap items-center gap-2 text-ui-xs text-foreground-subtle">
+-        <span>{t("verified")}</span>
+-        <Button
+-          variant="link"
+-          className="h-auto p-0 text-ui-xs"
+-          onClick={() =>
+-            void platform.openExternal("https://developers.openai.com/api/docs/pricing")
+-          }
+-        >
+-          OpenAI
+-        </Button>
+-        <Button
+-          variant="link"
+-          className="h-auto p-0 text-ui-xs"
+-          onClick={() => void platform.openExternal("https://learn.chatgpt.com/docs/pricing")}
+-        >
+-          ChatGPT
+-        </Button>
+-        <Button
+-          variant="link"
+-          className="h-auto p-0 text-ui-xs"
+-          onClick={() =>
+-            void platform.openExternal("https://api-docs.deepseek.com/quick_start/pricing")
+-          }
+-        >
+-          DeepSeek
+-        </Button>
+-      </div>
+-    </section>
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/UsageDistributionChart.tsx b/packages/ui/src/settings/usage-stats/UsageDistributionChart.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbdecb39082e66204a55689b7954b05bb5a4be96
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageDistributionChart.tsx
+@@ -0,0 +1,146 @@
++import { useMemo } from "react";
++import { Cell, Pie, PieChart } from "recharts";
++import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart.js";
++import { Progress } from "@/components/ui/progress.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++
++export interface UsageChartSegment {
++  key: string;
++  label: string;
++  value: number;
++  color: string;
++  displayValue: string;
++}
++export interface UsageChartLegendRow {
++  key: string;
++  label: string;
++  color: string;
++  value: string;
++  detail?: string;
++  hint?: string;
++  ratio?: number;
++}
++
++/** Original ZCode model donut and legend, shared by its metrics and account-period allocation. */
++export function UsageDistributionChart({
++  segments,
++  rows,
++  value,
++  label,
++}: {
++  segments: UsageChartSegment[];
++  rows: UsageChartLegendRow[];
++  value: string;
++  label: string;
++}) {
++  const config = useMemo(
++    () =>
++      Object.fromEntries(
++        segments.map((item) => [item.key, { label: item.label, color: item.color }]),
++      ),
++    [segments],
++  );
++  const positive = useMemo(() => segments.filter((item) => item.value > 0), [segments]);
++  return (
++    <div className="grid gap-4 px-3 py-3 md:grid-cols-2">
++      <div className="relative mx-auto h-56 w-full max-w-64 self-center md:h-64 md:max-w-72">
++        {positive.length ? (
++          <ChartContainer config={config} className="relative z-20 h-56 w-full md:h-64">
++            <PieChart accessibilityLayer margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
++              <ChartTooltip
++                cursor={false}
++                content={
++                  <ChartTooltipContent
++                    hideLabel
++                    formatter={(_value, _name, item) => {
++                      const segment = item.payload as UsageChartSegment;
++                      return (
++                        <>
++                          <span
++                            className="size-2 shrink-0 self-center rounded-full"
++                            style={{ backgroundColor: segment.color }}
++                          />
++                          <span className="min-w-0 flex-1 truncate text-foreground-subtle">
++                            {segment.label}
++                          </span>
++                          <span className="font-mono font-medium tabular-nums">
++                            {segment.displayValue}
++                          </span>
++                        </>
++                      );
++                    }}
++                  />
++                }
++              />
++              <Pie
++                data={positive}
++                dataKey="value"
++                nameKey="key"
++                innerRadius="56%"
++                outerRadius="86%"
++                paddingAngle={positive.length > 1 ? 2 : 0}
++                stroke="var(--color-surface)"
++                strokeWidth={2}
++              >
++                {positive.map((item) => (
++                  <Cell key={item.key} fill={`var(--color-${item.key})`} />
++                ))}
++              </Pie>
++            </PieChart>
++          </ChartContainer>
++        ) : null}
++        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center px-8 text-center">
++          <div className="max-w-full truncate text-ui-sm font-semibold text-foreground">
++            {value}
++          </div>
++          <div className="max-w-full truncate text-ui-sm text-foreground-subtle">{label}</div>
++        </div>
++      </div>
++      <div className="min-w-0 self-center max-h-80 overflow-y-auto" role="list">
++        {rows.map((row) => {
++          const content = (
++            <div
++              key={row.key}
++              tabIndex={row.hint ? 0 : undefined}
++              aria-label={row.hint ? `${row.label}: ${row.value}. ${row.hint}` : undefined}
++              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 border-b border-border/70 py-2 last:border-b-0"
++              role="listitem"
++            >
++              <span
++                className="size-2.5 shrink-0 rounded-sm"
++                style={{ backgroundColor: row.color }}
++              />
++              <span className="min-w-0 truncate font-mono text-ui-sm text-foreground">
++                {row.label}
++              </span>
++              <span className="font-mono text-ui-sm text-foreground-subtle tabular-nums">
++                {row.value}
++              </span>
++              {row.detail ? (
++                <span className="col-start-2 min-w-0 truncate text-ui-sm text-foreground-subtle">
++                  {row.detail}
++                </span>
++              ) : null}
++              {row.ratio !== undefined ? (
++                <Progress
++                  className="col-start-2 col-span-2 mt-1"
++                  value={row.ratio * 100}
++                  aria-label={row.label}
++                  aria-valuenow={row.ratio * 100}
++                  segments={[{ id: row.key, percent: 1, style: { backgroundColor: row.color } }]}
++                />
++              ) : null}
++            </div>
++          );
++          return row.hint ? (
++            <ControlHintTooltip key={row.key} title={row.hint} triggerClassName="shrink">
++              {content}
++            </ControlHintTooltip>
++          ) : (
++            content
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/usageAccountingViewModel.ts b/packages/ui/src/settings/usage-stats/usageAccountingViewModel.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4683a2de2134d1c3a61e6968809d9c318b3e259d
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/usageAccountingViewModel.ts
+@@ -0,0 +1,71 @@
++import type { UsageAccountingRow } from "@zcode/shared";
++
++export interface UsageAccountingTotals {
++  requests: number;
++  reports: number;
++  input: number;
++  output: number;
++  cache: number;
++  cacheInput: number;
++  cacheReports: number;
++  usd: number;
++  priced: number;
++  fast: number;
++  speedReports: number;
++}
++
++export interface UsageAccountingModel extends UsageAccountingTotals {
++  modelId: string;
++}
++
++function emptyTotals(): UsageAccountingTotals {
++  return {
++    requests: 0,
++    reports: 0,
++    input: 0,
++    output: 0,
++    cache: 0,
++    cacheInput: 0,
++    cacheReports: 0,
++    usd: 0,
++    priced: 0,
++    fast: 0,
++    speedReports: 0,
++  };
++}
++
++function addRow(target: UsageAccountingTotals, row: UsageAccountingRow): void {
++  target.requests += row.requestCount;
++  target.reports += row.reportedCount;
++  target.input += row.inputTokens;
++  target.output += row.outputTokens;
++  target.cache += row.cacheReadTokens;
++  target.cacheInput += row.cacheInputTokens;
++  target.cacheReports += row.cacheReportedCount;
++  target.usd += row.estimatedUsd;
++  target.priced += row.pricedCount;
++  if (row.speedMode === "fast") target.fast += row.requestCount;
++  // 历史记录或未知速度值不等于标准模式，覆盖率只计入明确记录的请求模式。
++  if (row.speedMode === "standard" || row.speedMode === "fast")
++    target.speedReports += row.requestCount;
++}
++
++/** Display-only grouping; retain denominators and coverage instead of averaging rates. */
++export function aggregateUsageAccounting(rows: readonly UsageAccountingRow[]): {
++  models: UsageAccountingModel[];
++  total: UsageAccountingTotals;
++} {
++  const groups = new Map<string, UsageAccountingModel>();
++  const total = emptyTotals();
++  for (const row of rows) {
++    const model = groups.get(row.modelId) ?? { modelId: row.modelId, ...emptyTotals() };
++    addRow(model, row);
++    addRow(total, row);
++    groups.set(row.modelId, model);
++  }
++  const models = [...groups.values()].sort((a, b) => {
++    const tokenDifference = b.input + b.output - (a.input + a.output);
++    return tokenDifference || (a.modelId < b.modelId ? -1 : a.modelId > b.modelId ? 1 : 0);
++  });
++  return { models, total };
++}
+diff --git a/packages/ui/test/usageAccountingViewModel.test.ts b/packages/ui/test/usageAccountingViewModel.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..dc9047bceae2f1c35f899327751d3d143ff9ead9
+--- /dev/null
++++ b/packages/ui/test/usageAccountingViewModel.test.ts
+@@ -0,0 +1,158 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { UsageAccountingRow } from "@zcode/shared";
++import { aggregateUsageAccounting } from "../src/settings/usage-stats/usageAccountingViewModel.js";
++
++function row(overrides: Partial<UsageAccountingRow> = {}): UsageAccountingRow {
++  return {
++    providerId: "provider-a",
++    accountId: "account-a",
++    modelId: "model-a",
++    speedMode: null,
++    requestCount: 1,
++    reportedCount: 0,
++    inputTokens: 0,
++    outputTokens: 0,
++    cacheReadTokens: 0,
++    cacheInputTokens: 0,
++    cacheReportedCount: 0,
++    estimatedUsd: 0,
++    pricedCount: 0,
++    estimatedCredits: 0,
++    creditCount: 0,
++    firstAt: 1,
++    lastAt: 1,
++    priceVersions: null,
++    ...overrides,
++  };
++}
++
++test("cache rate uses combined token denominators, never the average of row rates", () => {
++  const { models, total } = aggregateUsageAccounting([
++    row({
++      reportedCount: 1,
++      inputTokens: 100,
++      outputTokens: 10,
++      cacheReadTokens: 90,
++      cacheInputTokens: 100,
++      cacheReportedCount: 1,
++    }),
++    row({
++      requestCount: 3,
++      reportedCount: 3,
++      inputTokens: 900,
++      outputTokens: 20,
++      cacheReadTokens: 90,
++      cacheInputTokens: 900,
++      cacheReportedCount: 3,
++    }),
++  ]);
++  assert.equal(models.length, 1);
++  assert.equal(models[0]?.cache, 180);
++  assert.equal(models[0]?.cacheInput, 1_000);
++  assert.equal(total.cache / total.cacheInput, 0.18);
++  assert.equal(total.requests, 4);
++  assert.equal(total.cacheReports, 4);
++  assert.equal(total.input, 1_000);
++  assert.equal(total.output, 30);
++});
++
++test("reported zero remains distinct from unknown price, usage, cache and speed", () => {
++  const result = aggregateUsageAccounting([
++    row({
++      requestCount: 2,
++      reportedCount: 2,
++      cacheReportedCount: 1,
++      pricedCount: 2,
++      speedMode: "standard",
++    }),
++    row({ requestCount: 3, speedMode: "fast" }),
++    row({ requestCount: 4, speedMode: "future-mode" }),
++    row({ requestCount: 5, speedMode: null }),
++    row({ requestCount: 6, speedMode: "" }),
++  ]);
++  const expected = {
++    requests: 20,
++    reports: 2,
++    input: 0,
++    output: 0,
++    cache: 0,
++    cacheInput: 0,
++    cacheReports: 1,
++    usd: 0,
++    priced: 2,
++    fast: 3,
++    speedReports: 5,
++  };
++  assert.deepEqual(result.total, expected);
++  assert.deepEqual(result.models, [{ modelId: "model-a", ...expected }]);
++});
++
++test("display groups model IDs across identities without mutating source accounting rows", () => {
++  const rows = Object.freeze([
++    Object.freeze(row({ inputTokens: 100, estimatedUsd: 0.25, pricedCount: 1 })),
++    Object.freeze(
++      row({
++        accountId: "account-b",
++        inputTokens: 200,
++        estimatedUsd: 0.5,
++        pricedCount: 1,
++      }),
++    ),
++    Object.freeze(
++      row({
++        providerId: "provider-b",
++        accountId: null,
++        inputTokens: 300,
++        reportedCount: 1,
++      }),
++    ),
++    Object.freeze(row({ modelId: "model-b", inputTokens: 50 })),
++  ]);
++  const before = structuredClone(rows);
++  const { models, total } = aggregateUsageAccounting(rows);
++  assert.deepEqual(rows, before);
++  assert.equal(models.length, 2);
++  assert.equal(models[0]?.modelId, "model-a");
++  assert.equal(models[0]?.requests, 3);
++  assert.equal(models[0]?.input, 600);
++  assert.equal(models[0]?.usd, 0.75);
++  assert.equal(models[0]?.priced, 2);
++  assert.equal(models[0]?.reports, 1);
++  assert.equal(total.requests, 4);
++  assert.equal(total.input, 650);
++  assert.equal(total.usd, 0.75);
++});
++
++test("models sort by combined input and output then exact ID, independently of input order", () => {
++  const rows = [
++    row({ modelId: "z-model", inputTokens: 50 }),
++    row({ modelId: "a-model", inputTokens: 20, outputTokens: 30 }),
++    row({ modelId: "b-model", outputTokens: 100 }),
++  ];
++  const { models } = aggregateUsageAccounting(rows);
++  assert.deepEqual(
++    models.map((model) => model.modelId),
++    ["b-model", "a-model", "z-model"],
++  );
++  assert.deepEqual(aggregateUsageAccounting([...rows].reverse()).models, models);
++});
++
++test("empty accounting contains no fabricated model or observed coverage", () => {
++  assert.deepEqual(aggregateUsageAccounting([]), {
++    models: [],
++    total: {
++      requests: 0,
++      reports: 0,
++      input: 0,
++      output: 0,
++      cache: 0,
++      cacheInput: 0,
++      cacheReports: 0,
++      usd: 0,
++      priced: 0,
++      fast: 0,
++      speedReports: 0,
++    },
++  });
++});

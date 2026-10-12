@@ -1,0 +1,102 @@
+From d206fce9ef749a136a17e54b887623726c7c27c2 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 22:14:27 -0700
+Subject: [PATCH] CLI user config follows ZCODE_HOME, so isolated profiles
+ never write the real config
+
+The desktop services already treat ZCODE_HOME as the ~/.zcode root, but the
+CLI's default user config and the hook-trust store's fallback always used
+the real home, so a review profile's plugin enablement landed in the
+person's ~/.zcode/cli/config.json. Unset ZCODE_HOME keeps the old path.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../src/config/file-config.adapter.ts         | 13 +++++++++---
+ .../src/storage/workspace-hook-trust-store.ts |  4 +++-
+ .../adapters/test/zcode-home-config.test.ts   | 20 +++++++++++++++++++
+ 3 files changed, 33 insertions(+), 4 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/adapters/test/zcode-home-config.test.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/config/file-config.adapter.ts b/apps/zcode-cli/packages/adapters/src/config/file-config.adapter.ts
+index c2fc2cf..5b847c1 100644
+--- a/apps/zcode-cli/packages/adapters/src/config/file-config.adapter.ts
++++ b/apps/zcode-cli/packages/adapters/src/config/file-config.adapter.ts
+@@ -59,7 +59,14 @@ export interface PluginRemovePatchResult {
+ }
+ 
+ const DEFAULT_CONFIG_FILE = "config.json";
+-const DEFAULT_BASE_DIR = "~/.zcode/cli";
++/**
++ * `ZCODE_HOME` names the `~/.zcode` root (as the desktop services read it); the CLI user
++ * configuration lives under it, so an isolated profile never writes the person's real config.
++ */
++function defaultBaseDir(): string {
++  const zcodeHome = process.env.ZCODE_HOME?.trim();
++  return zcodeHome ? join(zcodeHome, "cli") : "~/.zcode/cli";
++}
+ 
+ /**
+  * Resolve path with ~ expansion
+@@ -78,7 +85,7 @@ export function loadFileConfig(filePath?: string, options: FileConfigOptions = {
+   const resolvedPath = filePath
+     ? resolvePath(filePath)
+     : join(
+-        resolvePath(options.baseDir ?? DEFAULT_BASE_DIR),
++        resolvePath(options.baseDir ?? defaultBaseDir()),
+         options.configFileName ?? DEFAULT_CONFIG_FILE,
+       );
+ 
+@@ -441,7 +448,7 @@ export async function removeSuppressedBuiltinInFileConfig(
+  * Get default config file path
+  */
+ export function getDefaultConfigPath(): string {
+-  return join(resolvePath(DEFAULT_BASE_DIR), DEFAULT_CONFIG_FILE);
++  return join(resolvePath(defaultBaseDir()), DEFAULT_CONFIG_FILE);
+ }
+ 
+ /**
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/workspace-hook-trust-store.ts b/apps/zcode-cli/packages/adapters/src/storage/workspace-hook-trust-store.ts
+index 685a55c..61fd7f0 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/workspace-hook-trust-store.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/workspace-hook-trust-store.ts
+@@ -131,8 +131,10 @@ export async function resolveWorkspaceHookTrustStorePath(
+   options: WorkspaceHookTrustStorePathOptions = {},
+ ): Promise<string> {
+   const home = resolve(options.homeDir ?? homedir());
++  const zcodeHome = options.homeDir ? undefined : process.env.ZCODE_HOME?.trim();
+   const userConfigPath = resolve(
+-    options.userConfigPath ?? join(home, ".zcode", "cli", "config.json"),
++    options.userConfigPath ??
++      (zcodeHome ? join(zcodeHome, "cli", "config.json") : join(home, ".zcode", "cli", "config.json")),
+   );
+   const config = await readUserConfig(userConfigPath);
+   const storage = isRecord(config.storage) ? config.storage : {};
+diff --git a/apps/zcode-cli/packages/adapters/test/zcode-home-config.test.ts b/apps/zcode-cli/packages/adapters/test/zcode-home-config.test.ts
+new file mode 100644
+index 0000000..78e7ea3
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/zcode-home-config.test.ts
+@@ -0,0 +1,20 @@
++import assert from "node:assert/strict";
++import { homedir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { getDefaultConfigPath } from "../src/config/index.js";
++
++// An isolated profile (review launcher, tests) sets ZCODE_HOME; plugin and hook writes must land in
++// its CLI config, never in the person's real ~/.zcode/cli/config.json (OV-102 incident).
++test("the CLI user config follows ZCODE_HOME", async () => {
++  const previous = process.env.ZCODE_HOME;
++  try {
++    delete process.env.ZCODE_HOME;
++    assert.equal(getDefaultConfigPath(), join(homedir(), ".zcode", "cli", "config.json"));
++    process.env.ZCODE_HOME = "/tmp/fleet-profile/cli-home";
++    assert.equal(getDefaultConfigPath(), "/tmp/fleet-profile/cli-home/cli/config.json");
++  } finally {
++    if (previous === undefined) delete process.env.ZCODE_HOME;
++    else process.env.ZCODE_HOME = previous;
++  }
++});
+-- 
+2.54.0 (Apple Git-157)
+

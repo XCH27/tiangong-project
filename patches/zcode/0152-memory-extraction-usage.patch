@@ -1,0 +1,116 @@
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/project-memory-agent.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/project-memory-agent.ts
+index 00f8f96..fa89ec5 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/project-memory-agent.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/project-memory-agent.ts
+@@ -2,6 +2,7 @@ import type { Model, ModelInputMessage, ModelToolContract, TraceContext } from "
+ import type { AgentTelemetryCausation, ModelApiOperation } from "@zcode/contracts";
+ import {
+   PermissionService,
++  createChildTraceContext,
+   createDenyPermissionBroker,
+   createToolExecutor,
+   defaultPermissionConfig,
+@@ -14,6 +15,48 @@ import { getSessionShellSelectionFromConfig } from "../methods/session-shell-env
+ import { buildRuntimeProviderRequestMessages } from "./runtime-provider-request-messages.js";
+ import { createRefreshRuntimeHeadersBeforeModelAttempt } from "../methods/model-runtime-headers.js";
+ import { createRuntimeModel, withModelInvocationContext } from "../methods/runtime-model.js";
++import { recordModelUsageFact } from "../methods/usage-observability.js";
++
++/**
++ * K-03：Memory 抽取是真实的模型请求，但不是 Turn 的一部分。每次物理调用以独立子 span
++ * 写入同一用量账本（querySource 为该 operation），失败与取消也保留已观察到的用量。
++ */
++function withMemoryUsageRecording(
++  runtime: AgentRuntimeInternal,
++  model: Model,
++  operation: ModelApiOperation,
++  traceContext: TraceContext,
++): Model {
++  return Object.freeze({
++    ...model,
++    bind: (options: Parameters<Model["bind"]>[0]) =>
++      withMemoryUsageRecording(runtime, model.bind(options), operation, traceContext),
++    async generateText(request: Parameters<Model["generateText"]>[0]) {
++      const callTrace = createChildTraceContext(traceContext, {
++        attributes: { model: `${model.providerId}/${model.modelId}`, querySource: operation },
++      });
++      const startedAt = Date.now();
++      const usage = { events: [], model, networkEventStartIndex: 0, querySource: operation, startedAt, traceContext: callTrace };
++      try {
++        const result = await model.generateText(request);
++        await recordModelUsageFact(runtime, {
++          ...usage,
++          result,
++          status: request.abortSignal?.aborted ? "cancelled" : "completed",
++          toolCallCount: result.toolCalls?.length ?? 0,
++        });
++        return result;
++      } catch (error) {
++        await recordModelUsageFact(runtime, {
++          ...usage,
++          error,
++          status: request.abortSignal?.aborted ? "cancelled" : "error",
++        });
++        throw error;
++      }
++    },
++  });
++}
+ 
+ export interface ProjectMemoryAgentContext {
+   causation?: AgentTelemetryCausation;
+@@ -61,6 +104,7 @@ export function captureProjectMemoryAgentContext(
+     }),
+     traceContext: input.traceContext,
+   }));
++  const recordedModel = withMemoryUsageRecording(runtime, model, input.operation, input.traceContext);
+   return {
+     causation: runtime.agentTelemetry.captureCausation(),
+     memoryRoot: input.memoryRoot,
+@@ -69,7 +113,7 @@ export function captureProjectMemoryAgentContext(
+     // 禁止原地修改共享的 entry/message/content，否则会污染已调度的 Memory 上下文。
+     providerEntries: [...runtime.messageHistory.borrowReadOnlyRuntimeEntries()],
+     midConversationSystem: runtime.config.midConversationSystem,
+-    model,
++    model: recordedModel,
+     operation: input.operation,
+     readFileState: new Map(runtime.readFileState),
+     tools: runtime.getTools(model).map((tool) => ({ ...tool })),
+diff --git a/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts b/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts
+index 017e908..7a59d51 100644
+--- a/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts
++++ b/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts
+@@ -28,3 +28,33 @@ test("a received main response keeps its usage when ModelComplete publication fa
+     await f.close();
+   }
+ });
++
++test("automatic memory extraction records its own physical model usage (K-03)", async () => {
++  const { NodeFileSystemAdapter } = await import("../../adapters/src/fs/index.js");
++  const f = await fixture("pi", false, { deps: { fileSystemPort: new NodeFileSystemAdapter() } } as never);
++  try {
++    const runtime = f.runtime as never as { config: Record<string, unknown>; drainMemoryExtractions(id: null): Promise<void> };
++    const memoryRoot = join(f.dir, "memory-owner");
++    runtime.config.memory = { enabled: true, use: true, cliStorageRoot: memoryRoot, storageRoot: memoryRoot };
++    f.steps.push(
++      () => reply("main reply"),
++      () => ({ ...reply("Nothing to save."), usage: { inputTokens: 701, outputTokens: 23, totalTokens: 724 } }),
++    );
++    await f.runtime.executeTurn("Remember this synthetic preference for later ordinary work");
++    await runtime.drainMemoryExtractions(null);
++    await f.reopen();
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    const rows = db
++      .prepare("select query_source, input_tokens, output_tokens from model_usage order by started_at")
++      .all()
++      .map((row) => ({ ...row }));
++    db.close();
++    assert.equal(f.requests.length, 2);
++    assert.equal(rows.length, 2);
++    assert.equal(rows[0]?.query_source, "main_turn");
++    assert.deepEqual({ input: rows[1]?.input_tokens, output: rows[1]?.output_tokens }, { input: 701, output: 23 });
++    assert.notEqual(rows[1]?.query_source, "main_turn");
++  } finally {
++    await f.close();
++  }
++});

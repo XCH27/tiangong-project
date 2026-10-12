@@ -1,0 +1,960 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index 8ad5aaf..8faff04 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -25,16 +25,22 @@ function priceFacts(
+   modelId: string,
+   startedAt: number,
+ ): UsagePriceEstimate {
+-  const speed = facts.servedSpeedMode ?? facts.requestedSpeedMode;
++  const billingProvider =
++    typeof facts.billingProvider === "string"
++      ? facts.billingProvider
++      : Object.hasOwn(builtinPricingProviders, providerId)
++        ? builtinPricingProviders[providerId]
++        : undefined;
++  // xAI bills Priority only when the response confirms it was served.
++  // Keep the requested mode in the ledger for activity counts, but do not
++  // turn a missing response tier into a twofold price estimate.
++  const speed = facts.servedSpeedMode ??
++    (billingProvider === "xai" && facts.requestedSpeedMode === "fast"
++      ? undefined : facts.requestedSpeedMode);
+   if (speed !== undefined && speed !== null && speed !== "fast" && speed !== "standard")
+     return { priceVersion: "unpriced", reason: "speed-mode-unavailable" };
+   return estimateUsagePrice({
+-    billingProvider:
+-      typeof facts.billingProvider === "string"
+-        ? facts.billingProvider
+-        : Object.hasOwn(builtinPricingProviders, providerId)
+-          ? builtinPricingProviders[providerId]
+-          : undefined,
++    billingProvider,
+     modelId,
+     startedAt,
+     inputTokens: count(facts.inputTokens),
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index e63a0a4..c6eecd7 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -264,6 +264,28 @@ test("requested Fast remains visible when the provider serves Standard, and cost
+   }
+ });
+ 
++test("xAI Priority needs a served-tier receipt before a twofold cost estimate", () => {
++  const record = (servedSpeedMode?: "fast" | "standard") =>
++    accountingSnapshot({
++      providerId: "xai-api",
++      modelId: "grok-4.6",
++      startedAt: Date.UTC(2026, 8, 28),
++      rawUsage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
++      providerMetadata: { fleetAccounting: {
++        billingProvider: "xai", authKind: "api-key", requestedSpeedMode: "fast",
++        ...(servedSpeedMode ? { servedSpeedMode } : {}),
++      } },
++    } as ModelUsageRecord);
++  const unconfirmed = record();
++  const standard = record("standard");
++  const priority = record("fast");
++  assert.equal(unconfirmed.estimatedUsd, undefined);
++  assert.equal(unconfirmed.reason, "speed-mode-missing");
++  assert.ok(standard.estimatedUsd !== undefined);
++  assert.equal(priority.estimatedUsd, standard.estimatedUsd * 2);
++  assert.equal(unconfirmed.requestedSpeedMode, "fast");
++});
++
+ test("new price coverage fills unpriced complete facts in a read projection without rewriting history", () => {
+   const db = new DatabaseSync(":memory:");
+   try {
+diff --git a/package.json b/package.json
+index 1a46a38..d1b0884 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 44c53ac..a8ad5b3 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -6,6 +6,7 @@ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
+ import { createManualProviderModel } from "../../ui/src/settings/model-provider-section/ProviderModelMetadata.js";
++import { modelCatalogFailureKind } from "../../ui/src/settings/model-provider-section/modelDiscoveryActions.js";
+ import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
+ import { NodeModelSelectionConfigRepository } from "@zcode/provider-node";
+ import type { SubscriptionConnectionOwner } from "../src/model-provider/subscriptionConnections.js";
+@@ -16,6 +17,13 @@ import {
+   createRegistryProviderConfig,
+ } from "@zcode/provider";
+ 
++test("model-list diagnostics do not call an unexplained 403 an authentication failure", () => {
++  assert.equal(modelCatalogFailureKind("Model list request failed (401)"), "unauthorized");
++  assert.equal(modelCatalogFailureKind("Model list request failed (403)"), "forbidden");
++  assert.equal(modelCatalogFailureKind("Model list request failed (404)"), "noCatalog");
++  assert.equal(modelCatalogFailureKind("unrecognized provider reply"), "failed");
++});
++
+ async function fixture(subscriptions?: SubscriptionConnectionOwner) {
+   const root = await mkdtemp(join(tmpdir(), "fleet-model-discovery-"));
+   const options = {
+diff --git a/packages/services/test/usage-price-directory.test.ts b/packages/services/test/usage-price-directory.test.ts
+index 179e4bd..78c5f7d 100644
+--- a/packages/services/test/usage-price-directory.test.ts
++++ b/packages/services/test/usage-price-directory.test.ts
+@@ -99,6 +99,18 @@ test("official Anthropic prices use real write duration and supported Fast rates
+   );
+ });
+ 
++test("xAI priority billing applies its official twofold rate only to served Fast requests", () => {
++  const request = { ...input, billingProvider: "xai", modelId: "grok-4.6" };
++  const standard = estimateUsagePrice(request);
++  const priority = estimateUsagePrice({ ...request, speedMode: "fast" });
++  assert.ok(standard.estimatedUsd !== undefined);
++  close(priority.estimatedUsd, standard.estimatedUsd * 2);
++  // The base rate remains attributed to the directory; the Priority
++  // multiplier is independently checked against xAI's pricing contract.
++  assert.equal(priority.sourceUrl, "https://models.dev/api.json");
++  assert.match(priority.priceVersion, /xai-priority/);
++});
++
+ test("directory prices are distinct from official overrides and media breakdown is not fabricated", () => {
+   const kimi = estimateUsagePrice({ ...input, billingProvider: "moonshotai", modelId: "kimi-k3" });
+   close(kimi.estimatedUsd, 0.5 * 3 + 0.5 * 0.3 + 0.1 * 15);
+diff --git a/packages/services/test/usage-price.test.ts b/packages/services/test/usage-price.test.ts
+index 60447bf..8367344 100644
+--- a/packages/services/test/usage-price.test.ts
++++ b/packages/services/test/usage-price.test.ts
+@@ -1,6 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { estimateUsagePrice, type UsagePriceInput } from "../../shared/src/usage-price.js";
++import { estimateUsagePrice, lookupFastModePriceImpact, type UsagePriceInput } from "../../shared/src/usage-price.js";
+ 
+ const request: UsagePriceInput = {
+   billingProvider: "openai",
+@@ -42,6 +42,20 @@ test("exact catalog supports the configured OpenAI models and their Fast API rat
+   }
+ });
+ 
++test("Fast impact separates subscription credits from each vendor's API rates", () => {
++  const impact = (billingProvider: string, modelId: string, subscription: boolean) =>
++    lookupFastModePriceImpact({ billingProvider, modelId, subscription });
++  assert.deepEqual([impact("openai", "gpt-6-sol", true)?.basis,
++    impact("openai", "gpt-6-sol", true)?.multiplier], ["subscription-credits", 2.5]);
++  assert.equal(impact("openai", "gpt-6-sol", false)?.multiplier, 2);
++  assert.equal(impact("openai", "gpt-5.5", false)?.multiplier, 2.5);
++  assert.equal(impact("anthropic", "claude-opus-5-5", false)?.multiplier, 2);
++  assert.equal(impact("anthropic", "claude-opus-4-7", false), undefined);
++  assert.equal(impact("xai", "grok-4.6", false)?.multiplier, 2);
++  assert.equal(impact("xai", "grok-4.6", true), undefined);
++  assert.equal(impact("deepseek", "deepseek-flash", false), undefined);
++});
++
+ test("OpenAI long tier starts strictly above 272K inclusive input, affecting the full request", () => {
+   const short = { ...request, inputTokens: 272_000 };
+   close(estimateUsagePrice(short).estimatedUsd, 2.721);
+diff --git a/packages/shared/src/usage-price-directory.ts b/packages/shared/src/usage-price-directory.ts
+index c446a83..2ed3ceb 100644
+--- a/packages/shared/src/usage-price-directory.ts
++++ b/packages/shared/src/usage-price-directory.ts
+@@ -6,7 +6,13 @@ import type { UsagePriceEstimate, UsagePriceInput } from "./usage-price.js";
+ export function estimateDirectoryUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
+   const official = lookupOfficialPrice(input.billingProvider!, input.modelId);
+   const entry = lookupCatalogPrice(input.billingProvider!, input.modelId, input.inputTokens!);
+-  const version = official?.version ?? entry?.version ?? "unpriced";
++  const xaiPriority = input.billingProvider === "xai" && input.speedMode === "fast";
++  const version = xaiPriority
++    ? `${entry?.version ?? "unpriced"}+xai-priority-2026-09-28`
++    : official?.version ?? entry?.version ?? "unpriced";
++  // This URL identifies the base token rate. The Priority multiplier has its
++  // own official evidence in lookupFastModePriceImpact; a catalog base rate
++  // must not be relabelled as individually verified xAI pricing.
+   const sourceUrl = official?.sourceUrl ?? entry?.sourceUrl;
+   const missing = (reason: string): UsagePriceEstimate => ({
+     priceVersion: version,
+@@ -27,7 +33,9 @@ export function estimateDirectoryUsagePrice(input: UsagePriceInput): UsagePriceE
+     return missing("speed-mode-missing");
+   if (input.speedMode !== undefined && input.speedMode !== "standard" && input.speedMode !== "fast")
+     return missing("speed-mode-unavailable");
+-  const multiplier = input.speedMode === "fast" ? official?.rates.fastMultiplier : 1;
++  const multiplier = input.speedMode === "fast"
++    ? (xaiPriority ? 2 : official?.rates.fastMultiplier)
++    : 1;
+   if (multiplier === undefined) return missing("fast-price-unavailable");
+   const reads = input.cacheReadTokens!;
+   if (reads > 0 && rates.cacheRead === undefined) return missing("cache-read-price-unavailable");
+diff --git a/packages/shared/src/usage-price.ts b/packages/shared/src/usage-price.ts
+index ade2ca8..e1fb250 100644
+--- a/packages/shared/src/usage-price.ts
++++ b/packages/shared/src/usage-price.ts
+@@ -1,4 +1,5 @@
+ import { estimateDirectoryUsagePrice } from "./usage-price-directory.js";
++import { lookupOfficialPrice } from "./usage-price-official.js";
+ 
+ /**
+  * Pure current-rate estimates over a single normalized request, never a provider bill.
+@@ -36,6 +37,8 @@ export interface UsagePriceEstimate {
+ const PRICE_VERSION = "official-2026-09-27";
+ const OPENAI_PRICE_URL = "https://developers.openai.com/api/docs/pricing";
+ const CHATGPT_PRICE_URL = "https://learn.chatgpt.com/docs/pricing";
++const CHATGPT_FAST_CREDIT_MULTIPLIER = 2.5;
++const XAI_PRIORITY_PRICE_URL = "https://docs.x.ai/developers/pricing";
+ const DEEPSEEK_PRICE_URL = "https://api-docs.deepseek.com/quick_start/pricing";
+ const MILLION = 1_000_000;
+ const LONG_INPUT_THRESHOLD = 272_000;
+@@ -135,6 +138,33 @@ const OPENAI_PRICES = new Map<string, OpenAIPrice>([
+   ],
+ ]);
+ 
++/** Read-only UI explanation from the same official multipliers used by accounting. */
++export function lookupFastModePriceImpact(input: {
++  billingProvider: string | undefined;
++  modelId: string;
++  subscription: boolean;
++}): { multiplier: number; basis: "subscription-credits" | "api-list-price"; sourceUrl: string } | undefined {
++  const modelId = input.modelId.toLowerCase();
++  if (input.billingProvider === "openai") {
++    const price = OPENAI_PRICES.get(modelId);
++    if (!price) return undefined;
++    return input.subscription
++      ? { multiplier: CHATGPT_FAST_CREDIT_MULTIPLIER,
++          basis: "subscription-credits", sourceUrl: "https://learn.chatgpt.com/docs/agent-configuration/speed" }
++      : { multiplier: price.apiFastMultiplier,
++          basis: "api-list-price", sourceUrl: OPENAI_PRICE_URL };
++  }
++  if (input.subscription) return undefined;
++  if (input.billingProvider === "xai")
++    return { multiplier: 2, basis: "api-list-price", sourceUrl: XAI_PRIORITY_PRICE_URL };
++  const official = input.billingProvider
++    ? lookupOfficialPrice(input.billingProvider, modelId)
++    : undefined;
++  const multiplier = official?.rates.fastMultiplier;
++  return multiplier === undefined ? undefined
++    : { multiplier, basis: "api-list-price", sourceUrl: official!.sourceUrl };
++}
++
+ // Peak USD per million; the official table defines off-peak as exactly half.
+ // Cache misses include writes, with no separately priced write category.
+ const DEEPSEEK_PRICES = new Map<string, Rates>([
+@@ -246,7 +276,7 @@ export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
+         cacheReadTokens * read +
+         outputTokens * output) /
+         MILLION) *
+-      (input.speedMode === "fast" ? 2.5 : 1);
++      (input.speedMode === "fast" ? CHATGPT_FAST_CREDIT_MULTIPLIER : 1);
+   }
+ 
+   const long = inputTokens > LONG_INPUT_THRESHOLD;
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+index 5828e04..518838a 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+@@ -1,8 +1,9 @@
+ import type { ReactNode, RefObject } from "react";
+-import { ChevronDownIcon } from "lucide-react";
++import { ChevronDownIcon, ZapIcon } from "lucide-react";
+ import { TID_CHAT_THOUGHT_LEVEL_SELECT_TRIGGER } from "@zcode/shared";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { Button } from "@/components/ui/button.js";
++import { cn } from "@/components/lib/utils.js";
+ import {
+   DropdownMenu,
+   DropdownMenuContent,
+@@ -10,7 +11,7 @@ import {
+   DropdownMenuLabel,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
+-  DropdownMenuSeparator,
++  DropdownMenuItem,
+ } from "@/components/ui/dropdown-menu.js";
+ import { isCoarseTouchDevice } from "@/lib/pickerFocus.js";
+ import type { useZCodeIntl } from "@/i18n/IntlProvider.js";
+@@ -85,9 +86,41 @@ export function ThoughtAndSpeedMenu({
+           document.querySelector<HTMLElement>(restoreFocusSelector)?.focus();
+         }}
+       >
+-        <DropdownMenuLabel>
+-          {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
+-        </DropdownMenuLabel>
++        <div className="flex items-center justify-between gap-2 pr-1">
++          <DropdownMenuLabel>
++            {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
++          </DropdownMenuLabel>
++          <ControlHintTooltip
++            title={intl.formatMessage({ id: "chat.toolbar.speed.tooltipTitle" })}
++            description={speed.note}
++            side="left"
++            align="start"
++            className="z-[70]"
++          >
++            <DropdownMenuItem
++              aria-label={intl.formatMessage({
++                id: speed.value === "fast"
++                  ? "chat.toolbar.speed.disable"
++                  : "chat.toolbar.speed.enable",
++              })}
++              className={cn(
++                "size-7 min-h-7 justify-center p-0",
++                speed.value === "fast" && "bg-menu-hover",
++              )}
++              onSelect={(event) => {
++                event.preventDefault();
++                speed.onChange(speed.value === "fast" ? "standard" : "fast");
++              }}
++            >
++              <ZapIcon className={cn(
++                "size-4",
++                speed.value === "fast"
++                  ? "fill-current text-foreground"
++                  : "text-foreground-subtle",
++              )} />
++            </DropdownMenuItem>
++          </ControlHintTooltip>
++        </div>
+         <DropdownMenuRadioGroup
+           value={value}
+           onValueChange={(next) => {
+@@ -100,24 +133,6 @@ export function ThoughtAndSpeedMenu({
+             </DropdownMenuRadioItem>
+           ))}
+         </DropdownMenuRadioGroup>
+-        <DropdownMenuSeparator />
+-        <DropdownMenuLabel>
+-          {intl.formatMessage({ id: "chat.toolbar.options.speed" })}
+-        </DropdownMenuLabel>
+-        <DropdownMenuRadioGroup
+-          value={speed.value}
+-          onValueChange={(next) => {
+-            if (next === "standard" || next === "fast") speed.onChange(next);
+-          }}
+-        >
+-          <DropdownMenuRadioItem value="standard">
+-            {intl.formatMessage({ id: "chat.toolbar.speed.standard" })}
+-          </DropdownMenuRadioItem>
+-          <DropdownMenuRadioItem value="fast">
+-            {intl.formatMessage({ id: "chat.toolbar.speed.label" })}
+-          </DropdownMenuRadioItem>
+-        </DropdownMenuRadioGroup>
+-        <p className="max-w-64 px-2 py-1 text-ui-xs text-foreground-subtle">{speed.note}</p>
+       </DropdownMenuContent>
+     </DropdownMenu>
+   );
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+index ed3a7ed..daf2187 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+@@ -6,7 +6,7 @@ import {
+   type ZCodeConfigOption,
+   type ZCodeProvider,
+ } from "@zcode/shared";
+-import { BrainIcon, ChevronDownIcon } from "lucide-react";
++import { BrainIcon, ChevronDownIcon, ZapIcon } from "lucide-react";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { cn } from "@/components/lib/utils.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -230,14 +230,11 @@ export function ThoughtLevelCycleControl({
+           composerCollapsePriority !== undefined && "group-data-[composer-compact]/thought:hidden",
+         )}
+       >
+-        <RollingToolbarLabel
+-          label={
+-            speed?.value === "fast"
+-              ? `${currentLabel} · ${intl.formatMessage({ id: "chat.toolbar.speed.label" })}`
+-              : currentLabel
+-          }
+-        />
++        <RollingToolbarLabel label={currentLabel} />
+       </span>
++      {speed?.value === "fast" ? (
++        <ZapIcon className="size-3.5 shrink-0 fill-current" aria-hidden="true" />
++      ) : null}
+     </>
+   );
+ 
+@@ -256,7 +253,9 @@ export function ThoughtLevelCycleControl({
+           triggerClassName,
+         )}
+         composerCollapsePriority={composerCollapsePriority}
+-        label={currentLabel}
++        label={speed.value === "fast"
++          ? `${currentLabel} · ${intl.formatMessage({ id: "chat.toolbar.speed.label" })}`
++          : currentLabel}
+         restoreFocusSelector={restoreFocusSelector}
+         value={String(option.currentValue)}
+         onValueChange={onValueChange}
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 8bad8fc..25a4f72 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -79,6 +79,7 @@ interface ContextUsageBreakdownSegment {
+ }
+ 
+ const PERCENT_MAX = 100;
++const CACHE_HIT_RATE_DISPLAY_THRESHOLD = 0.78;
+ 
+ function formatContextUsageTokenCount(
+   value: number,
+@@ -112,6 +113,19 @@ function formatContextUsageSummary({
+   )} (${percentageFormatter.format(percent)})`;
+ }
+ 
++function formatContextCacheHitRateLabel(
++  hitRate: number | null | undefined,
++  locale: string,
++  options: { showBelowThreshold?: boolean } = {},
++): string | null {
++  if (hitRate === null || hitRate === undefined || !Number.isFinite(hitRate)) return null;
++  if (!options.showBelowThreshold && hitRate < CACHE_HIT_RATE_DISPLAY_THRESHOLD) return null;
++  return new Intl.NumberFormat(locale, {
++    maximumFractionDigits: 1,
++    style: "percent",
++  }).format(Math.max(0, hitRate));
++}
++
+ function getBreakdownToneStyle(index: number): CSSProperties {
+   return {
+     backgroundColor:
+@@ -823,6 +837,10 @@ export function ChatContextUsage({
+       },
+     );
+   }, [intl, numberFormatter, renderableTaskUsage]);
++  const cacheHitRateLabel = useMemo(() =>
++    formatContextCacheHitRateLabel(renderableTaskUsage?.cache?.hitRate, locale, {
++      showBelowThreshold: import.meta.env.DEV,
++    }), [locale, renderableTaskUsage]);
+   const breakdownSegments = useMemo(
+     () => buildContextUsageBreakdownSegments(renderableTaskUsage?.breakdown),
+     [renderableTaskUsage?.breakdown],
+@@ -997,7 +1015,7 @@ export function ChatContextUsage({
+               />
+             </div>
+           ) : null}
+-          {renderableTaskUsage && breakdownSegments.length > 0 ? (
++          {renderableTaskUsage && (breakdownSegments.length > 0 || cacheHitRateLabel) ? (
+             <>
+               {breakdownSegments.length > 0 ? (
+                 <div
+@@ -1032,6 +1050,17 @@ export function ChatContextUsage({
+                   </div>
+                 </div>
+               ) : null}
++              {cacheHitRateLabel ? (
++                <div className={cn(
++                  "flex items-center justify-between gap-3 text-ui-sm",
++                  breakdownSegments.length > 0 && "border-t border-border pt-3",
++                )}>
++                  <span className="text-foreground-subtle">
++                    {intl.formatMessage({ id: "chat.contextUsage.cacheHitRate" })}
++                  </span>
++                  <span className="font-mono text-ui-sm text-foreground">{cacheHitRateLabel}</span>
++                </div>
++              ) : null}
+             </>
+           ) : null}
+ 
+diff --git a/packages/ui/src/hooks/useSubscriptionUsage.ts b/packages/ui/src/hooks/useSubscriptionUsage.ts
+index 0b7f50a..5de8f58 100644
+--- a/packages/ui/src/hooks/useSubscriptionUsage.ts
++++ b/packages/ui/src/hooks/useSubscriptionUsage.ts
+@@ -29,9 +29,11 @@ export function useSubscriptionUsage({
+   revision,
+   accountId,
+   enabled = true,
++  poll = true,
+   onScopeChanged,
+ }: SubscriptionUsageScope & {
+   enabled?: boolean;
++  poll?: boolean;
+   onScopeChanged?: () => void;
+ }): SubscriptionUsageView {
+   const { providerSettingsService } = useServices();
+@@ -134,13 +136,13 @@ export function useSubscriptionUsage({
+   }, [readable, refresh]);
+ 
+   useEffect(() => {
+-    if (!readable || state?.scope !== scope || state.busy) return;
++    if (!readable || !poll || state?.scope !== scope || state.busy) return;
+     const timer = setTimeout(
+       () => void refresh(),
+       subscriptionUsageRefreshDelay(result, Date.now()),
+     );
+     return () => clearTimeout(timer);
+-  }, [readable, refresh, result, scope, state]);
++  }, [readable, poll, refresh, result, scope, state]);
+ 
+   useEffect(() => {
+     if (!readable || result?.status !== "available") return;
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index fd4e7da..75177e8 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -74,6 +74,8 @@ const enUS: Record<string, string> = {
+     "No model-list endpoint is available here. Saved models are retained; you can also add IDs manually.",
+   "settings.modelProvider.discovery.unauthorized":
+     "Model-list access was denied. Check the saved key and service permissions.",
++  "settings.modelProvider.discovery.forbidden":
++    "The provider rejected the model list (403) without a specific cause. Check key permissions, region and endpoint.",
+   "settings.modelProvider.discovery.failed":
+     "Could not read the model list. Saved models are unchanged.",
+   "settings.modelProvider.connectionsTitle": "Connected services",
+@@ -216,6 +218,15 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.subscription.open": "Open authorization page",
+   "settings.modelProvider.subscription.connectFirst": "Connect a subscription account first",
+   "settings.modelProvider.subscription.login": "Connect subscription",
++  "settings.modelProvider.subscription.error.generic": "Connection failed. Retry, then check account access or network if it persists.",
++  "settings.modelProvider.subscription.error.network": "Could not reach the authorization service. Check the network and retry.",
++  "settings.modelProvider.subscription.error.expired": "This authorization attempt expired. Start the connection again.",
++  "settings.modelProvider.subscription.error.callbackIncomplete": "Paste the complete callback URL from the browser address bar.",
++  "settings.modelProvider.subscription.error.callbackMismatch": "That callback belongs to another attempt. Reopen this authorization page.",
++  "settings.modelProvider.subscription.error.accountLimit": "Up to 10 accounts are supported. Remove one first.",
++  "settings.modelProvider.subscription.error.accountChanged": "Account details changed. Refresh and retry.",
++  "settings.modelProvider.subscription.error.unsupported": "This connection does not support that authorization step.",
++  "settings.modelProvider.subscription.error.address": "The authorization address is not valid for this service. Start again.",
+   "settings.modelProvider.subscription.disconnect": "Disconnect account",
+ 
+   "startPlan.recommendation.subagentDescription":
+@@ -3035,7 +3046,7 @@ const enUS: Record<string, string> = {
+     "Choose API connections to add. Existing connections are not duplicated; subscription accounts must sign in again.",
+   "settings.modelProvider.import.available": "Ready to import ({count})",
+   "settings.modelProvider.import.unavailable": "Existing or manual setup ({count})",
+-  "settings.modelProvider.import.ready": "Ready",
++  "settings.modelProvider.import.ready": "Can import",
+   "settings.modelProvider.import.notImportable": "Manual setup",
+   "settings.modelProvider.import.failedShort": "Import failed",
+   "settings.modelProvider.import.modelCount": "{count} models",
+@@ -5182,14 +5193,19 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.speed.unavailable": "This model no longer supports Fast. Turn it off to send.",
+   "chat.toolbar.speed.enable": "Enable Fast mode",
+   "chat.toolbar.speed.disable": "Disable Fast mode",
+-  "chat.toolbar.speed.codexMultiplier":
+-    "Fast uses 2.5× the Standard subscription credits. Reasoning is unchanged.",
+-  "chat.toolbar.speed.standard": "Standard",
++  "chat.toolbar.speed.tooltipTitle": "Fast mode",
++  "chat.toolbar.speed.creditImpact":
++    "Uses {extra}× extra subscription credits ({total}× total). Reasoning is unchanged.",
++  "chat.toolbar.speed.apiImpact":
++    "Estimated at {total}× the Standard API list rate; billing follows the served tier.",
++  "chat.toolbar.speed.claudeApiImpact":
++    "Claude API Fast is about {total}× the Standard rate, requires preview access, and rebuilds the prompt cache when speed changes.",
++  "chat.toolbar.speed.xaiApiImpact":
++    "xAI Priority is about {total}× the Standard rate, billed only when the response confirms Priority.",
+   "chat.toolbar.options.thinking": "Reasoning",
+-  "chat.toolbar.options.speed": "Speed",
+   "chat.toolbar.speed.label": "Fast",
+   "chat.toolbar.speed.description":
+-    "Request a faster service tier for the next message. Uses more subscription allowance or higher API rates; reasoning stays unchanged.",
++    "No verified rate multiplier for this connection. Check the provider's reported usage; reasoning is unchanged.",
+   "chat.toolbar.thoughtLevel.placeholder": "Select reasoning level",
+   "chat.toolbar.thoughtLevel.description":
+     "Adjust how much the agent thinks before answering. Higher effort is usually steadier but slower.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 78394de..a365cd8 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -64,6 +64,8 @@ const zhCN: Record<string, string> = {
+     "此地址未提供模型列表。已保存的模型仍保留，也可手动添加。",
+   "settings.modelProvider.discovery.unauthorized":
+     "模型列表读取未获授权，请检查已保存的密钥和服务权限。",
++  "settings.modelProvider.discovery.forbidden":
++    "服务商拒绝读取模型列表（403），未说明具体原因；请检查密钥权限、地区和请求地址。",
+   "settings.modelProvider.discovery.failed": "暂时无法读取模型列表，已保存的模型未改变。",
+   "settings.modelProvider.connectionsTitle": "已添加的服务",
+   "settings.modelProvider.connection.saveFirst": "请先保存连接更改，再测试模型。",
+@@ -185,6 +187,15 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.subscription.open": "打开授权页面",
+   "settings.modelProvider.subscription.connectFirst": "请先连接订阅账号",
+   "settings.modelProvider.subscription.login": "连接订阅账号",
++  "settings.modelProvider.subscription.error.generic": "连接失败，请重试；若仍失败，请检查账号权限或网络。",
++  "settings.modelProvider.subscription.error.network": "暂时无法连接授权服务，请检查网络后重试。",
++  "settings.modelProvider.subscription.error.expired": "本次授权已失效，请重新开始连接。",
++  "settings.modelProvider.subscription.error.callbackIncomplete": "请粘贴浏览器地址栏中的完整回调地址。",
++  "settings.modelProvider.subscription.error.callbackMismatch": "回调地址不属于本次授权，请重新打开授权页。",
++  "settings.modelProvider.subscription.error.accountLimit": "最多可连接 10 个账号，请先移除一个。",
++  "settings.modelProvider.subscription.error.accountChanged": "账号信息已变化，请刷新后重试。",
++  "settings.modelProvider.subscription.error.unsupported": "此连接暂不支持当前授权步骤。",
++  "settings.modelProvider.subscription.error.address": "授权地址不符合此服务的要求，请重新开始连接。",
+   "settings.modelProvider.subscription.disconnect": "退出此账号",
+ 
+   "startPlan.recommendation.subagentDescription":
+@@ -4838,13 +4849,15 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.speed.unavailable": "当前模型不支持快速模式，关闭后即可发送。",
+   "chat.toolbar.speed.enable": "开启快速模式",
+   "chat.toolbar.speed.disable": "关闭快速模式",
+-  "chat.toolbar.speed.codexMultiplier": "快速模式消耗普通模式 2.5 倍订阅额度，思考等级不变。",
+-  "chat.toolbar.speed.standard": "普通",
++  "chat.toolbar.speed.tooltipTitle": "快速模式",
++  "chat.toolbar.speed.creditImpact": "额外消耗 {extra} 倍订阅额度（总计 {total} 倍），思考等级不变。",
++  "chat.toolbar.speed.apiImpact": "按标准 API 列价的 {total} 倍估算；以实际返回的速度档位计费。",
++  "chat.toolbar.speed.claudeApiImpact": "Claude API Fast 约为标准价格的 {total} 倍，需有预览权限；切换速度会重新建立缓存。",
++  "chat.toolbar.speed.xaiApiImpact": "xAI 优先处理约为标准价格的 {total} 倍；仅实际返回优先档位时按此计费。",
+   "chat.toolbar.options.thinking": "思考等级",
+-  "chat.toolbar.options.speed": "速度",
+   "chat.toolbar.speed.label": "快速",
+   "chat.toolbar.speed.description":
+-    "下次发送使用快速通道，会增加订阅额度消耗或 API 费用，思考等级保持不变。",
++    "这个连接的加速倍率尚未核实；实际用量以服务商返回为准，思考等级不变。",
+   "chat.toolbar.thoughtLevel.placeholder": "选择思考档位",
+   "chat.toolbar.thoughtLevel.description":
+     "调整回答前的思考深度。通常越高越稳，但响应也会更慢一些。",
+diff --git a/packages/ui/src/lib/modelThoughtOption.ts b/packages/ui/src/lib/modelThoughtOption.ts
+index ccabeba..63bd706 100644
+--- a/packages/ui/src/lib/modelThoughtOption.ts
++++ b/packages/ui/src/lib/modelThoughtOption.ts
+@@ -35,3 +35,16 @@ export function resolveModelThoughtOption(params: {
+     })),
+   };
+ }
++
++/** Match the effort control's evidence boundary: runtime fallback is not Fast availability. */
++export function modelSupportsFast(
++  view: ModelSelectionView | null,
++  providerId: string | undefined,
++  modelId: string | undefined,
++): boolean {
++  const model = view?.providers.find((provider) => provider.providerId === providerId)
++    ?.models.find((candidate) => candidate.modelId === modelId);
++  return Boolean(model?.evidenceConfig
++    ? model.evidenceConfig.optionSpecs?.speedMode
++    : model?.config.optionSpecs.speedMode);
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 3a3d9a4..5dead79 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { fetchSavedModelCatalog } from "./modelDiscoveryActions.js";
++import { fetchSavedModelCatalog, modelCatalogFailureKind } from "./modelDiscoveryActions.js";
+ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+ import { ModelDraftRows } from "./ModelDraftRows.js";
+ 
+@@ -34,14 +34,9 @@ export function ModelDiscoverySection({
+   const searchInputRef = useRef<HTMLInputElement>(null);
+   const [busy, setBusy] = useState<"fetch" | null>(null);
+   const [error, setError] = useState<string>();
+-  const missingCatalog = /Model list request failed \((404|405)\)/.test(error ?? "");
+-  const errorMessage = missingCatalog
+-    ? t("noCatalog")
+-    : /Model list request failed \((401|403)\)/.test(error ?? "")
+-      ? t("unauthorized")
+-      : error
+-        ? t("failed")
+-        : undefined;
++  const errorKind = error ? modelCatalogFailureKind(error) : undefined;
++  const missingCatalog = errorKind === "noCatalog";
++  const errorMessage = errorKind ? t(errorKind) : undefined;
+   const generation = useRef(0);
+   const busyRef = useRef(false);
+   const loadCatalog = useCallback(async () => {
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 96fc422..af9e727 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -9,6 +9,7 @@ export function PlanStatusCardSurface({
+   trailingAction,
+   usageContent,
+   compact = false,
++  trailingActionFillNarrow = true,
+ }: {
+   planTitle?: string;
+   titleAccessory?: ReactNode;
+@@ -16,6 +17,7 @@ export function PlanStatusCardSurface({
+   trailingAction?: ReactNode;
+   usageContent?: ReactNode;
+   compact?: boolean;
++  trailingActionFillNarrow?: boolean;
+ }) {
+   return (
+     <div className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}>
+@@ -36,7 +38,10 @@ export function PlanStatusCardSurface({
+           </div>
+         </div>
+         {trailingAction ? (
+-          <div className="shrink-0 max-sm:flex max-sm:w-full max-sm:[&>button]:w-full">
++          <div className={cn(
++            "shrink-0 max-sm:flex",
++            trailingActionFillNarrow ? "max-sm:w-full max-sm:[&>button]:w-full" : "max-sm:justify-end",
++          )}>
+             {trailingAction}
+           </div>
+         ) : null}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index 69825f5..adde4e6 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -48,6 +48,7 @@ export function SubscriptionAccountRow({
+     revision,
+     accountId: account.id,
+     enabled: true,
++    poll: open,
+     onScopeChanged,
+   });
+   const result = reading.result;
+@@ -64,6 +65,7 @@ export function SubscriptionAccountRow({
+     <Collapsible open={open} onOpenChange={onOpenChange} role="group" aria-label={label}>
+       <PlanStatusCardSurface
+         compact
++        trailingActionFillNarrow={false}
+         planTitle={label}
+         titleAccessory={
+           tier ? (
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index ecbf43e..77d9733 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -14,6 +14,7 @@ import { useServices } from "@/hooks/useServices.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
++import { subscriptionUiErrorKey } from "./subscriptionUiError.js";
+ 
+ // Cindy's provider-scoped device flow: leaving this connection cancels only its own attempt.
+ export function SubscriptionConnectionSection({
+@@ -45,7 +46,9 @@ export function SubscriptionConnectionSection({
+     showFeedback({
+       key: `subscription:${providerId}`,
+       state: "failure",
+-      message: error instanceof Error ? error.message : String(error),
++      message: intl.formatMessage({
++        id: `settings.modelProvider.subscription.error.${subscriptionUiErrorKey(error)}`,
++      }),
+       dismissible: true,
+     });
+   const accountList = useSubscriptionAccountList(
+@@ -303,7 +306,9 @@ export function SubscriptionConnectionSection({
+                     })
+                     .catch((error) => {
+                       if (attempt.current === version)
+-                        setCallbackError(error instanceof Error ? error.message : String(error));
++                        setCallbackError(intl.formatMessage({
++                          id: `settings.modelProvider.subscription.error.${subscriptionUiErrorKey(error)}`,
++                        }));
+                     });
+                 }}
+               >
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index 43c803d..713c458 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -4,6 +4,17 @@ import type { IProviderSettingsService } from "@zcode/services";
+ 
+ export type DiscoveredCatalog = Awaited<ReturnType<IProviderSettingsService["discoverModels"]>>;
+ 
++export function modelCatalogFailureKind(error: unknown):
++  "noCatalog" | "unauthorized" | "forbidden" | "failed" {
++  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
++  const status = /Model list request failed \((\d{3})\)/.exec(message)?.[1];
++  if (status === "404" || status === "405") return "noCatalog";
++  if (status === "401") return "unauthorized";
++  // A bare 403 does not identify whether the key, model entitlement, region or endpoint denied access.
++  if (status === "403") return "forbidden";
++  return "failed";
++}
++
+ export async function fetchSavedModelCatalog(input: {
+   providerId: string;
+   service: Pick<IProviderSettingsService, "discoverModels">;
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts b/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts
+new file mode 100644
+index 0000000..f66a416
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts
+@@ -0,0 +1,17 @@
++/** Never surface an SDK or OAuth exception body directly in the account card. */
++export function subscriptionUiErrorKey(error: unknown): string {
++  const message = error instanceof Error ? error.message : "";
++  if (message === "Paste the complete localhost callback URL") return "callbackIncomplete";
++  if (message === "This callback does not belong to the current login") return "callbackMismatch";
++  if (message === "Subscription login expired or cancelled" ||
++      message === "Subscription operation cancelled") return "expired";
++  if (message === "Remove an account before adding another") return "accountLimit";
++  if (message.includes("account changed") || message === "Account no longer exists")
++    return "accountChanged";
++  if (message === "Unsupported authorization step" ||
++      message === "Subscription authorization is unavailable") return "unsupported";
++  if (message === "Unexpected authorization address") return "address";
++  if (error instanceof TypeError || /\b(?:ETIMEDOUT|ECONNRESET|ENOTFOUND)\b/.test(message))
++    return "network";
++  return "generic";
++}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 296f481..6415184 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -19,6 +19,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import {
+   BUILTIN_MODEL_PROVIDER_IDS,
+   getModelProviderFamilySpec,
++  lookupFastModePriceImpact,
++  resolveUsageBillingProvider,
+   resolveModelProviderFamilySpecByProviderId,
+   TID_V4_MODEL_CONFIG,
+   TID_V4_COMPOSER_INPUT,
+@@ -50,6 +52,7 @@ import {
+ } from "@/chat-input-toolbar/StartPlanContextBalance.js";
+ import { ThoughtLevelCycleControl } from "@/chat-input-toolbar/ThoughtLevelCycleControl.js";
+ import { getNextThoughtLevelValue } from "@/chat-input-toolbar/thoughtLevelOptions.js";
++import { modelSupportsFast } from "@/lib/modelThoughtOption.js";
+ import type { V4ComposerConfigPicker } from "@/v4/composer/configPickerState.js";
+ import { useToolbarShortcutBindings } from "@/v4/composer/toolbarShortcuts.js";
+ import {
+@@ -937,11 +940,36 @@ function V4ComposerModelControlsImpl({
+     (provider) => provider.providerId === effectiveConfig?.provider,
+   );
+   const selectedSubscription = selectedSubscriptionProvider?.config.access;
+-  const supportsFast = Boolean(
+-    selectedSubscriptionProvider?.models.find((model) => model.modelId === effectiveConfig?.model)
+-      ?.config.optionSpecs.speedMode,
++  const supportsFast = modelSupportsFast(
++    modelSelectionView, effectiveConfig?.provider, effectiveConfig?.model,
+   );
+   const fastEnabled = draftConfig?.modelSelection?.options?.speedMode === "fast";
++  const fastBillingProvider = selectedSubscription?.type === "subscription"
++    ? selectedSubscription.provider === "openai-codex" ? "openai" : selectedSubscription.provider
++    : selectedSubscriptionProvider?.config.api?.baseUrl
++      ? resolveUsageBillingProvider(selectedSubscriptionProvider.config.api.baseUrl)
++      : undefined;
++  const fastImpact = effectiveConfig?.model ? lookupFastModePriceImpact({
++    billingProvider: fastBillingProvider,
++    modelId: effectiveConfig.model,
++    subscription: selectedSubscription?.type === "subscription",
++  }) : undefined;
++  const fastImpactNumber = fastImpact ? new Intl.NumberFormat(locale, {
++    maximumFractionDigits: 1,
++  }) : undefined;
++  const fastImpactNote = fastImpact?.basis === "subscription-credits"
++    ? intl.formatMessage({ id: "chat.toolbar.speed.creditImpact" }, {
++        extra: fastImpactNumber!.format(fastImpact.multiplier - 1),
++        total: fastImpactNumber!.format(fastImpact.multiplier),
++      })
++    : fastImpact?.basis === "api-list-price"
++      ? intl.formatMessage({ id: fastBillingProvider === "xai"
++          ? "chat.toolbar.speed.xaiApiImpact"
++          : fastBillingProvider === "anthropic"
++            ? "chat.toolbar.speed.claudeApiImpact"
++            : "chat.toolbar.speed.apiImpact",
++        }, { total: fastImpactNumber!.format(fastImpact.multiplier) })
++      : intl.formatMessage({ id: "chat.toolbar.speed.description" });
+   const lastUsageRequest = usage?.lastRequest;
+   const matchingLastRequest = lastUsageRequest && lastUsageRequest.providerId === effectiveConfig?.provider && lastUsageRequest.modelId === effectiveConfig?.model ? lastUsageRequest : undefined;
+   const subscriptionConnection =
+@@ -1074,22 +1102,7 @@ function V4ComposerModelControlsImpl({
+             supportsFast || fastEnabled
+               ? {
+                   value: fastEnabled ? "fast" : "standard",
+-                  note: intl.formatMessage({
+-                    id:
+-                      selectedSubscription?.type === "subscription" &&
+-                      selectedSubscription.provider === "openai-codex" &&
+-                      [
+-                        "gpt-6-sol",
+-                        "gpt-6-astra",
+-                        "gpt-6-luna",
+-                        "gpt-5.6-sol",
+-                        "gpt-5.6-terra",
+-                        "gpt-5.6-luna",
+-                        "gpt-5.5",
+-                      ].includes(effectiveConfig?.model ?? "")
+-                        ? "chat.toolbar.speed.codexMultiplier"
+-                        : "chat.toolbar.speed.description",
+-                  }),
++                  note: fastImpactNote,
+                   onChange: onSelectSpeed,
+                 }
+               : undefined
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+index 924ae10..d16b4ec 100644
+--- a/packages/ui/test/modelEvidenceSelection.test.ts
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
+ import test from "node:test";
+ import type { ModelSelectionView } from "@zcode/services";
+ import { resolveDraftInitialModelSelection } from "../src/lib/composerRecent.js";
+-import { resolveModelThoughtOption } from "../src/lib/modelThoughtOption.js";
++import { modelSupportsFast, resolveModelThoughtOption } from "../src/lib/modelThoughtOption.js";
+ 
+ const runtimeConfig = {
+   properties: { contextWindow: 200_000 },
+   optionSpecs: { reasoningLevel: { values: ["low", "high"] } },
+ };
+ 
+-function view(evidenceConfig: object): ModelSelectionView {
++function view(evidenceConfig: object, config: object = runtimeConfig): ModelSelectionView {
+   return {
+     providers: [{
+       providerId: "synthetic-provider",
+-      models: [{ modelId: "unknown-model", config: runtimeConfig, evidenceConfig }],
++      models: [{ modelId: "unknown-model", config, evidenceConfig }],
+     }],
+   } as unknown as ModelSelectionView;
+ }
+@@ -54,3 +54,15 @@ test("reported reasoning is available without borrowing fallback-only levels", (
+     options: { reasoningLevel: "high" },
+   }).invalidated, true);
+ });
++
++test("Fast control follows sourced model capability, not the runtime fallback", () => {
++  const runtime = { ...runtimeConfig, optionSpecs: {
++    ...runtimeConfig.optionSpecs, speedMode: "openai-priority",
++  } };
++  const catalog = view({}, runtime);
++  assert.equal(modelSupportsFast(catalog, "synthetic-provider", "unknown-model"), false);
++  const evidenced = view({ optionSpecs: { speedMode: "openai-priority" } }, runtime);
++  assert.equal(modelSupportsFast(evidenced, "synthetic-provider", "unknown-model"), true);
++  assert.equal(modelSupportsFast(view({ optionSpecs: { speedMode: null } }),
++    "synthetic-provider", "unknown-model"), false);
++});
+diff --git a/packages/ui/test/subscriptionUiError.test.ts b/packages/ui/test/subscriptionUiError.test.ts
+new file mode 100644
+index 0000000..e37248c
+--- /dev/null
++++ b/packages/ui/test/subscriptionUiError.test.ts
+@@ -0,0 +1,16 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { subscriptionUiErrorKey } from "../src/settings/model-provider-section/subscriptionUiError.js";
++
++test("subscription account errors map to actionable local copy without exposing provider bodies", () => {
++  assert.equal(subscriptionUiErrorKey(new Error("Paste the complete localhost callback URL")),
++    "callbackIncomplete");
++  assert.equal(subscriptionUiErrorKey(new Error("This callback does not belong to the current login")),
++    "callbackMismatch");
++  assert.equal(subscriptionUiErrorKey(new Error("Remove an account before adding another")),
++    "accountLimit");
++  assert.equal(subscriptionUiErrorKey(new Error("Subscription account changed during refresh")),
++    "accountChanged");
++  assert.equal(subscriptionUiErrorKey(new TypeError("fetch failed")), "network");
++  assert.equal(subscriptionUiErrorKey(new Error("upstream included private token")), "generic");
++});
+diff --git a/third-party/copied-components.json b/third-party/copied-components.json
+index 0e272fe..3d796fe 100644
+--- a/third-party/copied-components.json
++++ b/third-party/copied-components.json
+@@ -277,18 +277,5 @@
+     ],
+     "scope": "Bundled price data only; calculator and sync script are independently implemented.",
+     "license": "MIT"
+-  },
+-  {
+-    "id": "evilcharts-cost-bar-pattern",
+-    "referenceRevision": "500ecd44c1fdcf319ba83ea68f3771bc76125974",
+-    "importRevision": "500ecd44c1fdcf319ba83ea68f3771bc76125974",
+-    "source": "https://github.com/legions-developer/evilcharts/blob/500ecd44c1fdcf319ba83ea68f3771bc76125974/LICENSE",
+-    "file": "third-party/evilcharts-LICENSE.txt",
+-    "sha256": "7b6baf25f6caa0de061a2c99a47205d6651cdefc6e636910bc51bb3853ed056e",
+-    "roots": [
+-      "packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx"
+-    ],
+-    "scope": "Horizontal grouped-bar composition adapted to existing ZCode ChartContainer and monetary/unknown-value semantics; no EvilCharts runtime, styling system or dependencies imported.",
+-    "license": "MIT"
+   }
+ ]

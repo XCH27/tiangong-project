@@ -1,0 +1,1304 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-inspect.ts
+new file mode 100644
+index 0000000..9d975cf
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-inspect.ts
+@@ -0,0 +1,98 @@
++import { accessSync, constants } from "node:fs";
++import { execFile } from "node:child_process";
++import { homedir } from "node:os";
++import { join } from "node:path";
++import { withNativeExecutorNetwork } from "./native-network.js";
++
++/**
++ * agy 的默认安装位置是 ~/.local/bin/agy；桌面应用的 PATH 通常不含该目录，所以先找它再回退 PATH。
++ */
++export function resolveAntigravityExecutable(override?: string): string {
++  if (override) return override;
++  const name = process.platform === "win32" ? "agy.exe" : "agy";
++  for (const candidate of [join(homedir(), ".local", "bin", name)]) {
++    try {
++      accessSync(candidate, constants.X_OK);
++      return candidate;
++    } catch {
++      /* fall back to PATH */
++    }
++  }
++  return name;
++}
++
++/** agy has no account query; one local sign-in is bound to this fixed identity. */
++export const ANTIGRAVITY_LOCAL_ACCOUNT = "antigravity-local";
++
++function run(
++  executable: string,
++  args: string[],
++  env: NodeJS.ProcessEnv,
++  timeout = 30_000,
++): Promise<{ stdout: string; stderr: string }> {
++  return new Promise((resolve, reject) => {
++    execFile(executable, args, { env, timeout, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
++      if (error) reject(Object.assign(error, { stdout, stderr }));
++      else resolve({ stdout, stderr });
++    });
++  });
++}
++
++export interface AntigravityModel {
++  id: string;
++  name: string;
++}
++
++/** `agy models` prints `id<TAB>label` rows after an optional progress line. */
++export function parseAgyModels(stdout: string): AntigravityModel[] {
++  const models: AntigravityModel[] = [];
++  for (const line of stdout.split(/\r?\n/u)) {
++    const [id, name] = line.split("\t");
++    if (!id || !name || !/^[a-z0-9][a-z0-9._-]{0,127}$/iu.test(id.trim())) continue;
++    if (!models.some((model) => model.id === id.trim()))
++      models.push({ id: id.trim(), name: name.trim() });
++  }
++  return models;
++}
++
++export function antigravityEnvironment(overrides: Record<string, string | undefined> = {}) {
++  const env: NodeJS.ProcessEnv = { ...process.env, ...overrides };
++  // agy 使用自身的 Google 登录；继承的 Gemini API 变量会把它切到另一条计费路线。
++  delete env.GEMINI_API_KEY;
++  delete env.GOOGLE_GEMINI_BASE_URL;
++  return withNativeExecutorNetwork(env, "antigravity");
++}
++
++type Options = { executable?: string; env?: Record<string, string | undefined> };
++
++/** Local only: identifies the executor build that owns a resumable conversation. */
++export async function antigravityVersion(options: Options = {}): Promise<string> {
++  const executable = resolveAntigravityExecutable(options.executable);
++  try {
++    const { stdout } = await run(executable, ["--version"], antigravityEnvironment(options.env), 10_000);
++    return stdout.trim() || "agy";
++  } catch {
++    throw new Error("Antigravity CLI (agy) is not installed or cannot start");
++  }
++}
++
++/** Public CLI controls only: version and authenticated model catalog. No prompt is sent. */
++export async function inspectAntigravityConnection(
++  options: Options = {},
++): Promise<{ version: string; models: AntigravityModel[] }> {
++  const version = await antigravityVersion(options);
++  let stdout = "";
++  try {
++    stdout = (await run(resolveAntigravityExecutable(options.executable), ["models"], antigravityEnvironment(options.env))).stdout;
++  } catch (error) {
++    const failure = error as { killed?: boolean; stderr?: string };
++    // 超时多为无法连到 Google（终端代理不会被图形应用继承），不能误报成未登录。
++    if (failure.killed || !/sign in/iu.test(failure.stderr ?? ""))
++      throw new Error("Antigravity CLI failed: network (check the network or proxy)");
++    throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
++  }
++  const models = parseAgyModels(stdout);
++  if (!models.length)
++    throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
++  return { version, models };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+new file mode 100644
+index 0000000..85112ff
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+@@ -0,0 +1,241 @@
++import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
++import { createHash } from "node:crypto";
++import { createInterface } from "node:readline";
++import type {
++  Model,
++  ModelResult,
++  ModelUsage,
++  NativeAgentContinuation,
++  NativeAgentPort,
++} from "@zcode/contracts";
++import { NativeEvents } from "./native-events.js";
++import {
++  addAgyUsage,
++  agyPermissionArgs,
++  agyPrompt,
++  decodeAgyFrame,
++  isAgyConversationId,
++} from "./antigravity-wire.js";
++import {
++  antigravityEnvironment,
++  antigravityVersion,
++  resolveAntigravityExecutable,
++} from "./antigravity-inspect.js";
++
++const SIGN_IN = "Sign in to the official Antigravity CLI first: run `agy` in a terminal";
++const cachePath = (conversationId: string) => `agy-conversation:${conversationId}`;
++const fingerprint = (conversationId: string, version: string) =>
++  createHash("sha256").update(JSON.stringify([conversationId, version])).digest("hex");
++
++/**
++ * Official Antigravity CLI as one complete executor per turn (Paseo antigravity-provider and
++ * AionCore backend/antigravity mechanisms). agy keeps its own conversation; Fleet resumes it with
++ * `--conversation` and owns canonical history, usage and the permission choice (OV-094).
++ */
++export function createAntigravityNativeAgentPort(
++  options: { env?: Record<string, string | undefined> } = {},
++): NativeAgentPort {
++  return {
++    async canResume(continuation, request) {
++      if (
++        !isAgyConversationId(continuation.sessionId) ||
++        continuation.cachePath !== cachePath(continuation.sessionId)
++      )
++        return false;
++      try {
++        const version = await antigravityVersion({
++          executable: request.model.nativeExecutor?.executable,
++          env: options.env,
++        });
++        return (
++          version === continuation.executorVersion &&
++          continuation.cacheFingerprint === fingerprint(continuation.sessionId, version)
++        );
++      } catch {
++        return false;
++      }
++    },
++    createTurn(request) {
++      if (request.model.nativeExecutor?.kind !== "antigravity")
++        throw new Error("Unsupported native Agent executor");
++      const events = new NativeEvents();
++      const executable = resolveAntigravityExecutable(request.model.nativeExecutor.executable);
++      let child: ChildProcessWithoutNullStreams | undefined;
++      let started = false;
++      let closed = false;
++      let completed = false;
++      let conversationId = request.continuation?.sessionId;
++      let version: string | undefined;
++      let usage: ModelUsage = {};
++      let stderr = "";
++      const fail = (error: unknown) => {
++        if (closed) return;
++        closed = true;
++        events.push(error instanceof Error ? error : new Error("Antigravity execution failed"));
++        child?.kill("SIGINT");
++      };
++      const finish = (text: string) => {
++        completed = true;
++        // agy 的流式增量按字节切分，会把跨块的中文截成乱码；与 AionCore 一致只采用 result.response。
++        if (text) events.push({ type: "text_delta", text });
++        const result: ModelResult = {
++          text,
++          usage,
++          finishReason: "stop",
++          providerMetadata: {
++            nativeExecutor: "antigravity",
++            nativeSessionId: conversationId,
++            nativeContinuationMode: request.continuation ? "resume" : "fresh",
++            fleetAccounting: {
++              billingProvider: "google",
++              authKind: "subscription",
++              accountId: request.model.nativeExecutor?.accountId,
++            },
++          },
++        };
++        events.push({
++          type: "finish",
++          finishReason: result.finishReason,
++          usage: result.usage,
++          providerMetadata: result.providerMetadata,
++        });
++      };
++      const launch = (messages: Parameters<Model["streamText"]>[0]["messages"]) => {
++        if (started) return;
++        started = true;
++        void (async () => {
++          if (request.signal.aborted) throw new Error("Antigravity turn stopped");
++          version = await antigravityVersion({ executable, env: options.env });
++          const resumed = Boolean(request.continuation);
++          const prompt = agyPrompt(messages, resumed, request.continuationMessageOffset);
++          if (!prompt) throw new Error("Antigravity received an empty prompt");
++          const args = [
++            "--input-format",
++            "stream-json",
++            "--output-format",
++            "stream-json",
++            "--add-dir",
++            request.workingDirectory,
++            "--disable-slash-commands",
++            ...agyPermissionArgs(request.collaborationMode),
++            "--model",
++            String(request.model.modelId),
++            ...(resumed && conversationId ? ["--conversation", conversationId] : []),
++          ];
++          child = spawn(executable, args, {
++            cwd: request.workingDirectory,
++            env: antigravityEnvironment(options.env),
++            stdio: "pipe",
++          });
++          child.stderr.on("data", (chunk: Buffer) => {
++            stderr = (stderr + chunk.toString()).slice(-4096);
++          });
++          child.on("error", fail);
++          child.on("close", (code) => {
++            if (!completed && !closed)
++              fail(
++                new Error(
++                  /authentication|sign.?in|log.?in/iu.test(stderr)
++                    ? SIGN_IN
++                    : `Antigravity exited before finishing (${code ?? "signal"})`,
++                ),
++              );
++          });
++          const lines = createInterface({ input: child.stdout });
++          lines.on("line", (line) => {
++            if (!line.trim() || closed) return;
++            try {
++              const frame = decodeAgyFrame(line);
++              if (!frame) return;
++              if (frame.event === "init") {
++                if (resumed && conversationId && frame.conversation_id !== conversationId)
++                  throw new Error("Antigravity resumed a different conversation");
++                conversationId = frame.conversation_id;
++                return;
++              }
++              if (frame.event === "step_update") {
++                const step = frame.step_update;
++                if (step.step_type === "agent_response" && step.state === "DONE")
++                  usage = addAgyUsage(usage, step.usage);
++                return;
++              }
++              const result = frame.result;
++              if (result.status !== "SUCCESS")
++                throw new Error(
++                  /authentication/iu.test(result.error ?? "")
++                    ? SIGN_IN
++                    : result.error?.trim() || "Antigravity turn failed",
++                );
++              const denied = (result.denied_actions ?? [])
++                .map((item) => item.display_name || item.action)
++                .filter(Boolean);
++              const note = denied.length
++                ? `\n\n> Antigravity 未执行需要确认的操作：${denied.join("、")}。如需执行，请在输入框切换到“自动编辑”或“完全访问”。`
++                : "";
++              finish(`${result.response ?? ""}${note}`);
++              child?.stdin.end();
++            } catch (error) {
++              fail(error);
++            }
++          });
++          child.stdin.write(
++            `${JSON.stringify({ event: "user", message: { role: "user", content: prompt } })}\n`,
++          );
++        })().catch(fail);
++      };
++      const model: Model = {
++        ...request.model,
++        bind() {
++          return model;
++        },
++        async generateText(input) {
++          let body = "";
++          for await (const event of model.streamText(input)) {
++            if (event.type === "text_delta") body += event.text;
++            if (event.type === "finish")
++              return {
++                text: body,
++                finishReason: event.finishReason,
++                usage: event.usage,
++                providerMetadata: event.providerMetadata,
++              };
++          }
++          throw new Error("Antigravity ended without a result");
++        },
++        async *streamText(input) {
++          launch(input.messages);
++          for (;;) {
++            const event = await events.next();
++            yield event;
++            if (event.type === "finish") return;
++          }
++        },
++      };
++      const stop = () => fail(new Error("Antigravity turn stopped"));
++      request.signal.addEventListener("abort", stop, { once: true });
++      return {
++        model,
++        async checkpoint(): Promise<NativeAgentContinuation | undefined> {
++          if (!completed || !conversationId || !version) return undefined;
++          return {
++            sessionId: conversationId,
++            cachePath: cachePath(conversationId),
++            cacheFingerprint: fingerprint(conversationId, version),
++            executorVersion: version,
++          };
++        },
++        admitNextStep() {
++          if (closed || request.signal.aborted) throw new Error("Antigravity turn stopped");
++          events.push({ type: "start" });
++        },
++        // agy 的工具在其自身进程内执行，没有需要 Host 回传的工具回执。
++        retainToolReceipts() {},
++        async close() {
++          request.signal.removeEventListener("abort", stop);
++          if (child && child.exitCode === null && !completed) child.kill("SIGINT");
++          closed = true;
++        },
++      };
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+new file mode 100644
+index 0000000..38bd28e
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+@@ -0,0 +1,143 @@
++import type { CollaborationMode, ModelInputMessage, ModelUsage } from "@zcode/contracts";
++
++/**
++ * Antigravity CLI (`agy`) stream-json contract, as captured from agy 1.2.13 by Paseo
++ * (plugins/antigravity-provider/test/fixtures) and used by AionCore backend/antigravity.
++ * Frames: init{conversation_id} → step_update{step_type,state,text_delta,usage} → result{status,response}.
++ */
++export interface AgyInit {
++  event: "init";
++  conversation_id: string;
++}
++export interface AgyStep {
++  event: "step_update";
++  step_update: {
++    step_index: number;
++    state: "ACTIVE" | "DONE" | "ERROR";
++    step_type: string;
++    text_delta?: string;
++    tool_name?: string;
++    usage?: AgyUsage | null;
++  };
++}
++export interface AgyResult {
++  event: "result";
++  result: {
++    conversation_id?: string;
++    status: "SUCCESS" | "ERROR";
++    response?: string;
++    error?: string;
++    denied_actions?: { action: string; display_name: string }[];
++  };
++}
++export type AgyFrame = AgyInit | AgyStep | AgyResult;
++interface AgyUsage {
++  input_tokens?: number;
++  output_tokens?: number;
++  thinking_tokens?: number;
++  cache_read_tokens?: number;
++  total_tokens?: number;
++}
++
++const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
++export const isAgyConversationId = (value: unknown): value is string =>
++  typeof value === "string" && UUID.test(value);
++
++/** Unknown frame kinds are ignored; malformed known frames fail the turn. */
++export function decodeAgyFrame(line: string): AgyFrame | undefined {
++  const value = JSON.parse(line) as Record<string, unknown>;
++  if (!value || typeof value !== "object") throw new Error("Invalid Antigravity frame");
++  if (value.event === "init") {
++    if (!isAgyConversationId(value.conversation_id)) throw new Error("Invalid Antigravity conversation");
++    return value as unknown as AgyInit;
++  }
++  if (value.event === "step_update") {
++    const step = value.step_update as Record<string, unknown> | undefined;
++    if (!step || typeof step.step_type !== "string" || typeof step.state !== "string")
++      throw new Error("Invalid Antigravity step");
++    return value as unknown as AgyStep;
++  }
++  if (value.event === "result") {
++    const result = value.result as Record<string, unknown> | undefined;
++    if (!result || (result.status !== "SUCCESS" && result.status !== "ERROR"))
++      throw new Error("Invalid Antigravity result");
++    return value as unknown as AgyResult;
++  }
++  return undefined;
++}
++
++const count = (value: unknown) =>
++  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
++
++/** Sum the per-step usage agy reports on DONE agent steps; unknown counters stay absent. */
++export function addAgyUsage(total: ModelUsage, usage: AgyUsage | null | undefined): ModelUsage {
++  if (!usage) return total;
++  const add = (left: number | undefined, right: unknown) => {
++    const value = count(right);
++    return value === undefined ? left : (left ?? 0) + value;
++  };
++  return {
++    ...total,
++    inputTokens: add(total.inputTokens, usage.input_tokens),
++    outputTokens: add(total.outputTokens, usage.output_tokens),
++    reasoningTokens: add(total.reasoningTokens, usage.thinking_tokens),
++    cacheReadTokens: add(total.cacheReadTokens, usage.cache_read_tokens),
++    totalTokens: add(total.totalTokens, usage.total_tokens),
++  };
++}
++
++/**
++ * Fleet 权限选择 → agy 参数（OV-094）。agy 无法在 stream-json 中转发确认请求：
++ * plan（计划模式）→ --mode plan；build（变更前确认）与未暴露的 auto → 默认（agy 需确认的工具被拒绝并在
++ * result.denied_actions 中报告）；edit（自动编辑）→ --mode accept-edits；yolo（完全访问）→
++ * --dangerously-skip-permissions。
++ */
++export function agyPermissionArgs(mode: CollaborationMode | undefined): string[] {
++  if (mode === "plan") return ["--mode", "plan"];
++  if (mode === "edit") return ["--mode", "accept-edits"];
++  if (mode === "yolo") return ["--dangerously-skip-permissions"];
++  return [];
++}
++
++function text(content: ModelInputMessage["content"]): string {
++  if (typeof content === "string") return content;
++  return content
++    .map((block) =>
++      block.type === "text"
++        ? block.text
++        : block.type === "image"
++          ? "[An attached image is not available to Antigravity in this turn]"
++          : block.type === "reasoning"
++            ? ""
++            : "",
++    )
++    .filter(Boolean)
++    .join("\n");
++}
++
++/**
++ * One user event per Fleet turn. A resumed agy conversation already holds its history, so only
++ * messages after the covered offset are sent; a fresh one receives Fleet instructions and the
++ * visible transcript once.
++ */
++export function agyPrompt(
++  messages: readonly ModelInputMessage[],
++  resumed: boolean,
++  offset = 0,
++): string {
++  const system = messages.filter((message) => message.role === "system").map((m) => text(m.content));
++  const visible = messages.filter((message) => message.role !== "system");
++  const pending = resumed ? visible.slice(offset) : visible;
++  const last = pending.at(-1);
++  const prior = pending.slice(0, -1);
++  const parts: string[] = [];
++  if (!resumed && system.length) parts.push(system.join("\n\n"));
++  if (prior.length)
++    parts.push(
++      prior
++        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${text(message.content)}`)
++        .join("\n\n"),
++    );
++  if (last) parts.push(text(last.content));
++  return parts.join("\n\n").trim();
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
+index dfa0f8d..ab2212d 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
+@@ -1,3 +1,5 @@
++import { withNativeExecutorNetwork } from "./native-network.js";
++
+ /** Consumer native authentication remains with the official CLI, never an inherited API key. */
+ export function claudeNativeEnvironment(
+   overrides: Record<string, string | undefined> = {},
+@@ -23,5 +25,5 @@ export function claudeNativeEnvironment(
+     ...overrides,
+   });
+   if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
+-  return env;
++  return withNativeExecutorNetwork(env, "claude");
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-client.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-client.ts
+index 0237e2e..a185d42 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/codex-client.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-client.ts
+@@ -1,5 +1,6 @@
+ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+ import { StringDecoder } from "node:string_decoder";
++import { withNativeExecutorNetwork } from "./native-network.js";
+ 
+ export interface CodexNotification {
+   method: string;
+@@ -24,7 +25,7 @@ export function codexNativeEnvironment(options: CodexClientOptions): NodeJS.Proc
+     delete env[key];
+   Object.assign(env, options.env);
+   if (options.configDir) env.CODEX_HOME = options.configDir;
+-  return env;
++  return withNativeExecutorNetwork(env, "codex");
+ }
+ 
+ /** Official newline JSON-RPC, not MCP and not another Session or command queue. */
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index b3f29f5..5de9978 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -8,3 +8,4 @@ export { createNativeAgentModel } from "./model.js";
+ export { inspectClaudeNativeConnection, requireClaudeSubscriptionAccount, readClaudeNativeUsage } from "./claude-inspect.js";
+ export { startClaudeNativeLogin } from "./claude-login.js";
+ export { readClaudeOAuthUsage } from "./claude-oauth-usage.js";
++export { inspectAntigravityConnection, parseAgyModels, ANTIGRAVITY_LOCAL_ACCOUNT } from "./antigravity-inspect.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+index fc6fb38..38e42eb 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
+ import { createNativeAgentPort } from "./native-port.js";
+ import { resolveCodexNativeExecutable } from "./codex-executable.js";
+ import { resolveClaudeNativeExecutable } from "./claude-executable.js";
++import { resolveAntigravityExecutable } from "./antigravity-inspect.js";
+ import { getCurrentModelInvocationContext } from "@zcode/contracts";
+ 
+ /** Native route; auxiliary no-tool requests use the same official executor and account fence. */
+@@ -23,7 +24,7 @@ export function createNativeAgentModel(
+           ? resolveClaudeNativeExecutable(access.executable)
+           : access.provider === "codex"
+             ? resolveCodexNativeExecutable(access.executable)
+-            : (access.executable ?? "agy"),
++            : resolveAntigravityExecutable(access.executable),
+       configDir: access.configDir,
+       accountId: access.accountId,
+     },
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+new file mode 100644
+index 0000000..90200c5
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -0,0 +1,31 @@
++import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
++import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
++
++export type NativeExecutorKind = "claude" | "codex" | "antigravity";
++
++const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
++
++function routes(value: string | undefined): Partial<Record<NativeExecutorKind, NetworkEgressEnvPolicy>> {
++  if (!value) return {};
++  try {
++    const parsed = JSON.parse(value) as unknown;
++    return parsed && typeof parsed === "object" ? (parsed as Record<string, NetworkEgressEnvPolicy>) : {};
++  } catch {
++    return {};
++  }
++}
++
++/**
++ * GUI 启动的应用不继承终端代理变量。Host 在 Agent 启动时按各官方端点解析系统路由，这里只把对应
++ * 执行器的那一条应用到其子进程；已有显式代理（应用设置或继承的环境）时保持不变，Bash/MCP 不受影响。
++ */
++export function withNativeExecutorNetwork(env: NodeJS.ProcessEnv, kind: NativeExecutorKind): NodeJS.ProcessEnv {
++  const route = routes(env[FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY])[kind];
++  delete env[FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY];
++  if (!route?.httpProxy || PROXY_KEYS.some((key) => env[key]?.trim())) return env;
++  return applyNetworkEgressEnv(env as Record<string, string>, {
++    network: route,
++    sourceEnv: {},
++    toolEnvPassthrough: false,
++  });
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
+index 4c222b8..e27ab96 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
+@@ -1,14 +1,17 @@
+ import type { NativeAgentPort } from "@zcode/contracts";
+ import { createClaudeNativeAgentPort } from "./claude.js";
+ import { createCodexNativeAgentPort } from "./codex-turn.js";
++import { createAntigravityNativeAgentPort } from "./antigravity-turn.js";
+ 
+ /** One executor per admitted model; the Host and its durable writers remain unchanged. */
+ export function createNativeAgentPort(): NativeAgentPort {
+   const claude = createClaudeNativeAgentPort(),
+-    codex = createCodexNativeAgentPort();
++    codex = createCodexNativeAgentPort(),
++    antigravity = createAntigravityNativeAgentPort();
+   const select = (kind?: string) => {
+     if (kind === "claude") return claude;
+     if (kind === "codex") return codex;
++    if (kind === "antigravity") return antigravity;
+     throw new Error("Unsupported native Agent executor");
+   };
+   return {
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+index 948680c..03b832a 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+@@ -1,4 +1,5 @@
+ import type { Model } from "../model/model.js";
++import type { CollaborationMode } from "./session.port.js";
+ import type { ModelToolContract, ModelInputMessage, ModelMessageContent } from "../model/index.js";
+ 
+ /** A vendor owns continuation; the Host owns admission, effects, canonical history and usage. */
+@@ -10,6 +11,8 @@ export interface NativeAgentTurnRequest {
+   turnId: string;
+   workingDirectory: string;
+   signal: AbortSignal;
++  /** The Session's current permission choice; executors whose own tools run inside the vendor map it. */
++  collaborationMode?: CollaborationMode;
+   /** Supplied only by the durable Host Session path; auxiliary calls remain ephemeral. */
+   persistContinuation?: boolean;
+   continuation?: NativeAgentContinuation;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+index 0687efd..bcdad2f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+@@ -29,6 +29,7 @@ export async function runNativeAgentTurn(
+       turnId: state.turnId,
+       workingDirectory: runtime.workingDirectory,
+       signal: state.turnAbortSignal,
++      collaborationMode: runtime.getMode(),
+     });
+     return { native: port.createTurn(continuation.request), continuation };
+   };
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 382810e..db379f7 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -51,6 +51,13 @@ provider's reported cost impact. Model and speed changes apply to the next submi
+ those choices. An active turn keeps the account established by its first request. Do not assume
+ that changing the default before a queued turn starts leaves that turn on its former account.
+ 
++Claude, ChatGPT and Antigravity connections run each turn through the official CLI on this machine.
++Antigravity first needs a Google sign-in: run `agy` in a terminal. Its tools run inside its own
++process, so the composer's permission choice maps to its modes: Plan mode only plans; Ask before
++changes refuses actions that need confirmation and lists them at the end of the reply; Edit
++automatically allows file edits; Full access stops asking. It offers no allowance query, so its card
++shows no allowance.
++
+ Subscription allowance appears in the account card. API plans such as OpenCode Go and MiniMax Token
+ Plan read their allowance with the same saved key and show it in the connection card. Values come
+ from the provider; an unread or missing value stays unknown and is never shown as zero or full.
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 858e3df..b36bda6 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -39,6 +39,11 @@ API 密钥按回车或离开输入框自动保存，没有额外确认按钮。E
+ 下一次提交，已开始或已进入队列的工作保留这两项选择。执行中的一轮保留首次请求确定的
+ 账号；排队期间修改默认账号，尚不能保证排队中的任务继续使用原来的账号。
+ 
++Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作。Antigravity 需先在终端运行 `agy`
++完成 Google 登录；它在自身进程内执行工具，输入框的权限选择对应其模式：计划模式只读规划，
++变更前确认会拒绝需要确认的操作并在回复末尾列出，自动编辑允许改文件，完全访问不再确认。
++它不提供额度查询，账号卡片因此不显示额度。
++
+ 订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan 等 API 套餐用已保存的同一把密钥读取额度，
+ 显示在连接卡片中。额度由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
+ 
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 1f64b1e..114b920 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2078,6 +2078,38 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-antigravity-native",
++          "templateNameMap": {
++            "zh-CN": "Antigravity",
++            "en-US": "Antigravity"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "antigravity",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "antigravity"
++            }
++          },
++          "catalog": {
++            "vendorId": "google",
++            "vendorNameMap": {
++              "zh-CN": "Google",
++              "en-US": "Google"
++            },
++            "serviceId": "antigravity-cli",
++            "serviceNameMap": {
++              "zh-CN": "Antigravity",
++              "en-US": "Antigravity"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-typesafe-system-one",
+           "templateNameMap": {
+diff --git a/package.json b/package.json
+index ec9a4d1..841cea8 100644
+--- a/package.json
++++ b/package.json
+@@ -60,7 +60,7 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles",
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index b54ab81..bfd41d1 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -87,15 +87,10 @@ export const nativeCliAccessDataSchema = z
+     connected: z.boolean().optional(),
+   })
+   .strict();
+-export const completeNativeCliAccessDataSchema = nativeCliAccessDataSchema
+-  .extend({
+-    connected: z.literal(true),
+-    accountId: z.string().min(1),
+-  })
+-  .refine((access) => access.provider === "claude" || access.provider === "codex", {
+-    path: ["provider"],
+-    message: "This native CLI executor is not implemented",
+-  });
++export const completeNativeCliAccessDataSchema = nativeCliAccessDataSchema.extend({
++  connected: z.literal(true),
++  accountId: z.string().min(1),
++});
+ export const providerAccessDataSchema = z.discriminatedUnion("type", [
+   apiKeyAccessDataSchema,
+   zhipuAccountAccessDataSchema,
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index ef58ea3..75b1594 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -7,6 +7,8 @@ import {
+   inspectCodexNativeConnection,
+   startCodexNativeLogin,
+   readCodexNativeUsage,
++  inspectAntigravityConnection,
++  ANTIGRAVITY_LOCAL_ACCOUNT,
+ } from "@zcode/adapters/native-agent";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
+ import { parseClaudeNativeUsage, parseCodexNativeUsage } from "./nativeCliUsage.js";
+@@ -135,6 +137,36 @@ export function createNativeCliConnectionAdapter(
+           },
+         };
+       }
++      if (access.provider === "antigravity") {
++        // agy 不提供账号查询；以本机唯一登录为身份，模型目录来自官方 `agy models`。
++        const inspected = await inspectAntigravityConnection({
++          executable: access.executable,
++          env: await resolveEnvironment(),
++        });
++        return {
++          accountId: ANTIGRAVITY_LOCAL_ACCOUNT,
++          accountName: "Antigravity",
++          catalog: {
++            source: "provider" as const,
++            models: inspected.models.map((model) => ({
++              id: model.id,
++              name: model.name,
++              config: {
++                properties: {
++                  inputFormat: {
++                    supportsText: true,
++                    supportsImage: false,
++                    supportsPdf: false,
++                    supportsAudio: false,
++                    supportsVideo: false,
++                  },
++                  outputFormat: { supportsText: true },
++                },
++              },
++            })),
++          },
++        };
++      }
+       if (access.provider !== "claude")
+         throw new Error("This native CLI executor is not available yet");
+       const { account, models } = await inspectClaudeNativeConnection({
+@@ -156,9 +188,12 @@ export function createNativeCliConnectionAdapter(
+         },
+       };
+     },
+-    login: async (options) =>
+-      options.provider === "codex"
++    login: async (options) => {
++      if (options.provider === "antigravity")
++        throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
++      return options.provider === "codex"
+         ? startCodexNativeLogin({ ...options, env: await resolveEnvironment() })
+-        : startClaudeNativeLogin({ ...options, env: await resolveEnvironment() }),
++        : startClaudeNativeLogin({ ...options, env: await resolveEnvironment() });
++    },
+   };
+ }
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 8bbc611..b92dfc3 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -18,6 +18,7 @@ import {
+ import { getAppConfigDir as resolveAppConfigDir, getConversationWorkspaceDir } from "./paths.js";
+ import {
+   buildLocalMediaPreviewUrl,
++  FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY,
+   isProviderProvisioningAccountCredentialKey,
+   type ProviderProvisioningTrigger,
+ } from "@zcode/shared";
+@@ -2269,6 +2270,9 @@ export function createLocalServices(options: {
+           noProxy: agentNetwork.noProxy,
+           caCertPath: settings.httpProxyCaCertPath,
+         }),
++        // 原生执行器子进程（Claude/Codex/Antigravity CLI）不读系统代理；按各自官方端点解析一次系统
++        // 路由，只供这些子进程使用，Bash/MCP 仍只走上面的应用代理设置。
++        ...(await resolveNativeExecutorNetworkEnv(hostApiNetworkTransport)),
+         // 把 host 解析出的权威 origin（含 settings 覆盖）下发给 agent，否则 agent 侧只按
+         // env 推导，test env + 自定义端点时两侧信任判定的输入分叉、官方 MCP 整体 fail closed。
+         ...buildAgentEndpointOriginEnv(await resolveCurrentZCodeEndpointOrigin()),
+@@ -2856,3 +2860,24 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
+     ?.disposeAndWait()
+     .catch(() => {});
+ }
++
++const NATIVE_EXECUTOR_ENDPOINTS = {
++  claude: "https://api.anthropic.com/",
++  codex: "https://chatgpt.com/backend-api",
++  antigravity: "https://www.googleapis.com/",
++} as const;
++
++async function resolveNativeExecutorNetworkEnv(transport: {
++  resolveSystemNetwork?: (url: string) => Promise<{ httpProxy?: string; noProxy?: string; caCertPath?: string }>;
++}): Promise<Record<string, string>> {
++  if (!transport.resolveSystemNetwork) return {};
++  const routes: Record<string, { httpProxy?: string; noProxy?: string; caCertFile?: string }> = {};
++  for (const [kind, url] of Object.entries(NATIVE_EXECUTOR_ENDPOINTS)) {
++    const network = await transport.resolveSystemNetwork(url).catch(() => undefined);
++    if (network?.httpProxy)
++      routes[kind] = { httpProxy: network.httpProxy, noProxy: network.noProxy, caCertFile: network.caCertPath };
++  }
++  return Object.keys(routes).length
++    ? { [FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY]: JSON.stringify(routes) }
++    : {};
++}
+diff --git a/packages/services/test/antigravity-native.test.ts b/packages/services/test/antigravity-native.test.ts
+new file mode 100644
+index 0000000..a032111
+--- /dev/null
++++ b/packages/services/test/antigravity-native.test.ts
+@@ -0,0 +1,170 @@
++import assert from "node:assert/strict";
++import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import {
++  addAgyUsage,
++  agyPermissionArgs,
++  agyPrompt,
++  decodeAgyFrame,
++} from "../../../apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.js";
++import { parseAgyModels } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/antigravity-inspect.js";
++import { createAntigravityNativeAgentPort } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.js";
++
++const CONVERSATION = "b966b16a-caf4-448a-bb24-0e34956022b0";
++
++test("agy models rows keep id/label pairs and skip the progress line", () => {
++  assert.deepEqual(
++    parseAgyModels("Fetching available models...\ngemini-3-pro\tGemini 3 Pro\nclaude-sonnet-4-6\tClaude Sonnet 4.6\ngemini-3-pro\tdup\n"),
++    [
++      { id: "gemini-3-pro", name: "Gemini 3 Pro" },
++      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
++    ],
++  );
++});
++
++test("frames follow the agy 1.2.13 capture shape; unknown kinds are ignored", () => {
++  assert.equal(decodeAgyFrame(JSON.stringify({ event: "init", conversation_id: CONVERSATION }))?.event, "init");
++  assert.throws(() => decodeAgyFrame(JSON.stringify({ event: "init", conversation_id: "" })));
++  assert.throws(() => decodeAgyFrame(JSON.stringify({ event: "result", result: { status: "MAYBE" } })));
++  assert.equal(decodeAgyFrame(JSON.stringify({ event: "heartbeat" })), undefined);
++});
++
++test("usage sums per-step counters and leaves unreported counters absent", () => {
++  const once = addAgyUsage({}, { input_tokens: 10, output_tokens: 2, total_tokens: 12 });
++  assert.deepEqual(addAgyUsage(once, { input_tokens: 5, output_tokens: 1, total_tokens: 6 }), {
++    inputTokens: 15,
++    outputTokens: 3,
++    reasoningTokens: undefined,
++    cacheReadTokens: undefined,
++    totalTokens: 18,
++  });
++});
++
++test("the composer permission choice maps onto agy's own modes (OV-094)", () => {
++  assert.deepEqual(agyPermissionArgs("plan"), ["--mode", "plan"]);
++  assert.deepEqual(agyPermissionArgs("build"), []);
++  assert.deepEqual(agyPermissionArgs("edit"), ["--mode", "accept-edits"]);
++  assert.deepEqual(agyPermissionArgs("yolo"), ["--dangerously-skip-permissions"]);
++});
++
++test("a fresh prompt carries instructions and transcript; a resumed one only the uncovered tail", () => {
++  const messages = [
++    { role: "system" as const, content: "Fleet rules" },
++    { role: "user" as const, content: "first" },
++    { role: "assistant" as const, content: [{ type: "text" as const, text: "answer" }] },
++    { role: "user" as const, content: "second" },
++  ];
++  assert.equal(agyPrompt(messages, false), "Fleet rules\n\nUser: first\n\nAssistant: answer\n\nsecond");
++  assert.equal(agyPrompt(messages, true, 2), "second");
++});
++
++/** A stand-in agy that records its argv and stdin, then replays captured frames. */
++function fakeAgy(frames: object[], exitCode = 0) {
++  const dir = mkdtempSync(join(tmpdir(), "fake-agy-"));
++  const script = join(dir, "agy");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++const fs = require("node:fs");
++const args = process.argv.slice(2);
++if (args[0] === "--version") { console.log("1.2.14"); process.exit(0); }
++if (args[0] === "models") { console.log("gemini-3-pro\\tGemini 3 Pro"); process.exit(0); }
++fs.writeFileSync(${JSON.stringify(join(dir, "argv.json"))}, JSON.stringify(args));
++let input = "";
++process.stdin.on("data", (chunk) => {
++  input += chunk;
++  if (!input.includes("\\n")) return;
++  fs.writeFileSync(${JSON.stringify(join(dir, "stdin.json"))}, input);
++  for (const frame of ${JSON.stringify(frames)}) process.stdout.write(JSON.stringify(frame) + "\\n");
++  if (${exitCode}) process.exit(${exitCode});
++});
++process.stdin.on("end", () => process.exit(0));
++`,
++  );
++  chmodSync(script, 0o755);
++  return {
++    script,
++    argv: () => JSON.parse(readFileSync(join(dir, "argv.json"), "utf8")) as string[],
++    stdin: () => JSON.parse(readFileSync(join(dir, "stdin.json"), "utf8")),
++  };
++}
++
++function request(executable: string, extra: Record<string, unknown> = {}) {
++  return {
++    model: {
++      modelId: "gemini-3-pro",
++      nativeExecutor: { kind: "antigravity" as const, executable, accountId: "antigravity-local" },
++    } as never,
++    messages: [{ role: "user" as const, content: "你好" }],
++    tools: [],
++    sessionId: "s1",
++    turnId: "t1",
++    workingDirectory: tmpdir(),
++    signal: new AbortController().signal,
++    ...extra,
++  };
++}
++
++async function drain(turn: ReturnType<ReturnType<typeof createAntigravityNativeAgentPort>["createTurn"]>) {
++  turn.admitNextStep();
++  const events = [];
++  for await (const event of turn.model.streamText({ messages: request("").messages } as never))
++    events.push(event);
++  return events;
++}
++
++test("a real child process turn uses result.response, sums step usage and checkpoints the conversation", async () => {
++  const agy = fakeAgy([
++    { event: "init", conversation_id: CONVERSATION },
++    { event: "step_update", step_update: { step_index: 1, state: "ACTIVE", step_type: "agent_response", text_delta: "�" } },
++    {
++      event: "step_update",
++      step_update: { step_index: 1, state: "DONE", step_type: "agent_response", usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 } },
++    },
++    { event: "result", result: { status: "SUCCESS", response: "你好！", denied_actions: [{ action: "command", display_name: "RunCommand" }] } },
++  ]);
++  const turn = createAntigravityNativeAgentPort().createTurn(request(agy.script, { collaborationMode: "edit" }));
++  const events = await drain(turn);
++  const text = events.flatMap((event) => (event.type === "text_delta" ? [event.text] : [])).join("");
++  assert.match(text, /^你好！/u);
++  assert.match(text, /RunCommand/u);
++  const finish = events.at(-1);
++  assert.equal(finish?.type, "finish");
++  if (finish?.type === "finish") assert.deepEqual(finish.usage, { inputTokens: 7, outputTokens: 3, reasoningTokens: undefined, cacheReadTokens: undefined, totalTokens: 10 });
++  assert.deepEqual(agy.argv().slice(-4), ["--mode", "accept-edits", "--model", "gemini-3-pro"]);
++  assert.deepEqual(agy.stdin(), { event: "user", message: { role: "user", content: "你好" } });
++  const checkpoint = await turn.checkpoint?.();
++  assert.equal(checkpoint?.sessionId, CONVERSATION);
++  assert.equal(checkpoint?.executorVersion, "1.2.14");
++  await turn.close();
++  assert.equal(
++    await createAntigravityNativeAgentPort().canResume!(checkpoint!, request(agy.script)),
++    true,
++  );
++});
++
++test("an unauthenticated result surfaces the sign-in instruction the settings card recognises", async () => {
++  const agy = fakeAgy(
++    [{ event: "result", result: { conversation_id: "", status: "ERROR", response: "", error: "authentication failed or timed out" } }],
++    1,
++  );
++  const turn = createAntigravityNativeAgentPort().createTurn(request(agy.script));
++  await assert.rejects(drain(turn), /Sign in to the official Antigravity CLI/u);
++  await turn.close();
++});
++
++test("native executors take the Host-resolved system route only when no explicit proxy exists", async () => {
++  const { withNativeExecutorNetwork } = await import(
++    "../../../apps/zcode-cli/packages/adapters/src/native-agent/native-network.js"
++  );
++  const routes = JSON.stringify({ antigravity: { httpProxy: "http://127.0.0.1:7890", noProxy: "localhost" } });
++  const routed = withNativeExecutorNetwork({ FLEET_NATIVE_EXECUTOR_NETWORK: routes }, "antigravity");
++  assert.equal(routed.HTTPS_PROXY, "http://127.0.0.1:7890");
++  assert.equal(routed.NO_PROXY, "localhost");
++  assert.equal(routed.FLEET_NATIVE_EXECUTOR_NETWORK, undefined);
++  const explicit = withNativeExecutorNetwork({ FLEET_NATIVE_EXECUTOR_NETWORK: routes, HTTPS_PROXY: "http://corp:8080" }, "antigravity");
++  assert.equal(explicit.HTTPS_PROXY, "http://corp:8080");
++  assert.equal(withNativeExecutorNetwork({ FLEET_NATIVE_EXECUTOR_NETWORK: routes }, "claude").HTTPS_PROXY, undefined);
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 26de6ed..9a163cb 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -45,21 +45,28 @@ test("Claude subscription is a native CLI route without invented API credentials
+   assert.deepEqual(template.config.builtinModelIds, []);
+ });
+ 
+-test("stored future native kinds remain readable but cannot claim executable support", () => {
+-  const config = parseProviderConfig({
+-    access: { type: "native-cli", provider: "antigravity", connected: true, accountId: "fixture" },
++test("Antigravity is a native CLI route that is complete only after a signed-in connection", () => {
++  const template = templates.find((entry) => entry.templateId === "fleet-antigravity-native")!;
++  assert.equal(template.config.access?.type, "native-cli");
++  assert.equal(template.config.api, undefined);
++  assert.deepEqual(template.config.builtinModelIds, []);
++  const connected = parseProviderConfig({
++    access: { type: "native-cli", provider: "antigravity", connected: true, accountId: "antigravity-local" },
++  });
++  assert.deepEqual(connected.access!.validateComplete(), []);
++  const pending = parseProviderConfig({
++    access: { type: "native-cli", provider: "antigravity", connected: false },
+   });
+-  assert.equal(config.access?.type, "native-cli");
+-  assert.ok(config.access!.validateComplete().length > 0);
++  assert.ok(pending.access!.validateComplete().length > 0);
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 50);
++  assert.equal(templates.length, 51);
+   assert.equal(vendors.length, 21);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    50,
++    51,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/shared/src/runtimeEnv.ts b/packages/shared/src/runtimeEnv.ts
+index d337c3f..5ff1b66 100644
+--- a/packages/shared/src/runtimeEnv.ts
++++ b/packages/shared/src/runtimeEnv.ts
+@@ -10,6 +10,8 @@ export const ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY =
+ export const ZCODE_REMOTE_HTTP_PROXY_ENV_KEY = "ZCODE_REMOTE_HTTP_PROXY";
+ export const ZCODE_REMOTE_NO_PROXY_ENV_KEY = "ZCODE_REMOTE_NO_PROXY";
+ export const ZCODE_AGENT_CA_CERT_ENV_KEY = "ZCODE_AGENT_CA_CERT";
++/** Host 为各官方原生执行器端点解析的系统网络路由（JSON）；只给原生执行器子进程使用。 */
++export const FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY = "FLEET_NATIVE_EXECUTOR_NETWORK";
+ export const ZCODE_TOOL_ENV_PASSTHROUGH_ENV_KEY = "ZCODE_TOOL_ENV_PASSTHROUGH_JSON";
+ /** Desktop Main 将服务端裁决的单功能灰度结果传给 Local/Remote Host。 */
+ export const ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV = "ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED";
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 0bac14d..e753fec 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7311,6 +7311,12 @@ const enUS: Record<string, string> = {
+     "Could not reach the official OpenAI service. Check the network or proxy settings and retry.",
+   "settings.modelProvider.nativeCli.codex.timeout":
+     "ChatGPT sign-in timed out. Retry and complete sign-in in the browser.",
++  "settings.modelProvider.nativeCli.antigravity.title": "Antigravity account",
++  "settings.modelProvider.nativeCli.antigravity.flow": "Connect the account signed in to the Antigravity CLI (agy) on this machine.",
++  "settings.modelProvider.nativeCli.antigravity.missing": "Antigravity CLI (agy) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.antigravity.login": "Run agy in a terminal and sign in with your Google account, then connect again.",
++  "settings.modelProvider.nativeCli.antigravity.network": "Cannot reach Google's official service. Check the network or proxy settings and try again.",
++  "settings.modelProvider.nativeCli.antigravity.guide": "Antigravity CLI setup and sign-in",
+   "settings.modelProvider.nativeCli.flow":
+     "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 72c84dd..b50b726 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6923,6 +6923,12 @@ const zhCN: Record<string, string> = {
+     "无法连接 OpenAI 官方服务，请检查网络或代理设置后重试。",
+   "settings.modelProvider.nativeCli.codex.timeout":
+     "ChatGPT 登录已超时，请重试并在浏览器中完成登录。",
++  "settings.modelProvider.nativeCli.antigravity.title": "Antigravity 账号",
++  "settings.modelProvider.nativeCli.antigravity.flow": "连接本机 Antigravity CLI（agy）当前登录的账号。",
++  "settings.modelProvider.nativeCli.antigravity.missing": "未找到 Antigravity CLI（agy），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.antigravity.login": "请先在终端运行 agy，登录 Google 账号后再连接。",
++  "settings.modelProvider.nativeCli.antigravity.network": "无法连接 Google 官方服务，请检查网络或代理设置后重试。",
++  "settings.modelProvider.nativeCli.antigravity.guide": "Antigravity CLI 安装与登录",
+   "settings.modelProvider.nativeCli.flow":
+     "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index bb67d04..bf81cac 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -41,6 +41,18 @@ function NativeCliAllowance({
+   ) : null;
+ }
+ 
++/** Claude uses the base strings; other executors override only the fields whose wording differs. */
++const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], ReadonlySet<string>>> = {
++  codex: new Set(["title", "flow", "missing", "login", "network", "timeout"]),
++  antigravity: new Set(["title", "flow", "missing", "login", "network", "guide"]),
++};
++
++const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
++  claude: "https://code.claude.com/docs/en/setup",
++  codex: "https://learn.chatgpt.com/docs/cli",
++  antigravity: "https://antigravity.google/docs/cli",
++};
++
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+ export function NativeCliConnectionSection({
+   providerId,
+@@ -61,7 +73,7 @@ export function NativeCliConnectionSection({
+   const { showFeedback } = useProviderDetailFeedback();
+   const t = (field: string) =>
+     intl.formatMessage({
+-      id: `settings.modelProvider.nativeCli.${access.provider === "codex" && ["title", "flow", "missing", "login", "network", "timeout"].includes(field) ? `codex.${field}` : field}`,
++      id: `settings.modelProvider.nativeCli.${PROVIDER_TEXT[access.provider]?.has(field) ? `${access.provider}.${field}` : field}`,
+     });
+   const [busy, setBusy] = useState(false);
+   const [signingIn, setSigningIn] = useState(false);
+@@ -86,7 +98,7 @@ export function NativeCliConnectionSection({
+   }, [providerId, providerSettingsService]);
+   const report = (error: unknown) => {
+     const raw = error instanceof Error ? error.message : String(error);
+-    const key = /ENOENT|not found|spawn.*failed|bundled Claude executor/i.test(raw)
++    const key = /ENOENT|not found|not installed|spawn.*failed|bundled Claude executor/i.test(raw)
+       ? "missing"
+       : /account changed/i.test(raw)
+         ? "changed"
+@@ -225,11 +237,7 @@ export function NativeCliConnectionSection({
+             variant="link"
+             className="h-auto p-0 text-ui-sm"
+             onClick={() =>
+-              void platform.openExternal(
+-                access.provider === "codex"
+-                  ? "https://learn.chatgpt.com/docs/cli"
+-                  : "https://code.claude.com/docs/en/setup",
+-              )
++              void platform.openExternal(GUIDE_URL[access.provider])
+             }
+           >
+             {t("guide")}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 30f3538..eddd800 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -357,7 +357,10 @@ export function ModelRowInput({
+         </div>
+       </ContextMenuTrigger>
+       <ContextMenuContent>
+-        {/* 右键放行内省略的常用操作（参考 Craft 实体右键菜单），不重复左键行为。 */}
++        {/* 编辑在前；其后补上行内放不下的常用操作（参考 Craft 实体右键菜单），不重复左键行为。 */}
++        <ContextMenuItem onSelect={openMetadataDialog}>
++          {intl.formatMessage({ id: "settings.modelProvider.editModel" })}
++        </ContextMenuItem>
+         {shouldShowTestButton ? (
+           <ContextMenuItem disabled={testDisabled} onSelect={() => void handleTest()}>
+             {intl.formatMessage({ id: "settings.modelProvider.testModel" })}
+@@ -366,9 +369,6 @@ export function ModelRowInput({
+         <ContextMenuItem onSelect={() => void navigator.clipboard?.writeText(model.modelId)}>
+           {intl.formatMessage({ id: "settings.modelProvider.copyModelId" })}
+         </ContextMenuItem>
+-        <ContextMenuItem onSelect={openMetadataDialog}>
+-          {intl.formatMessage({ id: "settings.modelProvider.editModel" })}
+-        </ContextMenuItem>
+         {onEnabledChange ? (
+           <ContextMenuItem onSelect={() => onEnabledChange(model.config.enabled === false)}>
+             {intl.formatMessage({
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 5d914c9..3db2fc9 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -26,6 +26,7 @@ import Mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg";
+ import Nvidia from "@lobehub/icons-static-svg/icons/nvidia-color.svg";
+ import Together from "@lobehub/icons-static-svg/icons/together-color.svg";
+ import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg";
++import Antigravity from "@lobehub/icons-static-svg/icons/antigravity-color.svg";
+ import SiliconCloud from "@lobehub/icons-static-svg/icons/siliconcloud-color.svg";
+ import Volcengine from "@lobehub/icons-static-svg/icons/volcengine-color.svg";
+ 
+@@ -56,6 +57,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   nvidia: { src: Nvidia, color: true },
+   together: { src: Together, color: true },
+   google: { src: Gemini, color: true },
++  antigravity: { src: Antigravity, color: true },
+   siliconflow: { src: SiliconCloud, color: true },
+   volcengine: { src: Volcengine, color: true },
+   "start-plan": { src: startPlanLogo, color: true },
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index 4d9d196..05cd61e 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -245,8 +245,8 @@ export function ProviderTemplateSetup({
+                 {intl.formatMessage({
+                   id:
+                     selected.config.access?.type === "native-cli" &&
+-                    selected.config.access.provider === "codex"
+-                      ? "settings.modelProvider.nativeCli.codex.flow"
++                    selected.config.access.provider !== "claude"
++                      ? `settings.modelProvider.nativeCli.${selected.config.access.provider}.flow`
+                       : "settings.modelProvider.nativeCli.flow",
+                 })}
+               </p>
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index 1ad0e3d..e209bc3 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -74,7 +74,7 @@ async function fixture() {
+       id = "A",
+       locale: "en-US" | "zh-CN" = "zh-CN",
+       connected = false,
+-      provider: "claude" | "codex" = "claude",
++      provider: "claude" | "codex" | "antigravity" = "claude",
+     ) {
+       await act(async () =>
+         root.render(
+@@ -383,6 +383,27 @@ async function run() {
+       await f.close();
+     }
+   });
++  await test("Antigravity sign-in points to its terminal CLI instead of starting a browser flow", async () => {
++    const f = await fixture();
++    let began = 0;
++    f.setConnect(async () => {
++      throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
++    });
++    f.setBegin(async () => {
++      began++;
++      return { flowId: "flow-A" };
++    });
++    try {
++      await f.render("A", "zh-CN", false, "antigravity");
++      check(f.node.textContent?.includes("Antigravity 账号"), "Antigravity card lost its title");
++      await f.click("连接当前账号");
++      check(f.node.textContent?.includes("请先在终端运行 agy"), "Antigravity sign-in recovery missing");
++      check(began === 0, "Antigravity started a browser login the CLI does not offer");
++      check(f.changed() === 0, "Failed sign-in published a connected account");
++    } finally {
++      await f.close();
++    }
++  });
+   for (const [reason, expected] of [
+     ["network", "网络或代理设置"],
+     ["timeout", "登录已超时"],

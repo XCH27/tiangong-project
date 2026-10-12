@@ -1,0 +1,31 @@
+diff --git a/packages/ui/src/settings/DecisionSourceEditor.tsx b/packages/ui/src/settings/DecisionSourceEditor.tsx
+index c38a59f..cfaf397 100644
+--- a/packages/ui/src/settings/DecisionSourceEditor.tsx
++++ b/packages/ui/src/settings/DecisionSourceEditor.tsx
+@@ -137,6 +137,8 @@ export function DecisionSourceEditor({
+       }
+       const result = await controls.saveSource(request.current);
+       if (!mounted.current) return;
++      // 已确认提交后释放草稿锁；只有未知确认和待发布结果需要保留原请求用于安全恢复。
++      if (!result.publicationPending) request.current = undefined;
+       setPublicationPending(result.publicationPending);
+       onSaved(result); // Backend has already committed all fields; this callback only refreshes presentation.
+     } catch {
+diff --git a/packages/ui/test/decisionSourceSettings.browser.test.tsx b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+index 4cf90ed..80df5a9 100644
+--- a/packages/ui/test/decisionSourceSettings.browser.test.tsx
++++ b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+@@ -412,6 +412,13 @@ async function fixture(locale = "en-US") {
+           ),
+         "UI performed independent member or binding writes",
+       );
++      await f.save();
++      check(
++        !f.node.querySelector<HTMLInputElement>('input[aria-label="Service address"]')?.disabled &&
++          !f.node.querySelector<HTMLInputElement>('input[aria-label="API Key"]')?.readOnly &&
++          !f.node.querySelector<HTMLInputElement>('input[aria-label="Decision model"]')?.disabled,
++        "Acknowledged existing save kept the fields permanently locked",
++      );
+     } finally {
+       await f.close();
+     }

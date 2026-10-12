@@ -1,0 +1,308 @@
+diff --git a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+index 410bb7b..95ca9e0 100644
+--- a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+@@ -6,6 +6,7 @@ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import {
+   DropdownMenuCheckboxItem,
++  DropdownMenuItem,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
+   DropdownMenuSub,
+@@ -25,6 +26,7 @@ export function ComposerModelControl({
+   onThoughtChange,
+   speed,
+   context,
++  contextRecovery,
+ }: {
+   model: ComponentProps<typeof ModelConfigSelect>;
+   thought?: ZCodeConfigOption | null;
+@@ -32,6 +34,7 @@ export function ComposerModelControl({
+   onThoughtChange(value: string): void;
+   speed?: { value: "standard" | "fast"; note: string; onChange(value: "standard" | "fast"): void };
+   context?: { value: number; choices: readonly number[]; onChange(value: number): void };
++  contextRecovery?: { onReset(): void };
+ }) {
+   const { intl } = useZCodeIntl();
+   const entries = thought?.type === "select" ? (thought.options ?? []) : [];
+@@ -82,7 +85,19 @@ export function ComposerModelControl({
+           </DropdownMenuCheckboxItem>
+         </ControlHintTooltip>
+       ) : null}
+-      {context && context.choices.length > 1 ? (
++      {contextRecovery ? (
++        <DropdownMenuItem
++          disabled={model.disabled}
++          className="min-h-9 justify-between gap-3"
++          data-composer-context-recovery="true"
++          onSelect={contextRecovery.onReset}
++        >
++          <span>{intl.formatMessage({ id: "chat.toolbar.modelOptions.contextUnavailable" })}</span>
++          <span className="text-foreground-subtle">
++            {intl.formatMessage({ id: "chat.toolbar.modelOptions.restoreContext" })}
++          </span>
++        </DropdownMenuItem>
++      ) : context && context.choices.length > 1 ? (
+         <DropdownMenuSub>
+           <DropdownMenuSubTrigger
+             disabled={model.disabled}
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 9bd61c6..6685617 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7305,6 +7305,8 @@ const enUS: Record<string, string> = {
+     "The selected provider or model is no longer available. No replacement target was chosen.",
+   "settings.modelProvider.assistant.operationFailed":
+     "This operation did not complete. Check the current page before retrying.",
++  "chat.toolbar.modelOptions.restoreContext": "Restore default",
++  "chat.toolbar.modelOptions.contextUnavailable": "Context option unavailable",
+   "chat.toolbar.modelOptions.context": "Context",
+   "chat.toolbar.modelOptions.model": "Model",
+ };
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 2c08a64..c83855a 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6917,6 +6917,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.assistant.targetLost": "选中的供应商或模型已不可用，没有切换到其他目标。",
+   "settings.modelProvider.assistant.operationFailed":
+     "本次操作未完成，请先查看当前页面，再决定是否重试。",
++  "chat.toolbar.modelOptions.restoreContext": "恢复默认",
++  "chat.toolbar.modelOptions.contextUnavailable": "上下文档位不可用",
+   "chat.toolbar.modelOptions.context": "上下文",
+   "chat.toolbar.modelOptions.model": "模型",
+ };
+diff --git a/packages/ui/src/v4/ConversationComposer.tsx b/packages/ui/src/v4/ConversationComposer.tsx
+index 94da837..6e1328b 100644
+--- a/packages/ui/src/v4/ConversationComposer.tsx
++++ b/packages/ui/src/v4/ConversationComposer.tsx
+@@ -427,7 +427,10 @@ interface ConversationComposerProps {
+   /** 选中思考深度；同时带上用户操作时看到的模型，避免异步回流后把 thought 归到另一模型。 */
+   onSelectThought: (thought: string, modelContext: { provider: string; model: string }) => void;
+   onSelectSpeed: (speedMode: "standard" | "fast") => void;
+-  onSelectContext?: (value: number, target: { provider: string; model: string }) => void;
++  onSelectContext?: (
++    value: number | undefined,
++    target: { provider: string; model: string },
++  ) => void;
+   onSwitchMode: (mode: string) => void;
+   /** 打开当前 session 的 Status panel，并直达 Running 明细。 */
+   onOpenRunningBackgroundWorks?: () => void;
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 273a4cb..731f092 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -346,7 +346,10 @@ export interface V4ComposerToolbarProps {
+   /** 选中思考深度；modelContext 固定本次用户操作的目标模型。 */
+   onSelectThought: (thought: string, modelContext: { provider: string; model: string }) => void;
+   onSelectSpeed: (speedMode: "standard" | "fast") => void;
+-  onSelectContext?: (value: number, target: { provider: string; model: string }) => void;
++  onSelectContext?: (
++    value: number | undefined,
++    target: { provider: string; model: string },
++  ) => void;
+   onSwitchMode: (mode: string) => void;
+   /** prepare/configOptions 失败时，custom provider 选择走 workspace recovery 链。 */
+   onRecoverCustomModelSelection?: (
+@@ -887,13 +890,32 @@ function V4ComposerModelControlsImpl({
+     });
+   }, [effectiveConfig, onSelectThought, thoughtOption]);
+ 
+-  const selectedContextWindow = contextWindowForSelectedModel(
+-    usage?.contextWindow,
+-    effectiveConfig?.provider,
+-    effectiveConfig?.model,
+-    usage?.lastRequest,
+-    draftConfig?.modelSelection?.options?.contextWindow,
++  const selectedSubscriptionProvider = modelSelectionView?.providers.find(
++    (provider) => provider.providerId === effectiveConfig?.provider,
++  );
++  const selectedModel = selectedSubscriptionProvider?.models.find(
++    (model) => model.modelId === effectiveConfig?.model,
+   );
++  const contextChoices = selectedModel?.evidenceConfig?.properties?.contextWindows;
++  const selectedContextChoice = draftConfig?.modelSelection?.options?.contextWindow;
++  const unsupportedContextChoice =
++    modelSelectionState.status === "ready" &&
++    Boolean(selectedModel) &&
++    selectedContextChoice !== undefined &&
++    !contextChoices?.includes(selectedContextChoice);
++  const selectedCapacity =
++    (unsupportedContextChoice ? undefined : selectedContextChoice) ??
++    selectedModel?.evidenceConfig?.properties?.contextWindow;
++
++  const selectedContextWindow = unsupportedContextChoice
++    ? null
++    : contextWindowForSelectedModel(
++        usage?.contextWindow,
++        effectiveConfig?.provider,
++        effectiveConfig?.model,
++        usage?.lastRequest,
++        selectedCapacity ?? undefined,
++      );
+   const taskUsage = useMemo(() => {
+     const contextWindow = selectedContextWindow;
+     if (!contextWindow) return null;
+@@ -905,16 +927,6 @@ function V4ComposerModelControlsImpl({
+       ...(contextWindow.breakdown ? { breakdown: contextWindow.breakdown } : {}),
+     };
+   }, [selectedContextWindow]);
+-  const selectedSubscriptionProvider = modelSelectionView?.providers.find(
+-    (provider) => provider.providerId === effectiveConfig?.provider,
+-  );
+-  const selectedModel = selectedSubscriptionProvider?.models.find(
+-    (model) => model.modelId === effectiveConfig?.model,
+-  );
+-  const contextChoices = selectedModel?.evidenceConfig?.properties?.contextWindows;
+-  const selectedCapacity =
+-    draftConfig?.modelSelection?.options?.contextWindow ??
+-    selectedModel?.evidenceConfig?.properties?.contextWindow;
+   const selectedSubscription = selectedSubscriptionProvider?.config.access;
+   const supportsFast = modelSupportsFast(
+     modelSelectionView,
+@@ -1084,6 +1096,20 @@ function V4ComposerModelControlsImpl({
+                 }
+               : undefined
+           }
++          contextRecovery={
++            unsupportedContextChoice &&
++            !(contextChoices && contextChoices.length > 1) &&
++            onSelectContext &&
++            effectiveConfig
++              ? {
++                  onReset: () =>
++                    onSelectContext(undefined, {
++                      provider: effectiveConfig.provider,
++                      model: effectiveConfig.model,
++                    }),
++                }
++              : undefined
++          }
+           onThoughtChange={handleThoughtValueChange}
+           speed={
+             supportsFast || fastEnabled
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index 6e72d5c..4fd9a12 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -97,7 +97,10 @@ interface DraftConfigControl {
+   handleDraftSelectModel: (modelProvider: string, model: string) => void;
+   handleDraftSelectThought: (thought: string) => void;
+   handleDraftSelectSpeed: (speedMode: "standard" | "fast") => void;
+-  handleDraftSelectContext: (value: number, target: { provider: string; model: string }) => void;
++  handleDraftSelectContext: (
++    value: number | undefined,
++    target: { provider: string; model: string },
++  ) => void;
+   handleDraftSwitchMode: (mode: string) => void;
+ }
+ 
+@@ -484,19 +487,19 @@ export function useDraftConfigControl(params: {
+   );
+ 
+   const handleDraftSelectContext = useCallback(
+-    (value: number, target: { provider: string; model: string }) => {
++    (value: number | undefined, target: { provider: string; model: string }) => {
+       const choices = modelSelectionView?.providers
+         .find((provider) => provider.providerId === target.provider)
+         ?.models.find((model) => model.modelId === target.model)?.config.properties.contextWindows;
+-      if (!choices?.includes(value)) return;
++      if (value !== undefined && !choices?.includes(value)) return;
+       updateDraftConfig((current) => {
+         const selection = current.modelSelection;
+         if (selection?.providerId !== target.provider || selection.modelId !== target.model)
+           return current;
+-        return {
+-          ...current,
+-          modelSelection: { ...selection, options: { ...selection.options, contextWindow: value } },
+-        };
++        const options = { ...selection.options };
++        if (value === undefined) delete options.contextWindow;
++        else options.contextWindow = value;
++        return { ...current, modelSelection: { ...selection, options } };
+       });
+     },
+     [modelSelectionView, updateDraftConfig],
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 3742b55..8488670 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -16,10 +16,12 @@ function Fixture({
+   width,
+   unknown = false,
+   selectable = false,
++  recovery = false,
+ }: {
+   width: number;
+   unknown?: boolean;
+   selectable?: boolean;
++  recovery?: boolean;
+ }) {
+   const ref = useComposerToolbarFit();
+   const [thought, setThought] = useState(unknown ? "unobserved" : "medium");
+@@ -61,6 +63,16 @@ function Fixture({
+                   }
+                 : undefined
+             }
++            contextRecovery={
++              recovery
++                ? {
++                    onReset() {
++                      writes.push("context:default");
++                      setContext(256000);
++                    },
++                  }
++                : undefined
++            }
+             speed={{
+               value: speed,
+               note: "Synthetic provider-specific allowance note",
+@@ -290,5 +302,47 @@ function Fixture({
+         node.remove();
+       }
+     }
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    const name = `${locale}: withdrawn context has an explicit reset without a fake fixed-window selector`;
++    const node = document.createElement("div");
++    document.body.append(node);
++    const root = createRoot(node);
++    writes = [];
++    try {
++      await act(async () =>
++        root.render(
++          <ZCodeIntlProvider initialLocale={locale}>
++            <TooltipProvider>
++              <Fixture width={320} recovery />
++            </TooltipProvider>
++          </ZCodeIntlProvider>,
++        ),
++      );
++      const trigger = node.querySelector<HTMLButtonElement>(".composer-model-trigger")!;
++      await act(async () =>
++        trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })),
++      );
++      const reset = document.querySelector<HTMLElement>("[data-composer-context-recovery]");
++      check(
++        reset?.textContent?.includes(locale === "zh-CN" ? "恢复默认" : "Restore default"),
++        "Missing localized recovery",
++      );
++      check(
++        !document.querySelector("[data-composer-context-submenu]"),
++        "A withdrawn menu became a fake fixed-context selector",
++      );
++      await act(async () => reset!.click());
++      check(
++        writes.length === 1 && writes[0] === "context:default",
++        "Context restoration changed effort, model or speed",
++      );
++      results.push({ name });
++    } catch (error) {
++      results.push({ name, error: String(error) });
++    } finally {
++      await act(async () => root.unmount());
++      node.remove();
++    }
++  }
+   return results;
+ })();

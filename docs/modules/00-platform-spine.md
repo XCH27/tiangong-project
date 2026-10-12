@@ -1,5 +1,9 @@
 # M00 — Platform Spine
 
+> D56/D57: the Craft-specific draft below is historical, not the ZCode persistence authority.
+> Current existing-Host rectification follows [ZCode lifecycle](zcode-kernel-lifecycle.md).
+> Existing ZCode SQLite/Artifact owners remain; no new store or migration is selected.
+
 > **Capability status:** `not implemented`
 > **Execution gate:** Locked pending W0.1 contract re-freeze
 > **Wave:** W1

@@ -1,0 +1,2558 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index f5e0c73..95f68e3 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -459,3 +459,34 @@ builtin provider identities; previously frozen prices remain unchanged. Never fi
+ speed or counters from current settings. Catalog availability and incomplete historical usage are
+ different failure reasons. Published Z.AI schedules distinguish Flash/FlashX by model ID, so a missing irrelevant speed field does not block their current-rate quote; it remains unknown in usage statistics. The statistics hint identifies current/reference rate coverage without
+ adding another visible report or settings page. Existing actual-payment isolation stays unchanged.
++
++### Unified cost analysis and project attribution (OV-051)
++
++One cost-analysis section replaces the unrelated model-estimate tab and subscription-payment card.
++Select either the current global usage range or one saved account/billing period. The same scoped
++request aggregates produce the API-equivalent amount, paid-fee allocation and blended per-million
++input-plus-output token rates. Fee edits update that same projection immediately; API estimates
++remain unchanged. Reuse original summary-strip and comparison-chart primitives. Published prices,
++cache discounts and recorded served speed already enter the existing ledger; do not build another
++pricing store. Show missing coverage in focused help, never invent a cost or account to fill a chart.
++Native credits remain the first allocation basis, then complete API-value weights as approved.
++Compare monetary differences only for USD payments against USD API estimates; do not invent FX.
++
++Capture workspacePath from the existing runtime workspace root in the same accounting_json fact.
++Historical missing project attribution remains a null/unassigned bucket. Compute the complete
++account-period denominator once, then project by model or workspace: the sum of project allocations,
++including unassigned work, must equal the allocated payment. Project panels later consume this same
++projection with their existing folder identity, not a separate ledger or a full monthly bill per
++project. A workspace filter applies after account-period allocation.
++
++The original context ring continues to mean conversation context pressure. Its subscription area
++must distinguish read-only quota inspection, configured default account and last actual execution
++account. Auto recovery must not relabel the default account as the account that served the request.
++Carry the existing local account ID through ModelComplete, V4 lastRequest and retained usage reads;
++never expose tokens. Keep the original popup structure and separate incomparable account windows.
++No inference-account switch or reset redemption happens from the quota-view selector.
++
++Historical usage reads do not require a configured model or active conversation. Reuse the existing
++local control-plane carrier (also used by global workflows) when no reusable local workspace client
++exists. Read the same Session SQLite ledger over v4/usage/stats; do not select an arbitrary remote
++workspace, create a conversation, start inference or add another storage owner.
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index e89b715..8c5f79f 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -87,7 +87,10 @@ export function queryAccounting(
+     if (typeof facts.estimatedUsd === "number" && Number.isFinite(facts.estimatedUsd))
+       return JSON.stringify(facts);
+     const price = priceFacts(facts, String(provider), String(model), Number(started));
+-    return JSON.stringify({ ...facts, ...price, priceVersion: `current:${price.priceVersion}` });
++    return JSON.stringify({ ...facts, ...price,
++      // API 参考价补齐不能改掉请求时已记录的原生额度权重，否则会员分摊会随价目更新漂移。
++      ...(typeof facts.estimatedCredits === "number" ? {estimatedCredits:facts.estimatedCredits} : {}),
++      priceVersion: `current:${price.priceVersion}` });
+   });
+   return db
+     .prepare(`with repriced as materialized (
+@@ -96,15 +99,17 @@ export function queryAccounting(
+   ), facts as (
+     select provider_id as providerId, model_id as modelId, started_at,
+       json_extract(accounting_json,'$.accountId') as accountId,
++      json_extract(accounting_json,'$.workspacePath') as workspacePath,
+       json_extract(accounting_json,'$.requestedSpeedMode') as speedMode,
+       json_extract(accounting_json,'$.inputTokens') as inputTokens,
+       json_extract(accounting_json,'$.outputTokens') as outputTokens,
+       json_extract(accounting_json,'$.cacheReadTokens') as cacheReadTokens,
+       json_extract(accounting_json,'$.estimatedUsd') as estimatedUsd,
+       json_extract(accounting_json,'$.estimatedCredits') as estimatedCredits,
+-      json_extract(accounting_json,'$.priceVersion') as priceVersion
++      json_extract(accounting_json,'$.priceVersion') as priceVersion,
++      json_extract(accounting_json,'$.sourceUrl') as sourceUrl
+     from repriced
+-  ) select providerId,accountId,modelId,speedMode,count(*) as requestCount,
++  ) select providerId,accountId,workspacePath,modelId,speedMode,count(*) as requestCount,
+     sum(case when inputTokens is not null and outputTokens is not null then 1 else 0 end) as reportedCount,
+     coalesce(sum(inputTokens),0) as inputTokens,coalesce(sum(outputTokens),0) as outputTokens,
+     coalesce(sum(case when cacheReadTokens between 0 and inputTokens then cacheReadTokens end),0) as cacheReadTokens,
+@@ -112,8 +117,9 @@ export function queryAccounting(
+     sum(case when cacheReadTokens between 0 and inputTokens then 1 else 0 end) as cacheReportedCount,
+     coalesce(sum(estimatedUsd),0) as estimatedUsd,count(estimatedUsd) as pricedCount,
+     coalesce(sum(estimatedCredits),0) as estimatedCredits,count(estimatedCredits) as creditCount,
+-    min(started_at) as firstAt,max(started_at) as lastAt,group_concat(distinct priceVersion) as priceVersions
+-    from facts group by providerId,accountId,modelId,speedMode order by inputTokens+outputTokens desc
++    min(started_at) as firstAt,max(started_at) as lastAt,group_concat(distinct priceVersion) as priceVersions,
++    group_concat(distinct sourceUrl) as priceSources
++    from facts group by providerId,accountId,workspacePath,modelId,speedMode order by inputTokens+outputTokens desc
+   `)
+     .all(since, until) as unknown as UsageAccountingRow[];
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index 66f165e..d792442 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -719,12 +719,12 @@ function readLastMainRequestUsage(
+   db: DatabaseSync,
+   sessionID: TaskUsageQueryInput["sessionID"],
+ ): TaskUsageQueryResult["lastRequest"] {
+-  const row = db.prepare(`select provider_id, model_id, started_at, completed_at, raw_usage_json
++  const row = db.prepare(`select provider_id, model_id, started_at, completed_at, raw_usage_json, accounting_json
+     from model_usage where session_id = ? and query_source = 'main_turn'
+     order by coalesce(completed_at, started_at) desc, started_at desc, id desc limit 1`)
+     .get(sessionID) as {
+       provider_id: string; model_id: string; started_at: number; completed_at: number | null;
+-      raw_usage_json: string | null;
++      raw_usage_json: string | null; accounting_json: string | null;
+     } | undefined;
+   if (!row) return undefined;
+   const result: NonNullable<TaskUsageQueryResult["lastRequest"]> = {
+@@ -732,6 +732,8 @@ function readLastMainRequestUsage(
+     ...(row.model_id?.trim() ? { modelId: row.model_id } : {}),
+   };
+   const observedAt = row.completed_at ?? row.started_at;
++  const accountId = parseReportedUsage(row.accounting_json)?.accountId;
++  if (typeof accountId === "string" && accountId) result.accountId = accountId;
+   if (typeof observedAt === "number" && Number.isFinite(observedAt) && observedAt >= 0)
+     result.observedAt = observedAt;
+   const raw = parseReportedUsage(row.raw_usage_json);
+diff --git a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+index 9f9a202..10e4a2d 100644
+--- a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+@@ -349,7 +349,7 @@ test("real Pi request changes account only after rejection and preserves portabl
+     );
+   };
+   const model = createPiSubscriptionModel(binding, transport);
+-  await runWithModelInvocationContext(
++  const result = await runWithModelInvocationContext(
+     {
+       async refreshRuntimeHeadersBeforeAttempt(input) {
+         const recovery = input.subscriptionAccess?.recovery;
+@@ -376,6 +376,7 @@ test("real Pi request changes account only after rejection and preserves portabl
+         options: binding.options,
+       }),
+   );
++  assert.equal((result.providerMetadata?.fleetAccounting as {accountId?:string})?.accountId, "second");
+   assert.equal(requests.length, 2);
+   const { zstdDecompressSync } = await import("node:zlib");
+   const decoded = bodies.map((body,index) => JSON.parse(Buffer.from(requests[index]!.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(body) : body).toString("utf8")));
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index b807588..9e0e89a 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -293,6 +293,7 @@ test("new price coverage fills unpriced complete facts in a read projection with
+       13,
+       JSON.stringify({ ...facts, requestedSpeedMode: undefined }),
+     );
++    insert.run("recorded-credit","gpt-6-sol",14,JSON.stringify({...facts,billingProvider:"openai",authKind:"subscription",estimatedCredits:7}));
+     const before = db.prepare("select accounting_json from model_usage").all();
+     const rows = queryAccounting(db, 0, 20);
+     const quoted = rows.find((row) => row.modelId === "GLM-5.3-Flash")!;
+@@ -307,6 +308,9 @@ test("new price coverage fills unpriced complete facts in a read projection with
+     const fixedRate = rows.find((row) => row.providerId === "account:zai-start-plan")!;
+     assert.equal(fixedRate.pricedCount, 1);
+     assert.equal(fixedRate.speedMode, null);
++    const retainedCredits=rows.find(row=>row.providerId==="recorded-credit")!;
++    assert.equal(retainedCredits.estimatedCredits,7);
++    assert.equal(retainedCredits.pricedCount,1);
+     assert.deepEqual(db.prepare("select accounting_json from model_usage").all(), before);
+   } finally {
+     db.close();
+@@ -327,3 +331,15 @@ test("accounting retains Anthropic's reported one-hour cache split", () => {
+   assert.equal(result.cacheWrite1hTokens, 50);
+   assert.ok(Math.abs(result.estimatedUsd! - 0.00445) < 1e-12);
+ });
++
++test("project costs preserve the recorded workspace without assigning historical unknown projects",async()=>{
++ const f=await fixture();try{
++  const metadata=(workspacePath:string)=>({fleetAccounting:{accountId:"a",billingProvider:"openai",authKind:"subscription",requestedSpeedMode:"standard",workspacePath}});
++  await f.record("a-project","a","standard",{providerMetadata:metadata("/fixture/a")});
++  await f.record("b-project","a","standard",{providerMetadata:metadata("/fixture/b")});
++  await f.record("older","a","standard");f.reopen();
++  const rows=(await f.query()).accounting!;
++  assert.deepEqual(new Set(rows.map(row=>row.workspacePath)),new Set(["/fixture/a","/fixture/b",null]));
++  assert.equal(rows.reduce((sum,row)=>sum+row.requestCount,0),3);
++ }finally{await f.close();}
++});
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts b/apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts
+index cf39567..1dd63ec 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts
+@@ -67,6 +67,13 @@ test("SQLite reopen restores the last main request's raw counters, not aggregate
+   } finally { await f.dispose(); }
+ });
+ 
++test("cold quota display restores the actual account identity, never a current default",async()=>{
++ const f=await fixture();try{
++  await f.record("served",{rawUsage:{inputTokens:10,outputTokens:2},providerMetadata:{fleetAccounting:{accountId:"served-b",workspacePath:"/fixture/project"}}});
++  f.reopen();assert.equal((await f.query()).lastRequest?.accountId,"served-b");
++ }finally{await f.dispose();}
++});
++
+ test("new errors and missing/invalid raw usage supersede older known counters after reopen", async () => {
+   const f = await fixture();
+   try {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index dfdcf0d..93ab7e1 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -4602,6 +4602,10 @@ export class ProductProjection {
+     // 每个主请求替换其报告；缺项保持未知，不能让上一次完整报告冒充本次结果。
+     const lastRequest: NonNullable<SessionUsageState["lastRequest"]> = request
+       ? { providerId: request.providerId, modelId: request.modelId } : {};
++    if (typeof payload.accountId === "string" && payload.accountId) {
++      lastRequest.accountId = payload.accountId;
++      lastRequest.observedAt = this.ms(event);
++    }
+     for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"] as const) {
+       const value = usage[key];
+       if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+diff --git a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+index 541eb09..36437a0 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+@@ -100,6 +100,17 @@ test("main usage is an attributed occupancy sample, independent of cumulative an
+   assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
+ });
+ 
++test("actual serving account follows the main request receipt and clears when a later request has no receipt",()=>{
++ const f=fixture();f.request();
++ f.send(SessionEventType.ModelComplete,{content:"",stopReason:"stop",querySource:"main_turn",usage:{inputTokens:10,outputTokens:2},accountId:"fallback-account"});
++ assert.equal(f.projection.getSnapshot().usage.lastRequest?.accountId,"fallback-account");
++ assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
++ f.complete({inputTokens:30,outputTokens:4},"session_title");
++ assert.equal(f.projection.getSnapshot().usage.lastRequest?.accountId,"fallback-account");
++ f.request();f.complete({inputTokens:20,outputTokens:3});
++ assert.equal(f.projection.getSnapshot().usage.lastRequest?.accountId,undefined);
++});
++
+ test("same-capacity model changes invalidate identity, including a previous model's late result", () => {
+   const f = fixture();
+   f.request();
+diff --git a/apps/zcode-cli/packages/contracts/src/events/session.events.ts b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+index 655c088..30bb3e8 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/session.events.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+@@ -763,6 +763,8 @@ export interface NetworkRequestStatusPayload {
+ }
+ 
+ export interface ModelCompletePayload {
++  /** Local identity of the subscription account that actually served the request; never a token. */
++  accountId?: string;
+   cacheHit?: {
+     inputTokens: number;
+     cacheReadTokens: number;
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index 1cb0785..86cd100 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -1075,6 +1075,7 @@ export interface TaskUsageQueryResult {
+   cumulativeMainUsage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+   /** 最新主请求的原始报告；缺失计数不能由数据库聚合列的默认 0 补齐。 */
+   lastRequest?: {
++    accountId?: string;
+     inputTokens?: number;
+     outputTokens?: number;
+     cacheReadTokens?: number;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index 37c53c2..473a12a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -592,10 +592,12 @@ async function runModelBackedTurnStepImpl(
+     supportsTurnFileChanges && toolCalls.length === 0
+       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
+       : undefined;
++  const servedAccountId = (result.providerMetadata?.fleetAccounting as {accountId?:unknown} | undefined)?.accountId;
+   const modelCompleteEvent = this.createEvent(
+     SessionEventType.ModelComplete,
+     {
+       content: state.modelResponse,
++      ...(typeof servedAccountId === "string" && servedAccountId ? { accountId: servedAccountId } : {}),
+       // 桌面 continuous 实时事件只携带当前 model_complete payload。
+       // 如果主轮次只发 usage 不发 contextWindow，旧 task stream 无法生成 usage_update，
+       // 长程任务中输入栏会拿不到 context meter 的 size 而隐藏。
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index bf6a6d3..1895dca 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -117,7 +117,7 @@ export async function recordModelUsageFact(
+       rawUsage: usage,
+       providerMetadata: {
+         ...input.result?.providerMetadata,
+-        fleetAccounting: { ...(input.result?.providerMetadata?.fleetAccounting as Record<string,unknown> | undefined), requestedSpeedMode: input.model.options.speedMode ?? "standard" },
++        fleetAccounting: { ...(input.result?.providerMetadata?.fleetAccounting as Record<string,unknown> | undefined), workspacePath: runtime.workspaceRoot, requestedSpeedMode: input.model.options.speedMode ?? "standard" },
+       },
+     });
+   } catch (error) {
+diff --git a/package.json b/package.json
+index 3423bde..6ca3a65 100644
+--- a/package.json
++++ b/package.json
+@@ -51,7 +51,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index be0a514..bec66e3 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -3152,7 +3152,7 @@ export function createZCodeAgentService(
+     return client;
+   }
+ 
+-  // 全局工作流的载体运行时选择：
++  // 全局工作流与历史用量共用的本机控制面载体：
+   // 调用方只给 `{ scope: "global" }` 不带 workspace 时，先复用任一已活跃的**本地** runtime
+   // （existing-only 语义：只看 activeClientsByWorkspaceKey，绝不为此拉起新进程），否则回落到
+   // 管理面 workspace——照 getPluginManagementClient 先例用专用 pluginProcessManager 拉一个控制面
+@@ -3169,7 +3169,7 @@ export function createZCodeAgentService(
+     );
+   }
+ 
+-  async function resolveGlobalSavedWorkflowCarrier(): Promise<{
++  async function resolveLocalControlCarrier(): Promise<{
+     client: ZCodeProtocolClient;
+     workspace: ZCodeWorkspaceRef;
+   }> {
+@@ -3197,7 +3197,7 @@ export function createZCodeAgentService(
+     if (savedWorkflowTargetHasWorkspace(params)) {
+       return { client: await getReadOnlyClient(params), workspace: buildWorkspaceRef(params) };
+     }
+-    return resolveGlobalSavedWorkflowCarrier();
++    return resolveLocalControlCarrier();
+   }
+ 
+   // mcp/list 专用：与插件管理命令隔离进程，见 mcpStatusProcessManager 处的说明。
+@@ -3669,14 +3669,11 @@ export function createZCodeAgentService(
+     },
+ 
+     async getAppUsageStats(params: ZCodeAgentAppUsageParams) {
+-      // usage 表位于全局 session 库；复用任意已连接的 workspace client 即可拿到全应用范围数据。
+-      const active = activeClientsByWorkspaceKey.values().next().value;
+-      if (!active) {
+-        throw new Error("no_active_workspace");
+-      }
++      // 账本读取不依赖模型配置。复用现有本机控制面，避免空配置时报错或误读远端项目账本。
++      const { client } = await resolveLocalControlCarrier();
+       // usage/stats → v4/usage/stats（additive query，事实源在 CLI usage store，
+       // 载荷同形；旧词消费清零，CLI 旧 case 留到旧词删除之时）。
+-      return active.client.request(
++      return client.request(
+         V4_METHODS.usageStats,
+         { range: params.range, timeZone: params.timeZone, since:params.since, until:params.until },
+         v4UsageStatsResultSchema,
+diff --git a/packages/services/test/usage-cost-report.test.ts b/packages/services/test/usage-cost-report.test.ts
+new file mode 100644
+index 0000000..e00571f
+--- /dev/null
++++ b/packages/services/test/usage-cost-report.test.ts
+@@ -0,0 +1,322 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { SubscriptionPayment, UsageAccountingRow } from "../../shared/src/usage-accounting.js";
++import { buildUsageCostReport } from "../../shared/src/usage-cost-report.js";
++
++const payment: SubscriptionPayment = {
++  id: "bill",
++  providerId: "chat",
++  accountId: "a",
++  accountLabel: "A",
++  start: 100,
++  end: 200,
++  amount: 30,
++  currency: "USD",
++};
++const row = (patch: Partial<UsageAccountingRow> = {}): UsageAccountingRow => ({
++  providerId: "chat",
++  accountId: "a",
++  modelId: "first",
++  speedMode: "standard",
++  workspacePath: "/one",
++  requestCount: 1,
++  reportedCount: 1,
++  inputTokens: 80,
++  outputTokens: 20,
++  cacheReadTokens: 0,
++  cacheInputTokens: 80,
++  cacheReportedCount: 1,
++  estimatedUsd: 2,
++  pricedCount: 1,
++  estimatedCredits: 1,
++  creditCount: 1,
++  firstAt: 110,
++  lastAt: 110,
++  priceVersions: "official",
++  ...patch,
++});
++const close = (actual: number | null, expected: number) => {
++  assert.notEqual(actual, null);
++  assert.ok(Math.abs(actual! - expected) < 1e-9, `${actual} != ${expected}`);
++};
++
++test("one account-period links API value and actual fee without other-account or date leakage", () => {
++  const report = buildUsageCostReport(
++    [
++      row(),
++      row({ modelId: "second", estimatedUsd: 4, estimatedCredits: 2 }),
++      row({ accountId: "b", estimatedUsd: 90, firstAt: 1, lastAt: 300 }),
++      row({ providerId: "other", accountId: null, estimatedUsd: 90 }),
++      row({ firstAt: 200, lastAt: 200, estimatedUsd: 90 }),
++      row({ firstAt: 99, lastAt: 99, estimatedUsd: 90 }),
++    ],
++    { payment },
++  );
++  assert.equal(report.summary.requests, 2);
++  assert.equal(report.summary.apiUsd, 6);
++  assert.equal(report.summary.actualAmount, 30);
++  assert.equal(report.summary.allocationBasis, "credits");
++  assert.equal(report.summary.apiMinusActualUsd, -24);
++  assert.equal(report.summary.apiPerMillion, 30_000);
++  assert.equal(report.summary.actualPerMillion, 150_000);
++  assert.deepEqual(
++    report.models.map((item) => [item.modelId, item.actualAmount]),
++    [
++      ["first", 10],
++      ["second", 20],
++    ],
++  );
++  assert.equal(report.summary.unknownAccountRequests, 0);
++});
++
++test("native credit weights win over API values and amount edits do not alter estimates", () => {
++  const rows = [row(), row({ modelId: "second", estimatedCredits: 3, estimatedUsd: 2 })];
++  const before = buildUsageCostReport(rows, { payment });
++  const after = buildUsageCostReport(rows, { payment: { ...payment, amount: 60 } });
++  assert.deepEqual(
++    before.models.map((item) => item.actualAmount),
++    [7.5, 22.5],
++  );
++  assert.deepEqual(
++    after.models.map((item) => item.actualAmount),
++    [15, 45],
++  );
++  assert.equal(before.summary.apiUsd, after.summary.apiUsd);
++  assert.equal(before.summary.apiPerMillion, after.summary.apiPerMillion);
++});
++
++test("complete API values provide the existing fallback when credits are incomplete", () => {
++  const report = buildUsageCostReport(
++    [row({ creditCount: 0 }), row({ modelId: "second", estimatedUsd: 4 })],
++    { payment },
++  );
++  assert.equal(report.summary.allocationBasis, "api-value");
++  assert.deepEqual(
++    report.models.map((item) => item.actualAmount),
++    [10, 20],
++  );
++});
++
++test("project allocation uses the whole bill including unassigned rows before filtering", () => {
++  const rows = [row(), row({ workspacePath: "/two" }), row({ workspacePath: null })];
++  const whole = buildUsageCostReport(rows, { payment });
++  const filtered = buildUsageCostReport(rows, { payment, workspacePath: "/two" });
++  const unassigned = buildUsageCostReport(rows, { payment, workspacePath: null });
++  close(
++    whole.projects.reduce((sum, item) => sum + item.actualAmount!, 0),
++    payment.amount,
++  );
++  assert.equal(whole.projects.length, 3);
++  assert.equal(filtered.summary.actualAmount, 10);
++  assert.equal(filtered.models[0]?.actualAmount, 10);
++  assert.equal(filtered.summary.apiUsd, 2);
++  assert.equal(filtered.projects.length, 1);
++  assert.equal(unassigned.summary.actualAmount, 10);
++  assert.equal(unassigned.projects[0]?.workspacePath, null);
++  assert.equal(
++    buildUsageCostReport(rows, { payment, workspacePath: "/missing" }).summary.actualAmount,
++    0,
++  );
++});
++
++test("model and project totals conserve a fee when each model spans several projects", () => {
++  const rows = [
++    row({ estimatedCredits: 1 }),
++    row({ estimatedCredits: 2, workspacePath: "/two" }),
++    row({ modelId: "second", estimatedCredits: 4, workspacePath: undefined }),
++    row({ modelId: "second", estimatedCredits: 8, workspacePath: "/two" }),
++  ];
++  const report = buildUsageCostReport(rows, { payment });
++  close(
++    report.models.reduce((sum, item) => sum + item.actualAmount!, 0),
++    30,
++  );
++  close(
++    report.projects.reduce((sum, item) => sum + item.actualAmount!, 0),
++    30,
++  );
++  for (const model of report.models) {
++    close(
++      report.projects
++        .flatMap((project) => project.models)
++        .filter((item) => item.modelId === model.modelId)
++        .reduce((sum, item) => sum + item.actualAmount!, 0),
++      model.actualAmount!,
++    );
++  }
++});
++
++test("legacy unknown accounts block allocation but are never assigned to the selected account", () => {
++  const rows = [row(), row({ accountId: null, estimatedUsd: 100, workspacePath: "/legacy" })];
++  const report = buildUsageCostReport(rows, { payment });
++  assert.equal(report.summary.requests, 1);
++  assert.equal(report.summary.apiUsd, 2);
++  assert.equal(report.summary.actualAmount, 30);
++  assert.equal(report.summary.actualPerMillion, null);
++  assert.equal(report.summary.unallocatedAmount, 30);
++  assert.equal(report.summary.unknownAccountRequests, 1);
++  assert.equal(report.summary.apiMinusActualUsd, null);
++  assert.equal(report.models[0]?.actualAmount, null);
++  assert.equal(report.projects.length, 1);
++  const filtered = buildUsageCostReport(rows, { payment, workspacePath: "/one" });
++  assert.equal(filtered.summary.actualAmount, null);
++  assert.equal(filtered.summary.unallocatedAmount, null);
++  assert.equal(filtered.summary.unknownAccountRequests, 1);
++});
++
++test("membership-key connection totals explicitly match only accountless rows", () => {
++  const report = buildUsageCostReport([row({ accountId: null }), row()], {
++    payment: { ...payment, accountId: "connection" },
++  });
++  assert.equal(report.summary.requests, 1);
++  assert.equal(report.summary.unknownAccountRequests, 0);
++  assert.equal(report.summary.actualAmount, 30);
++  assert.equal(report.summary.allocationBasis, "credits");
++});
++
++test("partial price and counter coverage cannot produce a complete unit quote or saving", () => {
++  const report = buildUsageCostReport(
++    [
++      row(),
++      row({
++        modelId: "missing",
++        pricedCount: 0,
++        reportedCount: 0,
++        creditCount: 0,
++        estimatedUsd: 0,
++        inputTokens: 0,
++        outputTokens: 0,
++      }),
++    ],
++    { payment },
++  );
++  assert.equal(report.summary.apiUsd, 2);
++  assert.equal(report.summary.apiPerMillion, null);
++  assert.equal(report.summary.actualPerMillion, null);
++  assert.equal(report.summary.apiMinusActualUsd, null);
++  assert.equal(report.models.find((item) => item.modelId === "missing")?.apiUsd, null);
++  assert.equal(report.summary.unallocatedAmount, 30);
++});
++
++test("accepted credit allocation with missing token reports has no actual unit quote", () => {
++  const report = buildUsageCostReport(
++    [row({ reportedCount: 0, inputTokens: 0, outputTokens: 0 })],
++    { payment },
++  );
++  assert.equal(report.summary.allocationBasis, "credits");
++  assert.equal(report.models[0]?.actualAmount, 30);
++  assert.equal(report.models[0]?.actualPerMillion, null);
++  assert.equal(report.summary.apiMinusActualUsd, null);
++});
++
++test("cross-currency fees are not compared or converted", () => {
++  const report = buildUsageCostReport([row()], {
++    payment: { ...payment, amount: 100, currency: "CNY" },
++  });
++  assert.equal(report.summary.apiUsd, 2);
++  assert.equal(report.summary.actualAmount, 100);
++  assert.equal(report.summary.apiMinusActualUsd, null);
++});
++
++test("free price stays zero, missing price stays null, and zero tokens have no unit quote", () => {
++  const free = buildUsageCostReport([row({ estimatedUsd: 0, inputTokens: 0, outputTokens: 0 })], {
++    payment,
++  });
++  assert.equal(free.summary.apiUsd, 0);
++  assert.equal(free.summary.apiPerMillion, null);
++  assert.equal(free.summary.actualPerMillion, null);
++  const missing = buildUsageCostReport([row({ pricedCount: 0, estimatedUsd: 0 })]);
++  assert.equal(missing.summary.apiUsd, null);
++  assert.equal(missing.summary.actualAmount, null);
++  assert.equal(missing.summary.allocationBasis, null);
++  const empty = buildUsageCostReport([], { payment });
++  assert.equal(empty.summary.actualAmount, 30);
++  assert.equal(empty.summary.unallocatedAmount, 30);
++  assert.equal(empty.summary.apiMinusActualUsd, null);
++});
++
++test("an aggregate spanning a bill edge blocks allocation rather than inventing period usage", () => {
++  const report = buildUsageCostReport([row(), row({ firstAt: 90, lastAt: 110 })], { payment });
++  assert.equal(report.summary.requests, 1);
++  assert.equal(report.summary.apiUsd, 2);
++  assert.equal(report.summary.actualAmount, 30);
++  assert.equal(report.summary.unallocatedAmount, 30);
++  assert.equal(report.summary.allocationBasis, "unavailable");
++});
++
++test("without a payment global API totals and project filters preserve stable model order", () => {
++  const report = buildUsageCostReport([
++    row({ modelId: "z", inputTokens: 180 }),
++    row({ modelId: "b" }),
++    row({ modelId: "a", accountId: "b" }),
++    row({ modelId: "a", workspacePath: "/two" }),
++  ]);
++  assert.deepEqual(
++    report.models.map((item) => item.modelId),
++    ["a", "z", "b"],
++  );
++  assert.equal(report.summary.apiUsd, 8);
++  assert.equal(report.summary.actualAmount, null);
++  assert.equal(report.summary.unallocatedAmount, null);
++  const filtered = buildUsageCostReport([row(), row({ workspacePath: "/two" })], {
++    workspacePath: "/two",
++  });
++  assert.equal(filtered.summary.requests, 1);
++  assert.equal(filtered.summary.apiUsd, 2);
++  assert.equal(filtered.summary.actualAmount, null);
++});
++
++test("model and project provenance stays distinct across price revisions and account/provider scopes", () => {
++  const rows = [
++    row({
++      priceSources:
++        " https://vendor.test/pricing,https://models.dev/api.json,,https://vendor.test/pricing ",
++      priceVersions: "official-v1,catalog-v1,",
++    }),
++    row({
++      workspacePath: "/two",
++      priceSources: "https://vendor.test/pricing",
++      priceVersions: "official-v2,official-v1",
++    }),
++    row({
++      accountId: "b",
++      priceSources: "https://other-account.test/pricing",
++      priceVersions: "other-account-v1",
++    }),
++    row({
++      providerId: "other",
++      priceSources: "https://other-provider.test/pricing",
++      priceVersions: "other-provider-v1",
++    }),
++    row({
++      modelId: "second",
++      priceSources: "https://second-model.test/pricing",
++      priceVersions: "second-v1",
++    }),
++  ];
++  const report = buildUsageCostReport(rows, { payment });
++  const first = report.models.find((model) => model.modelId === "first")!;
++  assert.deepEqual(first.priceSources, [
++    "https://models.dev/api.json",
++    "https://vendor.test/pricing",
++  ]);
++  assert.deepEqual(first.priceVersions, ["catalog-v1", "official-v1", "official-v2"]);
++  const project = report.projects.find((item) => item.workspacePath === "/two")!;
++  assert.deepEqual(project.models[0]?.priceSources, ["https://vendor.test/pricing"]);
++  assert.deepEqual(project.models[0]?.priceVersions, ["official-v1", "official-v2"]);
++  const global = buildUsageCostReport(rows).models.find((model) => model.modelId === "first")!;
++  assert.deepEqual(global.priceSources, [
++    "https://models.dev/api.json",
++    "https://other-account.test/pricing",
++    "https://other-provider.test/pricing",
++    "https://vendor.test/pricing",
++  ]);
++  assert.deepEqual(
++    buildUsageCostReport([row({ priceVersions: null })]).models[0]?.priceSources,
++    [],
++  );
++  assert.deepEqual(
++    buildUsageCostReport([row({ priceVersions: null })]).models[0]?.priceVersions,
++    [],
++  );
++});
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index add1e12..64b3715 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -310,4 +310,5 @@ export * from "./credential-health.js";
+ 
+ export * from "./usage-accounting.js";
+ export * from "./usage-price.js";
++export * from "./usage-cost-report.js";
+ export { resolveUsageBillingProvider, USAGE_PRICE_CATALOG_INFO } from "./usage-price-catalog.js";
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+index 4ecf4d3..e850742 100644
+--- a/packages/shared/src/usage-accounting.ts
++++ b/packages/shared/src/usage-accounting.ts
+@@ -40,6 +40,7 @@ export type SubscriptionPayment = z.infer<typeof subscriptionPaymentSchema>;
+ export const usageAccountingRowSchema = z.object({
+   providerId: z.string(),
+   accountId: z.string().nullable(),
++  workspacePath: z.string().nullable().optional(),
+   modelId: z.string(),
+   speedMode: z.string().nullable(),
+   requestCount: z.number(),
+@@ -56,6 +57,7 @@ export const usageAccountingRowSchema = z.object({
+   firstAt: z.number(),
+   lastAt: z.number(),
+   priceVersions: z.string().nullable(),
++  priceSources: z.string().nullable().optional(),
+ });
+ export type UsageAccountingRow = z.infer<typeof usageAccountingRowSchema>;
+ 
+@@ -82,7 +84,11 @@ export function allocateSubscriptionPayment(
+   const requests = eligible.reduce((sum, row) => sum + row.requestCount, 0);
+   const native = requests > 0 && eligible.every((row) => row.creditCount === row.requestCount);
+   const api = requests > 0 && eligible.every((row) => row.pricedCount === row.requestCount);
+-  const basis = native ? "credits" : api ? "api-value" : "unavailable";
++  const basis: "credits" | "api-value" | "unavailable" = native
++    ? "credits"
++    : api
++      ? "api-value"
++      : "unavailable";
+   const weight = (row: UsageAccountingRow) => (native ? row.estimatedCredits : row.estimatedUsd);
+   const total = eligible.reduce((sum, row) => sum + weight(row), 0);
+   if (basis === "unavailable" || total <= 0)
+diff --git a/packages/shared/src/usage-cost-report.ts b/packages/shared/src/usage-cost-report.ts
+new file mode 100644
+index 0000000..6c34992
+--- /dev/null
++++ b/packages/shared/src/usage-cost-report.ts
+@@ -0,0 +1,214 @@
++import {
++  allocateSubscriptionPayment,
++  type SubscriptionPayment,
++  type UsageAccountingRow,
++} from "./usage-accounting.js";
++
++export interface UsageCostTotals {
++  requests: number;
++  reportedCount: number;
++  pricedCount: number;
++  totalTokens: number;
++  apiUsd: number | null;
++  actualAmount: number | null;
++  apiPerMillion: number | null;
++  actualPerMillion: number | null;
++}
++
++export interface UsageCostModel extends UsageCostTotals {
++  modelId: string;
++  priceSources: string[];
++  priceVersions: string[];
++}
++
++export interface UsageCostProject extends UsageCostTotals {
++  workspacePath: string | null;
++  models: UsageCostModel[];
++}
++
++export interface UsageCostReport {
++  summary: UsageCostTotals & {
++    unallocatedAmount: number | null;
++    unknownAccountRequests: number;
++    allocationBasis: "credits" | "api-value" | "unavailable" | null;
++    apiMinusActualUsd: number | null;
++  };
++  models: UsageCostModel[];
++  projects: UsageCostProject[];
++}
++
++export interface UsageCostReportOptions {
++  payment?: SubscriptionPayment;
++  workspacePath?: string | null;
++}
++
++const compareId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
++const workspace = (row: UsageAccountingRow) => row.workspacePath ?? null;
++type SumField =
++  | "requestCount"
++  | "reportedCount"
++  | "pricedCount"
++  | "inputTokens"
++  | "outputTokens"
++  | "estimatedUsd";
++const sum = (rows: readonly UsageAccountingRow[], field: SumField) =>
++  rows.reduce((total, row) => total + row[field], 0);
++const provenance = (rows: readonly UsageAccountingRow[], field: "priceSources" | "priceVersions") =>
++  [
++    ...new Set(
++      rows.flatMap((row) =>
++        (row[field] ?? "")
++          .split(",")
++          .map((value) => value.trim())
++          .filter(Boolean),
++      ),
++    ),
++  ].sort(compareId);
++
++function groupRows<K>(rows: readonly UsageAccountingRow[], key: (row: UsageAccountingRow) => K) {
++  const groups = new Map<K, UsageAccountingRow[]>();
++  for (const row of rows) {
++    const value = key(row);
++    const group = groups.get(value) ?? [];
++    group.push(row);
++    groups.set(value, group);
++  }
++  return groups;
++}
++
++function coverage(rows: readonly UsageAccountingRow[], field: "reportedCount" | "pricedCount") {
++  return rows.every((row) => row[field] === row.requestCount);
++}
++
++function totals(rows: readonly UsageAccountingRow[], actualAmount: number | null): UsageCostTotals {
++  const requests = sum(rows, "requestCount");
++  const reportedCount = sum(rows, "reportedCount");
++  const pricedCount = sum(rows, "pricedCount");
++  const totalTokens = sum(rows, "inputTokens") + sum(rows, "outputTokens");
++  const apiUsd = pricedCount > 0 ? sum(rows, "estimatedUsd") : null;
++  const unitsKnown = requests > 0 && totalTokens > 0 && coverage(rows, "reportedCount");
++  return {
++    requests,
++    reportedCount,
++    pricedCount,
++    totalTokens,
++    apiUsd,
++    actualAmount,
++    apiPerMillion:
++      unitsKnown && coverage(rows, "pricedCount") && apiUsd !== null
++        ? (apiUsd * 1_000_000) / totalTokens
++        : null,
++    actualPerMillion:
++      unitsKnown && actualAmount !== null ? (actualAmount * 1_000_000) / totalTokens : null,
++  };
++}
++
++/** Derive one cost view from the existing ledger; the payment allocator remains the sole authority. */
++export function buildUsageCostReport(
++  rows: readonly UsageAccountingRow[],
++  options: UsageCostReportOptions = {},
++): UsageCostReport {
++  const { payment } = options;
++  const matchesAccount = (row: UsageAccountingRow) =>
++    !payment ||
++    (row.providerId === payment.providerId &&
++      row.accountId === (payment.accountId === "connection" ? null : payment.accountId));
++  const overlapsPeriod = (row: UsageAccountingRow) =>
++    !payment || (row.firstAt < payment.end && row.lastAt >= payment.start);
++  const withinPeriod = (row: UsageAccountingRow) =>
++    !payment || (row.firstAt >= payment.start && row.lastAt < payment.end);
++  const allocationRows = payment
++    ? rows.filter(
++        (row) =>
++          row.providerId === payment.providerId &&
++          (matchesAccount(row) || row.accountId === null) &&
++          overlapsPeriod(row),
++      )
++    : [];
++  const eligible = rows.filter((row) => matchesAccount(row) && withinPeriod(row));
++  const unknownAccountRequests =
++    payment && payment.accountId !== "connection"
++      ? sum(
++          allocationRows.filter((row) => row.accountId === null),
++          "requestCount",
++        )
++      : 0;
++  const hasBoundaryOverlap = allocationRows.some((row) => !withinPeriod(row));
++  const allocation = payment ? allocateSubscriptionPayment(payment, allocationRows) : null;
++  const allocated = allocation !== null && allocation.basis !== "unavailable";
++  const modelAllocations = new Map(allocation?.models.map((model) => [model.modelId, model]));
++  const weight = (row: UsageAccountingRow) =>
++    allocation?.basis === "credits" ? row.estimatedCredits : row.estimatedUsd;
++
++  // 先让既有分摊器计算整个账号账期，再按项目取其份额，避免每个项目重复承担整张账单。
++  const modelAmount = (modelId: string, selectedRows: readonly UsageAccountingRow[]) => {
++    if (!allocated) return null;
++    const model = modelAllocations.get(modelId);
++    if (!model || model.weight === 0) return 0;
++    const selectedWeight = selectedRows.reduce((total, row) => total + weight(row), 0);
++    return model.amount * (selectedWeight / model.weight);
++  };
++  const modelRows = (selectedRows: readonly UsageAccountingRow[]): UsageCostModel[] =>
++    [...groupRows(selectedRows, (row) => row.modelId)]
++      .map(([modelId, modelUsage]) => ({
++        modelId,
++        priceSources: provenance(modelUsage, "priceSources"),
++        priceVersions: provenance(modelUsage, "priceVersions"),
++        ...totals(modelUsage, modelAmount(modelId, modelUsage)),
++      }))
++      .sort((a, b) => b.totalTokens - a.totalTokens || compareId(a.modelId, b.modelId));
++  const actualTotal = (models: readonly UsageCostModel[]) =>
++    allocated ? models.reduce((total, model) => total + model.actualAmount!, 0) : null;
++  const hasProjectFilter = options.workspacePath !== undefined;
++  const selected = hasProjectFilter
++    ? eligible.filter((row) => workspace(row) === options.workspacePath)
++    : eligible;
++  const models = modelRows(selected);
++  const actualAmount = payment ? (hasProjectFilter ? actualTotal(models) : payment.amount) : null;
++  const summary = totals(selected, actualAmount);
++  // 缺失归属或跨账期聚合不能被当前设置补齐，也不能算作完整的费用对比。
++  const comparable =
++    payment?.currency === "USD" &&
++    !hasBoundaryOverlap &&
++    unknownAccountRequests === 0 &&
++    summary.requests > 0 &&
++    actualAmount !== null &&
++    summary.apiUsd !== null &&
++    coverage(eligible, "reportedCount") &&
++    coverage(eligible, "pricedCount");
++  return {
++    summary: {
++      ...summary,
++      actualPerMillion: allocated ? summary.actualPerMillion : null,
++      unallocatedAmount: !payment
++        ? null
++        : hasProjectFilter
++          ? allocated
++            ? 0
++            : null
++          : allocation!.unallocated,
++      unknownAccountRequests,
++      allocationBasis: allocation?.basis ?? null,
++      apiMinusActualUsd: comparable ? summary.apiUsd! - actualAmount! : null,
++    },
++    models,
++    projects: [...groupRows(selected, workspace)]
++      .map(([workspacePath, projectRows]) => {
++        const projectModels = modelRows(projectRows);
++        return {
++          workspacePath,
++          ...totals(projectRows, actualTotal(projectModels)),
++          models: projectModels,
++        };
++      })
++      .sort(
++        (a, b) =>
++          b.totalTokens - a.totalTokens ||
++          (a.workspacePath === null
++            ? 1
++            : b.workspacePath === null
++              ? -1
++              : compareId(a.workspacePath, b.workspacePath)),
++      ),
++  };
++}
+diff --git a/packages/shared/src/zcode-protocol-v4/snapshot.ts b/packages/shared/src/zcode-protocol-v4/snapshot.ts
+index 8a55880..d792015 100644
+--- a/packages/shared/src/zcode-protocol-v4/snapshot.ts
++++ b/packages/shared/src/zcode-protocol-v4/snapshot.ts
+@@ -197,6 +197,7 @@ export const contextWindowMeasurementSchema = z.object({
+ export type ContextWindowMeasurement = z.infer<typeof contextWindowMeasurementSchema>;
+ 
+ export const sessionLastRequestUsageSchema = z.object({
++  accountId: z.string().min(1).optional(),
+   inputTokens: z.number().finite().nonnegative().optional(),
+   outputTokens: z.number().finite().nonnegative().optional(),
+   cacheReadTokens: z.number().finite().nonnegative().optional(),
+diff --git a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+index a53402b..8178629 100644
+--- a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+@@ -15,7 +15,11 @@ import {
+   setPendingSettingsSectionIntent,
+   setPendingSettingsUsageIntent,
+ } from "@/lib/settingsNavigation.js";
+-import { subscriptionAccountDisplayLabel } from "@/settings/model-provider-section/subscriptionAccountLifecycle.js";
++import {
++  subscriptionAccountDisplayLabel,
++  resolveQuotaInspectionAccount,
++} from "@/settings/model-provider-section/subscriptionAccountLifecycle.js";
++import { Badge } from "@/components/ui/badge.js";
+ import { SubscriptionUsageSection } from "@/settings/model-provider-section/SubscriptionUsageSection.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+ 
+@@ -24,6 +28,8 @@ export interface ConversationSubscriptionConnection {
+   name: string;
+   kind: ComponentProps<typeof SubscriptionUsageSection>["kind"];
+   revision: number;
++  lastAccountId?: string;
++  lastObservedAt?: number;
+ }
+ type Accounts = Awaited<ReturnType<IProviderSettingsService["getSubscriptionAccounts"]>>;
+ 
+@@ -43,6 +49,7 @@ export function ConversationSubscriptionUsage({
+   const { intl } = useZCodeIntl();
+   const openSettings = useTabStore((state) => state.openSettingsTab);
+   const scope = `${connection.providerId}:${connection.revision}`;
++  const requestKey = `${connection.lastAccountId ?? ""}:${connection.lastObservedAt ?? ""}`;
+   const [state, setState] = useState<{
+     service: IProviderSettingsService;
+     scope: string;
+@@ -53,20 +60,21 @@ export function ConversationSubscriptionUsage({
+     scope: string;
+     accountId: string;
+     service: IProviderSettingsService;
++    requestKey: string;
+   }>();
+   const [retry, setRetry] = useState(0);
+   const scoped =
+     state?.service === providerSettingsService && state.scope === scope ? state : undefined;
+   const accounts = scoped?.accounts;
+-  const selected =
+-    accounts?.accounts.find(
+-      (account) =>
+-        choice?.service === providerSettingsService &&
+-        choice.scope === scope &&
+-        choice.accountId === account.id,
+-    ) ??
+-    accounts?.accounts.find((account) => account.active) ??
+-    accounts?.accounts[0];
++  const selected = resolveQuotaInspectionAccount(
++    accounts?.accounts ?? [],
++    choice?.service === providerSettingsService &&
++      choice.scope === scope &&
++      choice.requestKey === requestKey
++      ? choice.accountId
++      : undefined,
++    connection.lastAccountId,
++  );
+ 
+   useEffect(() => {
+     if (!open) return;
+@@ -101,7 +109,11 @@ export function ConversationSubscriptionUsage({
+       window.removeEventListener("online", onVisible);
+     };
+   }, [open, connection.providerId, providerSettingsService, scope, retry]);
+-  const accountLabel = (account: Accounts["accounts"][number], index: number) => {
++  const accountLabel = (
++    account: Accounts["accounts"][number],
++    index: number,
++    withStatus = true,
++  ) => {
+     const label = subscriptionAccountDisplayLabel(
+       accounts?.accounts ?? [],
+       account,
+@@ -110,9 +122,12 @@ export function ConversationSubscriptionUsage({
+         { number: index + 1 },
+       ),
+     );
+-    return account.active
+-      ? `${label} · ${intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}`
+-      : label;
++    if (!withStatus) return label;
++    return account.id === connection.lastAccountId
++      ? `${label} · ${intl.formatMessage({ id: "chat.allowance.lastUsed" })}`
++      : account.active
++        ? `${label} · ${intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}`
++        : label;
+   };
+ 
+   return (
+@@ -131,31 +146,56 @@ export function ConversationSubscriptionUsage({
+             compact
+             condensed
+             accountControl={
+-              accounts.accounts.length > 1 ? (
+-                <Select
+-                  value={selected.id}
+-                  onValueChange={(accountId) =>
+-                    setChoice({ scope, accountId, service: providerSettingsService })
+-                  }
+-                  onOpenChange={onPickerOpenChange}
+-                >
+-                  <SelectTrigger
+-                    className="h-7 w-full border-0 bg-transparent px-0 text-ui-sm text-foreground-subtle shadow-none"
+-                    aria-label={intl.formatMessage({ id: "chat.allowance.viewAccount" })}
++              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
++                {accounts.accounts.length > 1 ? (
++                  <Select
++                    value={selected.id}
++                    onValueChange={(accountId) =>
++                      setChoice({ scope, accountId, service: providerSettingsService, requestKey })
++                    }
++                    onOpenChange={onPickerOpenChange}
+                   >
+-                    <SelectValue />
+-                  </SelectTrigger>
+-                  <SelectContent>
+-                    {accounts.accounts.map((account, index) => (
+-                      <SelectItem key={account.id} value={account.id}>
+-                        {accountLabel(account, index)}
+-                      </SelectItem>
+-                    ))}
+-                  </SelectContent>
+-                </Select>
+-              ) : (
+-                <div className="text-ui-sm text-foreground-subtle">{accountLabel(selected, 0)}</div>
+-              )
++                    <SelectTrigger
++                      className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-ui-sm text-foreground-subtle shadow-none"
++                      aria-label={intl.formatMessage({ id: "chat.allowance.viewAccount" })}
++                    >
++                      <span>{intl.formatMessage({ id: "chat.allowance.inspect" })}</span>
++                      <SelectValue>
++                        {accountLabel(
++                          selected,
++                          accounts.accounts.findIndex((account) => account.id === selected.id),
++                          false,
++                        )}
++                      </SelectValue>
++                      {selected.id === connection.lastAccountId ? (
++                        <span className="shrink-0">
++                          {intl.formatMessage({ id: "chat.allowance.lastUsed" })}
++                        </span>
++                      ) : selected.active ? (
++                        <span className="shrink-0">
++                          {intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}
++                        </span>
++                      ) : null}
++                    </SelectTrigger>
++                    <SelectContent>
++                      {accounts.accounts.map((account, index) => (
++                        <SelectItem key={account.id} value={account.id}>
++                          {accountLabel(account, index)}
++                        </SelectItem>
++                      ))}
++                    </SelectContent>
++                  </Select>
++                ) : (
++                  <div className="text-ui-sm text-foreground-subtle">
++                    {accountLabel(selected, 0)}
++                  </div>
++                )}
++                {accounts.autoSwitch ? (
++                  <Badge variant="secondary">
++                    {intl.formatMessage({ id: "chat.allowance.autoSwitch" })}
++                  </Badge>
++                ) : null}
++              </div>
+             }
+             showReset={false}
+             onScopeChanged={() => setRetry((value) => value + 1)}
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index a037d74..12d2a21 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7100,6 +7100,34 @@ const enUS: Record<string, string> = {
+   "settings.usage.payments.empty": "No payments recorded",
+   "settings.usage.payments.formDescription": "Record your subscription payment for an account and billing period.",
+   "settings.usage.payments.unallocated": "Not yet allocated",
++  "settings.usage.costAnalysis.title": "Cost analysis",
++  "settings.usage.costAnalysis.recordPayment": "Record subscription payment",
++  "settings.usage.costAnalysis.scope": "Usage scope or billing period",
++  "settings.usage.costAnalysis.allUsage": "All usage",
++  "settings.usage.costAnalysis.paymentActions": "Payment actions",
++  "settings.usage.costAnalysis.editPayment": "Edit payment",
++  "settings.usage.costAnalysis.removePayment": "Remove payment record",
++  "settings.usage.costAnalysis.loading": "Loading billing-period usage…",
++  "settings.usage.costAnalysis.paid": "Paid this period",
++  "settings.usage.costAnalysis.apiEquivalent": "Same-usage API estimate",
++  "settings.usage.costAnalysis.actualUnit": "Paid cost / 1M tokens",
++  "settings.usage.costAnalysis.recordedTokens": "Recorded tokens",
++  "settings.usage.costAnalysis.unit": "Cost per 1M tokens",
++  "settings.usage.costAnalysis.models": "Model costs",
++  "settings.usage.costAnalysis.projects": "Project costs",
++  "settings.usage.costAnalysis.unassigned": "Unassigned project",
++  "settings.usage.costAnalysis.priced": "priced",
++  "settings.usage.costAnalysis.api": "API",
++  "settings.usage.costAnalysis.actual": "Paid",
++  "settings.usage.costAnalysis.priceSources": "View pricing sources",
++  "settings.usage.costAnalysis.empty": "No accountable usage in this scope",
++  "settings.usage.costAnalysis.allocationPending": "Allocation pending",
++  "settings.usage.costAnalysis.periodOpen": "Period to date",
++  "settings.usage.costAnalysis.unknownAccounts": "{count} historical requests have no confirmed account. The payment is not yet allocated.",
++  "chat.allowance.lastUsed": "Last used",
++  "chat.allowance.inspect": "View:",
++  "chat.allowance.autoSwitch": "Auto switch",
++  "settings.usage.accounting.analysisHelp": "Compare the public API value of the same account-period usage with your subscription payment. Unit cost divides allocated spend by input plus output tokens, per million. Project shares are taken after the whole-period allocation. Missing usage is not reconstructed; currencies are not mixed.",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index dd4fa1d..b0ab4cd 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6751,6 +6751,34 @@ const zhCN: Record<string, string> = {
+   "settings.usage.payments.empty": "暂无花费记录",
+   "settings.usage.payments.formDescription": "按账号和账期记录已支付的会员费用。",
+   "settings.usage.payments.unallocated": "暂无法分摊",
++  "settings.usage.costAnalysis.title": "费用分析",
++  "settings.usage.costAnalysis.recordPayment": "记录会员花费",
++  "settings.usage.costAnalysis.scope": "用量范围或会员账期",
++  "settings.usage.costAnalysis.allUsage": "全部用量",
++  "settings.usage.costAnalysis.paymentActions": "账单操作",
++  "settings.usage.costAnalysis.editPayment": "修改实付金额",
++  "settings.usage.costAnalysis.removePayment": "移除花费记录",
++  "settings.usage.costAnalysis.loading": "正在读取账期用量…",
++  "settings.usage.costAnalysis.paid": "本期实付",
++  "settings.usage.costAnalysis.apiEquivalent": "同量 API 估算",
++  "settings.usage.costAnalysis.actualUnit": "实付折算 / 百万 Tokens",
++  "settings.usage.costAnalysis.recordedTokens": "已记录 Tokens",
++  "settings.usage.costAnalysis.unit": "百万 Token 单价",
++  "settings.usage.costAnalysis.models": "模型费用",
++  "settings.usage.costAnalysis.projects": "项目费用",
++  "settings.usage.costAnalysis.unassigned": "未归属项目",
++  "settings.usage.costAnalysis.priced": "已计价",
++  "settings.usage.costAnalysis.api": "API",
++  "settings.usage.costAnalysis.actual": "实付",
++  "settings.usage.costAnalysis.priceSources": "查看定价来源",
++  "settings.usage.costAnalysis.empty": "该范围暂无可核算用量",
++  "settings.usage.costAnalysis.allocationPending": "待分摊",
++  "settings.usage.costAnalysis.periodOpen": "本期截至目前",
++  "settings.usage.costAnalysis.unknownAccounts": "有 {count} 条历史请求无法确认账号归属，暂不将整笔会员费分摊。",
++  "chat.allowance.lastUsed": "上次使用",
++  "chat.allowance.inspect": "查看：",
++  "chat.allowance.autoSwitch": "自动切换",
++  "settings.usage.accounting.analysisHelp": "同一账号、同一账期内，用公开 API 定价估算相同用量，再按模型消耗分摊你的实付会员费。单价为分摊费用 ÷ 输入与输出 Tokens × 100 万。项目费用先用完整账期分摊，再取各项目的份额；未记录的用量不补猜，跨币种不合并比较。",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts b/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
+index 52f749d..c1b8c82 100644
+--- a/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
++++ b/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
+@@ -101,3 +101,17 @@ export function subscriptionAccountDisplayLabel(
+     ? `${account.label} · ${fallback}`
+     : account.label;
+ }
++
++/** Quota inspection is read-only; execution receipts take precedence over a configured default. */
++export function resolveQuotaInspectionAccount<T extends { id: string; active: boolean }>(
++  accounts: readonly T[],
++  inspectedId?: string,
++  servedId?: string,
++): T | undefined {
++  return (
++    accounts.find((account) => account.id === inspectedId) ??
++    accounts.find((account) => account.id === servedId) ??
++    accounts.find((account) => account.active) ??
++    accounts[0]
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx b/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
+index 90c7b67..2813252 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsageModelUsagePieChart.tsx
+@@ -15,7 +15,7 @@ import {
+   USAGE_STATS_TABS_TRIGGER_CLASS,
+ } from "./usageStatsUiParts.js";
+ 
+-type Metric = "tokens" | "cache" | "cost";
++type Metric = "tokens" | "cache";
+ 
+ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSnapshot }) {
+   const { intl, locale } = useZCodeIntl();
+@@ -34,12 +34,6 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
+     const percent = (value: number) => formatPercent(locale, value);
+     const cachePercent = (value: number) =>
+       new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(value);
+-    const money = (value: number) =>
+-      new Intl.NumberFormat(locale, {
+-        style: "currency",
+-        currency: "USD",
+-        maximumFractionDigits: 4,
+-      }).format(value);
+     const unit = intl.formatMessage({ id: "settings.usage.tokenUnit" });
+     const name = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
+     if (metric === "tokens")
+@@ -64,14 +58,11 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
+       return getAppUsageModelChartColor(position < 0 ? index : position);
+     };
+     const rows: UsageChartLegendRow[] = models.map((model, index) => {
+-      const known = metric === "cache" ? model.cacheReports : model.priced;
++      const known = model.cacheReports;
+       const complete = known === model.requests;
+-      const measured = metric === "cache" ? model.cacheInput > 0 : model.priced > 0;
+-      const value =
+-        metric === "cache"
+-          ? cachePercent(model.cacheInput > 0 ? model.cache / model.cacheInput : 0)
+-          : money(model.usd);
+-      const coverage = `${name(metric === "cache" ? "partial" : "priced")}: ${known}/${model.requests}`;
++      const measured = model.cacheInput > 0;
++      const value = cachePercent(model.cacheInput > 0 ? model.cache / model.cacheInput : 0);
++      const coverage = `${name("partial")}: ${known}/${model.requests}`;
+       const hint = `${coverage}\n${name("input")}: ${model.reports ? tokens(model.input) : "—"} · ${name("output")}: ${model.reports ? tokens(model.output) : "—"}\n${name("fast")}: ${model.speedReports ? `${model.fast}/${model.speedReports}` : "—"}`;
+       return {
+         key: `model${index}`,
+@@ -82,22 +73,6 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
+         ...(metric === "cache" && measured ? { ratio: model.cache / model.cacheInput } : {}),
+       };
+     });
+-    if (metric === "cost")
+-      return {
+-        rows,
+-        empty: models.length === 0,
+-        value: total.priced
+-          ? `${money(total.usd)}${total.priced < total.requests ? " *" : ""}`
+-          : "—",
+-        label: name(total.priced < total.requests ? "partialCost" : "costTab"),
+-        segments: models.map((model, index) => ({
+-          key: `model${index}`,
+-          label: model.modelId,
+-          value: model.usd,
+-          color: colorFor(model.modelId, index),
+-          displayValue: money(model.usd),
+-        })),
+-      };
+     return {
+       rows,
+       empty: models.length === 0,
+@@ -135,7 +110,7 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
+         </div>
+         <Tabs value={metric} onValueChange={(value) => setMetric(value as Metric)}>
+           <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+-            {(["tokens", "cache", "cost"] as const).map((value) => (
++            {(["tokens", "cache"] as const).map((value) => (
+               <TabsTrigger key={value} value={value} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+                 {t(`${value}Tab`)}
+               </TabsTrigger>
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index d9d704e..eaf0506 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -1,4 +1,4 @@
+-import { SubscriptionPaymentsPanel } from "./SubscriptionPaymentsPanel.js";
++import { UsageCostAnalysis } from "./UsageCostAnalysis.js";
+ import { RefreshCcw } from "lucide-react";
+ import { Fragment, lazy, useState } from "react";
+ import { APP_USAGE_RANGES } from "@zcode/shared";
+@@ -55,7 +55,7 @@ export function AppUsagePanel() {
+             id: "settings.usage.appUsageLoadingDescription",
+           })}
+         />
+-        <SubscriptionPaymentsPanel />
++        <UsageCostAnalysis snapshot={snapshot} />
+       </div>
+     );
+   }
+@@ -77,7 +77,7 @@ export function AppUsagePanel() {
+             id: "settings.usage.emptyDescription",
+           })}
+         />
+-        <SubscriptionPaymentsPanel />
++        <UsageCostAnalysis snapshot={snapshot} />
+       </div>
+     );
+   }
+@@ -115,7 +115,7 @@ export function AppUsagePanel() {
+         <AppUsageModelUsagePieChart snapshot={snapshot} />
+       </UsageChartLoadBoundary>
+ 
+-      <SubscriptionPaymentsPanel />
++      <UsageCostAnalysis snapshot={snapshot} />
+       <div className="flex justify-end">
+         <Button
+           type="button"
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx
+deleted file mode 100644
+index 8b96256..0000000
+--- a/packages/ui/src/settings/usage-stats/SubscriptionPaymentChart.tsx
++++ /dev/null
+@@ -1,68 +0,0 @@
+-import { useMemo } from "react";
+-import type { allocateSubscriptionPayment, SubscriptionPayment } from "@zcode/shared";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { UsageDistributionChart } from "./UsageDistributionChart.js";
+-import { getAppUsageModelChartColor } from "./appUsageChartPalette.js";
+-import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+-
+-export function SubscriptionPaymentChart({
+-  payment,
+-  allocation,
+-}: {
+-  payment: SubscriptionPayment;
+-  allocation: ReturnType<typeof allocateSubscriptionPayment>;
+-}) {
+-  const { intl, locale } = useZCodeIntl();
+-  const view = useMemo(() => {
+-    const money = (value: number) =>
+-      new Intl.NumberFormat(locale, {
+-        style: "currency",
+-        currency: payment.currency,
+-        maximumFractionDigits: 4,
+-      }).format(value);
+-    const basis = intl.formatMessage({
+-      id: `settings.usage.payments.${allocation.basis === "credits" ? "credits" : "api"}`,
+-    });
+-    const segments = allocation.models.map((model, index) => ({
+-      key: `model${index}`,
+-      label: model.modelId,
+-      value: model.amount,
+-      color: getAppUsageModelChartColor(index),
+-      displayValue: money(model.amount),
+-    }));
+-    return {
+-      value: money(payment.amount),
+-      label: intl.formatMessage({ id: "settings.usage.payments.amount" }),
+-      segments,
+-      rows: allocation.models.map((model, index) => ({
+-        key: `model${index}`,
+-        label: model.modelId,
+-        color: getAppUsageModelChartColor(index),
+-        value: money(model.amount),
+-        detail:
+-          model.perMillionTokens !== null
+-            ? `${money(model.perMillionTokens)} / 1M Tokens`
+-            : undefined,
+-        hint:
+-          payment.end > Date.now()
+-            ? `${basis}\n${intl.formatMessage({ id: "settings.usage.payments.provisional" })}`
+-            : basis,
+-      })),
+-    };
+-  }, [allocation, payment, intl, locale]);
+-  return allocation.basis === "unavailable" ? (
+-    <div className="flex items-center justify-between gap-3 px-3 py-3">
+-      <div className="flex items-baseline gap-2">
+-        <span className="text-ui-base text-foreground-subtle">{view.label}</span>
+-        <span className="text-ui-lg font-medium tabular-nums">{view.value}</span>
+-      </div>
+-      <ControlHintTooltip title={intl.formatMessage({ id: "settings.usage.payments.unavailable" })}>
+-        <span tabIndex={0} className="text-ui-sm text-foreground-subtle">
+-          {intl.formatMessage({ id: "settings.usage.payments.unallocated" })}
+-        </span>
+-      </ControlHintTooltip>
+-    </div>
+-  ) : (
+-    <UsageDistributionChart {...view} />
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
+new file mode 100644
+index 0000000..bad1b2d
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
+@@ -0,0 +1,262 @@
++import { useEffect, useState } from "react";
++import { subscriptionPaymentSchema, type SubscriptionPayment } from "@zcode/shared";
++import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
++import { useServices } from "@/hooks/useServices.js";
++import { useSettings } from "@/hooks/useSettingService.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++  DialogFooter,
++  DialogDescription,
++} from "@/components/ui/dialog.js";
++import {
++  Select,
++  SelectTrigger,
++  SelectContent,
++  SelectItem,
++  SelectValue,
++} from "@/components/ui/select.js";
++
++export const paymentDateText = (time: number) => {
++  const d = new Date(time);
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
++};
++const dateText = paymentDateText;
++const nextDay = (value: string) => {
++  const date = new Date(`${value}T00:00:00`);
++  date.setDate(date.getDate() + 1);
++  return date.getTime();
++};
++
++export function SubscriptionPaymentEditor({
++  payment: editing,
++  payments,
++  onSaved,
++  onClose,
++}: {
++  payment?: SubscriptionPayment;
++  payments: readonly SubscriptionPayment[];
++  onSaved(id: string): void;
++  onClose(): void;
++}) {
++  const { intl } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.payments.${key}` });
++  const { update } = useSettings();
++  const { providerSettingsService } = useServices();
++  const open = true;
++  const [accounts, setAccounts] = useState<PaymentAccount[]>();
++  const [accountKey, setAccountKey] = useState(
++    editing ? JSON.stringify([editing.providerId, editing.accountId]) : "",
++  );
++  const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
++  const [currency, setCurrency] = useState<SubscriptionPayment["currency"]>(
++    editing?.currency ?? "CNY",
++  );
++  const [start, setStart] = useState(() =>
++    dateText(
++      editing?.start ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
++    ),
++  );
++  const [end, setEnd] = useState(() =>
++    dateText(
++      editing
++        ? editing.end - 1
++        : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime(),
++    ),
++  );
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string>();
++  useEffect(() => {
++    if (!open) return;
++    let active = true;
++    setError(undefined);
++    setAccounts(undefined);
++    void readPaymentAccounts(
++      providerSettingsService,
++      intl.formatMessage({ id: "settings.usage.payments.connection" }),
++    )
++      .then((result) => {
++        if (active) setAccounts(result);
++      })
++      .catch((reason) => {
++        if (active) {
++          setAccounts([]);
++          setError(String(reason));
++        }
++      });
++    return () => {
++      active = false;
++    };
++  }, [open, providerSettingsService, intl]);
++  const options = [...(accounts ?? [])];
++  if (
++    editing &&
++    !options.some((a) => a.providerId === editing.providerId && a.accountId === editing.accountId)
++  )
++    options.push({
++      providerId: editing.providerId,
++      accountId: editing.accountId,
++      label: editing.accountLabel,
++    });
++  const save = async () => {
++    const account = options.find((a) => JSON.stringify([a.providerId, a.accountId]) === accountKey);
++    if (!account || !amount.trim()) {
++      setError(t("required"));
++      return;
++    }
++    const parsed = subscriptionPaymentSchema.safeParse({
++      id: editing?.id ?? crypto.randomUUID(),
++      providerId: account.providerId,
++      accountId: account.accountId,
++      accountLabel: account.label,
++      // 只修改金额时保留原来的绝对账期边界，不能因设备时区改变悄悄改写旧账。
++      start:
++        editing && start === dateText(editing.start)
++          ? editing.start
++          : new Date(`${start}T00:00:00`).getTime(),
++      end: editing && end === dateText(editing.end - 1) ? editing.end : nextDay(end),
++      amount: Number(amount),
++      currency,
++    });
++    if (!parsed.success) {
++      setError(t("invalid"));
++      return;
++    }
++    if (
++      payments.some(
++        (p) =>
++          p.id !== parsed.data.id &&
++          p.providerId === parsed.data.providerId &&
++          p.accountId === parsed.data.accountId &&
++          p.start < parsed.data.end &&
++          parsed.data.start < p.end,
++      )
++    ) {
++      setError(t("overlap"));
++      return;
++    }
++    setBusy(true);
++    try {
++      await update({ subscriptionPayments: { [parsed.data.id]: parsed.data } });
++      onSaved(parsed.data.id);
++      onClose();
++    } catch (reason) {
++      setError(String(reason));
++    } finally {
++      setBusy(false);
++    }
++  };
++  return (
++    <Dialog
++      open={open}
++      onOpenChange={(value) => {
++        if (!busy && !value) onClose();
++      }}
++    >
++      <DialogContent className="sm:max-w-[480px]">
++        <DialogHeader>
++          <DialogTitle>{t(editing ? "edit" : "add")}</DialogTitle>
++          <DialogDescription>{t("formDescription")}</DialogDescription>
++        </DialogHeader>
++        <div className="space-y-3">
++          <label className="block space-y-1 text-ui-sm">
++            <span>{t("account")}</span>
++            <Select
++              value={accountKey}
++              onValueChange={setAccountKey}
++              disabled={accounts === undefined}
++            >
++              <SelectTrigger className="w-full">
++                <SelectValue
++                  placeholder={
++                    accounts === undefined
++                      ? intl.formatMessage({ id: "common.loading" })
++                      : t("account")
++                  }
++                />
++              </SelectTrigger>
++              <SelectContent>
++                {options.map((a) => (
++                  <SelectItem
++                    key={JSON.stringify([a.providerId, a.accountId])}
++                    value={JSON.stringify([a.providerId, a.accountId])}
++                  >
++                    {a.label}
++                  </SelectItem>
++                ))}
++              </SelectContent>
++            </Select>
++            {accounts?.length === 0 && !editing && !error ? (
++              <span className="text-foreground-subtle">{t("noAccounts")}</span>
++            ) : null}
++          </label>
++          <div className="grid grid-cols-2 gap-3">
++            <label className="space-y-1 text-ui-sm">
++              {t("start")}
++              <Input
++                className="[color-scheme:light] dark:[color-scheme:dark]"
++                type="date"
++                value={start}
++                onChange={(e) => setStart(e.target.value)}
++              />
++            </label>
++            <label className="space-y-1 text-ui-sm">
++              {t("end")}
++              <Input
++                className="[color-scheme:light] dark:[color-scheme:dark]"
++                type="date"
++                value={end}
++                onChange={(e) => setEnd(e.target.value)}
++              />
++            </label>
++          </div>
++          <div className="flex items-end gap-3">
++            <label className="min-w-0 flex-1 space-y-1 text-ui-sm">
++              {t("amount")}
++              <Input
++                type="number"
++                min="0"
++                step="0.01"
++                value={amount}
++                onChange={(e) => setAmount(e.target.value)}
++              />
++            </label>
++            <Select
++              value={currency}
++              onValueChange={(v) => setCurrency(v as SubscriptionPayment["currency"])}
++            >
++              <SelectTrigger className="w-24" aria-label={t("currency")}>
++                <SelectValue />
++              </SelectTrigger>
++              <SelectContent>
++                {["CNY", "USD", "EUR", "GBP", "JPY"].map((c) => (
++                  <SelectItem key={c} value={c}>
++                    {c}
++                  </SelectItem>
++                ))}
++              </SelectContent>
++            </Select>
++          </div>
++          {error ? (
++            <p role="alert" className="text-ui-sm text-destructive">
++              {error}
++            </p>
++          ) : null}
++        </div>
++        <DialogFooter>
++          <Button variant="ghost" disabled={busy} onClick={onClose}>
++            {intl.formatMessage({ id: "common.cancel" })}
++          </Button>
++          <Button disabled={busy} onClick={() => void save()}>
++            {intl.formatMessage({ id: "common.save" })}
++          </Button>
++        </DialogFooter>
++      </DialogContent>
++    </Dialog>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
+deleted file mode 100644
+index 88ad64f..0000000
+--- a/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
++++ /dev/null
+@@ -1,399 +0,0 @@
+-import { lazy, useEffect, useMemo, useState } from "react";
+-import { Plus, MoreHorizontal } from "lucide-react";
+-import {
+-  allocateSubscriptionPayment,
+-  subscriptionPaymentSchema,
+-  type SubscriptionPayment,
+-  type UsageAccountingRow,
+-} from "@zcode/shared";
+-import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+-import { UsageChartLoadBoundary } from "./UsageChartLoadBoundary.js";
+-import {
+-  DropdownMenu,
+-  DropdownMenuTrigger,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-} from "@/components/ui/dropdown-menu.js";
+-import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
+-import { useServices } from "@/hooks/useServices.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { Button } from "@/components/ui/button.js";
+-import { Input } from "@/components/ui/input.js";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogHeader,
+-  DialogTitle,
+-  DialogFooter,
+-  DialogDescription,
+-} from "@/components/ui/dialog.js";
+-import {
+-  Select,
+-  SelectTrigger,
+-  SelectContent,
+-  SelectItem,
+-  SelectValue,
+-} from "@/components/ui/select.js";
+-
+-const SubscriptionPaymentChart = lazy(() =>
+-  import("./SubscriptionPaymentChart.js").then((module) => ({
+-    default: module.SubscriptionPaymentChart,
+-  })),
+-);
+-const dateText = (time: number) => {
+-  const d = new Date(time);
+-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+-};
+-const nextDay = (text: string) => {
+-  const d = new Date(`${text}T00:00:00`);
+-  d.setDate(d.getDate() + 1);
+-  return d.getTime();
+-};
+-
+-export function SubscriptionPaymentsPanel() {
+-  const { intl } = useZCodeIntl();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.usage.payments.${key}` });
+-  const { settings, update } = useSettings();
+-  const { providerSettingsService, usageStatsService } = useServices();
+-  const payments = useMemo(
+-    () =>
+-      Object.values(settings?.subscriptionPayments ?? {})
+-        .filter((p): p is SubscriptionPayment => p !== null)
+-        .sort((a, b) => b.start - a.start),
+-    [settings?.subscriptionPayments],
+-  );
+-  const [open, setOpen] = useState(false);
+-  const [accounts, setAccounts] = useState<PaymentAccount[]>();
+-  const [accountKey, setAccountKey] = useState("");
+-  const [amount, setAmount] = useState("");
+-  const [currency, setCurrency] = useState<SubscriptionPayment["currency"]>("CNY");
+-  const [start, setStart] = useState(() =>
+-    dateText(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()),
+-  );
+-  const [end, setEnd] = useState(() =>
+-    dateText(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime()),
+-  );
+-  const [editing, setEditing] = useState<SubscriptionPayment>();
+-  const [busy, setBusy] = useState(false);
+-  const [error, setError] = useState<string>();
+-  const [selected, setSelected] = useState<string>();
+-  const [readingSnapshot, setReadingSnapshot] = useState<{
+-    scope: string;
+-    rows: UsageAccountingRow[];
+-  }>();
+-  const [reading, setReading] = useState(false);
+-  const payment = payments.find((p) => p.id === selected) ?? payments[0];
+-  const scope = payment
+-    ? JSON.stringify([
+-        payment.id,
+-        payment.providerId,
+-        payment.accountId,
+-        payment.start,
+-        payment.end,
+-      ])
+-    : "";
+-  const rows = readingSnapshot?.scope === scope ? readingSnapshot.rows : undefined;
+-  useEffect(() => {
+-    if (!open) return;
+-    let active = true;
+-    setError(undefined);
+-    setAccounts(undefined);
+-    void readPaymentAccounts(
+-      providerSettingsService,
+-      intl.formatMessage({ id: "settings.usage.payments.connection" }),
+-    )
+-      .then((result) => {
+-        if (active) setAccounts(result);
+-      })
+-      .catch((reason) => {
+-        if (active) {
+-          setAccounts([]);
+-          setError(String(reason));
+-        }
+-      });
+-    return () => {
+-      active = false;
+-    };
+-  }, [open, providerSettingsService, intl]);
+-  useEffect(() => {
+-    setReadingSnapshot(undefined);
+-    if (!payment) return;
+-    if (payment.start > Date.now()) {
+-      setReadingSnapshot({ scope, rows: [] });
+-      setReading(false);
+-      return;
+-    }
+-    let active = true;
+-    setReading(true);
+-    setError(undefined);
+-    void usageStatsService
+-      .getAppUsageSnapshot({
+-        range: "all",
+-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+-        since: payment.start,
+-        until: payment.end,
+-      })
+-      .then((snapshot) => {
+-        if (active) setReadingSnapshot({ scope, rows: snapshot.accounting ?? [] });
+-      })
+-      .catch((reason) => {
+-        if (active) setError(String(reason));
+-      })
+-      .finally(() => {
+-        if (active) setReading(false);
+-      });
+-    return () => {
+-      active = false;
+-    };
+-  }, [payment, scope, usageStatsService]);
+-  const allocation = payment && rows ? allocateSubscriptionPayment(payment, rows) : undefined;
+-  const edit = (item?: SubscriptionPayment) => {
+-    setEditing(item);
+-    setError(undefined);
+-    setAmount(item ? String(item.amount) : "");
+-    setCurrency(item?.currency ?? "CNY");
+-    setAccountKey(item ? JSON.stringify([item.providerId, item.accountId]) : "");
+-    if (item) {
+-      setStart(dateText(item.start));
+-      setEnd(dateText(item.end - 1));
+-    }
+-    setOpen(true);
+-  };
+-  const options = [...(accounts ?? [])];
+-  if (
+-    editing &&
+-    !options.some((a) => a.providerId === editing.providerId && a.accountId === editing.accountId)
+-  )
+-    options.push({
+-      providerId: editing.providerId,
+-      accountId: editing.accountId,
+-      label: editing.accountLabel,
+-    });
+-  const save = async () => {
+-    const account = options.find((a) => JSON.stringify([a.providerId, a.accountId]) === accountKey);
+-    if (!account || !amount.trim()) {
+-      setError(t("required"));
+-      return;
+-    }
+-    const parsed = subscriptionPaymentSchema.safeParse({
+-      id: editing?.id ?? crypto.randomUUID(),
+-      providerId: account.providerId,
+-      accountId: account.accountId,
+-      accountLabel: account.label,
+-      // 只修改金额时保留原来的绝对账期边界，不能因设备时区改变悄悄改写旧账。
+-      start:
+-        editing && start === dateText(editing.start)
+-          ? editing.start
+-          : new Date(`${start}T00:00:00`).getTime(),
+-      end: editing && end === dateText(editing.end - 1) ? editing.end : nextDay(end),
+-      amount: Number(amount),
+-      currency,
+-    });
+-    if (!parsed.success) {
+-      setError(t("invalid"));
+-      return;
+-    }
+-    if (
+-      payments.some(
+-        (p) =>
+-          p.id !== parsed.data.id &&
+-          p.providerId === parsed.data.providerId &&
+-          p.accountId === parsed.data.accountId &&
+-          p.start < parsed.data.end &&
+-          parsed.data.start < p.end,
+-      )
+-    ) {
+-      setError(t("overlap"));
+-      return;
+-    }
+-    setBusy(true);
+-    try {
+-      await update({ subscriptionPayments: { [parsed.data.id]: parsed.data } });
+-      setSelected(parsed.data.id);
+-      setOpen(false);
+-    } catch (reason) {
+-      setError(String(reason));
+-    } finally {
+-      setBusy(false);
+-    }
+-  };
+-  return (
+-    <section className="space-y-3 rounded-xl bg-surface p-4">
+-      <div className="flex flex-wrap items-center justify-between gap-2">
+-        <div className="flex items-center gap-1">
+-          <h3 className="text-ui-base font-medium">{t("title")}</h3>
+-          <UsageAccountingHelp metric="payment" />
+-        </div>
+-        <Button variant="outline" size="sm" onClick={() => edit()}>
+-          <Plus className="size-3.5" />
+-          {t("add")}
+-        </Button>
+-      </div>
+-      {payment ? (
+-        <>
+-          <div className="flex items-center gap-2">
+-            <Select value={payment.id} onValueChange={setSelected}>
+-              <SelectTrigger className="min-w-0 flex-1" aria-label={t("period")}>
+-                <SelectValue />
+-              </SelectTrigger>
+-              <SelectContent>
+-                {payments.map((item) => (
+-                  <SelectItem key={item.id} value={item.id}>
+-                    {item.accountLabel} · {dateText(item.start)} — {dateText(item.end - 1)}
+-                  </SelectItem>
+-                ))}
+-              </SelectContent>
+-            </Select>
+-            <DropdownMenu>
+-              <DropdownMenuTrigger asChild>
+-                <Button variant="ghost" size="icon-sm" aria-label={t("actions")}>
+-                  <MoreHorizontal className="size-4" />
+-                </Button>
+-              </DropdownMenuTrigger>
+-              <DropdownMenuContent align="end">
+-                <DropdownMenuItem onSelect={() => edit(payment)}>{t("edit")}</DropdownMenuItem>
+-                <DropdownMenuItem
+-                  variant="destructive"
+-                  onSelect={() =>
+-                    void update({ subscriptionPayments: { [payment.id]: null } }).catch((reason) =>
+-                      setError(String(reason)),
+-                    )
+-                  }
+-                >
+-                  {t("remove")}
+-                </DropdownMenuItem>
+-              </DropdownMenuContent>
+-            </DropdownMenu>
+-          </div>
+-          {reading ? (
+-            <p role="status" className="text-ui-sm text-foreground-subtle">
+-              {t("loading")}
+-            </p>
+-          ) : allocation ? (
+-            <UsageChartLoadBoundary
+-              scope="settings.usage.payment-chart"
+-              resetKeys={[scope]}
+-              loadingDescription={t("loading")}
+-            >
+-              <SubscriptionPaymentChart payment={payment} allocation={allocation} />
+-            </UsageChartLoadBoundary>
+-          ) : null}
+-        </>
+-      ) : (
+-        <div className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</div>
+-      )}
+-      {error && !open ? (
+-        <p role="alert" className="text-ui-sm text-destructive">
+-          {error}
+-        </p>
+-      ) : null}
+-      <Dialog
+-        open={open}
+-        onOpenChange={(value) => {
+-          if (!busy) setOpen(value);
+-        }}
+-      >
+-        <DialogContent className="sm:max-w-[480px]">
+-          <DialogHeader>
+-            <DialogTitle>{t(editing ? "edit" : "add")}</DialogTitle>
+-            <DialogDescription>{t("formDescription")}</DialogDescription>
+-          </DialogHeader>
+-          <div className="space-y-3">
+-            <label className="block space-y-1 text-ui-sm">
+-              <span>{t("account")}</span>
+-              <Select
+-                value={accountKey}
+-                onValueChange={setAccountKey}
+-                disabled={accounts === undefined}
+-              >
+-                <SelectTrigger className="w-full">
+-                  <SelectValue
+-                    placeholder={
+-                      accounts === undefined
+-                        ? intl.formatMessage({ id: "common.loading" })
+-                        : t("account")
+-                    }
+-                  />
+-                </SelectTrigger>
+-                <SelectContent>
+-                  {options.map((a) => (
+-                    <SelectItem
+-                      key={JSON.stringify([a.providerId, a.accountId])}
+-                      value={JSON.stringify([a.providerId, a.accountId])}
+-                    >
+-                      {a.label}
+-                    </SelectItem>
+-                  ))}
+-                </SelectContent>
+-              </Select>
+-              {accounts?.length === 0 && !editing && !error ? (
+-                <span className="text-foreground-subtle">{t("noAccounts")}</span>
+-              ) : null}
+-            </label>
+-            <div className="grid grid-cols-2 gap-3">
+-              <label className="space-y-1 text-ui-sm">
+-                {t("start")}
+-                <Input
+-                  className="[color-scheme:light] dark:[color-scheme:dark]"
+-                  type="date"
+-                  value={start}
+-                  onChange={(e) => setStart(e.target.value)}
+-                />
+-              </label>
+-              <label className="space-y-1 text-ui-sm">
+-                {t("end")}
+-                <Input
+-                  className="[color-scheme:light] dark:[color-scheme:dark]"
+-                  type="date"
+-                  value={end}
+-                  onChange={(e) => setEnd(e.target.value)}
+-                />
+-              </label>
+-            </div>
+-            <div className="flex items-end gap-3">
+-              <label className="min-w-0 flex-1 space-y-1 text-ui-sm">
+-                {t("amount")}
+-                <Input
+-                  type="number"
+-                  min="0"
+-                  step="0.01"
+-                  value={amount}
+-                  onChange={(e) => setAmount(e.target.value)}
+-                />
+-              </label>
+-              <Select
+-                value={currency}
+-                onValueChange={(v) => setCurrency(v as SubscriptionPayment["currency"])}
+-              >
+-                <SelectTrigger className="w-24" aria-label={t("currency")}>
+-                  <SelectValue />
+-                </SelectTrigger>
+-                <SelectContent>
+-                  {["CNY", "USD", "EUR", "GBP", "JPY"].map((c) => (
+-                    <SelectItem key={c} value={c}>
+-                      {c}
+-                    </SelectItem>
+-                  ))}
+-                </SelectContent>
+-              </Select>
+-            </div>
+-            {error ? (
+-              <p role="alert" className="text-ui-sm text-destructive">
+-                {error}
+-              </p>
+-            ) : null}
+-          </div>
+-          <DialogFooter>
+-            <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
+-              {intl.formatMessage({ id: "common.cancel" })}
+-            </Button>
+-            <Button disabled={busy} onClick={() => void save()}>
+-              {intl.formatMessage({ id: "common.save" })}
+-            </Button>
+-          </DialogFooter>
+-        </DialogContent>
+-      </Dialog>
+-    </section>
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+index c94a9a1..358de10 100644
+--- a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+@@ -5,7 +5,7 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { USAGE_PRICE_CATALOG_INFO } from "@zcode/shared";
+ 
+-export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "payment" }) {
++export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "payment" | "analysis" }) {
+   const { intl } = useZCodeIntl();
+   const platform = usePlatform();
+   const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
+@@ -26,7 +26,7 @@ export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "pa
+         className="w-80 max-w-[calc(100vw-1.5rem)] space-y-3 p-3 text-ui-sm leading-relaxed"
+       >
+         <p>{t(`${metric}Help`)}</p>
+-        {metric === "cost" ? (
++        {metric === "cost" || metric === "analysis" ? (
+           <>
+             <p className="text-foreground-subtle">
+               {intl.formatMessage(
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+new file mode 100644
+index 0000000..08639d4
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -0,0 +1,191 @@
++import { lazy, useEffect, useMemo, useState } from "react";
++import { MoreHorizontal, Plus } from "lucide-react";
++import {
++  buildUsageCostReport,
++  type AppUsageSnapshot,
++  type SubscriptionPayment,
++  type UsageAccountingRow,
++} from "@zcode/shared";
++import { useServices } from "@/hooks/useServices.js";
++import { useSettings } from "@/hooks/useSettingService.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { Button } from "@/components/ui/button.js";
++import {
++  Select,
++  SelectTrigger,
++  SelectValue,
++  SelectContent,
++  SelectItem,
++} from "@/components/ui/select.js";
++import {
++  DropdownMenu,
++  DropdownMenuTrigger,
++  DropdownMenuContent,
++  DropdownMenuItem,
++} from "@/components/ui/dropdown-menu.js";
++import { SubscriptionPaymentEditor, paymentDateText } from "./SubscriptionPaymentEditor.js";
++import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
++import { UsageChartLoadBoundary } from "./UsageChartLoadBoundary.js";
++
++const UsageCostComparison = lazy(() =>
++  import("./UsageCostComparison.js").then((module) => ({ default: module.UsageCostComparison })),
++);
++
++/** One billing scope owns the reference estimate and paid allocation shown together. */
++export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot | null }) {
++  const { intl } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
++  const { settings, update } = useSettings();
++  const { usageStatsService } = useServices();
++  const payments = useMemo(
++    () =>
++      Object.values(settings?.subscriptionPayments ?? {})
++        .filter((item): item is SubscriptionPayment => item !== null)
++        .sort((a, b) => b.start - a.start),
++    [settings?.subscriptionPayments],
++  );
++  const [choice, setChoice] = useState<string>();
++  const [editor, setEditor] = useState<{ payment?: SubscriptionPayment }>();
++  const [error, setError] = useState<string>();
++  const selected = choice ?? (payments[0] ? `payment:${payments[0].id}` : "all");
++  const payment = payments.find((item) => `payment:${item.id}` === selected);
++  const start = payment?.start,
++    end = payment?.end;
++  const key = payment
++    ? JSON.stringify([payment.providerId, payment.accountId, start, end])
++    : selected;
++  const scope = useMemo(() => ({ service: usageStatsService, key }), [usageStatsService, key]);
++  const [reading, setReading] = useState<{
++    scope: typeof scope;
++    rows?: UsageAccountingRow[];
++    error?: string;
++  }>();
++  const refreshVersion = snapshot?.generatedAt;
++  useEffect(() => {
++    if (start === undefined || end === undefined) return;
++    let active = true;
++    setReading({ scope });
++    if (start > Date.now()) {
++      setReading({ scope, rows: [] });
++      return;
++    }
++    void usageStatsService
++      .getAppUsageSnapshot({
++        range: "all",
++        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++        since: start,
++        until: end,
++      })
++      .then((value) => {
++        if (active) setReading({ scope, rows: value.accounting ?? [] });
++      })
++      .catch((reason) => {
++        if (active) setReading({ scope, error: String(reason) });
++      });
++    return () => {
++      active = false;
++    };
++  }, [scope, start, end, usageStatsService, refreshVersion]);
++  const periodReading = reading?.scope === scope ? reading : undefined;
++  const rows =
++    selected === "all" ? (snapshot ? (snapshot.accounting ?? []) : undefined) : periodReading?.rows;
++  const report = useMemo(
++    () => (rows ? buildUsageCostReport(rows, { payment }) : undefined),
++    [rows, payment],
++  );
++  const remove = async () => {
++    if (!payment) return;
++    try {
++      await update({ subscriptionPayments: { [payment.id]: null } });
++      setChoice("all");
++      setError(undefined);
++    } catch (reason) {
++      setError(String(reason));
++    }
++  };
++  return (
++    <section className="space-y-3 rounded-xl bg-surface p-4">
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <div className="flex items-center gap-1">
++          <h3 className="text-ui-base font-medium">{t("title")}</h3>
++          <UsageAccountingHelp metric="analysis" />
++        </div>
++        <Button variant="outline" size="sm" onClick={() => setEditor({})}>
++          <Plus className="size-3.5" />
++          {t("recordPayment")}
++        </Button>
++      </div>
++      <div className="flex items-center gap-2">
++        <Select
++          value={selected}
++          onValueChange={(value) => {
++            setChoice(value);
++            setError(undefined);
++          }}
++        >
++          <SelectTrigger className="min-w-0 flex-1" aria-label={t("scope")}>
++            <SelectValue />
++          </SelectTrigger>
++          <SelectContent>
++            <SelectItem value="all">
++              {t("allUsage")}
++              {snapshot
++                ? ` · ${intl.formatMessage({ id: `settings.usage.range.${snapshot.range}` })}`
++                : ""}
++            </SelectItem>
++            {payments.map((item) => (
++              <SelectItem key={item.id} value={`payment:${item.id}`}>
++                {item.accountLabel} · {paymentDateText(item.start)} —{" "}
++                {paymentDateText(item.end - 1)}
++              </SelectItem>
++            ))}
++          </SelectContent>
++        </Select>
++        {payment ? (
++          <DropdownMenu>
++            <DropdownMenuTrigger asChild>
++              <Button variant="ghost" size="icon-sm" aria-label={t("paymentActions")}>
++                <MoreHorizontal className="size-4" />
++              </Button>
++            </DropdownMenuTrigger>
++            <DropdownMenuContent align="end">
++              <DropdownMenuItem onSelect={() => setEditor({ payment })}>
++                {t("editPayment")}
++              </DropdownMenuItem>
++              <DropdownMenuItem variant="destructive" onSelect={() => void remove()}>
++                {t("removePayment")}
++              </DropdownMenuItem>
++            </DropdownMenuContent>
++          </DropdownMenu>
++        ) : null}
++      </div>
++      {error || periodReading?.error ? (
++        <p role="alert" className="text-ui-sm text-destructive">
++          {error ?? periodReading?.error}
++        </p>
++      ) : null}
++      {report ? (
++        <UsageChartLoadBoundary
++          scope="settings.usage.cost-analysis"
++          resetKeys={[scope, refreshVersion]}
++          loadingDescription={t("loading")}
++        >
++          <UsageCostComparison report={report} payment={payment} />
++        </UsageChartLoadBoundary>
++      ) : !periodReading?.error ? (
++        <p role="status" className="text-ui-sm text-foreground-subtle">
++          {t("loading")}
++        </p>
++      ) : null}
++      {editor ? (
++        <SubscriptionPaymentEditor
++          key={editor.payment?.id ?? "new"}
++          payment={editor.payment}
++          payments={payments}
++          onClose={() => setEditor(undefined)}
++          onSaved={(id) => setChoice(`payment:${id}`)}
++        />
++      ) : null}
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx b/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
+new file mode 100644
+index 0000000..edb9e03
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
+@@ -0,0 +1,200 @@
++import { Fragment, useState } from "react";
++import { ExternalLink } from "lucide-react";
++import type { SubscriptionPayment, UsageCostReport } from "@zcode/shared";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { Button } from "@/components/ui/button.js";
++import { Progress } from "@/components/ui/progress.js";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
++import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import {
++  formatCompactTokenUsage,
++  USAGE_STATS_TABS_LIST_CLASS,
++  USAGE_STATS_TABS_TRIGGER_CLASS,
++} from "./usageStatsUiParts.js";
++
++type View = "unit" | "models" | "projects";
++const API_COLOR = "var(--color-usage-chart-1)",
++  PAID_COLOR = "var(--color-usage-chart-2)";
++
++/** Original summary/legend/progress primitives, comparing the same account-period facts. */
++export function UsageCostComparison({
++  report,
++  payment,
++}: {
++  report: UsageCostReport;
++  payment?: SubscriptionPayment;
++}) {
++  const { intl, locale } = useZCodeIntl();
++  const platform = usePlatform();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
++  const [view, setView] = useState<View>("unit");
++  const currency = payment?.currency ?? "USD";
++  const money = (value: number | null, unit = "USD") =>
++    value === null
++      ? "—"
++      : new Intl.NumberFormat(locale, {
++          style: "currency",
++          currency: unit,
++          maximumFractionDigits: Math.abs(value) > 0 && Math.abs(value) < 0.0001 ? 8 : 4,
++        }).format(value);
++  const summary = report.summary;
++  const partial = summary.pricedCount < summary.requests || summary.unknownAccountRequests > 0;
++  const stats = [
++    ...(payment ? [{ label: t("paid"), value: money(payment.amount, currency) }] : []),
++    {
++      label: t("apiEquivalent"),
++      value: `${money(summary.apiUsd)}${partial && summary.apiUsd !== null ? " *" : ""}`,
++    },
++    {
++      label: payment ? t("actualUnit") : t("recordedTokens"),
++      value: payment
++        ? money(summary.actualPerMillion, currency)
++        : formatCompactTokenUsage(locale, summary.totalTokens),
++    },
++  ];
++  const data =
++    view === "projects"
++      ? report.projects.map((project) => ({
++          key: project.workspacePath ?? "unassigned",
++          label: project.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("unassigned"),
++          fullLabel: project.workspacePath ?? t("unassigned"),
++          api: project.apiUsd,
++          actual: project.actualAmount,
++          sources: [] as string[],
++          tokens: project.totalTokens,
++          priced: project.pricedCount,
++          requests: project.requests,
++        }))
++      : report.models.map((model) => ({
++          key: model.modelId,
++          label: model.modelId,
++          fullLabel: model.modelId,
++          api: view === "unit" ? model.apiPerMillion : model.apiUsd,
++          actual: view === "unit" ? model.actualPerMillion : model.actualAmount,
++          sources: model.priceSources,
++          tokens: model.totalTokens,
++          priced: model.pricedCount,
++          requests: model.requests,
++        }));
++  // 没有汇率事实时不把不同币种画在同一比例尺上；API 参考数值仍保留在同一行。
++  const comparable = currency === "USD";
++  const max = Math.max(
++    0,
++    ...data.flatMap((row) => [...(comparable || !payment ? [row.api ?? 0] : []), row.actual ?? 0]),
++  );
++  const bar = (label: string, value: number | null, color: string, unit: string, draw: boolean) => (
++    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-ui-sm">
++      <span className="w-12 text-foreground-subtle">{label}</span>
++      {draw && value !== null && max > 0 ? (
++        <Progress
++          value={(value / max) * 100}
++          aria-label={`${label} ${money(value, unit)}`}
++          aria-valuenow={(value / max) * 100}
++          segments={[{ id: label, percent: 1, style: { backgroundColor: color } }]}
++        />
++      ) : (
++        <span />
++      )}
++      <span className="font-mono tabular-nums text-foreground">{money(value, unit)}</span>
++    </div>
++  );
++  return (
++    <div className="space-y-3">
++      <div className="flex flex-col overflow-hidden sm:flex-row sm:items-center">
++        {stats.map((stat, index) => (
++          <Fragment key={stat.label}>
++            {index ? (
++              <div aria-hidden="true" className="hidden h-7 w-px bg-border sm:block" />
++            ) : null}
++            <div className="min-w-0 flex-1 px-4 py-3 text-center">
++              <div className="truncate text-ui-lg font-medium text-foreground">{stat.value}</div>
++              <div className="mt-1 text-ui-sm text-foreground-subtle">{stat.label}</div>
++            </div>
++          </Fragment>
++        ))}
++      </div>
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <Tabs value={view} onValueChange={(value) => setView(value as View)}>
++          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
++            {(["unit", "models", "projects"] as const).map((value) => (
++              <TabsTrigger key={value} value={value} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++                {t(value)}
++              </TabsTrigger>
++            ))}
++          </TabsList>
++        </Tabs>
++        {payment && summary.allocationBasis === "unavailable" ? (
++          <ControlHintTooltip
++            title={
++              summary.unknownAccountRequests
++                ? intl.formatMessage(
++                    { id: "settings.usage.costAnalysis.unknownAccounts" },
++                    { count: summary.unknownAccountRequests },
++                  )
++                : intl.formatMessage({ id: "settings.usage.payments.unavailable" })
++            }
++          >
++            <span tabIndex={0} className="text-ui-sm text-foreground-subtle">
++              {t("allocationPending")}
++            </span>
++          </ControlHintTooltip>
++        ) : payment && payment.end > Date.now() ? (
++          <span className="text-ui-sm text-foreground-subtle">{t("periodOpen")}</span>
++        ) : null}
++      </div>
++      <div className="max-h-80 overflow-y-auto px-3" role="list">
++        {data.map((row) => (
++          <div
++            key={row.key}
++            role="listitem"
++            className="space-y-2 border-b border-border/70 py-3 last:border-b-0"
++          >
++            <div className="flex items-center justify-between gap-2">
++              <ControlHintTooltip
++                title={`${row.fullLabel}\n${formatCompactTokenUsage(locale, row.tokens)} Tokens · ${row.priced}/${row.requests} ${t("priced")}`}
++              >
++                <span tabIndex={0} className="min-w-0 truncate font-mono text-ui-sm">
++                  {row.label}
++                </span>
++              </ControlHintTooltip>
++              {row.sources.length ? (
++                <Popover>
++                  <PopoverTrigger asChild>
++                    <Button
++                      variant="ghost"
++                      size="icon-sm"
++                      aria-label={`${row.label} · ${t("priceSources")}`}
++                    >
++                      <ExternalLink className="size-3.5" />
++                    </Button>
++                  </PopoverTrigger>
++                  <PopoverContent align="end" className="w-72 space-y-2 p-3">
++                    {row.sources
++                      .filter((url) => url.startsWith("https://"))
++                      .map((url) => (
++                        <Button
++                          key={url}
++                          variant="link"
++                          className="h-auto max-w-full justify-start p-0 text-ui-sm"
++                          onClick={() => void platform.openExternal(url)}
++                        >
++                          {new URL(url).hostname}
++                        </Button>
++                      ))}
++                  </PopoverContent>
++                </Popover>
++              ) : null}
++            </div>
++            {bar(t("api"), row.api, API_COLOR, "USD", comparable || !payment)}
++            {payment ? bar(t("actual"), row.actual, PAID_COLOR, currency, true) : null}
++          </div>
++        ))}
++        {!data.length ? (
++          <div className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</div>
++        ) : null}
++      </div>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 5a374ed..296f481 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -942,6 +942,8 @@ function V4ComposerModelControlsImpl({
+       ?.config.optionSpecs.speedMode,
+   );
+   const fastEnabled = draftConfig?.modelSelection?.options?.speedMode === "fast";
++  const lastUsageRequest = usage?.lastRequest;
++  const matchingLastRequest = lastUsageRequest && lastUsageRequest.providerId === effectiveConfig?.provider && lastUsageRequest.modelId === effectiveConfig?.model ? lastUsageRequest : undefined;
+   const subscriptionConnection =
+     selectedSubscription?.type === "subscription" && selectedSubscriptionProvider
+       ? {
+@@ -950,6 +952,8 @@ function V4ComposerModelControlsImpl({
+             selectedSubscriptionProvider.providerName || selectedSubscriptionProvider.providerId,
+           kind: selectedSubscription.provider,
+           revision: modelSelectionView!.revision,
++          lastAccountId: matchingLastRequest?.accountId,
++          lastObservedAt: matchingLastRequest?.observedAt,
+         }
+       : undefined;
+   // 工具条热键已转正为命令表命令：tooltip 快捷键文案读生效表，
+diff --git a/packages/ui/test/subscriptionAccountLifecycle.test.ts b/packages/ui/test/subscriptionAccountLifecycle.test.ts
+index 81ea85a..2ec1c19 100644
+--- a/packages/ui/test/subscriptionAccountLifecycle.test.ts
++++ b/packages/ui/test/subscriptionAccountLifecycle.test.ts
+@@ -5,11 +5,21 @@ import {
+   createSubscriptionAccountRequestGate,
+   expandedSubscriptionAccount,
+   finishSubscriptionAccountLogin,
++  resolveQuotaInspectionAccount,
+ } from "../src/settings/model-provider-section/subscriptionAccountLifecycle.js";
+ 
+ const first = { id: "a", label: "same@example.test", active: true };
+ const second = { id: "b", label: "same@example.test", active: false };
+ 
++test("quota inspection prefers the actual serving account without changing the configured default", () => {
++  const accounts = [{ ...first }, { ...second }];
++  const before = structuredClone(accounts);
++  assert.equal(resolveQuotaInspectionAccount(accounts, undefined, "b")?.id, "b");
++  assert.equal(resolveQuotaInspectionAccount(accounts, "a", "b")?.id, "a");
++  assert.equal(resolveQuotaInspectionAccount(accounts, undefined, "removed")?.id, "a");
++  assert.deepEqual(accounts, before);
++});
++
+ test("adding a second account always reloads the owner without a Registry event and keeps the default", async () => {
+   const order: string[] = [];
+   const value = { accounts: [first, second], revision: "r2", autoSwitch: false };

@@ -1,0 +1,4113 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/index.ts b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+index e9547f1..cf913f9 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+@@ -52,6 +52,46 @@ export interface NodeToolArtifactStoreOptions {
+   videoCacheRootDir: string;
+ }
+ 
++/** Sync complete bytes before exposing the immutable name. Existing files are never overwritten. */
++async function publishImmutableArtifact(
++  path: string,
++  content: Buffer,
++  sessionDir: string,
++  validateExisting: (content: Buffer) => void,
++): Promise<boolean> {
++  const stagingDir = join(sessionDir, ".staging");
++  await mkdir(stagingDir, { recursive: true });
++  const stagingPath = join(stagingDir, randomUUID());
++  const file = await open(stagingPath, "wx", 0o600);
++  let created = true;
++  try {
++    try {
++      await file.writeFile(content);
++      await file.sync();
++    } finally {
++      await file.close();
++    }
++    try {
++      await link(stagingPath, path);
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
++      validateExisting(await readFile(path));
++      created = false;
++    }
++    if (process.platform !== "win32") {
++      const directory = await open(sessionDir, "r");
++      try {
++        await directory.sync();
++      } finally {
++        await directory.close();
++      }
++    }
++    return created;
++  } finally {
++    await unlink(stagingPath).catch(() => undefined);
++  }
++}
++
+ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+   async findToolResultArtifactOnce(request: {
+     sessionId: import("@zcode/contracts").SessionId;
+@@ -85,27 +125,21 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+     const sessionDir = join(this.rootDir, sanitizePathSegment(request.sessionId));
+     const path = join(sessionDir, `${id}.json`);
+     await mkdir(sessionDir, { recursive: true });
+-    let created = true;
+-    try {
+-      const file = await open(path, "wx", 0o600);
+-      try {
+-        await file.writeFile(request.content, "utf8");
+-        await file.sync();
+-      } finally {
+-        await file.close();
+-      }
+-      if (process.platform !== "win32") {
+-        const directory = await open(sessionDir, "r");
++    const created = await publishImmutableArtifact(
++      path,
++      Buffer.from(request.content),
++      sessionDir,
++      (existing) => {
++        if ((request.contentType ?? "application/json") !== "application/json") return;
+         try {
+-          await directory.sync();
+-        } finally {
+-          await directory.close();
++          JSON.parse(existing.toString("utf8"));
++        } catch {
++          throw new Error(
++            "Saved immutable receipt is incomplete or invalid; its original bytes were preserved",
++          );
+         }
+-      }
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+-      created = false;
+-    }
++      },
++    );
+     const info = await stat(path);
+     return {
+       id,
+@@ -118,6 +152,40 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+     };
+   }
+ 
++  async findToolResultBinaryArtifactOnce(request: {
++    sessionId: import("@zcode/contracts").SessionId;
++    idempotencyKey: string;
++  }) {
++    const id = `tool-result-${createHash("sha256")
++      .update(JSON.stringify([request.sessionId, request.idempotencyKey]))
++      .digest("hex")}`;
++    const sessionDir = join(this.rootDir, sanitizePathSegment(request.sessionId));
++    let entries: string[];
++    try {
++      entries = await readdir(sessionDir);
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
++      throw error;
++    }
++    const matches = entries.filter((entry) => entry.startsWith(`${id}.`));
++    if (!matches.length) return;
++    if (matches.length !== 1)
++      throw new Error(
++        "Saved media operation has conflicting artifacts; original files were preserved",
++      );
++    const path = join(sessionDir, matches[0]!);
++    const info = await stat(path);
++    if (!info.isFile()) throw new Error("Saved media artifact is not a regular file");
++    return {
++      id,
++      uri: `zcode-artifact://${encodeURIComponent(request.sessionId)}/${id}`,
++      path,
++      bytes: info.size,
++      contentType: contentTypeForFileName(matches[0]!),
++      createdAt: info.birthtime,
++    };
++  }
++
+   async listMediaJobArtifacts({ sessionId }: { sessionId: import("@zcode/contracts").SessionId }) {
+     const sessionDir = join(this.rootDir, sanitizePathSegment(sessionId));
+     let names: string[];
+@@ -224,35 +292,10 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+     if (request.idempotencyKey) {
+       // Publish only complete bytes. An interrupted download can restore the same URI;
+       // an existing output must match, and is never overwritten by a competing result.
+-      const stagingDir = join(sessionDir, ".staging");
+-      await mkdir(stagingDir, { recursive: true });
+-      const stagingPath = join(stagingDir, randomUUID());
+-      const file = await open(stagingPath, "wx", 0o600);
+-      try {
+-        try {
+-          await file.writeFile(content);
+-          await file.sync();
+-        } finally {
+-          await file.close();
+-        }
+-        try {
+-          await link(stagingPath, path);
+-        } catch (error) {
+-          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+-          if (!content.equals(await readFile(path)))
+-            throw new Error("The saved media result differs; the original artifact was preserved");
+-        }
+-        if (process.platform !== "win32") {
+-          const dir = await open(sessionDir, "r");
+-          try {
+-            await dir.sync();
+-          } finally {
+-            await dir.close();
+-          }
+-        }
+-      } finally {
+-        await unlink(stagingPath).catch(() => undefined);
+-      }
++      await publishImmutableArtifact(path, content, sessionDir, (existing) => {
++        if (!content.equals(existing))
++          throw new Error("The saved media result differs; the original artifact was preserved");
++      });
+     } else await writeFile(path, content);
+ 
+     return {
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/local-settings.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/local-settings.ts
+index 4d4c465..50f8078 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/local-settings.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/local-settings.ts
+@@ -8,6 +8,10 @@ export async function getProjectPermission(
+   db: DatabaseSync,
+   projectID: ProjectId,
+ ): Promise<PermissionRuleset | null> {
++  return readProjectPermission(db, projectID);
++}
++
++function readProjectPermission(db: DatabaseSync, projectID: ProjectId): PermissionRuleset | null {
+   const setting = readLocalSetting(db, {
+     key: "ruleset",
+     namespace: "permission",
+@@ -29,24 +33,39 @@ export async function saveProjectPermission(
+   input: {
+     projectID: ProjectId;
+     permission: PermissionRuleset;
++    expectedPermission?: PermissionRuleset | null;
+   },
+ ): Promise<PermissionRuleset> {
+-  const now = Date.now();
+-  writeLocalSetting(db, {
+-    key: "ruleset",
+-    namespace: "permission",
+-    schemaVersion: 1,
+-    scope: "project",
+-    scopeID: input.projectID,
+-    time: now,
+-    value: JSON.stringify(input.permission),
+-  });
++  db.exec("SAVEPOINT project_permission_write");
++  try {
++    if (
++      input.expectedPermission !== undefined &&
++      JSON.stringify(readProjectPermission(db, input.projectID)) !==
++        JSON.stringify(input.expectedPermission)
++    )
++      throw new Error("Project permission changed before update");
++    const now = Date.now();
++    writeLocalSetting(db, {
++      key: "ruleset",
++      namespace: "permission",
++      schemaVersion: 1,
++      scope: "project",
++      scopeID: input.projectID,
++      time: now,
++      value: JSON.stringify(input.permission),
++    });
+ 
+-  const saved = await getProjectPermission(db, input.projectID);
+-  if (!saved) {
+-    throw new Error(`Project permission not found after write: ${input.projectID}`);
++    const saved = readProjectPermission(db, input.projectID);
++    if (!saved) {
++      throw new Error(`Project permission not found after write: ${input.projectID}`);
++    }
++    db.exec("RELEASE project_permission_write");
++    return saved;
++  } catch (error) {
++    db.exec("ROLLBACK TO project_permission_write");
++    db.exec("RELEASE project_permission_write");
++    throw error;
+   }
+-  return saved;
+ }
+ 
+ export function getProjectPermissionMode(
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
+index be67cb4..30acfac 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
+@@ -887,6 +887,7 @@ export class SqliteSessionStore
+   async saveProjectPermission(input: {
+     projectID: ProjectId;
+     permission: PermissionRuleset;
++    expectedPermission?: PermissionRuleset | null;
+   }): Promise<PermissionRuleset> {
+     return localSettingsRepository.saveProjectPermission(this.db, input);
+   }
+diff --git a/apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts b/apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts
+new file mode 100644
+index 0000000..f659eab
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts
+@@ -0,0 +1,154 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import fs, { mkdtemp, readdir, readFile, mkdir, writeFile, rm } from "node:fs/promises";
++import { createHash } from "node:crypto";
++import { syncBuiltinESMExports } from "node:module";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { NodeToolArtifactStore } from "../src/storage/index.js";
++
++async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-receipt-publication-"));
++  const paths = {
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  };
++  const request = {
++    sessionId: "session" as never,
++    toolCallId: "request",
++    toolName: "MediaJobReceipt",
++    idempotencyKey: "media-image:operation:intent",
++    content: JSON.stringify({ status: "unknown", jobId: "operation" }),
++    contentType: "application/json",
++  };
++  const id = `tool-result-media-${createHash("sha256")
++    .update(JSON.stringify([request.sessionId, request.idempotencyKey]))
++    .digest("hex")}`;
++  return {
++    root,
++    paths,
++    request,
++    final: join(paths.rootDir, "session", `${id}.json`),
++    close: () => rm(root, { recursive: true, force: true }),
++  };
++}
++
++test("a failed publication never exposes a partial receipt and reopens without a poisoned intent", async (t) => {
++  const f = await fixture();
++  const originalLink = fs.link;
++  let injected = false;
++  const replacement = t.mock.method(fs, "link", async (source: any, destination: any) => {
++    if (destination === f.final) {
++      injected = true;
++      assert.deepEqual(JSON.parse(await readFile(source, "utf8")), JSON.parse(f.request.content));
++      throw Object.assign(new Error("publication failed"), { code: "EIO" });
++    }
++    return originalLink(source, destination);
++  });
++  syncBuiltinESMExports();
++  try {
++    await assert.rejects(
++      new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(f.request),
++      /publication failed/,
++    );
++    assert.equal(injected, true);
++    await assert.rejects(readFile(f.final), { code: "ENOENT" });
++    assert.deepEqual(await readdir(join(f.paths.rootDir, "session", ".staging")), []);
++    replacement.mock.restore();
++    syncBuiltinESMExports();
++    const saved = await new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(f.request);
++    assert.equal(saved.created, true);
++    assert.equal(await readFile(f.final, "utf8"), f.request.content);
++  } finally {
++    replacement.mock.restore();
++    syncBuiltinESMExports();
++    await f.close();
++  }
++});
++
++test("legacy partial intent is rejected without overwriting or treating it as a new submission", async () => {
++  const f = await fixture();
++  try {
++    await mkdir(join(f.paths.rootDir, "session"), { recursive: true });
++    await writeFile(f.final, '{"status":');
++    for (let attempt = 0; attempt < 2; attempt++) {
++      await assert.rejects(
++        new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(f.request),
++        /incomplete or invalid.*preserved/,
++      );
++      assert.equal(await readFile(f.final, "utf8"), '{"status":');
++    }
++  } finally {
++    await f.close();
++  }
++});
++
++test("an interrupted staging write cannot poison the final intent and a reopened writer can publish", async (t) => {
++  const f = await fixture();
++  const originalOpen = fs.open;
++  let interrupted = false;
++  const replacement = t.mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
++    const handle = await originalOpen(...args);
++    if (String(args[0]).includes(`${join("session", ".staging")}`)) {
++      return new Proxy(handle, {
++        get(target, name) {
++          if (name === "writeFile")
++            return async (content: Buffer) => {
++              interrupted = true;
++              await target.write(content.subarray(0, 5));
++              throw Object.assign(new Error("interrupted write"), { code: "EIO" });
++            };
++          const value = target[name as keyof typeof target];
++          return typeof value === "function" ? value.bind(target) : value;
++        },
++      });
++    }
++    return handle;
++  });
++  syncBuiltinESMExports();
++  try {
++    await assert.rejects(
++      new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(f.request),
++      /interrupted write/,
++    );
++    assert.equal(interrupted, true);
++    await assert.rejects(readFile(f.final), { code: "ENOENT" });
++    assert.deepEqual(await readdir(join(f.paths.rootDir, "session", ".staging")), []);
++    replacement.mock.restore();
++    syncBuiltinESMExports();
++    assert.equal(
++      (await new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(f.request)).created,
++      true,
++    );
++    assert.equal(await readFile(f.final, "utf8"), f.request.content);
++  } finally {
++    replacement.mock.restore();
++    syncBuiltinESMExports();
++    await f.close();
++  }
++});
++
++test("concurrent publishers retain one complete original immutable receipt", async () => {
++  const f = await fixture();
++  try {
++    const writes = await Promise.all(
++      Array.from({ length: 12 }, (_, index) =>
++        new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce({
++          ...f.request,
++          content: JSON.stringify({ status: "unknown", index }),
++        }),
++      ),
++    );
++    assert.equal(writes.filter((value) => value.created).length, 1);
++    const first = await readFile(f.final, "utf8");
++    assert.ok(Number.isInteger(JSON.parse(first).index));
++    const duplicate = await new NodeToolArtifactStore(f.paths).writeToolResultArtifactOnce(
++      f.request,
++    );
++    assert.equal(duplicate.created, false);
++    assert.equal(await readFile(f.final, "utf8"), first);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+index b55b3d8..379da6e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+@@ -511,17 +511,25 @@ export function createApiMediaGenerationPort(input: {
+             model.modelId === request.modelId,
+         )
+       ) {
+-        throw new Error("Image generation model or connection is unavailable");
++        throw new MediaSubmissionNotStartedError(
++          "Image generation model or connection is unavailable; no request was submitted",
++        );
+       }
+       const prepared = imageBindings.get(request.binding);
+-      if (!prepared) throw new Error("Image generation confirmation is no longer available");
++      if (!prepared)
++        throw new MediaSubmissionNotStartedError(
++          "Image generation confirmation is no longer available; no request was submitted",
++        );
+       const selected = imageBinding(
+         request.providerId,
+         request.modelId,
+         request.prompt,
+         prepared.key,
+       );
+-      if (!selected) throw new Error("Image generation connection changed after confirmation");
++      if (!selected)
++        throw new MediaSubmissionNotStartedError(
++          "Image generation connection changed after confirmation; no request was submitted",
++        );
+       const expectedBinding =
+         prepared &&
+         createHash("sha256")
+@@ -535,8 +543,14 @@ export function createApiMediaGenerationPort(input: {
+           )
+           .digest("hex");
+       if (!prepared || expectedBinding !== request.binding) {
+-        throw new Error("Image generation connection changed after confirmation");
++        throw new MediaSubmissionNotStartedError(
++          "Image generation connection changed after confirmation; no request was submitted",
++        );
+       }
++      if (request.signal.aborted)
++        throw new MediaSubmissionNotStartedError(
++          "Image generation stopped before submission; no request was submitted",
++        );
+       imageBindings.delete(request.binding);
+       let headers: Record<string, string> = {
+         ...connectionHeaders(request.providerId),
+diff --git a/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+index cd14ea5..fcb6e98 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+@@ -1,5 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { MediaSubmissionNotStartedError } from "@zcode/contracts";
+ import { createApiMediaGenerationPort } from "../src/app/api-media-generation-port.js";
+ 
+ const imageBytes = Buffer.from("/9j/4AAQSkZJRg==", "base64");
+@@ -144,7 +145,7 @@ test("a removed media model rejects before making a paid request", async () => {
+       binding: "stale-binding",
+       signal: new AbortController().signal,
+     }),
+-    /unavailable/,
++    (error: unknown) => error instanceof MediaSubmissionNotStartedError && /unavailable/.test(error.message),
+   );
+   assert.equal(requests.length, 0);
+ });
+@@ -165,7 +166,7 @@ test("a key change after confirmation cannot spend against another credential",
+       binding,
+       signal: new AbortController().signal,
+     }),
+-    /changed/,
++    (error: unknown) => error instanceof MediaSubmissionNotStartedError && /changed/.test(error.message),
+   );
+   assert.equal(requests.length, 1, "the prior read-only model check was the only request");
+ });
+@@ -185,11 +186,25 @@ test("a changed prompt after confirmation is rejected before the paid endpoint",
+       binding,
+       signal: new AbortController().signal,
+     }),
+-    /changed/,
++    (error: unknown) => error instanceof MediaSubmissionNotStartedError && /changed/.test(error.message),
+   );
+   assert.equal(requests.length, 1);
+ });
+ 
++test("cancelled and unavailable image confirmations are diagnosed as not submitted without a POST", async () => {
++  for (const failure of ["abort", "missing-binding"] as const) {
++    const { port, requests } = fixture();
++    const binding = await port.prepareImage({ providerId: "xai-account", modelId: "grok-image", prompt: "fixture" });
++    const controller = new AbortController();
++    if (failure === "abort") controller.abort();
++    await assert.rejects(port.generateImage({ providerId: "xai-account", modelId: "grok-image", prompt: "fixture",
++      binding: failure === "missing-binding" ? "missing" : binding, signal: controller.signal }),
++      (error: unknown) => error instanceof MediaSubmissionNotStartedError && /no request was submitted/.test(error.message));
++    assert.equal(requests.filter((request) => request.method === "POST").length, 0);
++    assert.equal(requests.length, 1, "only the read-only model check ran");
++  }
++});
++
+ test("an unentitled image model fails the read-only check before approval or payment", async () => {
+   const { port, requests, setImageDetailStatus } = fixture();
+   setImageDetailStatus(403);
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index 8d15a98..7b6f91e 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -1308,6 +1308,8 @@ export interface SessionStorePort {
+   saveProjectPermission(input: {
+     projectID: ProjectId;
+     permission: PermissionRuleset;
++    /** Compare the observed rules inside the same write; a conflict must not overwrite revocation. */
++    expectedPermission?: PermissionRuleset | null;
+   }): Promise<PermissionRuleset>;
+   setRevert(input: {
+     sessionID: SessionId;
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
+index 9ca4326..ada4191 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
+@@ -116,6 +116,11 @@ export interface ToolArtifactStorePort {
+     sessionId: SessionId;
+     idempotencyKey: string;
+   }): Promise<ToolArtifactWriteResult | undefined>;
++  /** Locate already published native bytes for an operation; never submits provider work. */
++  findToolResultBinaryArtifactOnce?(request: {
++    sessionId: SessionId;
++    idempotencyKey: string;
++  }): Promise<ToolArtifactWriteResult | undefined>;
+   writeToolResultArtifact(
+     request: ToolArtifactWriteRequest,
+     options?: { signal?: AbortSignal },
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+index c52be28..9579590 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+@@ -37,9 +37,11 @@ export function piHostMessage(
+     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+   };
+   const content: AssistantMessage["content"] = [];
+-  // Pi 只调度下一轮；provider 请求始终来自 Host。不要在私有轨迹重复保存大段正文与思考。
+-  if (result?.text || result?.reasoning?.some((block) => block.text))
+-    content.push({ type: "text", text: "Model response retained in Host context." });
++  // Strings are immutable references to the completed Host response, not a second
++  // durable transcript. The custom stream still uses the admitted Host request.
++  if (result?.text) content.push({ type: "text", text: result.text });
++  for (const block of result?.reasoning ?? [])
++    if (block.text) content.push({ type: "thinking", thinking: block.text });
+   for (const call of result?.toolCalls ?? []) {
+     content.push({
+       type: "toolCall",
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+index 745811f..635372e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -1,9 +1,13 @@
+ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+-import { Agent, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
++import { runAgentLoop, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+ import type { ToolExecutionResult } from "../deps.js";
+-import { throwIfTurnAborted, isErrorForToolResult } from "../helpers/index.js";
++import {
++  throwIfTurnAborted,
++  isErrorForToolResult,
++  stringifyToolResultOutput,
++} from "../helpers/index.js";
+ import { prepareRegularModelStep } from "./turn-step-prepare.js";
+ import {
+   runModelBackedTurnStep,
+@@ -30,9 +34,7 @@ export async function runPiTurn(
+   let outcome: ModelStepResult = "continue";
+   let failure: unknown;
+   let failed = false;
+-  let agent: Agent;
+-  const registered = new Set<string>();
+-  const loopTools: AgentTool[] = [];
++  let loopTools: AgentTool[] = [];
+   const pendingStep = (): ExternalModelTools | undefined => pending;
+   const hostOutcome = (): ModelStepResult => outcome;
+ 
+@@ -47,46 +49,32 @@ export async function runPiTurn(
+             results = new Map(values.map((value) => [value.toolCallId, value]));
+           },
+         });
+-        if (outcome === "break") agent?.abort();
+       })().catch((error) => {
+         failed = true;
+         failure = error;
+         throw error;
+       });
+-      // A rejected native call reports its error through Pi; keep the Host cause for the terminal result.
+-      void batch.catch(() => {});
+     }
+     return batch;
+   };
+-  const definition = (name: string): AgentTool => ({
+-    name,
+-    label: name,
+-    description:
+-      "Execute the admitted Fleet tool through its Host permission and persistence path.",
+-    // Provider schemas come from prepared.tools. The Host executor validates the actual captured input.
+-    parameters: { type: "object", additionalProperties: true } as AgentTool["parameters"],
+-    async execute(id) {
+-      await executeBatch();
+-      const result = results.get(id);
+-      if (!result) throw new Error("Pi tool result does not match the admitted Host call");
+-      if (isErrorForToolResult(result)) {
+-        throw new Error(result.error?.message ?? "Fleet tool failed");
+-      }
+-      return {
+-        // The Host already persists and sends the real payload. Pi's private loop needs only its receipt.
+-        content: [{ type: "text", text: "Tool completed; result retained in Host context." }],
+-        details: { hostToolCallId: id },
+-      };
+-    },
+-  });
+-  const register = (names: readonly string[]) => {
+-    for (const name of names) {
+-      if (registered.has(name)) continue;
+-      loopTools.push(definition(name));
+-      registered.add(name);
+-    }
+-  };
+-  register(prepared.tools.map((tool) => tool.name));
++  const definitions = (tools: ModelStepRequestOptions["tools"]): AgentTool[] =>
++    tools.map((tool) => ({
++      name: tool.name,
++      label: tool.name,
++      description: tool.description ?? "",
++      parameters: tool.inputSchema as AgentTool["parameters"],
++      async execute(id) {
++        await executeBatch();
++        const result = results.get(id);
++        if (!result) throw new Error("Pi tool result does not match the admitted Host call");
++        return {
++          content: [{ type: "text", text: stringifyToolResultOutput(result) }],
++          isError: isErrorForToolResult(result),
++          details: { hostToolCallId: id },
++        };
++      },
++    }));
++  loopTools = definitions(prepared.tools);
+   const streamSimple: StreamFn = () => {
+     const stream = createAssistantMessageEventStream();
+     void (async () => {
+@@ -98,7 +86,6 @@ export async function runPiTurn(
+         pending = undefined;
+         results = new Map();
+         prepared ??= await prepareRegularModelStep(runtime, state);
+-        register(prepared.tools.map((tool) => tool.name));
+ 
+         let result: RuntimeModelTextResult | undefined;
+         const requestModel = state.model;
+@@ -112,9 +99,6 @@ export async function runPiTurn(
+           },
+         });
+         prepared = undefined;
+-        // Register unexpected names as routed calls too: the existing executor owns registry-miss errors.
+-        register(pendingStep()?.toolCalls.map((call) => call.name) ?? []);
+-
+         const message = piHostMessage(requestModel, result);
+         stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });
+         stream.push({
+@@ -133,51 +117,37 @@ export async function runPiTurn(
+     })();
+     return stream;
+   };
+-  agent = new Agent({
+-    initialState: {
++  throwIfTurnAborted(state.turnAbortSignal);
++  await runAgentLoop(
++    [{ role: "user", content: state.input, timestamp: Date.now() }],
++    { tools: loopTools, messages: [] },
++    {
+       model: piHostModel(state.model),
+-      thinkingLevel: "off",
+-      tools: loopTools,
+-      messages: [],
++      convertToLlm: (messages) => messages as import("@earendil-works/pi-ai").Message[],
++      prepareRequest: async ({ context }) => {
++        prepared ??= await prepareRegularModelStep(runtime, state);
++        loopTools = definitions(prepared.tools);
++        return {
++          model: piHostModel(state.model),
++          context: { ...context, tools: loopTools },
++        };
++      },
++      finishTurn: async () => {
++        // Pi can reject an unknown/invalid call before execute. Close the admitted
++        // batch once through the same Host executor; no detached event callback.
++        if (pendingStep()) await executeBatch();
++        return {
++          action:
++            failed || state.turnAbortSignal.aborted || outcome === "break" ? "end" : "continue",
++        };
++      },
+     },
+-    streamFn: streamSimple,
+-    prepareRequest: ({ context }) => ({
+-      model: piHostModel(state.model),
+-      context: { ...context, tools: loopTools },
+-    }),
+-    finishTurn: () => ({
+-      action: failed || state.turnAbortSignal.aborted || outcome === "break" ? "end" : "continue",
+-    }),
+-  });
+-  const unsubscribe = agent.subscribe((event) => {
+-    // A newly discovered/invalid name may be rejected by Pi before its handler. The Host still
+-    // closes that admitted batch, so canonical tool outcomes and turn phases cannot be left open.
+-    if (
+-      event.type === "tool_execution_end" &&
+-      !batch &&
+-      pendingStep()?.toolCalls.some((call) => call.id === event.toolCallId)
+-    ) {
+-      void executeBatch().catch(() => {});
+-    }
+-  });
+-  const onAbort = () => {
+-    agent.abort();
+-  };
+-  state.turnAbortSignal.addEventListener("abort", onAbort, { once: true });
+-  try {
+-    throwIfTurnAborted(state.turnAbortSignal);
+-    await agent.prompt(state.input);
+-    await agent.waitForIdle();
+-    if (batch) await batch;
+-    if (failed) throw failure;
+-    throwIfTurnAborted(state.turnAbortSignal);
+-    if (hostOutcome() !== "break")
+-      throw new Error("Pi settled before the admitted Host turn completed");
+-  } finally {
+-    state.turnAbortSignal.removeEventListener("abort", onAbort);
+-    unsubscribe();
+-    agent.abort();
+-    await agent.waitForIdle();
+-    agent.reset();
+-  }
++    () => {}, // Host events/receipts remain the sole public and durable execution trace.
++    state.turnAbortSignal,
++    streamSimple,
++  );
++  if (failed) throw failure;
++  throwIfTurnAborted(state.turnAbortSignal);
++  if (hostOutcome() !== "break")
++    throw new Error("Pi settled before the admitted Host turn completed");
+ }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts b/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
+index 515d26e..7f055b0 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
+@@ -40,6 +40,7 @@ import {
+   restoreWorkspaceFileRewindEntries,
+ } from "./workspace-checkpoint-persistence.js";
+ import { mainTurnCacheHitAggregateFromMessages } from "./turn-model-step-usage.js";
++import { recoverPendingModelUsage } from "./usage-recovery.js";
+ 
+ export function toScheduleState(
+   this: AgentRuntimeInternal,
+@@ -76,6 +77,7 @@ export async function resumeFromStore(
+       recoverable: true,
+     });
+   }
++  await recoverPendingModelUsage(this);
+   const session = await repairPersistedRemoteSessionPaths(this.sessionStore, persistedSession, {
+     onPersistenceFailure: (error) => {
+       this.logger?.warn("Session path repair persistence failed; using in-memory repair", {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-synthetic-result.ts b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-synthetic-result.ts
+index 356cc71..db5b631 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-synthetic-result.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-synthetic-result.ts
+@@ -1,5 +1,6 @@
+ import { SessionEventType, createPartId } from "../deps.js";
+ import type {
++  MessageId,
+   ModelToolCall,
+   SessionEvent,
+   ToolCallId,
+@@ -58,10 +59,14 @@ export async function emitSyntheticStreamedToolError(
+   result: ToolExecutionResult,
+ ): Promise<void> {
+   if (!result.error) return;
++  const assistantMessageId = traceContext.attributes?.assistantMessageId;
+   const event = runtime.createEvent(
+     SessionEventType.ToolCallError,
+     {
+       toolCallId: result.toolCallId as ToolCallId,
++      ...(typeof assistantMessageId === "string" && assistantMessageId
++        ? { assistantMessageId: assistantMessageId as MessageId }
++        : {}),
+       error: result.error,
+     },
+     traceContext,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index 2cbf735..dbae314 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -12,12 +12,14 @@ import type {
+   TraceContext,
+   TurnId,
+   UsageStorePort,
++  ModelUsageRecord,
+ } from "@zcode/contracts";
+ import type { RuntimeModelTextResult } from "../types.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { toolUsageId } from "../usage-identity.js";
+ import { isModelContextExceededError } from "../helpers/index.js";
+ import { isGrokBuildFastModel } from "@zcode/shared";
++import { recoverPendingModelUsage, retainPendingModelUsage } from "./usage-recovery.js";
+ 
+ type ModelUsageQuerySource =
+   | "main_turn"
+@@ -61,7 +63,9 @@ export async function recordModelUsageFact(
+   if (!usageStore) return;
+ 
+   const completedAt = Date.now();
+-  const accounting = input.result?.providerMetadata?.fleetAccounting as Record<string, unknown> | undefined;
++  const accounting = input.result?.providerMetadata?.fleetAccounting as
++    | Record<string, unknown>
++    | undefined;
+   const usage = input.result?.usage;
+   const networkEvents = modelNetworkEvents(input.events.slice(input.networkEventStartIndex));
+   const retryCount = networkEvents.filter((event) => event.type === "model_retry_scheduled").length;
+@@ -74,71 +78,74 @@ export async function recordModelUsageFact(
+   const contextExceeded =
+     isModelContextExceededError(input.error) || failedNetworkEvent?.reason === "context_exceeded";
+ 
+-  try {
+-    await usageStore.recordModelUsage({
+-      id: modelUsageId(input),
+-      logicalRequestId:
+-        input.assistantMessageId ??
+-        input.traceContext.spanId ??
+-        `${input.querySource}:${input.startedAt}`,
+-      attemptIndex: input.attemptIndex,
+-      sessionID: runtime.sessionId,
+-      turnID: input.traceContext.turnId,
+-      traceID: input.traceContext.traceId,
+-      spanID: input.traceContext.spanId,
+-      assistantMessageID: input.assistantMessageId,
+-      parentUserMessageID: input.parentUserMessageId,
+-      querySource: input.querySource,
+-      providerId: input.model.providerId,
+-      modelId: input.model.modelId,
+-      reasoningLevel: input.model.options.reasoningLevel,
+-      agent: runtime.config.agentName ?? "zcode-agent",
+-      mode: runtime.config.mode ?? "build",
+-      taskType: runtime.config.taskType ?? "interactive",
+-      status: input.status,
+-      startedAt: input.startedAt,
+-      firstTokenAt,
+-      completedAt,
+-      durationMs,
+-      timeToFirstTokenMs: firstTokenAt === undefined ? undefined : firstTokenAt - input.startedAt,
+-      finishReason: input.result?.finishReason,
+-      toolCallCount: input.toolCallCount ?? 0,
+-      inputTokens: usage?.inputTokens,
+-      outputTokens: usage?.outputTokens,
+-      reasoningTokens: usage?.reasoningTokens,
+-      cacheCreationInputTokens: usage?.cacheWriteTokens,
+-      cacheReadInputTokens: usage?.cacheReadTokens,
+-      providerTotalTokens: usage?.totalTokens,
+-      retryCount,
+-      retryable: errorInfo.retryable ?? retryCount > 0,
+-      cancelledByUser: input.status === "cancelled",
+-      contextExceeded,
+-      errorType: errorInfo.type,
+-      errorCode: errorInfo.code,
+-      errorMessage: errorInfo.message,
+-      rawUsage: usage,
+-      providerMetadata: {
+-        ...input.result?.providerMetadata,
+-        fleetAccounting: {
+-          ...(input.result?.providerMetadata?.fleetAccounting as
+-            | Record<string, unknown>
+-            | undefined),
+-          workspacePath: runtime.workspaceRoot,
+-          requestedSpeedMode: accounting?.billingProvider === "xai" && accounting.authKind === "subscription" && isGrokBuildFastModel(input.model.modelId)
+-            ? "fast" : input.model.options.speedMode ?? "standard",
+-          executor: input.model.nativeExecutor?.kind ?? "pi",
+-          // Link aggregate tool activity to this actual request, including mixed-model Guide turns.
+-          toolUsageIds: input.result?.toolCalls?.map((call) =>
+-            toolUsageId(
+-              runtime.sessionId,
+-              call.id,
+-              input.traceContext.turnId,
+-              input.assistantMessageId,
+-            ),
++  const record: ModelUsageRecord = {
++    id: modelUsageId(input),
++    logicalRequestId:
++      input.assistantMessageId ??
++      input.traceContext.spanId ??
++      `${input.querySource}:${input.startedAt}`,
++    attemptIndex: input.attemptIndex,
++    sessionID: runtime.sessionId,
++    turnID: input.traceContext.turnId,
++    traceID: input.traceContext.traceId,
++    spanID: input.traceContext.spanId,
++    assistantMessageID: input.assistantMessageId,
++    parentUserMessageID: input.parentUserMessageId,
++    querySource: input.querySource,
++    providerId: input.model.providerId,
++    modelId: input.model.modelId,
++    reasoningLevel: input.model.options.reasoningLevel,
++    agent: runtime.config.agentName ?? "zcode-agent",
++    mode: runtime.config.mode ?? "build",
++    taskType: runtime.config.taskType ?? "interactive",
++    status: input.status,
++    startedAt: input.startedAt,
++    firstTokenAt,
++    completedAt,
++    durationMs,
++    timeToFirstTokenMs: firstTokenAt === undefined ? undefined : firstTokenAt - input.startedAt,
++    finishReason: input.result?.finishReason,
++    toolCallCount: input.toolCallCount ?? 0,
++    inputTokens: usage?.inputTokens,
++    outputTokens: usage?.outputTokens,
++    reasoningTokens: usage?.reasoningTokens,
++    cacheCreationInputTokens: usage?.cacheWriteTokens,
++    cacheReadInputTokens: usage?.cacheReadTokens,
++    providerTotalTokens: usage?.totalTokens,
++    retryCount,
++    retryable: errorInfo.retryable ?? retryCount > 0,
++    cancelledByUser: input.status === "cancelled",
++    contextExceeded,
++    errorType: errorInfo.type,
++    errorCode: errorInfo.code,
++    errorMessage: errorInfo.message,
++    rawUsage: usage,
++    providerMetadata: {
++      ...input.result?.providerMetadata,
++      fleetAccounting: {
++        ...(input.result?.providerMetadata?.fleetAccounting as Record<string, unknown> | undefined),
++        workspacePath: runtime.workspaceRoot,
++        requestedSpeedMode:
++          accounting?.billingProvider === "xai" &&
++          accounting.authKind === "subscription" &&
++          isGrokBuildFastModel(input.model.modelId)
++            ? "fast"
++            : (input.model.options.speedMode ?? "standard"),
++        executor: input.model.nativeExecutor?.kind ?? "pi",
++        // Link aggregate tool activity to this actual request, including mixed-model Guide turns.
++        toolUsageIds: input.result?.toolCalls?.map((call) =>
++          toolUsageId(
++            runtime.sessionId,
++            call.id,
++            input.traceContext.turnId,
++            input.assistantMessageId,
+           ),
+-        },
++        ),
+       },
+-    });
++    },
++  };
++  try {
++    await usageStore.recordModelUsage(record);
+   } catch (error) {
+     runtime.logger?.warn("Usage model fact write failed", {
+       ...traceContextToLogContext(input.traceContext),
+@@ -147,6 +154,7 @@ export async function recordModelUsageFact(
+       module: "core.runtime",
+       status: "failed",
+     });
++    await retainPendingModelUsage(runtime, record);
+   }
+ }
+ 
+@@ -157,6 +165,8 @@ export async function recordTurnUsageFact(
+   const usageStore = usageStoreFor(runtime);
+   if (!usageStore) return;
+ 
++  await recoverPendingModelUsage(runtime);
++
+   const usage = createModelUsageSummaryFromEvents(input.events);
+   const modelRequests = input.events.filter(
+     (event) => event.type === SessionEventType.ModelRequest,
+@@ -167,12 +177,46 @@ export async function recordTurnUsageFact(
+   const toolErrorIds = new Set<string>();
+   for (const event of input.events) {
+     if (event.type === SessionEventType.ToolCallScheduled) {
+-      const payload = event.payload as { toolCallId?: string };
+-      if (payload.toolCallId) toolScheduledIds.add(payload.toolCallId);
++      const payload = event.payload as { toolCallId?: string; assistantMessageId?: string };
++      if (payload.toolCallId)
++        toolScheduledIds.add(
++          toolUsageId(
++            runtime.sessionId,
++            payload.toolCallId,
++            event.turnId,
++            payload.assistantMessageId,
++          ),
++        );
+     }
+     if (event.type === SessionEventType.ToolCallError) {
+-      const payload = event.payload as { toolCallId?: string };
+-      if (payload.toolCallId) toolErrorIds.add(payload.toolCallId);
++      const payload = event.payload as { toolCallId?: string; assistantMessageId?: string };
++      if (payload.toolCallId)
++        toolErrorIds.add(
++          toolUsageId(
++            runtime.sessionId,
++            payload.toolCallId,
++            event.turnId,
++            payload.assistantMessageId,
++          ),
++        );
++    }
++    if (event.type === SessionEventType.StreamRecoveryAnchorCreated) {
++      const payload = event.payload as {
++        kind?: string;
++        toolCallId?: string;
++        assistantMessageId?: string;
++      };
++      // Executor errors are published through the Host event store, not necessarily this
++      // turn-local array. Its existing committed result receipt carries the same exact scope.
++      if (payload.kind === "tool_error" && payload.toolCallId)
++        toolErrorIds.add(
++          toolUsageId(
++            runtime.sessionId,
++            payload.toolCallId,
++            event.turnId,
++            payload.assistantMessageId,
++          ),
++        );
+     }
+   }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts
+new file mode 100644
+index 0000000..1bc7620
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts
+@@ -0,0 +1,72 @@
++import type { ModelUsageRecord } from "@zcode/contracts";
++import { traceContextToLogContext } from "../deps.js";
++import type { AgentRuntimeInternal } from "../internal.js";
++
++const PENDING_MODEL_USAGE = "runtime/pending_model_usage";
++const entryId = (record: ModelUsageRecord) =>
++  `${record.sessionID}:pending-model-usage:${record.id}`;
++
++/** A failed write's recovery instruction in the existing Session journal, not another ledger. */
++export async function retainPendingModelUsage(
++  runtime: AgentRuntimeInternal,
++  record: ModelUsageRecord,
++): Promise<void> {
++  if (!runtime.sessionStore?.saveSessionEntry)
++    throw new Error("Model usage write failed and this Session cannot retain its receipt");
++  const now = Date.now();
++  await runtime.sessionStore.saveSessionEntry({
++    id: entryId(record),
++    sessionID: runtime.sessionId,
++    type: PENDING_MODEL_USAGE,
++    touchSession: false,
++    time: { created: now, updated: now },
++    data: { record },
++  });
++}
++
++/** Idempotent reconciliation uses the original receipt ID and already frozen request facts. */
++export async function recoverPendingModelUsage(runtime: AgentRuntimeInternal): Promise<void> {
++  const store = runtime.sessionStore;
++  const usageStore = store as Partial<import("@zcode/contracts").UsageStorePort> | undefined;
++  if (!store?.sessionEntries || !store.saveSessionEntry || !usageStore?.recordModelUsage) return;
++  const entries = await store.sessionEntries({
++    sessionID: runtime.sessionId,
++    type: PENDING_MODEL_USAGE,
++  });
++  for (const entry of entries) {
++    const record = (entry.data as { record?: ModelUsageRecord } | null)?.record;
++    if (!record) continue; // A consumed recovery instruction retains no duplicate usage payload.
++    if (
++      record.sessionID !== runtime.sessionId ||
++      typeof record.id !== "string" ||
++      entry.id !== entryId(record) ||
++      typeof record.logicalRequestId !== "string" ||
++      typeof record.providerId !== "string" ||
++      typeof record.modelId !== "string" ||
++      typeof record.querySource !== "string" ||
++      !Number.isFinite(record.startedAt) ||
++      !["completed", "error", "cancelled"].includes(record.status)
++    )
++      throw new Error("Invalid pending model usage receipt in this Session");
++    try {
++      await usageStore.recordModelUsage(record);
++      await store.saveSessionEntry({
++        ...entry,
++        touchSession: false,
++        time: { ...entry.time, updated: Date.now() },
++        data: { record: null },
++      });
++    } catch (error) {
++      // Keep the durable instruction. A write or its acknowledgement may have failed;
++      // the original ledger's receipt ID makes another reconciliation safe.
++      runtime.logger?.warn("Pending model usage receipt remains unreconciled", {
++        ...traceContextToLogContext(runtime.rootTraceContext),
++        errorMessage: error instanceof Error ? error.message : String(error),
++        event: "usage.model.recovery.failed",
++        module: "core.runtime",
++        receiptId: record.id,
++        status: "failed",
++      });
++    }
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 24cfd67..b38dd18 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -29,7 +29,12 @@ import {
+   isToolHandlerFailure,
+   isToolHandlerFailureError,
+ } from "./errors.js";
+-import { emitToolCallError, createToolCallResultEvent, emitToolCallStarted } from "./events.js";
++import {
++  emitToolCallError,
++  createToolCallResultEvent,
++  emitToolCallStarted,
++  emitPermissionDenied,
++} from "./events.js";
+ import {
+   formatHookAdditionalContexts,
+   runPostToolUseFailureHooks,
+@@ -38,6 +43,7 @@ import {
+ } from "./hook-flow.js";
+ import { resolveToolCallCapabilityFlags } from "./permission-capability.js";
+ import { resolveToolPermission } from "./permission-flow.js";
++import { recheckToolDispatchPermission } from "./permission-input-recheck.js";
+ import { createMcpToolDisplay, createToolResultDisplay } from "./result-display.js";
+ import { appendHookAdditionalContexts, serializeOutput } from "./result-serialization.js";
+ import {
+@@ -475,6 +481,29 @@ async function executeToolCallImpl(
+       turnId,
+     };
+ 
++    const revoked = await recheckToolDispatchPermission({
++      deps,
++      entry,
++      mode,
++      executionInput,
++      toolCall: canonicalToolCall,
++    });
++    if (revoked) {
++      await emitPermissionDenied(deps, canonicalToolCall, revoked.reason, traceContext);
++      const result = appendPreToolAdditionalContextsToErrorResult(
++        createPermissionErrorResult(canonicalToolCall, revoked.reason, {
++          decision: "deny",
++          mode,
++          ruleId: revoked.ruleId,
++          source: "tool.dispatch.policy",
++        }),
++        preToolHookResult.additionalContexts,
++      );
++      await emitToolCallError(deps, canonicalToolCall.id, traceContext, turnId, result.error);
++      telemetry?.setPermissionDecision("denied");
++      telemetry?.finishDenied("policy_denied");
++      return result;
++    }
+     // 入参、hook、审批和 started 事件均跨过 await；旧审批不能复活撤销的注册项，
+     // 也不能授权同名的新实现。比较原注册实体，不能拿 request 专属 schema clone 比较。
+     const currentRegistration = originalDeps.registry.get(canonicalToolCall.name);
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts b/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
+index 4480182..57ee24f 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
+@@ -1,4 +1,6 @@
+ import {
++  CoreErrorType,
++  createCoreError,
+   type CollaborationMode,
+   type PermissionBrokerRequest,
+   type PermissionBrokerResult,
+@@ -15,12 +17,57 @@ import {
+ } from "./permission-capability.js";
+ import { buildDefaultPermissionUpdates } from "./permission-suggestions.js";
+ import type { ToolExecutorDeps } from "./types.js";
++import { loadProjectPermissionRuleset } from "./permission-rules-persistence.js";
+ 
+ interface PermissionHookInputRecheckResult {
+   brokerResult?: PermissionBrokerResult;
+   permissionDecision?: PermissionDecisionResult;
+ }
+ 
++/** An approval authorizes this input; it cannot override a rule revoked while awaiting it. */
++export async function recheckToolDispatchPermission(input: {
++  deps: ToolExecutorDeps;
++  entry: ToolEntry;
++  mode: CollaborationMode;
++  executionInput: unknown;
++  toolCall: ExecutableToolCall;
++}): Promise<PermissionDecisionResult | undefined> {
++  let projectRules: PermissionRuleset | null;
++  try {
++    projectRules = await loadProjectPermissionRuleset(input.deps);
++  } catch (error) {
++    throw createCoreError(
++      CoreErrorType.StorageError,
++      "Failed to recheck project permission rules",
++      {
++        cause: error instanceof Error ? error : undefined,
++        context: {
++          sessionId: input.deps.sessionId,
++          toolCallId: input.toolCall.id,
++          toolName: input.toolCall.name,
++        },
++        recoverable: true,
++      },
++    );
++  }
++  const runtime = resolveRuntimePermissionContext(input.deps);
++  const decision = input.deps.permissionService.checkPermission(
++    {
++      input: input.executionInput,
++      mode: input.mode,
++      prePlanMode: input.deps.sessionModePort?.getPrePlanMode(),
++      planEnabled: input.deps.sessionModePort?.isPlanEnabled?.(),
++      riskLevel: input.entry.metadata.riskLevel,
++      toolName: input.toolCall.name,
++      workingDirectory: input.deps.getWorkingDirectory(),
++    },
++    resolveRuntimePermissionCapability(input.entry, input.executionInput, runtime),
++    projectRules,
++    input.entry.resolvePermissionRulePolicy?.(input.executionInput, runtime),
++  );
++  return decision.decision === "deny" ? decision : undefined;
++}
++
+ export async function recheckPermissionHookModifiedInput(input: {
+   deps: ToolExecutorDeps;
+   entry: ToolEntry;
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/permission-rules-persistence.ts b/apps/zcode-cli/packages/core/src/tool/executor/permission-rules-persistence.ts
+index 0660b91..9026432 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/permission-rules-persistence.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/permission-rules-persistence.ts
+@@ -48,9 +48,13 @@ export async function persistProjectPermissionUpdates(
+     return;
+   }
+ 
+-  const current = (await deps.sessionStore.getProjectPermission(projectID)) ?? { version: 1 };
+-  const next = applyPermissionUpdates(current, updates);
+-  await deps.sessionStore.saveProjectPermission({ projectID, permission: next });
++  const current = await deps.sessionStore.getProjectPermission(projectID);
++  const next = applyPermissionUpdates(current ?? { version: 1 }, updates);
++  await deps.sessionStore.saveProjectPermission({
++    projectID,
++    permission: next,
++    expectedPermission: current,
++  });
+ 
+   deps.logger?.info("Project permission updated", {
+     ...traceContextToLogContext(traceContext),
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index 92903e4..5b69f8d 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -10,6 +10,7 @@ import {
+   ListMediaModelsInputSchema,
+   ListMediaModelsOutputJsonSchema,
+   ListMediaModelsOutputSchema,
++  MediaSubmissionNotStartedError,
+   createRootTraceContext,
+   type MediaGenerationPort,
+   type ModelMessageContent,
+@@ -42,7 +43,7 @@ function imageModelContent(output: unknown): ModelMessageContent {
+   return [
+     {
+       type: "text",
+-      text: `Generated image saved as ${result.artifactUri}. Requested model: ${result.requestedModelId}; reported model: ${result.reportedModelId ?? "unknown"}. ${result.reportedCostUsd === undefined ? "The provider did not report a cost." : `Provider-reported cost: US$${result.reportedCostUsd.toFixed(4)}.`}${result.usageRecorded ? "" : " Usage ledger write failed; tell the user that the Usage page may undercount this request."}`,
++      text: `Generated image saved as ${result.artifactUri}. Requested model: ${result.requestedModelId}; reported model: ${result.reportedModelId ?? "unknown"}. ${result.reportedCostUsd === undefined ? "The provider did not report a cost." : `Provider-reported cost: US$${result.reportedCostUsd.toFixed(4)}.`}${result.usageRecorded ? "" : " Provider usage could not be reconciled from this receipt; the saved image remains available and statistics may be incomplete."}`,
+     },
+     {
+       type: "image",
+@@ -170,14 +171,46 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+         signal: context.abortSignal,
+       });
+     } catch (error) {
+-      await usageStore
+-        .recordModelUsage({
+-          ...usageBase,
+-          status: context.abortSignal.aborted ? "cancelled" : "error",
+-          completedAt: Date.now(),
+-          errorMessage: error instanceof Error ? error.message : String(error),
+-        })
+-        .catch(() => undefined);
++      const notStarted = error instanceof MediaSubmissionNotStartedError;
++      let receiptUri = claim.uri;
++      try {
++        const failed = await writeMediaReceipt(
++          context,
++          {
++            version: 1,
++            jobId: usageId,
++            kind: "image",
++            providerId: request.providerId,
++            modelId: request.modelId,
++            startedAt,
++            updatedAt: Date.now(),
++            status: notStarted ? "failed" : "unknown",
++            billingProvider,
++            authKind: "api-key",
++            message: notStarted
++              ? error.message.slice(0, 500)
++              : "The provider did not confirm image submission; do not submit again automatically",
++          },
++          notStarted ? "failed" : "unknown",
++        );
++        receiptUri = failed.uri;
++      } finally {
++        await usageStore
++          .recordModelUsage({
++            ...usageBase,
++            status: context.abortSignal.aborted ? "cancelled" : "error",
++            completedAt: Date.now(),
++            errorMessage: error instanceof Error ? error.message : String(error),
++            providerMetadata: {
++              fleetAccounting: {
++                ...usageBase.providerMetadata.fleetAccounting,
++                mediaReceiptUri: receiptUri,
++                mediaSubmission: notStarted ? "not-started" : "unknown",
++              },
++            },
++          })
++          .catch(() => undefined);
++      }
+       throw error;
+     }
+     const completedAt = Date.now();
+@@ -193,6 +226,7 @@ export function createMediaGenerationToolEntries(port: MediaGenerationPort): Too
+         sessionId: context.sessionId,
+         toolCallId: context.toolCallId,
+         toolName: GENERATE_IMAGE_TOOL_NAME,
++        idempotencyKey: usageId,
+         trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
+         ...(context.turnId ? { turnId: context.turnId } : {}),
+       });
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+index e482096..34322bf 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+@@ -44,6 +44,8 @@ const receiptSchema = z
+     accountId: z.string().optional(),
+     providerUsage: z.record(z.string(), z.unknown()).optional(),
+     message: z.string().max(500).optional(),
++    // Bytes can outlive failed completion metadata. Recovery must not invent provider facts.
++    recoveredFromArtifact: z.literal(true).optional(),
+   })
+   .strict();
+ export type MediaJobReceipt = z.infer<typeof receiptSchema>;
+@@ -146,6 +148,7 @@ export async function recordMediaReceiptUsage(
+   receipt: MediaJobReceipt,
+   uri: string,
+ ): Promise<boolean> {
++  if (receipt.recoveredFromArtifact) return false;
+   const store = context.sessionStore as Partial<UsageStorePort> | undefined;
+   if (!store?.recordModelUsage) return false;
+   try {
+@@ -196,6 +199,34 @@ export async function waitForMediaJob(
+   const found = await latestMediaReceipt(context, original, uri);
+   let receipt = found.receipt;
+   uri = found.uri;
++  if (receipt.kind === "image" && receipt.status === "unknown") {
++    const artifact = await context.artifactStore?.findToolResultBinaryArtifactOnce?.({
++      sessionId: context.sessionId,
++      idempotencyKey: receipt.jobId,
++    });
++    if (artifact) {
++      if (
++        !artifact.bytes ||
++        !["image/png", "image/jpeg", "image/webp"].includes(artifact.contentType)
++      )
++        throw new Error(
++          "Saved image operation has no valid image artifact; original files were preserved",
++        );
++      receipt = {
++        ...receipt,
++        status: "completed",
++        artifactUri: artifact.uri,
++        mimeType: artifact.contentType,
++        updatedAt: Date.now(),
++        recoveredFromArtifact: true,
++        message:
++          "Restored the already saved image. Provider completion details are unavailable; existing usage records were preserved.",
++      };
++      const saved = await writeMediaReceipt(context, receipt, "completed");
++      receipt = await readMediaReceipt(context, saved.uri);
++      uri = saved.uri;
++    }
++  }
+   if (receipt.status === "completed" && receipt.artifactUri && receipt.kind === "video") {
+     try {
+       await context.artifactStore?.statToolResultArtifact?.({ uri: receipt.artifactUri });
+@@ -206,7 +237,7 @@ export async function waitForMediaJob(
+   if (receipt.status !== "pending" || !receipt.requestId || !receipt.credentialReference)
+     return {
+       ...mediaJobOutput(receipt, uri),
+-      ...(receipt.status !== "pending"
++      ...(receipt.status !== "pending" && !receipt.recoveredFromArtifact
+         ? { usageRecorded: await recordMediaReceiptUsage(context, receipt, uri) }
+         : {}),
+     };
+diff --git a/apps/zcode-cli/packages/core/test/deferred-tools.test.ts b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+index 9a8d38f..5cb8237 100644
+--- a/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
++++ b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+@@ -3,7 +3,6 @@ import test from "node:test";
+ import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
+ import type { ToolEntry } from "../src/tool/types.js";
+ import { registerMcpTools } from "../src/mcp/index.js";
+-import { Agent } from "@earendil-works/pi-agent-core";
+ 
+ const optionalName = (index: number) => `mcp__fixture__export_${index}`;
+ const search = (id = "search", query = optionalName(0)) => ({
+@@ -326,22 +325,22 @@ test("small optional catalog preserves direct tools without a search step", asyn
+   }
+ });
+ 
+-test("the actual Pi Core starts with only the admitted routing tools, not the full optional registry", async () => {
++test("the public Core turn exposes only admitted tools in its first physical request", async () => {
+   const c = await catalog(),
+     { f } = c;
+-  const prompt = Agent.prototype.prompt;
+-  let routerNames: string[] = [];
+-  Agent.prototype.prompt = async function (...args: Parameters<typeof prompt>) {
+-    routerNames = this.state.tools.map((tool) => tool.name);
+-    return prompt.apply(this, args);
+-  } as typeof prompt;
+   try {
+-    f.steps.push(() => reply("complete"));
++    f.steps.push((request) => {
++      assert.deepEqual(
++        request.tools.map((tool: any) => tool.name),
++        ["SearchTools", "Probe"],
++      );
++      assert.ok(!JSON.stringify(request.tools).includes(optionalName(0)));
++      return reply("complete");
++    });
+     await f.runtime.executeTurn("Explain this task without optional execution");
+-    assert.deepEqual(routerNames, ["SearchTools", "Probe"]);
++    assert.equal(f.requests.length, 1);
+     assert.equal(c.effects(), 0);
+   } finally {
+-    Agent.prototype.prompt = prompt;
+     await c.close();
+   }
+ });
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index aec159a..c2647f0 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
+ import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+-import type { MediaGenerationPort } from "@zcode/contracts";
++import { MediaSubmissionNotStartedError, type MediaGenerationPort } from "@zcode/contracts";
+ import type { ToolExecutionContext } from "../src/tool/types.js";
+ import { createMediaGenerationToolEntries } from "../src/tool/handlers/media-generation.js";
+ import { registerBuiltInTools } from "../src/tool/handlers/index.js";
+@@ -16,23 +16,50 @@ import { fixture } from "./helpers/pi-runtime-fixture.js";
+ 
+ test("unavailable generation does not tax model context; live capability changes use the same tool owner", async () => {
+   let models: ReturnType<MediaGenerationPort["listModels"]> = [];
+-  const f = await fixture(undefined, false, { config: { toolAllowlist: ["Probe", "ListMediaModels", "GenerateImage"] }, deps: { mediaGenerationPort: {
+-    listModels: () => models,
+-    prepareImage: async () => { throw new Error("No request expected"); },
+-    generateImage: async () => { throw new Error("No request expected"); },
+-  } } });
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["Probe", "ListMediaModels", "GenerateImage"] },
++    deps: {
++      mediaGenerationPort: {
++        listModels: () => models,
++        prepareImage: async () => {
++          throw new Error("No request expected");
++        },
++        generateImage: async () => {
++          throw new Error("No request expected");
++        },
++      },
++    },
++  });
+   try {
+     const names = () => f.runtime.getTools().map((tool) => tool.name);
+     assert.ok(names().includes("ListMediaModels"));
+     assert.equal(names().includes("GenerateImage"), false);
+-    models = [{ providerId: "p", providerLabel: "Fixture", modelId: "video", kind: "video", status: "catalog-only" }];
++    models = [
++      {
++        providerId: "p",
++        providerLabel: "Fixture",
++        modelId: "video",
++        kind: "video",
++        status: "catalog-only",
++      },
++    ];
+     assert.equal(names().includes("GenerateImage"), false);
+-    models = [{ providerId: "p", providerLabel: "Fixture", modelId: "image", kind: "image", status: "requires-check" }];
++    models = [
++      {
++        providerId: "p",
++        providerLabel: "Fixture",
++        modelId: "image",
++        kind: "image",
++        status: "requires-check",
++      },
++    ];
+     assert.ok(names().includes("GenerateImage"));
+     models = [];
+     assert.equal(names().includes("GenerateImage"), false);
+     assert.equal(f.requests.length, 0);
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("repeated upstream image call IDs retain every charged request and artifact after restart", async () => {
+@@ -102,7 +129,10 @@ test("repeated upstream image call IDs retain every charged request and artifact
+     await checkLedger();
+     assert.equal(new Set(uris).size, 3);
+     for (const uri of uris)
+-      assert.deepEqual((await artifacts.readToolResultBinaryArtifact({ uri })).bytes, new Uint8Array([0xff, 0xd8, 0xff]));
++      assert.deepEqual(
++        (await artifacts.readToolResultBinaryArtifact({ uri })).bytes,
++        new Uint8Array([0xff, 0xd8, 0xff]),
++      );
+   } finally {
+     store.close();
+     await rm(root, { recursive: true, force: true });
+@@ -145,7 +175,9 @@ test("image generation uses the Session artifact store and asks approval before
+       },
+     },
+     artifactStore: {
+-      async writeToolResultArtifactOnce() { return { uri: "zcode-artifact://session-1/receipt", created: true }; },
++      async writeToolResultArtifactOnce() {
++        return { uri: "zcode-artifact://session-1/receipt", created: true };
++      },
+       async writeToolResultBinaryArtifact(input: { content: Uint8Array; toolCallId: string }) {
+         writes.push(input);
+         return { uri: "zcode-artifact://session-1/generated-image" };
+@@ -214,66 +246,76 @@ test("media tools use the existing runtime tool allow/deny registration gate", (
+   assert.equal(denied.get("GenerateImage"), undefined);
+ });
+ 
+-test("a charged image returned after cancellation is saved and referenced by its single usage fact", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-image-recovery-"));
+-  const controller = new AbortController();
+-  const usage: Array<{ providerMetadata?: { fleetAccounting?: { artifactUri?: string } } }> = [];
+-  const recorded = Promise.withResolvers<void>();
+-  const paths = {
+-    rootDir: join(root, "artifacts"),
+-    imageCacheRootDir: join(root, "images"),
+-    videoCacheRootDir: join(root, "videos"),
+-  };
+-  let calls = 0;
+-  try {
+-    const [, generate] = createMediaGenerationToolEntries({
+-      listModels: () => [],
+-      prepareImage: async () => "binding",
+-      async generateImage() {
+-        calls++;
+-        controller.abort(new Error("user stopped waiting"));
+-        return {
+-          bytes: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+-          mimeType: "image/jpeg",
+-          reportedModelId: "grok-image",
+-          reportedCostUsd: 0.04,
+-        };
+-      },
+-    });
+-    const pending = executeWithTimeout(
+-      generate.handler,
+-      { providerId: "xai", modelId: "grok-image", prompt: "A square", binding: "binding" },
+-      {
+-        abortSignal: controller.signal,
+-        sessionId: "session",
+-        toolCallId: "image-call",
+-        workspaceRoot: root,
+-        artifactStore: new NodeToolArtifactStore(paths),
+-        sessionStore: {
+-          recordModelUsage: async (value: (typeof usage)[number]) => {
+-            usage.push(value);
+-            recorded.resolve();
+-          },
++test(
++  "a charged image returned after cancellation is saved and referenced by its single usage fact",
++  { timeout: 10000 },
++  async () => {
++    const root = await mkdtemp(join(tmpdir(), "fleet-image-recovery-"));
++    const controller = new AbortController();
++    const usage: Array<{ providerMetadata?: { fleetAccounting?: { artifactUri?: string } } }> = [];
++    const recorded = Promise.withResolvers<void>();
++    const paths = {
++      rootDir: join(root, "artifacts"),
++      imageCacheRootDir: join(root, "images"),
++      videoCacheRootDir: join(root, "videos"),
++    };
++    let calls = 0;
++    try {
++      const [, generate] = createMediaGenerationToolEntries({
++        listModels: () => [],
++        prepareImage: async () => "binding",
++        async generateImage() {
++          calls++;
++          controller.abort(new Error("user stopped waiting"));
++          return {
++            bytes: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
++            mimeType: "image/jpeg",
++            reportedModelId: "grok-image",
++            reportedCostUsd: 0.04,
++          };
+         },
+-      } as unknown as ToolExecutionContext,
+-      new ToolDeadline(10000),
+-      controller,
+-      generate,
+-    );
+-    await assert.rejects(pending, /cancelled/i);
+-    await recorded.promise;
+-    assert.equal(calls, 1);
+-    assert.equal(usage.length, 1);
+-    const artifactUri = usage[0]?.providerMetadata?.fleetAccounting?.artifactUri;
+-    assert.ok(artifactUri);
+-    const saved = await new NodeToolArtifactStore(paths).readToolResultBinaryArtifact({
+-      uri: artifactUri,
+-    });
+-    assert.deepEqual(saved.bytes, new Uint8Array([0xff, 0xd8, 0xff, 0xe0]));
+-  } finally {
+-    await rm(root, { recursive: true, force: true });
+-  }
+-});
++      });
++      let completion: Promise<unknown> | undefined;
++      const pending = executeWithTimeout(
++        (input, context) => (completion = Promise.resolve(generate.handler(input, context))),
++        { providerId: "xai", modelId: "grok-image", prompt: "A square", binding: "binding" },
++        {
++          abortSignal: controller.signal,
++          sessionId: "session",
++          toolCallId: "image-call",
++          workspaceRoot: root,
++          artifactStore: new NodeToolArtifactStore(paths),
++          sessionStore: {
++            recordModelUsage: async (value: (typeof usage)[number]) => {
++              usage.push(value);
++              recorded.resolve();
++            },
++          },
++        } as unknown as ToolExecutionContext,
++        new ToolDeadline(10000),
++        controller,
++        generate,
++      );
++      await assert.rejects(pending, /cancelled/i);
++      await recorded.promise;
++      // Stop returns before the paid-result recovery commit. Await that actual handler,
++      // not just its earlier usage write, before inspecting or removing the fixture.
++      const completed = (await completion) as { artifactUri: string; usageRecorded: boolean };
++      assert.equal(completed.usageRecorded, true);
++      assert.equal(calls, 1);
++      assert.equal(usage.length, 1);
++      const artifactUri = usage[0]?.providerMetadata?.fleetAccounting?.artifactUri;
++      assert.ok(artifactUri);
++      assert.equal(completed.artifactUri, artifactUri);
++      const saved = await new NodeToolArtifactStore(paths).readToolResultBinaryArtifact({
++        uri: artifactUri,
++      });
++      assert.deepEqual(saved.bytes, new Uint8Array([0xff, 0xd8, 0xff, 0xe0]));
++    } finally {
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
+ 
+ test("a failed local image save preserves the charge and never retries generation", async () => {
+   let calls = 0;
+@@ -300,7 +342,10 @@ test("a failed local image save preserves the charge and never retries generatio
+         toolCallId: "image-call",
+         workspaceRoot: "/project",
+         artifactStore: {
+-          writeToolResultArtifactOnce: async () => ({ uri: "zcode-artifact://session/receipt", created: true }),
++          writeToolResultArtifactOnce: async () => ({
++            uri: "zcode-artifact://session/receipt",
++            created: true,
++          }),
+           writeToolResultBinaryArtifact: async () => {
+             throw new Error("disk full");
+           },
+@@ -346,33 +391,328 @@ test("a denied media entitlement reaches the Agent with the actual status before
+ 
+ test("generated binary images remain visible to a vision model through actual Host cold hydration", async () => {
+   const { reply } = await import("./helpers/pi-runtime-fixture.js");
+-  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64");
++  const bytes = Buffer.from(
++    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
++    "base64",
++  );
+   let calls = 0;
+-  const f = await fixture(undefined, false, { config: { toolAllowlist: ["GenerateImage"] }, deps: { mediaGenerationPort: {
+-    listModels: () => [{ providerId: "xai", providerLabel: "xAI", modelId: "image", kind: "image", status: "requires-check" }],
+-    prepareImage: async () => "fixture", generateImage: async () => { calls++; return { bytes, mimeType: "image/png", reportedModelId: "image", reportedCostUsd: 0.04 }; },
+-  } } });
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["GenerateImage"] },
++    deps: {
++      mediaGenerationPort: {
++        listModels: () => [
++          {
++            providerId: "xai",
++            providerLabel: "xAI",
++            modelId: "image",
++            kind: "image",
++            status: "requires-check",
++          },
++        ],
++        prepareImage: async () => "fixture",
++        generateImage: async () => {
++          calls++;
++          return { bytes, mimeType: "image/png", reportedModelId: "image", reportedCostUsd: 0.04 };
++        },
++      },
++    },
++  });
+   const check = (request: any) => {
+-    const blocks = request.messages.filter((message: any) => message.role === "tool").flatMap((message: any) => Array.isArray(message.content) ? message.content : []);
+-    assert.ok(blocks.some((block: any) => block.type === "image" && block.dataUrl === `data:image/png;base64,${bytes.toString("base64")}`));
++    const blocks = request.messages
++      .filter((message: any) => message.role === "tool")
++      .flatMap((message: any) => (Array.isArray(message.content) ? message.content : []));
++    assert.ok(
++      blocks.some(
++        (block: any) =>
++          block.type === "image" &&
++          block.dataUrl === `data:image/png;base64,${bytes.toString("base64")}`,
++      ),
++    );
+     return reply("seen");
+   };
+   try {
+-    f.steps.push(() => reply("generate", [{ id: "image", name: "GenerateImage", input: { providerId: "xai", modelId: "image", prompt: "fixture" } }]), check);
+-    await f.runtime.executeTurn("Generate fixture"); await f.reopen(); f.steps.push(check); await f.runtime.executeTurn("Inspect saved image");
++    f.steps.push(
++      () =>
++        reply("generate", [
++          {
++            id: "image",
++            name: "GenerateImage",
++            input: { providerId: "xai", modelId: "image", prompt: "fixture" },
++          },
++        ]),
++      check,
++    );
++    await f.runtime.executeTurn("Generate fixture");
++    await f.reopen();
++    f.steps.push(check);
++    await f.runtime.executeTurn("Inspect saved image");
+     assert.equal(calls, 1);
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("a video catalog without a complete submit/retrieve adapter never advertises generation", async () => {
+-  const port: MediaGenerationPort = { listModels: () => [{ providerId: "xai", providerLabel: "xAI", modelId: "video", kind: "video", status: "requires-check" }], prepareImage: async () => "unused", generateImage: async () => { throw new Error("unused"); } };
+-  const f = await fixture(undefined, false, { config: { toolAllowlist: ["GenerateVideo"] }, deps: { mediaGenerationPort: port } });
++  const port: MediaGenerationPort = {
++    listModels: () => [
++      {
++        providerId: "xai",
++        providerLabel: "xAI",
++        modelId: "video",
++        kind: "video",
++        status: "requires-check",
++      },
++    ],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++  };
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["GenerateVideo"] },
++    deps: { mediaGenerationPort: port },
++  });
+   try {
+     const visible = () => f.runtime.getTools().some((tool) => tool.name === "GenerateVideo");
+     assert.equal(visible(), false);
+-    port.submitVideo = async () => ({ requestId: "fixture" }); assert.equal(visible(), false);
+-    port.prepareVideo = async () => ({ binding: "fixture", credentialReference: "fixture" }); assert.equal(visible(), false);
+-    port.readVideo = async () => ({ status: "pending" }); assert.equal(visible(), true);
+-    port.readVideo = undefined; assert.equal(visible(), false); assert.equal(f.requests.length, 0);
+-  } finally { await f.close(); }
++    port.submitVideo = async () => ({ requestId: "fixture" });
++    assert.equal(visible(), false);
++    port.prepareVideo = async () => ({ binding: "fixture", credentialReference: "fixture" });
++    assert.equal(visible(), false);
++    port.readVideo = async () => ({ status: "pending" });
++    assert.equal(visible(), true);
++    port.readVideo = undefined;
++    assert.equal(visible(), false);
++    assert.equal(f.requests.length, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("image bytes survive a failed completion receipt and reopen without another generation or altered charge", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-image-receipt-reopen-"));
++  const paths = {
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  };
++  const dbPath = join(root, "sessions.sqlite");
++  let sessionStore = new SqliteSessionStore({ dbPath });
++  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
++  let submissions = 0;
++  let failCompletion = true;
++  let artifactStore = new NodeToolArtifactStore(paths);
++  const faultingArtifacts = new Proxy(artifactStore, {
++    get(target, name) {
++      if (name === "writeToolResultArtifactOnce")
++        return async (request: any) => {
++          if (JSON.parse(request.content).status === "completed" && failCompletion) {
++            failCompletion = false;
++            throw new Error("completion receipt disk unavailable");
++          }
++          return target.writeToolResultArtifactOnce(request);
++        };
++      const value = target[name as keyof NodeToolArtifactStore];
++      return typeof value === "function" ? value.bind(target) : value;
++    },
++  });
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => "binding",
++    generateImage: async () => {
++      submissions++;
++      return {
++        bytes,
++        mimeType: "image/jpeg",
++        reportedModelId: "provider-reported-model",
++        reportedCostUsd: 0.07,
++      };
++    },
++  };
++  const tools = createMediaGenerationToolEntries(port);
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateImage")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  const request = {
++    providerId: "xai",
++    modelId: "requested-image-model",
++    prompt: "fixture",
++    binding: "binding",
++  };
++  const context = (artifacts = artifactStore) =>
++    ({
++      artifactStore: artifacts,
++      sessionStore,
++      abortSignal: new AbortController().signal,
++      sessionId: "session",
++      toolCallId: "call",
++      turnId: "turn",
++      workspaceRoot: root,
++      traceContext: { traceId: "trace", attributes: { assistantMessageId: "assistant" } },
++    }) as unknown as ToolExecutionContext;
++  try {
++    await sessionStore.createSession({
++      id: "session" as never,
++      projectID: "project" as never,
++      slug: "fixture",
++      directory: root,
++      title: "fixture",
++      version: "fixture",
++    });
++    await assert.rejects(
++      generate.handler(request, context(faultingArtifacts)),
++      /completion receipt disk unavailable/,
++    );
++    sessionStore.close();
++    sessionStore = new SqliteSessionStore({ dbPath });
++    artifactStore = new NodeToolArtifactStore(paths);
++    const receipts = await artifactStore.listMediaJobArtifacts({ sessionId: "session" as never });
++    assert.equal(receipts.length, 1);
++    const intent = receipts[0]!;
++    const result = (await resume.handler(
++      { receiptUri: intent.uri, waitSeconds: 0 },
++      context(),
++    )) as any;
++    assert.equal(result.status, "completed");
++    assert.match(result.message, /already saved image.*completion details are unavailable/);
++    assert.equal(
++      result.reportedCostUsd,
++      undefined,
++      "bytes do not invent provider billing metadata",
++    );
++    assert.deepEqual(
++      (await artifactStore.readToolResultBinaryArtifact({ uri: result.artifactUri })).bytes,
++      bytes,
++    );
++    const attachments = await persistToolResultMediaAttachments({
++      ...context(),
++      assistantMessageId: "assistant",
++      content: resume.formatModelContent!(result),
++      signal: undefined,
++      toolName: "ResumeMediaJob",
++    } as never);
++    assert.equal(attachments?.attachments[0]?.url, result.artifactUri);
++    const again = (await resume.handler(
++      { receiptUri: intent.uri, waitSeconds: 0 },
++      context(),
++    )) as any;
++    assert.equal(again.artifactUri, result.artifactUri);
++    const ledger = await sessionStore.queryAppUsage({
++      since: 0,
++      until: Date.now() + 1,
++      tzOffsetMs: 0,
++    });
++    assert.equal(ledger.accounting?.[0]?.requestCount, 1);
++    assert.ok(Math.abs((ledger.accounting?.[0]?.estimatedUsd ?? 0) - 0.07) < 1e-10);
++    assert.equal(submissions, 1);
++  } finally {
++    sessionStore.close();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("unknown image submissions without saved bytes stay unknown and cannot be automatically replayed after reopen", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-image-unknown-"));
++  const paths = {
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  };
++  let artifactStore = new NodeToolArtifactStore(paths);
++  let submissions = 0;
++  const tools = createMediaGenerationToolEntries({
++    listModels: () => [],
++    prepareImage: async () => "binding",
++    generateImage: async () => {
++      submissions++;
++      throw new Error("connection closed after dispatch");
++    },
++  });
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateImage")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  const context = () =>
++    ({
++      artifactStore,
++      sessionStore: { recordModelUsage: async () => {} },
++      abortSignal: new AbortController().signal,
++      sessionId: "session",
++      toolCallId: "call",
++      turnId: "turn",
++      traceContext: { traceId: "trace", attributes: { assistantMessageId: "assistant" } },
++    }) as unknown as ToolExecutionContext;
++  const request = { providerId: "xai", modelId: "image", prompt: "fixture", binding: "binding" };
++  try {
++    await assert.rejects(generate.handler(request, context()), /connection closed/);
++    artifactStore = new NodeToolArtifactStore(paths);
++    const [intent] = await artifactStore.listMediaJobArtifacts({ sessionId: "session" as never });
++    const result = (await resume.handler(
++      { receiptUri: intent!.uri, waitSeconds: 0 },
++      context(),
++    )) as any;
++    assert.equal(result.status, "unknown");
++    assert.equal(result.artifactUri, undefined);
++    await assert.rejects(
++      generate.handler(request, context()),
++      /never generate it again automatically/,
++    );
++    assert.equal(submissions, 1);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("local image refusal retains a failed not-started receipt instead of uncertain provider submission", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-image-not-started-"));
++  const artifactStore = new NodeToolArtifactStore({
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  });
++  const usage: any[] = [];
++  const tools = createMediaGenerationToolEntries({
++    listModels: () => [],
++    prepareImage: async () => "binding",
++    generateImage: async () => {
++      throw new MediaSubmissionNotStartedError("confirmation expired; no request was submitted");
++    },
++  });
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateImage")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  const context = {
++    artifactStore,
++    sessionStore: {
++      recordModelUsage: async (record: any) => {
++        usage.push(record);
++      },
++    },
++    abortSignal: new AbortController().signal,
++    sessionId: "session",
++    toolCallId: "call",
++  } as unknown as ToolExecutionContext;
++  try {
++    await assert.rejects(
++      generate.handler(
++        { providerId: "xai", modelId: "image", prompt: "fixture", binding: "binding" },
++        context,
++      ),
++      /confirmation expired/,
++    );
++    const receipts = await artifactStore.listMediaJobArtifacts({ sessionId: "session" as never });
++    const intent = await Promise.all(
++      receipts.map(async (file) => ({
++        ...file,
++        parsed: JSON.parse((await artifactStore.readToolResultArtifact({ uri: file.uri })).content),
++      })),
++    );
++    const original = intent.find((file) => file.parsed.status === "unknown")!;
++    assert.ok(intent.some((file) => file.parsed.status === "failed"));
++    assert.equal(usage[0]?.providerMetadata.fleetAccounting.mediaSubmission, "not-started");
++    const result = (await resume.handler(
++      { receiptUri: original.uri, waitSeconds: 0 },
++      context,
++    )) as any;
++    assert.equal(result.status, "failed");
++    assert.match(result.message, /confirmation expired/);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
+ });
+diff --git a/apps/zcode-cli/packages/core/test/permission-revocation.test.ts b/apps/zcode-cli/packages/core/test/permission-revocation.test.ts
+new file mode 100644
+index 0000000..75ad94e
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/permission-revocation.test.ts
+@@ -0,0 +1,103 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, reply, call } from "./helpers/pi-runtime-fixture.js";
++
++for (const revoked of [false, true]) {
++  test(
++    `a pending approval ${revoked ? "cannot override a later project denial" : "still executes once when its project rules allow it"}`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture();
++      const waiting = Promise.withResolvers<void>();
++      const approval = Promise.withResolvers<{ decision: "allow" | "deny" }>();
++      let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++      try {
++        f.permissionWith(async () => {
++          waiting.resolve();
++          return approval.promise;
++        });
++        f.steps.push(
++          () => reply("Request a tool", [call("pending", "this exact effect")]),
++          () => reply("Finish"),
++        );
++        running = f.runtime.executeTurn("Wait for a permission decision");
++        await waiting.promise;
++        if (revoked) {
++          const session = await f.store.getSession("session" as never);
++          assert.ok(session);
++          await f.store.saveProjectPermission({
++            projectID: session.projectID,
++            permission: { version: 1, deny: [{ toolName: "Probe" }] },
++          });
++        }
++        approval.resolve({ decision: "allow" });
++        await running;
++        assert.equal(f.effects, revoked ? 0 : 1);
++        assert.equal(
++          f.permissionCalls,
++          1,
++          "Dispatch recheck must not create a second approval for unchanged Ask rules",
++        );
++        if (revoked) {
++          await f.reopen();
++          const session = await f.store.getSession("session" as never);
++          assert.ok(session);
++          assert.deepEqual((await f.store.getProjectPermission(session.projectID))?.deny, [
++            { toolName: "Probe" },
++          ]);
++          assert.equal(f.effects, 0, "Reopening must not replay a denied effect");
++        }
++      } finally {
++        approval.resolve({ decision: "deny" });
++        await running?.catch(() => {});
++        await f.close();
++      }
++    },
++  );
++}
++
++test(
++  "remembered approval cannot overwrite a denial committed after its rules read",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    const read = f.store.getProjectPermission.bind(f.store);
++    let reads = 0;
++    try {
++      f.store.getProjectPermission = async (projectID) => {
++        const observed = await read(projectID);
++        if (++reads === 2)
++          await f.store.saveProjectPermission({
++            projectID,
++            permission: { version: 1, deny: [{ toolName: "Probe" }] },
++          });
++        return observed;
++      };
++      f.permissionWith(async () => ({
++        decision: "allow",
++        permissionUpdates: [
++          { type: "addRules", behavior: "allow", rules: [{ toolName: "Probe" }] },
++        ],
++      }));
++      f.steps.push(
++        () => reply("Remember this permission", [call("remember", "must not run")]),
++        () => reply("Finish"),
++      );
++      await f.runtime.executeTurn("Remember an approval while project rules change");
++      assert.equal(f.effects, 0);
++      const session = await f.store.getSession("session" as never);
++      assert.ok(session);
++      assert.deepEqual(await read(session.projectID), {
++        version: 1,
++        deny: [{ toolName: "Probe" }],
++      });
++      await f.reopen();
++      assert.deepEqual(await f.store.getProjectPermission(session.projectID), {
++        version: 1,
++        deny: [{ toolName: "Probe" }],
++      });
++    } finally {
++      await f.close();
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+index ffe4b19..3518596 100644
+--- a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+@@ -3,6 +3,8 @@ import test from "node:test";
+ import { DatabaseSync } from "node:sqlite";
+ import { join } from "node:path";
+ import { fixture, selection, reply, call } from "./helpers/pi-runtime-fixture.js";
++import type { ModelUsageRecord } from "@zcode/contracts";
++import { SessionEventType } from "@zcode/contracts";
+ 
+ for (const stop of [false, true]) {
+   test(
+@@ -866,3 +868,230 @@ test("final accounting retains the real permission decision", { timeout: 10000 }
+     }
+   }
+ });
++
++for (const persistFailure of [false, true]) {
++  test(
++    `a failed model receipt reconciles ${persistFailure ? "on cold reopen" : "at turn settlement"} without repeating inference`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture("pi", true);
++      const write = f.store.recordModelUsage.bind(f.store);
++      let failed: ModelUsageRecord | undefined;
++      f.store.recordModelUsage = async (record) => {
++        if (!failed) {
++          failed = structuredClone(record);
++          throw new Error("Isolated receipt write failure");
++        }
++        if (persistFailure && record.id === failed.id)
++          throw new Error("Isolated ledger remains unavailable for the first receipt");
++        await write(record);
++      };
++      const receipts = () => {
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          return db.prepare("select * from model_usage order by started_at, id").all();
++        } finally {
++          db.close();
++        }
++      };
++      try {
++        f.steps.push(
++          () => ({
++            ...reply("first receipt", [call("recovery-effect", "one effect")]),
++            usage: {
++              inputTokens: 211,
++              outputTokens: 13,
++              totalTokens: 224,
++              cacheReadTokens: 40,
++              cacheWriteTokens: 5,
++              reasoningTokens: 0,
++            },
++            providerMetadata: {
++              fleetAccounting: {
++                authKind: "subscription",
++                billingProvider: "unknown-fixture",
++                accountId: "original-account",
++                requestId: "original-request",
++                servedSpeedMode: null,
++              },
++              providerReceipt: { cost: null, cacheWindow: "1h", usageKnown: true },
++            },
++          }),
++          () => ({
++            ...reply("finished"),
++            providerMetadata: { fleetAccounting: { accountId: "later-account" } },
++          }),
++        );
++        await f.runtime.executeTurn("Retain both actual request receipts");
++        assert.equal(f.requests.length, 2);
++        assert.equal(f.effects, 1);
++        assert.ok(failed);
++        assert.equal(receipts().length, persistFailure ? 1 : 2);
++        const pending = await f.store.sessionEntries({
++          sessionID: "session" as never,
++          type: "runtime/pending_model_usage",
++        });
++        assert.equal(pending.length, 1);
++        assert.deepEqual(
++          pending[0]!.data,
++          persistFailure ? { record: JSON.parse(JSON.stringify(failed)) } : { record: null },
++        );
++        await f.reopen();
++        const restored = receipts();
++        assert.equal(restored.length, 2);
++        const first = restored.find((record) => record.id === failed!.id)!;
++        assert.equal(first.logical_request_id, failed.logicalRequestId);
++        assert.equal(first.assistant_message_id, failed.assistantMessageID);
++        assert.equal(first.started_at, failed.startedAt);
++        assert.equal(first.completed_at, failed.completedAt);
++        assert.equal(first.status, "completed");
++        assert.equal(first.input_tokens, 211);
++        assert.equal(first.output_tokens, 13);
++        assert.equal(first.provider_total_tokens, 224);
++        assert.equal(first.cache_read_input_tokens, 40);
++        assert.equal(first.cache_creation_input_tokens, 5);
++        assert.equal(first.reasoning_tokens, 0);
++        assert.deepEqual(JSON.parse(String(first.raw_usage_json)), failed.rawUsage);
++        assert.deepEqual(
++          JSON.parse(String(first.provider_metadata_json)),
++          JSON.parse(JSON.stringify(failed.providerMetadata)),
++        );
++        const accounting = JSON.parse(String(first.accounting_json));
++        assert.equal(accounting.accountId, "original-account");
++        assert.equal(accounting.requestId, "original-request");
++        assert.equal(accounting.estimatedUsd, undefined, "Unknown cost became a price");
++        assert.equal(accounting.priceVersion, "unpriced");
++        await f.reopen();
++        assert.deepEqual(receipts(), restored, "Reconciliation duplicated or rewrote a receipt");
++        assert.equal(f.requests.length, 2, "Recovery repeated model inference");
++        assert.equal(f.effects, 1, "Recovery repeated a completed tool effect");
++      } finally {
++        await f.close();
++      }
++    },
++  );
++}
++
++test("turn totals distinguish repeated upstream IDs across assistant requests", async () => {
++  for (const failed of [false, true]) {
++    const f = await fixture("pi", true);
++    try {
++      if (failed)
++        f.runtime.getToolRegistry().get("Probe")!.handler = async () => {
++          throw new Error("Isolated handler failure");
++        };
++      f.steps.push(
++        () => reply("first", [call("reused-upstream", "first")]),
++        () => reply("second", [call("reused-upstream", "second")]),
++        () => reply("finished"),
++      );
++      await f.runtime.executeTurn("Two separate request-scoped effects");
++      const read = () => {
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          return {
++            tools: db.prepare("select id, status from tool_usage order by id").all(),
++            turn: db.prepare("select tool_call_count, tool_error_count from turn_usage").get(),
++          };
++        } finally {
++          db.close();
++        }
++      };
++      const saved = read();
++      assert.equal(saved.tools.length, 2);
++      assert.deepEqual({ ...saved.turn }, { tool_call_count: 2, tool_error_count: failed ? 2 : 0 });
++      assert.equal(f.effects, failed ? 0 : 2);
++      await f.reopen();
++      assert.deepEqual(read(), saved);
++    } finally {
++      await f.close();
++    }
++  }
++});
++
++test("an unretainable model receipt stops the turn before another request or tool effect", async () => {
++  const f = await fixture("pi", true);
++  const save = f.store.saveSessionEntry.bind(f.store);
++  try {
++    f.store.recordModelUsage = async () => {
++      throw new Error("Isolated ledger failure");
++    };
++    f.store.saveSessionEntry = async (entry) => {
++      if (entry.type === "runtime/pending_model_usage") throw new Error("Isolated journal failure");
++      await save(entry);
++    };
++    f.steps.push(() => reply("must retain receipt", [call("not-approved", "must not execute")]));
++    await assert.rejects(f.runtime.executeTurn("Fail closed without durable accounting"));
++    assert.equal(f.requests.length, 1);
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("stream recovery error and committed error receipt count one invocation per request", async () => {
++  for (const count of [1, 2]) {
++    const f = await fixture("pi", true);
++    try {
++      const runtime = f.runtime as any;
++      const factory = runtime.modelFactory;
++      runtime.modelFactory = (input: any) => {
++        const model = factory(input);
++        return {
++          ...model,
++          async *streamText(request: any) {
++            for await (const event of model.streamText(request)) {
++              yield event;
++              if (event.type === "tool_call")
++                throw Object.assign(new Error("Isolated interruption after a tool declaration"), {
++                  code: "model_network_error",
++                });
++            }
++          },
++        };
++      };
++      for (let index = 0; index < count; index++)
++        f.steps.push(() => reply("interrupted declaration", [call("reused-error", "not run")]));
++      f.steps.push(() => reply("recovered"));
++      await f.runtime.executeTurn("Preserve interrupted calls without replay");
++      const events = await runtime.eventStore.getEvents(runtime.sessionId);
++      const errors = events.filter((event: any) => event.type === SessionEventType.ToolCallError);
++      const anchors = events.filter(
++        (event: any) =>
++          event.type === SessionEventType.StreamRecoveryAnchorCreated &&
++          event.payload.kind === "tool_error",
++      );
++      assert.equal(errors.length, count);
++      assert.equal(anchors.length, count);
++      const assistantIds = errors.map((event: any) => event.payload.assistantMessageId);
++      assert.ok(assistantIds.every((id: unknown) => typeof id === "string" && id));
++      assert.equal(new Set(assistantIds).size, count, "Reused raw IDs crossed request scopes");
++      assert.deepEqual(
++        anchors.map((event: any) => event.payload.assistantMessageId),
++        assistantIds,
++      );
++      const read = () => {
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          return {
++            errors: db.prepare("select tool_error_count from turn_usage").get()!.tool_error_count,
++            receipts: db
++              .prepare("select count(*) as count from tool_usage where status = 'error'")
++              .get()!.count,
++          };
++        } finally {
++          db.close();
++        }
++      };
++      assert.deepEqual(read(), { errors: count, receipts: count });
++      assert.equal(f.effects, 0, "An interrupted declaration executed an effect");
++      assert.equal(f.requests.length, count + 1);
++      await f.reopen();
++      assert.deepEqual(read(), { errors: count, receipts: count });
++      assert.equal(f.requests.length, count + 1);
++    } finally {
++      await f.close();
++    }
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index 0089ce9..d7e920f 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -5,7 +5,7 @@ import { join } from "node:path";
+ import { fixture, selection, reply, call, usage } from "./helpers/pi-runtime-fixture.js";
+ import { piHostMessage } from "../src/runtime/methods/pi-turn-message.js";
+ 
+-test("Pi scheduling retains a compact assistant receipt while preserving exact tool identity", async () => {
++test("Pi scheduling receives the actual assistant output while preserving exact tool identity", async () => {
+   const f = await fixture();
+   try {
+     const result = {
+@@ -16,9 +16,10 @@ test("Pi scheduling retains a compact assistant receipt while preserving exact t
+       (f.runtime as any).modelFactory({ selection: selection() }),
+       result,
+     );
+-    const content = JSON.stringify(message.content);
+-    assert.ok(content.length < 500, "Pi scheduling copied Host-owned assistant bodies");
+-    assert.ok(!content.includes("PRIVATE_DUPLICATE"));
++    assert.deepEqual(message.content.slice(0, 2), [
++      { type: "text", text: result.text },
++      { type: "thinking", thinking: result.reasoning[0]!.text },
++    ]);
+     assert.deepEqual(
+       message.content.filter((block) => block.type === "toolCall"),
+       [
+@@ -38,7 +39,7 @@ test("Pi scheduling retains a compact assistant receipt while preserving exact t
+ });
+ 
+ for (const streaming of [false, true]) {
+-  test(`compact Pi scheduling keeps the complete Host assistant output and reasoning, ${streaming ? "streaming" : "non-streaming"}`, async () => {
++  test(`Pi scheduling keeps the complete Host assistant output and reasoning, ${streaming ? "streaming" : "non-streaming"}`, async () => {
+     const f = await fixture(undefined, streaming);
+     const text = "HOST_BODY ".repeat(2000),
+       thought = "HOST_REASONING ".repeat(2000);
+@@ -93,11 +94,21 @@ for (const streaming of [false, true]) {
+   });
+ }
+ test("the Host ledger retains a native Grok Fast model as Fast without API priority intent", async () => {
+-  const f = await fixture(undefined, false, { config: { modelSelection: selection("grok-4.7-build-fast") as never } });
++  const f = await fixture(undefined, false, {
++    config: { modelSelection: selection("grok-4.7-build-fast") as never },
++  });
+   try {
+-    f.steps.push(() => ({ ...reply("completed"), providerMetadata: { fleetAccounting: {
+-      billingProvider: "xai", authKind: "subscription", accountId: "fixture-grok-account", requestedSpeedMode: "fast",
+-    } } }));
++    f.steps.push(() => ({
++      ...reply("completed"),
++      providerMetadata: {
++        fleetAccounting: {
++          billingProvider: "xai",
++          authKind: "subscription",
++          accountId: "fixture-grok-account",
++          requestedSpeedMode: "fast",
++        },
++      },
++    }));
+     await f.runtime.executeTurn("synthetic fast-model check");
+     assert.equal(f.requests[0]?.selection.modelId, "grok-4.7-build-fast");
+     assert.notEqual(f.requests[0]?.selection.options.speedMode, "fast");
+@@ -108,12 +119,16 @@ test("the Host ledger retains a native Grok Fast model as Fast without API prior
+       assert.equal(rows[0]?.speedMode, "fast");
+       assert.equal(rows[0]?.accountId, "fixture-grok-account");
+     };
+-    await check(); await f.reopen(); await check();
+-  } finally { await f.close(); }
++    await check();
++    await f.reopen();
++    await check();
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test(
+-  "a compact private Pi receipt preserves the Host's full text and image tool result",
++  "Pi scheduling preserves the Host's full text and image tool result",
+   { timeout: 10000 },
+   async () => {
+     const f = await fixture();
+@@ -193,28 +208,24 @@ test(
+   },
+ );
+ 
+-test(
+-  "the production runtime executes through the single Pi lane",
+-  { timeout: 10000 },
+-  async () => {
+-    for (const executor of [undefined, "pi"] as const) {
+-      const f = await fixture(executor);
+-      try {
+-        f.steps.push(() => reply("complete"));
+-        assert.equal((await f.runtime.executeTurn("One request")).response, "complete");
+-        const rows = await f.store.queryAppUsage({
+-          since: 0,
+-          until: Date.now() + 1,
+-          tzOffsetMs: 0,
+-        });
+-        assert.equal(rows.totals.modelRequestCount, 1);
+-        assert.deepEqual(f.executorFacts(), [executor ?? "pi"]);
+-      } finally {
+-        await f.close();
+-      }
++test("the production runtime executes through the single Pi lane", { timeout: 10000 }, async () => {
++  for (const executor of [undefined, "pi"] as const) {
++    const f = await fixture(executor);
++    try {
++      f.steps.push(() => reply("complete"));
++      assert.equal((await f.runtime.executeTurn("One request")).response, "complete");
++      const rows = await f.store.queryAppUsage({
++        since: 0,
++        until: Date.now() + 1,
++        tzOffsetMs: 0,
++      });
++      assert.equal(rows.totals.modelRequestCount, 1);
++      assert.deepEqual(f.executorFacts(), [executor ?? "pi"]);
++    } finally {
++      await f.close();
+     }
+-  },
+-);
++  }
++});
+ 
+ test(
+   "unexpected tool names close through the Host's registry-miss path",
+@@ -502,3 +513,42 @@ test("Host output-limit continuation survives Pi settlement", { timeout: 10000 }
+     await f.close();
+   }
+ });
++
++test("Pi schema rejection settles every admitted call through one Host batch", async () => {
++  const f = await fixture();
++  try {
++    f.steps.push(
++      () =>
++        reply("invalid calls", [
++          { id: "missing-field", name: "Probe", input: {} },
++          { id: "unknown-tool", name: "NoSuchTool", input: {} },
++        ]),
++      (request) => {
++        const results = request.messages.filter((message: any) => message.role === "tool");
++        assert.equal(results.length, 2);
++        assert.deepEqual(
++          results.map((message: any) => message.toolCallId),
++          ["missing-field", "unknown-tool"],
++        );
++        assert.ok(results.every((message: any) => message.isError));
++        return reply("recovered");
++      },
++    );
++    assert.equal((await f.runtime.executeTurn("Reject invalid calls")).response, "recovered");
++    assert.equal(f.effects, 0);
++    assert.equal(f.requests.length, 2);
++    await f.reopen();
++    f.steps.push((request) => {
++      assert.equal(
++        request.messages.filter((message: any) => message.role === "tool" && message.isError)
++          .length,
++        2,
++      );
++      return reply("reopened");
++    });
++    assert.equal((await f.runtime.executeTurn("Continue without replay")).response, "reopened");
++    assert.equal(f.effects, 0);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/package.json b/package.json
+index f4925e6..2b38815 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:decision-classifier && pnpm run test:decision-host && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+@@ -49,13 +49,13 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+diff --git a/packages/desktop/src/main/desktopWindowChrome.ts b/packages/desktop/src/main/desktopWindowChrome.ts
+index b7c9822..7604e29 100644
+--- a/packages/desktop/src/main/desktopWindowChrome.ts
++++ b/packages/desktop/src/main/desktopWindowChrome.ts
+@@ -8,7 +8,7 @@ import type {
+   WebContents,
+   WindowOpenHandlerResponse,
+ } from "electron";
+-import type { DesktopTitleBarTheme, Locale } from "@zcode/shared";
++import type { DesktopTitleBarTheme, Locale, NativePageAssistantRequest } from "@zcode/shared";
+ import {
+   DEFAULT_LOCALE,
+   desktopMenuMessageIds,
+@@ -364,34 +364,68 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
+     if (!isAllowedEmbeddedBrowserNewWindowUrl(url) || options.hostWebContents.isDestroyed()) return;
+     const owner = options.resolveBrowserViewOwner?.(options.guestWebContents.id);
+     options.hostWebContents.send(PlatformChannels.OpenBrowserUrl, {
+-      disposition, url,
+-      ...(owner ? {
+-        workspaceKey: owner.workspaceKey,
+-        ...(owner.remoteSessionId ? { remoteSessionId: owner.remoteSessionId } : {}),
+-        sessionId: owner.sessionId, browserId: owner.browserId,
+-        browserGeneration: owner.browserGeneration, sourceTabId: owner.tabId,
+-      } : {}),
++      disposition,
++      url,
++      ...(owner
++        ? {
++            workspaceKey: owner.workspaceKey,
++            ...(owner.remoteSessionId ? { remoteSessionId: owner.remoteSessionId } : {}),
++            sessionId: owner.sessionId,
++            browserId: owner.browserId,
++            browserGeneration: owner.browserGeneration,
++            sourceTabId: owner.tabId,
++          }
++        : {}),
+     });
+   };
+ 
+-  if (!options.isCodingPlanGuest) options.guestWebContents.on("context-menu", (_event, params) => {
+-    const ownerAtOpen = JSON.stringify(options.resolveBrowserViewOwner?.(options.guestWebContents.id));
+-    showEmbeddedBrowserContextMenu({
+-      guest: options.guestWebContents, params,
+-      locale: options.currentApplicationLocale?.() ?? DEFAULT_LOCALE,
+-      openLink: (url) => {
+-        if (JSON.stringify(options.resolveBrowserViewOwner?.(options.guestWebContents.id)) !== ownerAtOpen) return;
+-        openInternalTab(url, "foreground-tab");
+-      },
+-      askAgent: () => {
+-        const owner = options.resolveBrowserViewOwner?.(options.guestWebContents.id);
+-        if (JSON.stringify(owner) !== ownerAtOpen || options.hostWebContents.isDestroyed()) return;
+-        options.hostWebContents.send(PlatformChannels.OpenPageAssistant, {
+-          selection: { feature: "app-page", pageId: "browser-view", ...(owner ? { resource: { kind: "browser", tabId: owner.tabId } } : {}) },
+-        });
+-      },
++  if (!options.isCodingPlanGuest)
++    options.guestWebContents.on("context-menu", (_event, params) => {
++      // The native menu opens at the screen pointer. Freeze that point before selecting
++      // a row moves the pointer; guest-local params cannot anchor a shell popover.
++      let anchor: NativePageAssistantRequest["anchor"];
++      try {
++        const window = BrowserWindow.fromWebContents(options.hostWebContents);
++        if (window && !window.isDestroyed()) {
++          const cursor = screen.getCursorScreenPoint();
++          const bounds = window.getContentBounds();
++          const zoom = options.hostWebContents.getZoomFactor();
++          if (Number.isFinite(zoom) && zoom > 0)
++            anchor = { x: (cursor.x - bounds.x) / zoom, y: (cursor.y - bounds.y) / zoom };
++        }
++      } catch {
++        /* Unsupported native coordinates use a fresh host fallback, never another page's anchor. */
++      }
++      const ownerAtOpen = JSON.stringify(
++        options.resolveBrowserViewOwner?.(options.guestWebContents.id),
++      );
++      showEmbeddedBrowserContextMenu({
++        guest: options.guestWebContents,
++        params,
++        locale: options.currentApplicationLocale?.() ?? DEFAULT_LOCALE,
++        openLink: (url) => {
++          if (
++            JSON.stringify(options.resolveBrowserViewOwner?.(options.guestWebContents.id)) !==
++            ownerAtOpen
++          )
++            return;
++          openInternalTab(url, "foreground-tab");
++        },
++        askAgent: () => {
++          const owner = options.resolveBrowserViewOwner?.(options.guestWebContents.id);
++          if (JSON.stringify(owner) !== ownerAtOpen || options.hostWebContents.isDestroyed())
++            return;
++          options.hostWebContents.send(PlatformChannels.OpenPageAssistant, {
++            ...(anchor ? { anchor } : {}),
++            selection: {
++              feature: "app-page",
++              pageId: "browser-view",
++              ...(owner ? { resource: { kind: "browser", tabId: owner.tabId } } : {}),
++            },
++          });
++        },
++      });
+     });
+-  });
+ 
+   options.guestWebContents.on("before-input-event", (_event, input) => {
+     // 某些平台的 keyUp 仍可能带 modifier 标记，直接记最近一次 modifiers
+@@ -720,10 +754,21 @@ export function createBrowserWindow(options: {
+     );
+     // DOM 普通页面已直接打开小窗；原生文字菜单保留编辑动作，并提供同一入口。
+     if (template.length === 0) return;
+-    template.push({ type: "separator" }, {
+-      label: getDesktopMenuMessage(options.currentApplicationLocale?.() ?? DEFAULT_LOCALE, desktopMenuMessageIds.askAgent),
+-      click: () => { if (!win.webContents.isDestroyed()) win.webContents.send(PlatformChannels.OpenPageAssistant, { anchor: { x: params.x, y: params.y } }); },
+-    });
++    template.push(
++      { type: "separator" },
++      {
++        label: getDesktopMenuMessage(
++          options.currentApplicationLocale?.() ?? DEFAULT_LOCALE,
++          desktopMenuMessageIds.askAgent,
++        ),
++        click: () => {
++          if (!win.webContents.isDestroyed())
++            win.webContents.send(PlatformChannels.OpenPageAssistant, {
++              anchor: { x: params.x, y: params.y },
++            });
++        },
++      },
++    );
+ 
+     if (!app.isPackaged) {
+       if (template.length > 0) {
+diff --git a/packages/services/src/model-provider/chatgptAuthorization.ts b/packages/services/src/model-provider/chatgptAuthorization.ts
+index 63f5820..c8be2cd 100644
+--- a/packages/services/src/model-provider/chatgptAuthorization.ts
++++ b/packages/services/src/model-provider/chatgptAuthorization.ts
+@@ -48,7 +48,7 @@ async function tokenFailure(
+     statusCode: response.status,
+     status: response.status,
+     kind,
+-    ...(code && /^[a-z_]{1,80}$/.test(code) ? { code } : {}),
++    ...(code && /^[a-z0-9_]{1,80}$/.test(code) ? { code } : {}),
+   });
+ }
+ 
+diff --git a/packages/services/src/model-provider/providerProvisioningSource.ts b/packages/services/src/model-provider/providerProvisioningSource.ts
+index 7389c95..d56b1ea 100644
+--- a/packages/services/src/model-provider/providerProvisioningSource.ts
++++ b/packages/services/src/model-provider/providerProvisioningSource.ts
+@@ -91,6 +91,9 @@ export async function readProvisionablePersonalConfig(
+         !personal.providerOrder?.length &&
+         personal.defaultModelSelection === undefined &&
+         personal.pageAssistantDefaultModelSelection === undefined &&
++        personal.visionBridgeDefaultModelSelection === undefined &&
++        personal.newConversationModelPolicy === undefined &&
++        personal.decisionModelSettings === undefined &&
+         personal.favoriteModelSelections === undefined
+       )
+         return personal;
+diff --git a/packages/services/src/model-provider/providerProvisioningTarget.ts b/packages/services/src/model-provider/providerProvisioningTarget.ts
+index f1fe207..ff0d4e8 100644
+--- a/packages/services/src/model-provider/providerProvisioningTarget.ts
++++ b/packages/services/src/model-provider/providerProvisioningTarget.ts
+@@ -112,6 +112,8 @@ export function createProviderProvisioningTarget(
+             await options.providerRuntime.registryService.refresh("provider-provisioning");
+           if (
+             personalUpdate.defaultModelSelection &&
++            (personalUpdate.newConversationModelPolicy === undefined ||
++              personalUpdate.newConversationModelPolicy === "fixed") &&
+             !options.providerRuntime.registryService.validateSelection(
+               personalUpdate.defaultModelSelection,
+             ).ok
+diff --git a/packages/services/src/page-assistant/pageAssistantService.ts b/packages/services/src/page-assistant/pageAssistantService.ts
+index afabbc4..c75ca6e 100644
+--- a/packages/services/src/page-assistant/pageAssistantService.ts
++++ b/packages/services/src/page-assistant/pageAssistantService.ts
+@@ -18,6 +18,7 @@ import type { ISettingService } from "../setting/setting.js";
+ import type { IProviderSettingsService } from "../model-provider/providerFacadeServices.js";
+ import type { IModelSelectionService } from "../model-provider/modelSelectionService.js";
+ import type { IPageAssistantService } from "./pageAssistant.js";
++import { validateModelSelectionOptions } from "@zcode/provider";
+ 
+ const descriptions: Record<AppPageAssistantTarget["pageId"], string> = {
+   workspace:
+@@ -206,8 +207,21 @@ export function createPageAssistantService(options: {
+       const page = view?.preferencesRevision
+         ? view.pageAssistantDefaultSelection
+         : preferences?.pageAssistantDefaultModelSelection;
+-      const defaultModelSelection =
+-        page ?? (!policy || policy === "fixed" ? fixed : undefined) ?? view?.preferredSelection;
++      const defaultModelSelection = [
++        page,
++        !policy || policy === "fixed" ? fixed : undefined,
++        view?.preferredSelection,
++      ].find((candidate) => {
++        if (!candidate) return false;
++        if (!view) return true; // Older hosts provide preferences without a directory.
++        const provider = view.providers.find((row) => row.providerId === candidate.providerId);
++        const model = provider?.models.find((row) => row.modelId === candidate.modelId);
++        return (
++          provider?.config.visibility !== "hidden" &&
++          model?.config.enabled !== false &&
++          Boolean(model && validateModelSelectionOptions(model, candidate).ok)
++        );
++      });
+       return {
+         workspacePath: options.workspacePath(),
+         target,
+diff --git a/packages/services/test/chatgpt-authorization.test.ts b/packages/services/test/chatgpt-authorization.test.ts
+index f671da9..6a90b9d 100644
+--- a/packages/services/test/chatgpt-authorization.test.ts
++++ b/packages/services/test/chatgpt-authorization.test.ts
+@@ -35,7 +35,7 @@ function fixture() {
+   let directScope = true;
+   let omitRefresh = false;
+   let refreshFailure: string | undefined;
+-  let exchangeFailure = false;
++  let exchangeFailure: string | undefined;
+   const fetcher: typeof fetch = async (input, init) => {
+     const url = String(input);
+     calls.push(url);
+@@ -56,7 +56,7 @@ function fixture() {
+         if (exchangeFailure)
+           return Response.json(
+             {
+-              error: "invalid_grant",
++              error: exchangeFailure,
+               error_description: "synthetic-private-value-must-not-leave-transport",
+             },
+             { status: 400 },
+@@ -142,8 +142,8 @@ function fixture() {
+     setRefreshFailure(value?: string) {
+       refreshFailure = value;
+     },
+-    rejectExchange() {
+-      exchangeFailure = true;
++    rejectExchange(code = "invalid_grant") {
++      exchangeFailure = code;
+     },
+     async begin(accountId?: string) {
+       const login = await owner.begin("chatgpt", "browser", accountId);
+@@ -188,6 +188,23 @@ test("failed real Pi code exchange retains saved accounts and exports only safe
+   assert.deepEqual(after.accounts, before.accounts);
+ });
+ 
++test("real Pi code exchange preserves the documented numeric-prefixed policy code without the response body", async () => {
++  const f = fixture();
++  const first = await f.begin();
++  await f.complete(first.login);
++  const before = await f.owner.accounts("chatgpt");
++  const next = await f.begin();
++  f.rejectExchange("3p_delegated_access_policy_denied");
++  await assert.rejects(f.complete(next.login), (error: unknown) => {
++    const data = error as Error & { code?: string; kind?: string };
++    assert.equal(data.code, "3p_delegated_access_policy_denied");
++    assert.equal(data.kind, "chatgpt-token-exchange");
++    assert.equal(data.message.includes("synthetic-private"), false);
++    return true;
++  });
++  assert.deepEqual((await f.owner.accounts("chatgpt")).accounts, before.accounts);
++});
++
+ test("real Pi ChatGPT login uses Fleet registration, verified identity, public catalog and request routing", async () => {
+   const f = fixture();
+   const { login, authorization } = await f.begin();
+diff --git a/packages/services/test/page-assistant.test.ts b/packages/services/test/page-assistant.test.ts
+index 0fa06bf..3ada424 100644
+--- a/packages/services/test/page-assistant.test.ts
++++ b/packages/services/test/page-assistant.test.ts
+@@ -80,7 +80,10 @@ async function fixture() {
+             config: { apiKey: "PRIVATE-CATALOG-KEY" },
+             models: Array.from({ length: 40 }, (_, index) => ({
+               modelId: `model-${index}`,
+-              config: {},
++              config: {
++                enabled: true,
++                optionSpecs: { reasoningLevel: { values: ["auto", "low", "high"], map: "{}" } },
++              },
+               evidenceConfig: {
+                 optionSpecs: { reasoningLevel: { values: ["low", "high"], map: "PRIVATE-MAP" } },
+               },
+@@ -488,3 +491,29 @@ test("helper initialization resolves policy and selection from one versioned cat
+     await f.close();
+   }
+ });
++
++test("a new helper falls back from unavailable saved defaults without changing the saved choices", async () => {
++  const f = await fixture();
++  try {
++    const getView = f.selection.getView.bind(f.selection);
++    const page = { providerId: "missing", modelId: "retained-page-model", options: {} };
++    const fixed = {
++      providerId: "fixture",
++      modelId: "model-39",
++      options: { reasoningLevel: "withdrawn" },
++    };
++    f.selection.getView = async () => ({
++      ...(await getView()),
++      preferencesRevision: "current",
++      newConversationModelPolicy: "fixed",
++      pageAssistantDefaultSelection: page,
++      configuredDefaultSelection: fixed,
++    });
++    assert.equal((await f.service.getContext(defaults)).defaultModelSelection?.modelId, "model-0");
++    assert.deepEqual((await f.selection.getView()).pageAssistantDefaultSelection, page);
++    assert.deepEqual((await f.selection.getView()).configuredDefaultSelection, fixed);
++    assert.deepEqual(f.saves, []);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/services/test/provider-purpose-provisioning.test.ts b/packages/services/test/provider-purpose-provisioning.test.ts
+new file mode 100644
+index 0000000..09a2bc3
+--- /dev/null
++++ b/packages/services/test/provider-purpose-provisioning.test.ts
+@@ -0,0 +1,132 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { MutableAccountProviderConfigSource } from "@zcode/provider";
++import {
++  NodePersonalProviderConfigRepository,
++  NodeProviderRegistryRuntime,
++} from "@zcode/provider-node";
++import { createProviderProvisioningSource } from "../src/model-provider/providerProvisioningSource.js";
++import { createProviderProvisioningTarget } from "../src/model-provider/providerProvisioningTarget.js";
++
++test("purpose defaults and startup policy survive real Personal source/target synchronization and failed-apply rollback", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-purpose-provisioning-"));
++  const sourcePath = join(root, "source.json");
++  const targetPath = join(root, "target.json");
++  const sourceRepository = new NodePersonalProviderConfigRepository({
++    filePath: sourcePath,
++    pollingIntervalMs: false,
++  });
++  const targetRepository = new NodePersonalProviderConfigRepository({
++    filePath: targetPath,
++    pollingIntervalMs: false,
++  });
++  const model = (modelId: string) => ({
++    providerId: "existing",
++    modelId,
++    options: { reasoningLevel: "auto" },
++  });
++  const initial = {
++    defaultModelSelection: model("ordinary"),
++    pageAssistantDefaultModelSelection: model("helper"),
++    visionBridgeDefaultModelSelection: model("vision"),
++    newConversationModelPolicy: "recent" as const,
++    decisionModelSettings: {
++      enabled: true,
++      selection: { providerId: "decision", modelId: "typed" },
++    },
++  };
++  let settings = {};
++  const settingService = {
++    get: async () => settings,
++    update: async (patch: object) => {
++      settings = { ...settings, ...patch };
++    },
++  };
++  const credentials = new Map<string, string>();
++  let failRefresh = false;
++  const targetRuntime = new NodeProviderRegistryRuntime({
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalFilePath: targetPath,
++    personalPollingIntervalMs: false,
++    watch: false,
++    accountSource: new MutableAccountProviderConfigSource(),
++  });
++  const refresh = targetRuntime.registryService.refresh.bind(targetRuntime.registryService);
++  targetRuntime.registryService.refresh = async (...args) => {
++    if (failRefresh) {
++      failRefresh = false;
++      throw new Error("Synthetic target refresh failure");
++    }
++    return refresh(...args);
++  };
++  const source = createProviderProvisioningSource({
++    personalRepository: sourceRepository,
++    personalConfigFilePath: sourcePath,
++    credentialFilePath: join(root, "absent-credentials.json"),
++    settingService: settingService as never,
++  });
++  const target = createProviderProvisioningTarget({
++    personalRepository: targetRepository,
++    personalConfigFilePath: targetPath,
++    stateFilePath: join(root, "state.json"),
++    settingService: settingService as never,
++    credentialService: {
++      load: async (key: string) => credentials.get(key) ?? null,
++      save: async (key: string, value: string) => {
++        credentials.set(key, value);
++      },
++      delete: async (key: string) => {
++        credentials.delete(key);
++      },
++    } as never,
++    accountProviderSource: { refresh: async () => {} } as never,
++    providerRuntime: targetRuntime,
++  });
++  try {
++    await sourceRepository.update((current) => ({ ...current, ...initial }));
++    const envelope = await source.read("first");
++    assert.deepEqual(
++      envelope.personalConfig.pageAssistantDefaultModelSelection,
++      initial.pageAssistantDefaultModelSelection,
++    );
++    assert.equal((await target.apply(envelope)).status, "applied");
++    const assertDefaults = async () => {
++      const saved = await targetRepository.read();
++      for (const key of Object.keys(initial) as Array<keyof typeof initial>)
++        assert.deepEqual(saved[key], initial[key]);
++    };
++    await assertDefaults();
++    const reopened = new NodePersonalProviderConfigRepository({
++      filePath: targetPath,
++      pollingIntervalMs: false,
++    });
++    try {
++      assert.equal((await reopened.read()).newConversationModelPolicy, "recent");
++    } finally {
++      reopened.dispose();
++    }
++    await sourceRepository.update((current) => ({
++      ...current,
++      newConversationModelPolicy: "automatic",
++      pageAssistantDefaultModelSelection: model("new-helper"),
++      decisionModelSettings: { enabled: false },
++    }));
++    failRefresh = true;
++    const failed = await target.apply(await source.read("second"));
++    assert.equal(failed.status, "failed");
++    assert.equal(failed.rolledBack, true);
++    await assertDefaults();
++    assert.equal(credentials.size, 0, "Default synchronization created credentials");
++  } finally {
++    targetRuntime.dispose();
++    sourceRepository.dispose();
++    targetRepository.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/services/test/usage-price-directory.test.ts b/packages/services/test/usage-price-directory.test.ts
+index 78c5f7d..6b498ed 100644
+--- a/packages/services/test/usage-price-directory.test.ts
++++ b/packages/services/test/usage-price-directory.test.ts
+@@ -148,13 +148,22 @@ test("DeepSeek's explicitly retained legacy names share the current Flash schedu
+   );
+ });
+ 
+-test("every shipped API preset resolves pricing through the same vendor across protocol paths", async () => {
++test("chat API presets resolve their vendor while decision-only presets remain unpriced", async () => {
+   const builtin = JSON.parse(
+     await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
+   );
+   for (const template of builtin.config.providerConfigRules.templateRules) {
+     if (template.config?.access?.type === "subscription") continue;
+     const url = template.config?.api?.baseUrl;
++    if (template.config?.api?.type === "typesafe-system-one") {
++      assert.equal(resolveUsageBillingProvider(url), undefined, template.templateId);
++      assert.equal(
++        estimateUsagePrice({ ...input, billingProvider: undefined, modelId: "jev-latest" })
++          .estimatedUsd,
++        undefined,
++      );
++      continue;
++    }
+     if (url) assert.ok(resolveUsageBillingProvider(url), template.templateId);
+   }
+   assert.equal(resolveUsageBillingProvider("https://api.minimaxi.com/anthropic"), "minimax-cn");
+diff --git a/packages/shared/src/provider-provisioning.ts b/packages/shared/src/provider-provisioning.ts
+index 03f1081..edf7157 100644
+--- a/packages/shared/src/provider-provisioning.ts
++++ b/packages/shared/src/provider-provisioning.ts
+@@ -1,5 +1,6 @@
+ import { z } from "zod";
+-import { modelSelectionSchema } from "./model-selection.js";
++import { modelSelectionSchema, newConversationModelPolicySchema } from "./model-selection.js";
++import { decisionModelSettingsSchema } from "./decision-model.js";
+ import { providerFamilyConnectionSelectionSettingsSchema } from "./provider-family-connection-selection.js";
+ 
+ const nonEmptyString = z.string().trim().min(1);
+@@ -43,6 +44,9 @@ export const providerProvisioningPersonalConfigSchema = z
+     providerOrder: z.array(nonEmptyString).optional(),
+     defaultModelSelection: modelSelectionSchema.optional(),
+     pageAssistantDefaultModelSelection: modelSelectionSchema.optional(),
++    visionBridgeDefaultModelSelection: modelSelectionSchema.optional(),
++    newConversationModelPolicy: newConversationModelPolicySchema.optional(),
++    decisionModelSettings: decisionModelSettingsSchema.optional(),
+     favoriteModelSelections: z.array(modelSelectionSchema).max(100).optional(),
+   })
+   .strict();
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index d3367e8..2c63c96 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -61,7 +61,10 @@ import {
+ } from "@/lib/accountProviderAccess.js";
+ import { buildUsageEntitlementCacheKey } from "@/lib/usageEntitlementCache.js";
+ import { ModelProviderSection } from "@/settings/ModelProviderSection.js";
+-import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
++import {
++  PageAssistantMenuItem,
++  pageAssistantScope,
++} from "@/page-assistant/PageAssistantContext.js";
+ import { useTeamSubscriptionProducts } from "@/settings/model-provider-section/useTeamSubscriptionProducts.js";
+ import { UsageStatsSection, type UsageStatsSectionTab } from "@/settings/UsageStatsSection.js";
+ import {
+@@ -274,7 +277,7 @@ function SettingsSidebarButton({
+   );
+   const { intl } = useZCodeIntl();
+   return onOpenContext ? (
+-    <ContextMenu>
++    <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild>
+         <div>{control}</div>
+       </ContextMenuTrigger>
+@@ -282,6 +285,7 @@ function SettingsSidebarButton({
+         <ContextMenuItem onSelect={onOpenContext}>
+           {intl.formatMessage({ id: "common.open" })}
+         </ContextMenuItem>
++        <PageAssistantMenuItem />
+       </ContextMenuContent>
+     </ContextMenu>
+   ) : (
+diff --git a/packages/ui/src/components/ui/context-menu.tsx b/packages/ui/src/components/ui/context-menu.tsx
+index 2930d47..357e9f0 100644
+--- a/packages/ui/src/components/ui/context-menu.tsx
++++ b/packages/ui/src/components/ui/context-menu.tsx
+@@ -3,11 +3,9 @@ import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
+ import { ChevronRightIcon } from "lucide-react";
+ 
+ import { cn } from "../lib/utils.js";
+-import { usePageAssistant } from "@/page-assistant/PageAssistantContext.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ 
+ function ContextMenu({ ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
+-  return <ContextMenuPrimitive.Root data-slot="context-menu" modal={false} {...props} />;
++  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
+ }
+ 
+ function ContextMenuTrigger({
+@@ -20,11 +18,8 @@ function ContextMenuTrigger({
+ function ContextMenuContent({
+   className,
+   children,
+-  omitPageAssistant = false,
+   ...props
+-}: React.ComponentProps<typeof ContextMenuPrimitive.Content> & { omitPageAssistant?: boolean }) {
+-  const assistant = usePageAssistant();
+-  const { intl } = useZCodeIntl();
++}: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+   return (
+     <ContextMenuPrimitive.Portal>
+       <ContextMenuPrimitive.Content
+@@ -40,14 +35,6 @@ function ContextMenuContent({
+         {...props}
+       >
+         {children}
+-        {assistant && !omitPageAssistant ? (
+-          <>
+-            {React.Children.count(children) > 0 ? <ContextMenuSeparator /> : null}
+-            <ContextMenuItem onSelect={assistant.openCaptured}>
+-              {intl.formatMessage({ id: "pageAssistant.open" })}
+-            </ContextMenuItem>
+-          </>
+-        ) : null}
+       </ContextMenuPrimitive.Content>
+     </ContextMenuPrimitive.Portal>
+   );
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 1ed3340..02ab6c2 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7339,6 +7339,8 @@ const enUS: Record<string, string> = {
+     "Authorization does not match the selected account. Your saved binding was preserved; reauthorize it.",
+   "settings.modelProvider.subscription.error.legacyRegistration":
+     "This account uses legacy authorization. Add a ChatGPT account to use the new flow; your existing records will be preserved.",
++  "pageAssistant.configureProvider": "Configure provider with Agent",
++  "pageAssistant.configureModel": "Configure model with Agent",
+   "pageAssistant.open": "Ask Agent",
+   "pageAssistant.failed": "Could not open this page's conversation. Your page data is unchanged.",
+   "pageAssistant.history": "Recent page conversations",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index fcbe3b8..580fcdb 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6948,6 +6948,8 @@ const zhCN: Record<string, string> = {
+     "授权账号与所选账号不一致，原有绑定已保留，请重新授权。",
+   "settings.modelProvider.subscription.error.legacyRegistration":
+     "此账号使用旧授权。请通过“添加订阅账号”连接新授权，原有记录会保留。",
++  "pageAssistant.configureProvider": "用 Agent 配置供应商",
++  "pageAssistant.configureModel": "用 Agent 配置模型",
+   "pageAssistant.open": "让 Agent 帮忙",
+   "pageAssistant.failed": "暂时无法打开此页面的对话小窗，页面数据未改变。",
+   "pageAssistant.history": "最近的页面对话",
+diff --git a/packages/ui/src/page-assistant/PageAssistantContext.tsx b/packages/ui/src/page-assistant/PageAssistantContext.tsx
+index bfdf8f5..afbea46 100644
+--- a/packages/ui/src/page-assistant/PageAssistantContext.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantContext.tsx
+@@ -1,3 +1,5 @@
++import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { createContext, useContext, type ReactNode } from "react";
+ import { pageAssistantSelectionSchema, type PageAssistantSelection } from "@zcode/shared";
+ 
+@@ -52,3 +54,27 @@ export function PageAssistantScope({
+     </div>
+   );
+ }
++
++/** Explicit feature-owned entry; ordinary context menus never acquire Agent actions. */
++export function PageAssistantMenuItem({
++  messageId = "pageAssistant.open",
++  separator = true,
++}: {
++  separator?: boolean;
++  messageId?:
++    | "pageAssistant.open"
++    | "pageAssistant.configureProvider"
++    | "pageAssistant.configureModel";
++}) {
++  const assistant = usePageAssistant();
++  const { intl } = useZCodeIntl();
++  if (!assistant) return null;
++  return (
++    <>
++      {separator ? <ContextMenuSeparator /> : null}
++      <ContextMenuItem onSelect={assistant.openCaptured}>
++        {intl.formatMessage({ id: messageId })}
++      </ContextMenuItem>
++    </>
++  );
++}
+diff --git a/packages/ui/src/page-assistant/PageAssistantHost.tsx b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+index b20e43d..9d58b11 100644
+--- a/packages/ui/src/page-assistant/PageAssistantHost.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+@@ -182,7 +182,7 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+         const selection = request.selection ?? captured.current.selection;
+         open(
+           selection,
+-          request.anchor ?? captured.current.anchor,
++          request.anchor ?? (request.selection ? centerAnchor() : captured.current.anchor),
+           request.selection ? undefined : captured.current.label,
+         );
+       }),
+@@ -270,7 +270,7 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+             {children}
+           </div>
+         </ContextMenuTrigger>
+-        <ContextMenuContent omitPageAssistant>
++        <ContextMenuContent>
+           <ContextMenuItem onSelect={controller.openCaptured}>
+             {intl.formatMessage({ id: "pageAssistant.open" })}
+           </ContextMenuItem>
+diff --git a/packages/ui/src/settings/DecisionModelDefaults.tsx b/packages/ui/src/settings/DecisionModelDefaults.tsx
+new file mode 100644
+index 0000000..aaaa294
+--- /dev/null
++++ b/packages/ui/src/settings/DecisionModelDefaults.tsx
+@@ -0,0 +1,134 @@
++import type { DecisionModelSettings } from "@zcode/shared";
++import type { ModelSelectionView } from "@zcode/services";
++import { ModelConfigSelect } from "@/ModelConfigSelect.js";
++import { Switch } from "@/components/ui/switch.js";
++import { selectTriggerVariants } from "@/components/ui/select.js";
++import { SettingsRow, SettingsGroupCard } from "@/settings/SettingsPageParts.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
++
++/** Separate operation family; all writes still go through the parent Personal writer. */
++export function DecisionModelDefaults({
++  view,
++  pending,
++  onChange,
++}: {
++  view: ModelSelectionView | null;
++  pending: boolean;
++  onChange(settings: DecisionModelSettings): void | Promise<void>;
++}) {
++  const { intl } = useZCodeIntl();
++  const decision = view?.decisionModelSettings ?? { enabled: false };
++  const classifiers = view?.classifierModels ?? [];
++  const decisionAvailable = classifiers.some(
++    (model) =>
++      model.providerId === decision.selection?.providerId &&
++      model.modelId === decision.selection?.modelId,
++  );
++  const decisionGroups = [...new Set(classifiers.map((model) => model.providerId))].map(
++    (providerId) => ({
++      key: providerId,
++      label: classifiers.find((model) => model.providerId === providerId)!.providerName,
++      directItems: true,
++      items: classifiers
++        .filter((model) => model.providerId === providerId)
++        .map((model) => ({
++          key: model.modelId,
++          name: model.modelId,
++          value: encodeCustomModelValue(providerId, model.modelId),
++        })),
++    }),
++  );
++  const saveDecision = onChange;
++  return (
++    <div data-decision-model-settings>
++      <SettingsGroupCard>
++        <SettingsRow
++          label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++          control={
++            <Switch
++              aria-label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++              checked={decision.enabled}
++              disabled={
++                pending || !view?.preferencesRevision || (!decision.enabled && !decisionAvailable)
++              }
++              onCheckedChange={(enabled) => void saveDecision({ ...decision, enabled })}
++            />
++          }
++        />
++        <SettingsRow
++          label={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
++          control={
++            <ModelConfigSelect
++              modelGroups={decisionGroups}
++              normalizedValue={
++                decision.selection
++                  ? encodeCustomModelValue(
++                      decision.selection.providerId,
++                      decision.selection.modelId,
++                    )
++                  : "none"
++              }
++              triggerLabel={
++                decision.selection?.modelId ??
++                intl.formatMessage({
++                  id: classifiers.length
++                    ? "settings.modelDefaults.decision.choose"
++                    : "settings.modelDefaults.decision.addFirst",
++                })
++              }
++              tooltipTitle={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
++              leadingItems={[
++                {
++                  key: "none",
++                  value: "none",
++                  name: intl.formatMessage({ id: "settings.modelDefaults.decision.none" }),
++                },
++              ]}
++              showManageModelsAction={false}
++              focusSelectorOnClose={null}
++              footerActions={[]}
++              labelVisibilityClassName="inline-flex"
++              disabled={pending || !view?.preferencesRevision}
++              lockReasonMessage=""
++              isItemLocked={() => false}
++              triggerIcon={<></>}
++              triggerClassName={selectTriggerVariants({
++                size: "lg",
++                className: "min-w-0 w-64 max-w-full",
++              })}
++              triggerBadge={
++                decision.selection && !decisionAvailable ? (
++                  <span className="text-ui-sm text-warning">
++                    {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
++                  </span>
++                ) : undefined
++              }
++              onValueChange={(value) => {
++                const selection =
++                  value === "none"
++                    ? undefined
++                    : classifiers.find(
++                        (model) =>
++                          encodeCustomModelValue(model.providerId, model.modelId) === value,
++                      );
++                if (value !== "none" && !selection) return;
++                void saveDecision({
++                  enabled: Boolean(selection && decision.enabled),
++                  ...(selection
++                    ? {
++                        selection: {
++                          providerId: selection.providerId,
++                          modelId: selection.modelId,
++                        },
++                      }
++                    : {}),
++                });
++              }}
++            />
++          }
++        />
++      </SettingsGroupCard>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/ModelPurposeDefaults.tsx b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+index 0f645b9..7c37d40 100644
+--- a/packages/ui/src/settings/ModelPurposeDefaults.tsx
++++ b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+@@ -1,12 +1,7 @@
+ import { useRef, useState } from "react";
+-import {
+-  ZCODE_AGENT_PROVIDER,
+-  type ModelSelection,
+-  type DecisionModelSettings,
+-} from "@zcode/shared";
++import { ZCODE_AGENT_PROVIDER, type ModelSelection } from "@zcode/shared";
+ import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+-import { Switch } from "@/components/ui/switch.js";
+ import { Button } from "@/components/ui/button.js";
+ import {
+   Select,
+@@ -26,6 +21,8 @@ import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+ import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ 
++import { DecisionModelDefaults } from "./DecisionModelDefaults.js";
++
+ const PURPOSES = ["conversation", "page-assistant", "vision-bridge"] as const;
+ /** Purpose choices share the Personal writer; Project and subagent choices keep their own owners. */
+ export function ModelPurposeDefaults() {
+@@ -98,29 +95,6 @@ export function ModelPurposeDefaults() {
+     );
+   const conversationPolicy =
+     view?.newConversationModelPolicy ?? (view?.configuredDefaultSelection ? "fixed" : "recent");
+-  const decision = view?.decisionModelSettings ?? { enabled: false };
+-  const classifiers = view?.classifierModels ?? [];
+-  const decisionAvailable = classifiers.some(
+-    (model) =>
+-      model.providerId === decision.selection?.providerId &&
+-      model.modelId === decision.selection?.modelId,
+-  );
+-  const decisionGroups = [...new Set(classifiers.map((model) => model.providerId))].map(
+-    (providerId) => ({
+-      key: providerId,
+-      label: classifiers.find((model) => model.providerId === providerId)!.providerName,
+-      directItems: true,
+-      items: classifiers
+-        .filter((model) => model.providerId === providerId)
+-        .map((model) => ({
+-          key: model.modelId,
+-          name: model.modelId,
+-          value: encodeCustomModelValue(providerId, model.modelId),
+-        })),
+-    }),
+-  );
+-  const saveDecision = (settings: DecisionModelSettings) =>
+-    save({ decisionModelSettings: settings });
+   return (
+     <section
+       className="space-y-3"
+@@ -312,95 +286,11 @@ export function ModelPurposeDefaults() {
+           );
+         })}
+       </SettingsGroupCard>
+-      <div data-decision-model-settings>
+-        <SettingsGroupCard>
+-          <SettingsRow
+-            label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
+-            control={
+-              <Switch
+-                aria-label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
+-                checked={decision.enabled}
+-                disabled={
+-                  pending || !view?.preferencesRevision || (!decision.enabled && !decisionAvailable)
+-                }
+-                onCheckedChange={(enabled) => void saveDecision({ ...decision, enabled })}
+-              />
+-            }
+-          />
+-          <SettingsRow
+-            label={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
+-            control={
+-              <ModelConfigSelect
+-                modelGroups={decisionGroups}
+-                normalizedValue={
+-                  decision.selection
+-                    ? encodeCustomModelValue(
+-                        decision.selection.providerId,
+-                        decision.selection.modelId,
+-                      )
+-                    : "none"
+-                }
+-                triggerLabel={
+-                  decision.selection?.modelId ??
+-                  intl.formatMessage({
+-                    id: classifiers.length
+-                      ? "settings.modelDefaults.decision.choose"
+-                      : "settings.modelDefaults.decision.addFirst",
+-                  })
+-                }
+-                tooltipTitle={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
+-                leadingItems={[
+-                  {
+-                    key: "none",
+-                    value: "none",
+-                    name: intl.formatMessage({ id: "settings.modelDefaults.decision.none" }),
+-                  },
+-                ]}
+-                showManageModelsAction={false}
+-                focusSelectorOnClose={null}
+-                footerActions={[]}
+-                labelVisibilityClassName="inline-flex"
+-                disabled={pending || !view?.preferencesRevision}
+-                lockReasonMessage=""
+-                isItemLocked={() => false}
+-                triggerIcon={<></>}
+-                triggerClassName={selectTriggerVariants({
+-                  size: "lg",
+-                  className: "min-w-0 w-64 max-w-full",
+-                })}
+-                triggerBadge={
+-                  decision.selection && !decisionAvailable ? (
+-                    <span className="text-ui-sm text-warning">
+-                      {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
+-                    </span>
+-                  ) : undefined
+-                }
+-                onValueChange={(value) => {
+-                  const selection =
+-                    value === "none"
+-                      ? undefined
+-                      : classifiers.find(
+-                          (model) =>
+-                            encodeCustomModelValue(model.providerId, model.modelId) === value,
+-                        );
+-                  if (value !== "none" && !selection) return;
+-                  void saveDecision({
+-                    enabled: Boolean(selection && decision.enabled),
+-                    ...(selection
+-                      ? {
+-                          selection: {
+-                            providerId: selection.providerId,
+-                            modelId: selection.modelId,
+-                          },
+-                        }
+-                      : {}),
+-                  });
+-                }}
+-              />
+-            }
+-          />
+-        </SettingsGroupCard>
+-      </div>
++      <DecisionModelDefaults
++        view={view}
++        pending={pending}
++        onChange={(settings) => save({ decisionModelSettings: settings })}
++      />
+       {read.state.status === "loading" ? (
+         <p className="text-ui-sm text-foreground-subtle">
+           {intl.formatMessage({ id: "common.loading" })}
+diff --git a/packages/ui/src/settings/model-provider-section/Navigation.tsx b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+index 1ad97d5..774d04d 100644
+--- a/packages/ui/src/settings/model-provider-section/Navigation.tsx
++++ b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+@@ -4,7 +4,10 @@ import {
+   ContextMenuContent,
+   ContextMenuItem,
+ } from "@/components/ui/context-menu.js";
+-import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
++import {
++  PageAssistantMenuItem,
++  pageAssistantScope,
++} from "@/page-assistant/PageAssistantContext.js";
+ /* eslint-disable max-lines -- 设置页 provider 导航同时承载分组、卡片化预置入口和拖拽排序，当前先集中维护交互边界。 */
+ import {
+   closestCenter,
+@@ -103,7 +106,7 @@ function ProviderNavigationMenu({
+ }) {
+   const { intl } = useZCodeIntl();
+   return (
+-    <ContextMenu>
++    <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild>
+         <div
+           {...pageAssistantScope(
+@@ -123,6 +126,7 @@ function ProviderNavigationMenu({
+         >
+           {intl.formatMessage({ id: "common.open" })}
+         </ContextMenuItem>
++        <PageAssistantMenuItem messageId="pageAssistant.configureProvider" />
+       </ContextMenuContent>
+     </ContextMenu>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 7be03bd..4b18695 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -1,3 +1,4 @@
++import { PageAssistantMenuItem } from "@/page-assistant/PageAssistantContext.js";
+ import {
+   ContextMenu,
+   ContextMenuTrigger,
+@@ -151,7 +152,7 @@ export function ProviderCardHeader({
+     }
+   };
+   return (
+-    <ContextMenu>
++    <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild disabled={editingName}>
+         <div
+           className="flex items-center justify-between gap-3"
+@@ -210,6 +211,10 @@ export function ProviderCardHeader({
+       </ContextMenuTrigger>
+       <ContextMenuContent onCloseAutoFocus={retainRenameFocus}>
+         {secondaryActionsVisible ? renderActions("context") : null}
++        <PageAssistantMenuItem
++          messageId="pageAssistant.configureProvider"
++          separator={secondaryActionsVisible}
++        />
+       </ContextMenuContent>
+     </ContextMenu>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 5e4418d..1f18ca3 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -4,10 +4,13 @@ import {
+   ContextMenuContent,
+   ContextMenuItem,
+ } from "@/components/ui/context-menu.js";
+-import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
++import {
++  PageAssistantMenuItem,
++  pageAssistantScope,
++} from "@/page-assistant/PageAssistantContext.js";
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+-import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
++import type { ModelConnectivityResult } from "@zcode/shared";
+ import { Loader2Icon, Unplug } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import {
+@@ -21,9 +24,8 @@ import { ProviderModelMetadataDialog } from "@/settings/model-provider-section/P
+ import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
+ import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provider";
+ import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
+-import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
+ import { providerSettingsWriteError } from "@/lib/providerSettingsWriteError.js";
+-import { modelConnectivityErrorMessage } from "./providerStatus.js";
++import { useModelConnectivityProbe } from "./useModelConnectivityProbe.js";
+ 
+ export function ModelRowInput({
+   model,
+@@ -58,17 +60,14 @@ export function ModelRowInput({
+   onInspectedNewModel?: () => void;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+-  const { showFeedback } = useProviderDetailFeedback();
+-  const [isTesting, setIsTesting] = useState(false);
+-  const testingRef = useRef(false);
+-  const testGeneration = useRef(0);
++  const { isTesting, handleTest } = useModelConnectivityProbe({
++    onTest,
++    modelId: model.modelId,
++    providerId,
++    providerName,
++    providerEnabled,
++  });
+   const inspectedNewModel = useRef(false);
+-  useEffect(
+-    () => () => {
+-      testGeneration.current++;
+-    },
+-    [providerId, model.modelId],
+-  );
+   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
+   const [metadataSaving, setMetadataSaving] = useState(false);
+   const metadataSavingRef = useRef(false);
+@@ -178,86 +177,6 @@ export function ModelRowInput({
+     }
+   }, [commitDraft]);
+ 
+-  const handleTest = useCallback(async () => {
+-    if (!onTest || testingRef.current || !providerEnabled) {
+-      return;
+-    }
+-
+-    // 测试只能使用已保存的 ID，不能夹带编辑弹窗里尚未提交的重命名。
+-    const modelId = model.modelId;
+-    testingRef.current = true;
+-    const version = ++testGeneration.current;
+-    const dedupeKey = `model-test:${providerId}:${modelId}`;
+-    showFeedback({
+-      key: dedupeKey,
+-      message: intl.formatMessage(
+-        { id: "settings.modelProvider.testModel.connectingWithIdentity" },
+-        { provider: providerName, model: modelId },
+-      ),
+-      state: "pending",
+-      durationMs: 0,
+-    });
+-    setIsTesting(true);
+-    try {
+-      const result = await onTest(modelId);
+-      if (version !== testGeneration.current) return;
+-      if (result.success) {
+-        showFeedback({
+-          key: dedupeKey,
+-          message: intl.formatMessage(
+-            { id: "settings.modelProvider.testModel.successWithIdentity" },
+-            { provider: providerName, model: modelId },
+-          ),
+-          state: "success",
+-          successEmphasis: true,
+-          dismissible: true,
+-          dismissLabel: intl.formatMessage({ id: "common.close" }),
+-        });
+-      } else {
+-        showFeedback({
+-          key: dedupeKey,
+-          state: "failure",
+-          message: intl.formatMessage(
+-            { id: "settings.modelProvider.testModel.failedWithIdentity" },
+-            {
+-              provider: providerName,
+-              model: modelId,
+-              reason: modelConnectivityErrorMessage(result.error, intl),
+-            },
+-          ),
+-          durationMs: 0,
+-          dismissible: true,
+-          dismissLabel: intl.formatMessage({ id: "common.close" }),
+-        });
+-      }
+-    } catch (error) {
+-      if (version !== testGeneration.current) return;
+-      const result = modelConnectivityFailure(error);
+-      showFeedback({
+-        key: dedupeKey,
+-        state: "failure",
+-        message: intl.formatMessage(
+-          { id: "settings.modelProvider.testModel.failedWithIdentity" },
+-          {
+-            provider: providerName,
+-            model: modelId,
+-            reason: result.success
+-              ? intl.formatMessage({ id: "settings.modelProvider.testFailure.unknown" })
+-              : modelConnectivityErrorMessage(result.error, intl),
+-          },
+-        ),
+-        durationMs: 0,
+-        dismissible: true,
+-        dismissLabel: intl.formatMessage({ id: "common.close" }),
+-      });
+-    } finally {
+-      if (version === testGeneration.current) {
+-        testingRef.current = false;
+-        setIsTesting(false);
+-      }
+-    }
+-  }, [onTest, model.modelId, intl, providerId, providerName, providerEnabled, showFeedback]);
+-
+   const testIcon = isTesting ? (
+     <Loader2Icon className="size-3.5 text-foreground-subtle animate-spin" />
+   ) : (
+@@ -292,7 +211,7 @@ export function ModelRowInput({
+     : intl.formatMessage({ id: "settings.modelProvider.contextWindowUnknown" });
+ 
+   return (
+-    <ContextMenu>
++    <ContextMenu modal={false}>
+       <ContextMenuTrigger asChild>
+         <div
+           className="space-y-2 px-3 py-2"
+@@ -432,6 +351,7 @@ export function ModelRowInput({
+             })}
+           </ContextMenuItem>
+         ) : null}
++        <PageAssistantMenuItem messageId="pageAssistant.configureModel" />
+       </ContextMenuContent>
+     </ContextMenu>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/useModelConnectivityProbe.ts b/packages/ui/src/settings/model-provider-section/useModelConnectivityProbe.ts
+new file mode 100644
+index 0000000..9ce0b38
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/useModelConnectivityProbe.ts
+@@ -0,0 +1,112 @@
++import { useCallback, useEffect, useRef, useState } from "react";
++import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
++import { modelConnectivityErrorMessage } from "./providerStatus.js";
++
++/** One saved-model probe lifetime; drafts never enter a connectivity request. */
++export function useModelConnectivityProbe({
++  onTest,
++  modelId,
++  providerId,
++  providerName,
++  providerEnabled,
++}: {
++  onTest?: (model: string) => Promise<ModelConnectivityResult>;
++  modelId: string;
++  providerId: string;
++  providerName: string;
++  providerEnabled: boolean;
++}) {
++  const { intl } = useZCodeIntl();
++  const { showFeedback } = useProviderDetailFeedback();
++  const [isTesting, setIsTesting] = useState(false);
++  const testingRef = useRef(false);
++  const testGeneration = useRef(0);
++  useEffect(
++    () => () => {
++      testGeneration.current++;
++    },
++    [providerId, modelId],
++  );
++  const handleTest = useCallback(async () => {
++    if (!onTest || testingRef.current || !providerEnabled) {
++      return;
++    }
++
++    // 测试只能使用已保存的 ID，不能夹带编辑弹窗里尚未提交的重命名。
++    testingRef.current = true;
++    const version = ++testGeneration.current;
++    const dedupeKey = `model-test:${providerId}:${modelId}`;
++    showFeedback({
++      key: dedupeKey,
++      message: intl.formatMessage(
++        { id: "settings.modelProvider.testModel.connectingWithIdentity" },
++        { provider: providerName, model: modelId },
++      ),
++      state: "pending",
++      durationMs: 0,
++    });
++    setIsTesting(true);
++    try {
++      const result = await onTest(modelId);
++      if (version !== testGeneration.current) return;
++      if (result.success) {
++        showFeedback({
++          key: dedupeKey,
++          message: intl.formatMessage(
++            { id: "settings.modelProvider.testModel.successWithIdentity" },
++            { provider: providerName, model: modelId },
++          ),
++          state: "success",
++          successEmphasis: true,
++          dismissible: true,
++          dismissLabel: intl.formatMessage({ id: "common.close" }),
++        });
++      } else {
++        showFeedback({
++          key: dedupeKey,
++          state: "failure",
++          message: intl.formatMessage(
++            { id: "settings.modelProvider.testModel.failedWithIdentity" },
++            {
++              provider: providerName,
++              model: modelId,
++              reason: modelConnectivityErrorMessage(result.error, intl),
++            },
++          ),
++          durationMs: 0,
++          dismissible: true,
++          dismissLabel: intl.formatMessage({ id: "common.close" }),
++        });
++      }
++    } catch (error) {
++      if (version !== testGeneration.current) return;
++      const result = modelConnectivityFailure(error);
++      showFeedback({
++        key: dedupeKey,
++        state: "failure",
++        message: intl.formatMessage(
++          { id: "settings.modelProvider.testModel.failedWithIdentity" },
++          {
++            provider: providerName,
++            model: modelId,
++            reason: result.success
++              ? intl.formatMessage({ id: "settings.modelProvider.testFailure.unknown" })
++              : modelConnectivityErrorMessage(result.error, intl),
++          },
++        ),
++        durationMs: 0,
++        dismissible: true,
++        dismissLabel: intl.formatMessage({ id: "common.close" }),
++      });
++    } finally {
++      if (version === testGeneration.current) {
++        testingRef.current = false;
++        setIsTesting(false);
++      }
++    }
++  }, [onTest, modelId, intl, providerId, providerName, providerEnabled, showFeedback]);
++
++  return { isTesting, handleTest };
++}
+diff --git a/packages/ui/src/v4/ConversationComposer.tsx b/packages/ui/src/v4/ConversationComposer.tsx
+index f999447..de75a8a 100644
+--- a/packages/ui/src/v4/ConversationComposer.tsx
++++ b/packages/ui/src/v4/ConversationComposer.tsx
+@@ -724,12 +724,13 @@ function ConversationComposerImpl({
+     id: "chat.attachments.preview.openVideo",
+   });
+   const composerAttachments = attachmentsApi.attachments;
++  const [documentPreviewAttachmentId, setDocumentPreviewAttachmentId] = useState<string | null>(
++    null,
++  );
+   const documentPreviews = useComposerAttachmentPreviews(
+     composerAttachments,
+     localAttachmentServices?.fileService,
+-  );
+-  const [documentPreviewAttachmentId, setDocumentPreviewAttachmentId] = useState<string | null>(
+-    null,
++    documentPreviewAttachmentId,
+   );
+   const documentPreviewTriggerRef = useRef<HTMLElement | null>(null);
+   const documentPreviewAttachment = attachmentsApi.attachments.find(
+diff --git a/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts b/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts
+index 74cd50a..96967d4 100644
+--- a/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts
++++ b/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts
+@@ -132,13 +132,25 @@ export function useComposerAttachmentPreviews(
+   attachments: readonly ChatComposerAttachment[],
+   fileService?: Pick<IFileService, "readTextFile" | "readBinaryPreview"> &
+     Partial<Pick<IFileService, "stat" | "readFileRange">>,
++  openAttachmentId: string | null = null,
+ ) {
+   const reads = useRef(new Map<string, Promise<ComposerAttachmentPreview | null>>());
++  const lastOpen = useRef<string | null>(null);
+   const [previews, setPreviews] = useState<ReadonlyMap<string, ComposerAttachmentPreview | null>>(
+     () => new Map(),
+   );
+   useEffect(() => {
+     let current = true;
++    const reopened = openAttachmentId && lastOpen.current !== openAttachmentId;
++    lastOpen.current = openAttachmentId;
++    if (reopened && previews.get(openAttachmentId) === null) {
++      reads.current.delete(openAttachmentId);
++      setPreviews((previous) => {
++        const next = new Map(previous);
++        next.delete(openAttachmentId);
++        return next;
++      });
++    }
+     const documentAttachments = attachments.filter(
+       (attachment) => getComposerDocumentKind(attachment) !== null,
+     );
+@@ -169,6 +181,6 @@ export function useComposerAttachmentPreviews(
+     return () => {
+       current = false;
+     };
+-  }, [attachments, fileService]);
++  }, [attachments, fileService, openAttachmentId]);
+   return previews;
+ }
+diff --git a/packages/ui/test/composerAttachmentPreviews.browser.test.tsx b/packages/ui/test/composerAttachmentPreviews.browser.test.tsx
+index ef12fe6..59ba7ec 100644
+--- a/packages/ui/test/composerAttachmentPreviews.browser.test.tsx
++++ b/packages/ui/test/composerAttachmentPreviews.browser.test.tsx
+@@ -224,6 +224,52 @@ async function run() {
+       container.remove();
+     }
+   });
++  await test("explicit reopen retries a failed preview, while progress and successful reopening reuse the bounded read", async () => {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    const item = attachment("retry", { localPath: "/recoverable.md" });
++    let previews!: ReturnType<typeof useComposerAttachmentPreviews>;
++    let calls = 0;
++    const service = {
++      async readTextFile() {
++        if (++calls === 1) throw new Error("Temporary local read failure");
++        return {
++          path: "/recoverable.md",
++          content: "Restored document",
++          offset: 0,
++          bytesRead: 17,
++          totalBytes: 17,
++          truncated: false,
++          isBinary: false,
++        };
++      },
++    };
++    function Reader({ open }: { open: string | null }) {
++      previews = useComposerAttachmentPreviews([{ ...item }], service, open);
++      return <div>{previews.size}</div>;
++    }
++    try {
++      await act(async () => root.render(<Reader open={null} />));
++      check(
++        previews.get("retry") === null,
++        "Initial failure did not remain an optional preview error",
++      );
++      await act(async () => root.render(<Reader open={null} />));
++      check(calls === 1, "Upload progress automatically retried a failed read");
++      await act(async () => root.render(<Reader open="retry" />));
++      check(
++        calls === 2 && previews.get("retry")?.kind === "text",
++        "Explicit opening reused the cached error after local IO recovered",
++      );
++      await act(async () => root.render(<Reader open={null} />));
++      await act(async () => root.render(<Reader open="retry" />));
++      check(calls === 2, "Successful preview was reread on reopen");
++    } finally {
++      await act(async () => root.unmount());
++      container.remove();
++    }
++  });
+   await test("attachment Enter opens preview while remove-button Enter keeps its own action", async () => {
+     const container = document.createElement("div");
+     document.body.append(container);
+diff --git a/packages/ui/test/pageAssistant.browser.test.tsx b/packages/ui/test/pageAssistant.browser.test.tsx
+index 73c3721..84030c2 100644
+--- a/packages/ui/test/pageAssistant.browser.test.tsx
++++ b/packages/ui/test/pageAssistant.browser.test.tsx
+@@ -221,6 +221,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+                       "Current document",
+                     )}
+                   >
++                    <span data-test-page="document-target">Document target</span>
+                     <ContextMenu>
+                       <ContextMenuTrigger asChild>
+                         <button data-test-page="domain-menu">Document actions</button>
+@@ -276,7 +277,12 @@ async function fixture(locale: "zh-CN" | "en-US") {
+     async chooseAssistant() {
+       const ask = [
+         ...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
+-      ].find((item) => item.textContent === (locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent"));
++      ].find(
++        (item) =>
++          item.textContent === (locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent") ||
++          item.textContent ===
++            (locale === "zh-CN" ? "用 Agent 配置供应商" : "Configure provider with Agent"),
++      );
+       check(ask, "Context menu omitted Ask Agent");
+       await act(async () => ask!.click());
+       await tick();
+@@ -300,7 +306,12 @@ async function fixture(locale: "zh-CN" | "en-US") {
+       if (choose && page !== "domain-menu") {
+         const ask = [
+           ...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
+-        ].find((item) => item.textContent === (locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent"));
++        ].find(
++          (item) =>
++            item.textContent === (locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent") ||
++            item.textContent ===
++              (locale === "zh-CN" ? "用 Agent 配置供应商" : "Configure provider with Agent"),
++        );
+         check(ask, "Page right-click menu omitted Ask Agent");
+         await act(async () => ask!.click());
+         await tick();
+@@ -615,22 +626,22 @@ async function run() {
+           ...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
+         ].find((item) => item.textContent === "Original action");
+         check(original, "Original domain menu action was removed");
++        check(
++          ![...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]')].some(
++            (item) => item.textContent === askLabel,
++          ),
++          "An unrelated menu acquired a generic Agent action",
++        );
+         await act(async () => original!.click());
+         check(
+           f.nativeActions === 1 && f.requests.length === 7,
+           "Original action unexpectedly opened an assistant",
+         );
+-        await f.context("domain-menu");
+-        const ask = [
+-          ...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
+-        ].find((item) => item.textContent === askLabel);
+-        check(ask, "Existing domain menu omitted Ask Agent");
+-        await act(async () => ask!.click());
+-        await f.tick();
++        await f.context("document-target");
+         check(
+           f.requests.length === 8 &&
+             JSON.stringify(f.requests[7]!.selection).includes("artifact:current"),
+-          "Domain menu assistant lost its captured document target",
++          "Page fallback assistant lost its captured document target",
+         );
+ 
+         const history = f
+diff --git a/packages/ui/test/subscriptionAllowanceDetails.test.tsx b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+index 1562c01..78f2cd1 100644
+--- a/packages/ui/test/subscriptionAllowanceDetails.test.tsx
++++ b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+@@ -38,7 +38,13 @@ test("account quota displays remaining consistently in labels and bars, preservi
+   assert.match(html, /aria-valuenow="85"/);
+   assert.match(html, /title="15% used"/);
+   assert.match(render(base, true), />85% remaining</);
+-  assert.match(render(base, true), /bg-success/);
++  for (const condensed of [false, true]) {
++    const meters = render(base, condensed);
++    assert.match(meters, /data-slot="progress"[^>]*bg-secondary/);
++    assert.match(meters, /bg-usage-chart-1/);
++    assert.match(meters, /bg-usage-chart-2/);
++    assert.doesNotMatch(meters, /bg-success/);
++  }
+   const sparse = render({
+     ...base,
+     windows: [{ id: "unknown" }, { id: "unlimited", unlimited: true }],

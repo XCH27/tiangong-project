@@ -1,0 +1,361 @@
+diff --git a/packages/services/test/provider-settings-lifecycle.test.ts b/packages/services/test/provider-settings-lifecycle.test.ts
+index 68ad0f6..4c37545 100644
+--- a/packages/services/test/provider-settings-lifecycle.test.ts
++++ b/packages/services/test/provider-settings-lifecycle.test.ts
+@@ -13,7 +13,10 @@ import {
+   connectProviderSettingsSnapshot,
+   getProviderSettingsSnapshot,
+ } from "../../ui/src/lib/providerSettingsSnapshot.js";
+-import { resolvePendingProviderDraftSave } from "../../ui/src/settings/model-provider-section/ProviderDraftSave.js";
++import {
++  resolvePendingProviderDraftSave,
++  resolveProviderProtocolSave,
++} from "../../ui/src/settings/model-provider-section/ProviderDraftSave.js";
+ import { providerSetupConfig } from "../../ui/src/settings/model-provider-section/providerSetupDraft.js";
+ import type { ProviderSettingsFormProvider } from "../../ui/src/lib/providerSettingsFormTypes.js";
+ import { guardHostConsole } from "../../desktop/src/host/hostConsoleSink.js";
+@@ -187,6 +190,97 @@ test("editing saves endpoint and credentials together and preserves hidden setti
+   }
+ });
+ 
++test("a format-only save persists immediately without replacing credentials, headers or other settings", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-format-save-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  const runtime = createProviderConfigRuntime(options);
++  const reopened = createProviderConfigRuntime(options);
++  try {
++    await runtime.start();
++    const config = {
++      api: {
++        type: "anthropic-messages" as const,
++        baseUrl: "https://fixture.example",
++        headers: { "X-Route": "preserve" },
++      },
++      access: {
++        type: "api-key" as const,
++        apiKey: "stored-fixture-key",
++        additionalApiKeys: ["backup-fixture-key"],
++        autoSwitchCredentials: true,
++      },
++    };
++    const { providerId } = await runtime.configService.createPersonalProvider({
++      providerName: "Fixture",
++      initialConfig: parseProviderConfig(config),
++    });
++    const provider: ProviderSettingsFormProvider = {
++      providerId,
++      providerName: "Fixture",
++      templateId: null,
++      enabled: true,
++      executable: false,
++      hasPersonalConfig: true,
++      personalConfig: config,
++      config,
++      models: [],
++    };
++    const original = JSON.stringify(provider);
++    const next = resolveProviderProtocolSave({
++      provider,
++      apiFormat: "openai-chat-completions",
++      baseUrlValue: config.api.baseUrl,
++    })!;
++    await runtime.configService.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig(next.personalConfig),
++    );
++    await reopened.start();
++    const saved = (await reopened.configService.read()).personalProviders.get(providerId)!.toJSON();
++    assert.equal(saved.api?.type, "openai-chat-completions");
++    assert.equal(saved.api?.baseUrl, config.api.baseUrl);
++    assert.deepEqual(saved.api?.headers, config.api.headers);
++    assert.deepEqual(saved.access, config.access);
++    assert.equal(next.providerNameUpdate, undefined);
++    assert.equal(JSON.stringify(provider), original, "accepted form data remains immutable");
++    assert.equal(
++      resolveProviderProtocolSave({
++        provider: next,
++        apiFormat: "openai-chat-completions",
++        baseUrlValue: config.api.baseUrl,
++      }),
++      null,
++    );
++    for (const baseUrlValue of [
++      "",
++      "https://",
++      "file:///tmp/model",
++      "https://user:pass@example.com",
++    ]) {
++      assert.throws(
++        () =>
++          resolveProviderProtocolSave({
++            provider,
++            apiFormat: "openai-chat-completions",
++            baseUrlValue,
++          }),
++        /API address/,
++      );
++    }
++  } finally {
++    runtime.dispose();
++    reopened.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
+ test("both new and edited connections reject incomplete addresses and unsafe embedded credentials", () => {
+   const config = {
+     api: { type: "openai-responses" as const, baseUrl: "https://api.openai.com/v1" },
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 56d8056..9293b80 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -2894,7 +2894,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.chatCompletions": "Chat",
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+-  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI Chat",
++  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI format",
+   "settings.modelProvider.protocol.preset": "Configured for this service",
+   "settings.modelProvider.protocol.override": "Existing custom protocol",
+   "settings.modelProvider.protocol.advanced": "Advanced connection settings",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 4394c45..1fe866f 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2686,11 +2686,11 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.templatePickerTitle": "添加供应商",
+   "settings.modelProvider.templatePickerBack": "返回供应商详情",
+   "settings.modelProvider.addProviderModelReminder": "添加供应商前，请至少添加一个模型。",
+-  "settings.modelProvider.baseUrl": "Base URL",
++  "settings.modelProvider.baseUrl": "请求地址",
+   "settings.modelProvider.baseUrlPlaceholder": "https://api.example.com/v1",
+   "settings.modelProvider.readOnlyField": "{field}（只读）",
+   "settings.modelProvider.endpointPath": "接口路径：{format}",
+-  "settings.modelProvider.apiFormat": "API 格式",
++  "settings.modelProvider.apiFormat": "上游格式",
+   "settings.modelProvider.apiFormat.chatCompletions": "Chat Completions (/v1/chat/completions)",
+   "settings.modelProvider.apiFormat.responses": "Responses (/responses)",
+   "settings.modelProvider.apiFormat.anthropicMessages":
+@@ -2698,7 +2698,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.chatCompletions": "Chat",
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+-  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI Chat",
++  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI 格式",
+   "settings.modelProvider.protocol.preset": "已按服务配置",
+   "settings.modelProvider.protocol.override": "保留的自定义协议",
+   "settings.modelProvider.protocol.advanced": "高级连接设置",
+@@ -2758,7 +2758,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.startPlan.highlight.metering.description":
+     "仅在使用平台 GLM 旗舰模型后计量。",
+   "settings.modelProvider.startPlan.compatibility":
+-    "支持 BYOK、BYOA；Base URL、API Format 和 API Key 由 ZCode 自动维护，无需手动配置。",
++    "支持 BYOK、BYOA；请求地址、上游格式和 API 密钥由 ZCode 自动维护，无需手动配置。",
+   "settings.modelProvider.codingPlan.title": "{provider} - 编程套餐",
+   "settings.modelProvider.codingPlan.webview.title": "升级套餐",
+   "settings.modelProvider.codingPlan.webview.authInjectFailed": "无法登录到套餐页，请重试。",
+@@ -3254,7 +3254,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.help.advanced":
+     "**MFJS 工具 Schema**：启用 Moonshot Flavored JSON Schema（Moonshot 的 JSON Schema 格式）兼容处理，常用于 Moonshot 的 Kimi 模型接口。仅在模型接口要求该格式时开启。",
+   "settings.modelProvider.help.followRecommendedConfig":
+-    "根据模型 ID、Base URL 和 API 格式，为您智能匹配推荐配置。ZCode 会持续更新推荐配置，并自动同步给您。\n如果手动修改某项配置，该项将转为手动管理，不再跟随推荐更新；其他配置仍由智能配置管理。",
++    "根据模型 ID、请求地址和上游格式，为您智能匹配推荐配置。ZCode 会持续更新推荐配置，并自动同步给您。\n如果手动修改某项配置，该项将转为手动管理，不再跟随推荐更新；其他配置仍由智能配置管理。",
+   "settings.modelProvider.modelDefaultsLoaded": "已匹配到智能配置",
+   "settings.modelProvider.modelConfigIncomplete": "模型配置不完整",
+   "settings.modelProvider.models": "模型列表",
+@@ -3295,7 +3295,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.modality.audio": "音频",
+   "settings.modelProvider.modality.pdf": "PDF",
+   "settings.modelProvider.modelMetadata.invalid.id": "模型 ID 不能为空",
+-  "settings.modelProvider.modelMetadata.invalid.kinds": "至少选择一种 API 格式",
++  "settings.modelProvider.modelMetadata.invalid.kinds": "至少选择一种上游格式",
+   "settings.modelProvider.modelMetadata.invalid.contextWindow": "上下文窗口必须是正整数",
+   "settings.modelProvider.modelMetadata.invalid.maxOutputTokens": "最大输出 Token 必须是正整数",
+   "settings.modelProvider.modelMetadata.invalid.inputModalities": "输入类型必须包含文本",
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index a6ae14e..838ca13 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,4 +1,3 @@
+-import { selectProviderProtocolRoute } from "@zcode/provider";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+@@ -20,7 +19,11 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { Switch } from "@/components/ui/switch.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+-import { resolvePendingProviderDraftSave, type ProviderDraftValues } from "./ProviderDraftSave.js";
++import {
++  resolvePendingProviderDraftSave,
++  resolveProviderProtocolSave,
++  type ProviderDraftValues,
++} from "./ProviderDraftSave.js";
+ import {
+   ProviderApiKeySection,
+   ProviderCardHeader,
+@@ -601,22 +604,58 @@ export function InlineEditableProviderCard({
+   }, [provider.providerId]);
+ 
+   const handleApiFormatChange = useCallback(
+-    (value: ProviderApiType) => {
+-      const next = selectProviderProtocolRoute(
+-        value,
+-        draftRef.current.baseUrlValue,
+-        provider.templateApiRoutes,
+-      );
++    async (value: ProviderApiType) => {
++      if (readOnlyEndpoints || savingConnection || pendingDraftSaveRef.current) return;
++      let next: ProviderSettingsFormProvider | null;
++      try {
++        next = resolveProviderProtocolSave({
++          provider,
++          apiFormat: value,
++          baseUrlValue: draftRef.current.baseUrlValue,
++        });
++      } catch {
++        setConnectionInvalid(true);
++        return;
++      }
++      if (!next) return;
++      const previous = {
++        apiFormat: draftRef.current.apiFormat,
++        baseUrlValue: draftRef.current.baseUrlValue,
++        dirty: new Set(dirtyProviderFieldsRef.current),
++      };
++      const nextUrl = next.config.api?.baseUrl ?? "";
+       markDraftDirty("apiFormat");
++      markDraftDirty("baseUrlValue");
+       draftRef.current.apiFormat = value;
++      draftRef.current.baseUrlValue = nextUrl;
+       setApiFormat(value);
+-      if (next.baseUrl !== draftRef.current.baseUrlValue) {
+-        markDraftDirty("baseUrlValue");
+-        draftRef.current.baseUrlValue = next.baseUrl;
+-        setBaseUrlValue(next.baseUrl);
++      setBaseUrlValue(nextUrl);
++      setConnectionInvalid(false);
++      setSavingConnection(true);
++      // 恢复原版的点击即保存，但只提交协议/地址，保留其他字段尚未完成的草稿。
++      const pending = saveProviderDraft(next);
++      pendingDraftSaveRef.current = pending;
++      try {
++        await pending;
++        for (const field of ["apiFormat", "baseUrlValue"] as const)
++          dirtyProviderFieldsRef.current.delete(field);
++      } catch {
++        // 共享反馈已经显示失败；回到点击前的选择，不能显示成已保存。
++        draftRef.current.apiFormat = previous.apiFormat;
++        draftRef.current.baseUrlValue = previous.baseUrlValue;
++        for (const field of ["apiFormat", "baseUrlValue"] as const) {
++          if (previous.dirty.has(field)) dirtyProviderFieldsRef.current.add(field);
++          else dirtyProviderFieldsRef.current.delete(field);
++        }
++        setApiFormat(previous.apiFormat);
++        setBaseUrlValue(previous.baseUrlValue);
++      } finally {
++        if (pendingDraftSaveRef.current === pending) pendingDraftSaveRef.current = null;
++        lastSubmittedDraftSignatureRef.current = null;
++        setSavingConnection(false);
+       }
+     },
+-    [markDraftDirty, provider.templateApiRoutes],
++    [markDraftDirty, provider, readOnlyEndpoints, savingConnection, saveProviderDraft],
+   );
+ 
+   const handleTextCommitKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+@@ -898,7 +937,7 @@ export function InlineEditableProviderCard({
+           />
+         ) : null}
+ 
+-        {isApiKeyProvider && connectionDirty ? (
++        {isApiKeyProvider && connectionDirty && !savingConnection ? (
+           <div className="space-y-2">
+             {connectionInvalid ? (
+               <p role="alert" className="text-ui-sm text-destructive">
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+index dc1cae1..34f6f6e 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+@@ -1,4 +1,5 @@
+-import { isApiKeyAccess, type ProviderApiType } from "@zcode/provider";
++import { isApiKeyAccess, selectProviderProtocolRoute, type ProviderApiType } from "@zcode/provider";
++import { isValidProviderBaseUrl } from "./providerSetupDraft.js";
+ import {
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+@@ -13,6 +14,32 @@ export interface ProviderDraftValues {
+   autoSwitchCredentials?: boolean;
+ }
+ 
++/** 格式点击只保存协议和地址，不能夹带未完成的密钥、名称或开关草稿。 */
++export function resolveProviderProtocolSave({
++  provider,
++  apiFormat,
++  baseUrlValue,
++}: {
++  provider: ProviderSettingsFormProvider;
++  apiFormat: ProviderApiType;
++  baseUrlValue: string;
++}): ProviderSettingsFormProvider | null {
++  const route = selectProviderProtocolRoute(apiFormat, baseUrlValue, provider.templateApiRoutes);
++  if (!isValidProviderBaseUrl(route.baseUrl)) throw new Error("Invalid API address");
++  return resolvePendingProviderDraftSave({
++    provider,
++    draft: {
++      nameValue: getProviderFormLabel(provider),
++      apiFormat: route.type,
++      baseUrlValue: route.baseUrl,
++      apiKeyValue: isApiKeyAccess(provider.config.access)
++        ? (provider.config.access.apiKey ?? "")
++        : "",
++    },
++    now: Date.now,
++  });
++}
++
+ function normalizeConfiguredBaseUrl(value: string): string {
+   const normalized = value.trim().replace(/\/+$/, "");
+   if (!normalized) return "";
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+index 6a735ae..4a3616e 100644
+--- a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -13,6 +13,15 @@ export interface ProviderSetupDraft {
+   additional: string[];
+   automatic: boolean;
+ }
++
++export function isValidProviderBaseUrl(value: string): boolean {
++  try {
++    const url = new URL(value.trim());
++    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
++  } catch {
++    return false;
++  }
++}
+ export function newProviderSetupDraft(template: ProviderSettingsTemplateView): ProviderSetupDraft {
+   return {
+     baseUrl: template.config.api?.baseUrl ?? "",
+@@ -29,13 +38,7 @@ export function providerSetupConfig(
+ ): ProviderConfigObject | undefined {
+   if (template.config.access?.type === "subscription") return {};
+   if (!isApiKeyAccess(template.config.access)) return undefined;
+-  let url: URL;
+-  try {
+-    url = new URL(draft.baseUrl.trim());
+-  } catch {
+-    return undefined;
+-  }
+-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return undefined;
++  if (!isValidProviderBaseUrl(draft.baseUrl)) return undefined;
+   const keys = [
+     ...new Set([draft.primary, ...draft.additional].map((key) => key.trim()).filter(Boolean)),
+   ];

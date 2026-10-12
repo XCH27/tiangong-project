@@ -1,0 +1,984 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-import.ts b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-import.ts
+index c11a8d9..1a077a2 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-import.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-import.ts
+@@ -46,6 +46,7 @@ import type {
+   RunRecord,
+ } from "@zcode/dynamic-workflow";
+ import { TERMINAL_RUN_STATUSES } from "./dynamic-workflow-run-observation.js";
++import { WorkflowError } from "@zcode/dynamic-workflow";
+ import type { ActorTranscriptStore } from "./workflow-actor-transcript.js";
+ 
+ /**
+@@ -209,7 +210,7 @@ export async function buildImportedCache(
+ 
+   return {
+     ok: true,
+-    cache: { actors, world: buildWorldQueues(nodes) },
++    cache: { actors, world: buildWorldQueues(journal, predecessorRunId, nodes) },
+     resumedFrom: predecessorRunId,
+   };
+ }
+@@ -496,42 +497,90 @@ async function countSource(
+  * worldRead）就是写进这一列的那个值，重算一遍等于在这里复制一份哈希契约，而它一旦漂移，
+  * 表面上是「缓存莫名不命中」。
+  *
+- * 只收 completed：失败的世界读取重新执行（失败对新 run 无约束力），running 的更不必说。
+- * world-run 与 world-read 同表——导入 world-run 是**安全特性**而不是优化：修订续跑绝不静默
+- * 重放一次已 journal 的效应（部署脚本跑两次）。
++ * 已完结结果仍只取本前驱的行，保持原缓存失效策略。祖先效应只保留未知结果及其出现序占位，
++ * 即使中间修订还没认领那一项；同 hash 的第 n 次出现始终占同一个位置。
++ * 未知 world-run 的安全闸不能随结果缓存关闭而丢弃。
+  */
+-function buildWorldQueues(nodes: NodeRecord[]): ReadonlyMap<string, ImportedWorldEntry[]> {
++function buildWorldQueues(
++  journal: ImportedCacheJournalReader,
++  predecessorRunId: string,
++  nodes: NodeRecord[],
++): ReadonlyMap<string, ImportedWorldEntry[]> {
+   const world = new Map<string, ImportedWorldEntry[]>();
++  const lineage: NodeRecord[][] = [];
++  const seen = new Set<string>();
++  let runId: string | undefined = predecessorRunId;
++  while (runId !== undefined) {
++    if (seen.has(runId)) throw unavailableWorldLineage(predecessorRunId);
++    seen.add(runId);
++    const run = journal.getRun(runId);
++    if (run === undefined) throw unavailableWorldLineage(predecessorRunId);
++    lineage.push(runId === predecessorRunId ? nodes : journal.listNodes(runId));
++    runId = run.resumedFrom;
++  }
++  // 老到新按内容出现序覆盖：本代真行优先，未认领祖先的未知效应留在原位置。
++  // 祖先已完结项只占位置，不把更早工作区的结果提升成当前前驱的缓存。
++  for (const generation of lineage.reverse()) {
++    const occurrences = new Map<string, number>();
++    for (const node of generation) {
++      if (node.kind !== "world-run") continue;
++      const at = occurrences.get(node.inputHash) ?? 0;
++      occurrences.set(node.inputHash, at + 1);
++      const queue = world.get(node.inputHash) ?? [];
++      queue[at] = {
++        inputHash: node.inputHash,
++        kind: node.kind,
++        result: generation === nodes ? node.result : undefined,
++        ...(node.status === "failed" || (generation !== nodes && node.status === "completed")
++          ? { retry: true as const }
++          : {}),
++        ...(node.status === "running"
++          ? {
++              uncertainty:
++                node.error?.code === "Interrupted"
++                  ? node.error
++                  : {
++                      code: "Interrupted" as const,
++                      message:
++                        `Cannot recover world.run ${node.siteId}@${node.ordinal} from run ${node.runId}: its outcome is unknown. ` +
++                        "The command may have already taken effect. Inspect its effect before explicitly starting new work; " +
++                        "this recovery did not run the command again.",
++                    },
++            }
++          : {}),
++      };
++      world.set(node.inputHash, queue);
++    }
++  }
+   for (const node of nodes) {
+-    if (node.kind !== "world-read" && node.kind !== "world-run") continue;
+-    if (node.status !== "completed") continue;
+-    const queue = world.get(node.inputHash);
+-    const entry: ImportedWorldEntry = {
+-      inputHash: node.inputHash,
+-      kind: node.kind,
+-      result: node.result,
+-    };
+-    if (queue === undefined) world.set(node.inputHash, [entry]);
+-    else queue.push(entry);
++    if (node.kind !== "world-read" || node.status !== "completed") continue;
++    const queue = world.get(node.inputHash) ?? [];
++    queue.push({ inputHash: node.inputHash, kind: node.kind, result: node.result });
++    world.set(node.inputHash, queue);
+   }
+   return world;
+ }
+ 
++function unavailableWorldLineage(runId: string): WorkflowError {
++  return new WorkflowError(
++    "Interrupted",
++    `Cannot recover run ${runId}: its effect history is missing or cyclic. ` +
++      "Restore the original journal before recovery, or explicitly start a fresh workflow after inspecting prior effects.",
++  );
++}
++
+ /**
+- * resume 侧的入口：重建修订 run 的导入缓存。**任何失败都只降级、不拒绝 resume**。
++ * resume 侧的入口：重建修订 run 的导入缓存。效应恢复依赖前驱收据，失败不可降级成重执行。
+  *
+  * 与提交侧共用同一个 {@link buildImportedCache}——这不是复用的顺手，而是正确性前提：修订 run 的
+  * journal 只对「已到达的执行前缀」自含，未消费的导入靠这次重建补回，两侧算出不同的表就意味着
+  * 「重建」变成了「另建一张」。
+  *
+- * 三条理由让「重建失败」与「提交时构建失败」判然不同：
+- *   - 修订 run 已经存在了。拒绝 resume 等于把一个可续跑的 run 变成永久卡死的 run；
+- *   - 已消费的命中在本 run 的 journal 里是**真行**，replay 不需要这张表——run 的自含性不依赖它；
+- *   - 未消费的导入退化成 live 重执行，结果正确，只是花掉本可省下的 token。
++ * 已消费的命中在本 run 的 journal 里是真行；未消费的 world-run 仍依赖祖先收据。
++ * 不能因为本 run 已经存在就把缺失的收据当成空表，那会静默重复效应。
+  *
+- * 所以这里连门的三个理由都不区分：对 resume 而言 `run_not_found`（前驱被清理）与
+- * `missing_boundaries` 是同一件事——「这次没有缓存可用」。前驱 journal 因此是修订 run 的**存续
+- * 依赖，但只是加速结构**：丢了变贵，不变错。记一条 info 便于事后解释账单。
++ * 门被拒时保持当前 run 的 stopped 行和节点，不启动任何新执行。独立的 fresh submit
++ * 不读这条 lineage，仍是显式新工作的路径。
+  *
+  * **不带 {@link AmendImportOptions.quietSessions}**：走到这里的前驱早已终态，本进程里没有它的
+  * driver，没有任何东西在写它的会话。带一个空集合进来会让重建出的表比提交时那张少一个
+@@ -545,12 +594,12 @@ export async function rebuildImportedCacheForResume(
+   const { predecessorRunId, runId } = run;
+   const built = await buildImportedCache(deps, predecessorRunId);
+   if (built.ok) return built.cache;
+-  deps.logger?.info?.("Dynamic workflow amend cache rebuild skipped; resuming without it", {
+-    event: "dynamic_workflow.amend.rebuild_skipped",
++  deps.logger?.warn?.("Dynamic workflow amend recovery refused: predecessor receipts unavailable", {
++    event: "dynamic_workflow.amend.rebuild_refused",
+     module: "bootstrap.app",
+     reason: built.reason,
+     resumedFrom: predecessorRunId,
+     runId,
+   });
+-  return undefined;
++  throw unavailableWorldLineage(runId);
+ }
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-observation.ts b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-observation.ts
+index 35f1c97..6e79907 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-observation.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-observation.ts
+@@ -550,8 +550,8 @@ export async function settleOrAbort(
+ }
+ 
+ /**
+- * 孤儿收敛写入的失败编码（宿主级成员，引擎自身永不产出）。随 `stopped(interrupted)` 一起落库：
+- * status + stopReason 已经说明「进程死亡打断」，这条 code 是同一事实的第二证据（老行只有它）。
++ * 孤儿收敛与引擎的未知 world-run 恢复共用的失败编码。随 stopped(interrupted) 落库：
++ * error 保留具体成因；此码不证明命令未生效，也不授予重做未知效应的权限。
+  */
+ export const INTERRUPTED_FAILURE_CODE: WorkflowErrorCode = "Interrupted";
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-submit.ts b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-submit.ts
+index ff8ad42..43bb5ae 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-submit.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-submit.ts
+@@ -455,9 +455,8 @@ export async function resumeDynamicWorkflowRun(
+   // journal，所以确定性成立——引擎据本 run 的记录行重推分歧点（imported-cache.ts 的
+   // reconcileRecorded），两侧因此不会错位。
+   //
+-  // **重建失败绝不拖垮 resume**：前驱 journal 是修订 run 的存续依赖，但只是加速结构——
+-  // 丢了变贵，不变错。前驱被清理 / 边界门不再通过时照常无缓存启动，未消费的导入退化成
+-  // live 重执行，而 run 自己的 journal 行仍然逐条 replay。
++  // 前驱效应收据是恢复的安全依赖：缺失/损坏时拒绝本次恢复，保留当前 stopped 行，不能把
++  // 未消费的未知或已完成效应降级成 live 重执行。独立 fresh submit 仍走原来的新工作路径。
+   const rebuilt =
+     record.resumedFrom === undefined
+       ? undefined
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/resume-workflow-run.ts b/apps/zcode-cli/packages/core/src/tool/handlers/resume-workflow-run.ts
+index c66c3bc..6312cef 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/resume-workflow-run.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/resume-workflow-run.ts
+@@ -24,12 +24,7 @@ import {
+   type ResumeWorkflowRunInput,
+   type ResumeWorkflowRunOutput,
+ } from "@zcode/contracts";
+-import type {
+-  ToolEntry,
+-  ToolExecutionContext,
+-  ToolHandler,
+-  ToolHandlerFailure,
+-} from "../types.js";
++import type { ToolEntry, ToolExecutionContext, ToolHandler, ToolHandlerFailure } from "../types.js";
+ import { workflowRunNotFoundFailure } from "./workflow-run-introspection.js";
+ 
+ const RESUME_WORKFLOW_RUN_TIMEOUT_MS = 15_000;
+@@ -58,12 +53,12 @@ const RESUME_WORKFLOW_RUN_ERROR_CODE = {
+ } as const;
+ 
+ const RESUME_WORKFLOW_RUN_DESCRIPTION = [
+-  "Resumes a dynamic-workflow run whose status is `stopped` — the user cancelled it, you stopped it with TaskStop, a provider-side error stopped it (expired sign-in, model not in the plan, quota cap), or the process that owned it exited (`interrupted`). The run continues under the same run ID: finished steps are replayed from the journal without spending tokens, unfinished steps are dispatched again. The one stopped run that is NOT resumable is a `superseded` one: an AmendWorkflow replaced it, and its successor is the live run.",
++  "Resumes a dynamic-workflow run whose status is `stopped` — the user cancelled it, you stopped it with TaskStop, a provider-side error stopped it (expired sign-in, model not in the plan, quota cap), or the process that owned it exited (`interrupted`). The run continues under the same run ID: completed results are reused from the journal and genuinely unstarted nodes dispatch normally. An already-running world.run with no durable completion has an unknown outcome and is NOT executed again; recovery stops with an explicit error so its effect can be inspected. The one stopped run that is NOT resumable is a `superseded` one: an AmendWorkflow replaced it, and its successor is the live run.",
+   "",
+   "- Takes run_id — from CreateWorkflow's or AmendWorkflow's result, from a completion notification, or from GetWorkflowRun / ListWorkflowRuns.",
+   "- The resumed run is backgrounded: you will be notified with the final output when it completes. Do not wait for it or poll it with TaskOutput; continue with other work unless the user asked you to wait.",
+   "- An `errored` run (the script itself failed) is NOT resumable — replaying it would fail the same way. Fix the script and submit it with AmendWorkflow instead. A completed run is not resumable either; a `superseded` run is refused with the successor's ID.",
+-  "- Stop reason `user` means the user stopped it on purpose: resume it only when the user asks you to; never resume a run the user just cancelled on your own initiative. Reason `model` is your own TaskStop. Reason `provider` means a provider-side error stopped it: resolve the cause with the user first (the stop notification names it), then resume. Reason `interrupted` (the process died) is different: continuing it is usually what the user wants.",
++  "- Stop reason `user` means the user stopped it on purpose: resume it only when the user asks you to; never resume a run the user just cancelled on your own initiative. Reason `model` is your own TaskStop. Reason `provider` means a provider-side error stopped it: resolve the cause with the user first (the stop notification names it), then resume. For `interrupted`, read the error first. An unknown command outcome needs effect inspection; neither ResumeWorkflowRun nor AmendWorkflow reconciles it or authorizes repeating it. Without durable completion or a queryable receipt, recovery safely refuses rather than guessing; explicitly new execution is a separate decision.",
+ ].join("\n");
+ 
+ /**
+@@ -197,7 +192,8 @@ export const resumeWorkflowRunToolEntry: ToolEntry = {
+   formatModelContent: formatResumeWorkflowRunModelContent,
+   permission: {
+     permission: "resumeWorkflowRun",
+-    reason: "resumeWorkflowRun.runConfirmation: resuming continues executing a stopped workflow run",
++    reason:
++      "resumeWorkflowRun.runConfirmation: resuming continues executing a stopped workflow run",
+     riskLevel: "low",
+     sideEffectScope: "none",
+     // resume 被
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
+index 5e9af4e..027e91b 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
+@@ -10,6 +10,7 @@ import { canonicalJson, inputHash } from "./hash.js";
+ import { heldResolution } from "./replay-order.js";
+ import { boundWorldReadInput } from "./world-read-input.js";
+ import { hashMismatch } from "./scheduler.js";
++import { settleStopped } from "./engine-settlement.js";
+ import type { EngineState } from "./engine-state.js";
+ import type {
+   InstanceRef,
+@@ -47,6 +48,8 @@ export function readWorld(
+       state.failRun(err);
+       return Promise.reject(err);
+     }
++    // 修订的冷恢复已认领这个 hash 的一次出现；未到达的后缀必须从下一项继续。
++    if (op === "run") state.importedWorld.reconcileRecorded(hash);
+     // 完结命中短路（journal 化世界读取使 resume 免疫于 run 与 resume 之间的磁盘变化）。
+     // 释放点过 replay 次序闸：一条扇出分支里的 world 读取同样是别人的续体在等的东西，
+     // 按准入顺序放会把 join 之后的序号错位。
+@@ -68,20 +71,46 @@ export function readWorld(
+         throw WorkflowError.fromJSON(recorded.error!);
+       });
+     }
+-    // status === "running"：崩溃于执行中，落到下面重新 live 执行。
++    if (op === "run") {
++      // running 只证明已准入，不证明命令没有生效。保留这一行，不伪造失败或成功收据。
++      const err =
++        recorded.error?.code === "Interrupted"
++          ? recorded.error
++          : uncertainWorldRun(state.runId, instance);
++      settleStopped(state, "interrupted", WorkflowError.fromJSON(err));
++      return Promise.reject(WorkflowError.fromJSON(err));
++    }
++    // 只读节点崩溃于执行中，仍可重新 live 观察。
+   }
+ 
+   // op "run" 是效应而不是读，journal 单列一种（world-run）：机制同构，审计面诚实。其余 op 保持 world-read。
+   const kind: NodeKind = op === "run" ? "world-run" : "world-read";
+ 
+-  // amend-resume：本 run 的 journal 里没有这一行，才轮到导入缓存（journal replay 永远优先——
+-  // 修订 run 自己崩溃后 resume 时，已消费的命中早已是真行，重放它们不能再动游标）。
++  // amend-resume：本 run 的 journal 里没有这一行，才轮到导入缓存（journal replay 永远优先）。
+   // 命中即写一行与 settleWorldRead 同形的 completed 记录 + 发 node-settled(cached)，
+   // **不调 driver**：world-run 的效应绝不静默重放。
+-  // 缓存关闭后不再问表（也不推进游标）：命令文本没变，但它读到的世界可能已被某个 live 子代理
+-  // 改写。
+-  const imported = state.importClosed() ? undefined : state.importedWorld.take(hash);
+-  if (imported !== undefined) {
++  // 工作区变化后读取和已完结命令结果都失效，验证命令必须观察本修订实际产出的世界。
++  // world-run 仍按原出现序认领安全记录：关闭结果缓存不授权重做未知效应。
++  const importClosed = state.importClosed();
++  const imported = importClosed && op !== "run" ? undefined : state.importedWorld.take(hash);
++  // 修订是恢复同一件工作，不是重复未知效应的授权。关闭结果缓存也不能关闭这个安全闸。
++  const uncertainty = imported?.uncertainty;
++  if (op === "run" && uncertainty !== undefined) {
++    state.journal.putNode({
++      runId: state.runId,
++      siteId,
++      ordinal,
++      kind,
++      inputHash: hash,
++      input,
++      status: "running",
++      error: uncertainty,
++    });
++    const err = WorkflowError.fromJSON(uncertainty);
++    settleStopped(state, "interrupted", err);
++    return Promise.reject(err);
++  }
++  if (!importClosed && imported !== undefined && imported.retry !== true) {
+     state.journal.putNode({
+       runId: state.runId,
+       siteId,
+@@ -102,7 +131,7 @@ export function readWorld(
+   // 派发**之前**关导入缓存——与子代理的改写工具同一条规则、同一个时刻（动手前）。world-read 不关：
+   // 读不改变世界。
+   if (kind === "world-run") closeImportCache(state, instance, "world-run");
+-  // 准入即落 running：崩溃于执行中的世界读取 resume 可据此重新执行。
++  // 准入即落 running：读取可重做；opaque run 缺少结算收据时只能报告未知结果。
+   state.journal.putNode({
+     runId: state.runId,
+     siteId,
+@@ -132,6 +161,16 @@ export function readWorld(
+   );
+ }
+ 
++function uncertainWorldRun(runId: string, instance: InstanceRef): WorkflowErrorJson {
++  return {
++    code: "Interrupted",
++    message:
++      `Cannot recover world.run ${refToString(instance)} from run ${runId}: its outcome is unknown. ` +
++      "The command may have already taken effect. Inspect its effect before explicitly starting new work; " +
++      "this recovery did not run the command again.",
++  };
++}
++
+ function settleWorldRead(
+   state: EngineState,
+   instance: InstanceRef,
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
+index ff74c30..59f1a58 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
+@@ -184,7 +184,8 @@ export class WorkflowEngine implements WorkflowHostApi, WorkflowReportSink {
+   /**
+    * 导入缓存是否已**关闭**：第一笔写入之前置真、永不重开
+    * ——某个 live 子代理即将执行改写工具（driver 上报 askMutating），或一条 world.run live 执行。
+-   * 关闭后 world 节点与带工具的 ask 不再问导入表（哈希只比对文本，比不出工作区已被改写）；
++   * 关闭后 world 节点与带工具的 ask 不再复用导入结果（哈希比不出工作区已被改写）；
++   * world-run 仍按出现序检查未知结果，关门不构成重做未知效应的授权。
+    * 纯 ask（toolCalls 0）照常命中。resume 时从 `import-cache-closed` 事件恢复，见 {@link recoverImportClosure}。
+    */
+   private importClosed = false;
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/errors.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/errors.ts
+index c204637..c15e625 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/errors.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/errors.ts
+@@ -28,9 +28,9 @@ import type { ProviderStopDetails } from "./run-terminal.js";
+  *   也正因如此这两个数字必须宽到讲道理的脚本永远碰不到——脚本作者写不出恢复路径。
+  *   同样刻意不折进 DriverError：上限是脚本可据以重写自己的契约。
+  * - 构造期（run 尚未开始，引擎构造函数同步抛出）：ScriptHashMismatch
+- * - 宿主级（**引擎从不产出**）：Interrupted——拥有该 run 的进程在结算之前就没了，由宿主在
++ * - 恢复级：Interrupted——拥有该 run 的进程在结算之前就没了，由宿主在
+  *   下一次构造时收敛那行永远停在 running 的记录（`bootstrap/src/app/dynamic-workflow-run-service.ts`
+- *   的孤儿收敛）。它必须是**独立的码**而不是复用 DriverError：脚本
++ *   的孤儿收敛）；引擎也用它停止没有结算收据的 world-run 恢复，保留未知效应。它必须是**独立的码**而不是复用 DriverError：脚本
+  *   自己抛错也编码成 DriverError（`dynamic-workflow-runtime/src/harness.ts:311`），两者若同码，
+  *   「进程被杀」与「脚本真失败」就只能靠 message 文本区分——而这正是本联合类型要避免的。
+  *   ProviderStop——一个子代理（或工具侧）的模型请求撞上**确定性的**模型侧错误（认证失效、模型不在套餐里、配额耗尽等），driver 让
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache-types.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache-types.ts
+index 1f9e38f..7b1b65d 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache-types.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache-types.ts
+@@ -4,7 +4,7 @@
+ // 从 engine/types.ts 拆出（该文件已到 oxlint max-lines 上限）：纯数据结构，run service 读前驱
+ // journal 构建，引擎只查表。
+ 
+-import type { AskStats, NodeKind, PersonaSpec } from "./types.js";
++import type { AskStats, NodeKind, PersonaSpec, WorkflowErrorJson } from "./types.js";
+ 
+ /**
+  * 一条可导入的已完结 ask：前驱 run 里某具名 actor 第 `actorSeq` 次问答的结果。
+@@ -67,11 +67,14 @@ export interface ImportedActorCandidate {
+   resolvedModel?: string;
+ }
+ 
+-/** 一条可导入的世界节点（world-read / world-run），按内容 + 出现序匹配。 */
++/** 世界节点的已完结结果或未确认效应，按内容 + 出现序匹配。未知效应没有结果可复用。 */
+ export interface ImportedWorldEntry {
+   inputHash: string;
+   kind: NodeKind;
+   result: unknown;
++  uncertainty?: WorkflowErrorJson;
++  /** 已知失败或祖先已完结项只占原出现序位置，修订按原缓存规则执行新的尝试。 */
++  retry?: true;
+ }
+ 
+ /**
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache.ts
+index d687fb8..6669166 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/imported-cache.ts
+@@ -185,6 +185,11 @@ export class ImportedWorldQueue {
+ 
+   constructor(private readonly world: ReadonlyMap<string, ImportedWorldEntry[]>) {}
+ 
++  /** 修订冷恢复时本 run 的真行已认领一次出现；只推进位置，不读取或执行原效应。 */
++  reconcileRecorded(hash: string): void {
++    if (this.world.has(hash)) this.cursors.set(hash, (this.cursors.get(hash) ?? 0) + 1);
++  }
++
+   /** 取该内容哈希的下一条记录，耗尽或从未记录即 undefined（调用方转 live）。 */
+   take(hash: string): ImportedWorldEntry | undefined {
+     const queue = this.world.get(hash);
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/replay-order.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/replay-order.ts
+index d90bf51..ec5aa08 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/replay-order.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/replay-order.ts
+@@ -136,7 +136,8 @@ export class ReplaySettleOrder {
+  * 因而跨世稳定，第三世恢复出的仍是同一张表。
+  *
+  * 表里只留「重放时会兑现一个 promise 的终态行」：`report` 是 void、预置产物声明是同步的，两者
+- * 永远不会来认领，留在表里就会把游标堵死；仍是 `running` 的行按重新 live 执行处理，也不认领。
++ * 永远不会来认领，留在表里就会把游标堵死；running 行没有结算次序可认领（world-run 会
++ * 停在未知结果，其余按原规则重新 live 执行）。
+  */
+ export function recoverSettleOrder(
+   journal: JournalStorePort,
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
+index adb86ec..2c5e7fd 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
+@@ -419,8 +419,8 @@ export interface WorkflowReportSink {
+ 
+ /**
+  * 节点种类：ask、world-read、world-run 或 report（后三者都无 actor、无 actorSeq）。
+- * `world-run` 是 world.run 的 journal 化命令执行——机制与 world-read 完全同构，单列一种
+- * 是为了审计面诚实（效应不该伪装成读）。
++ * `world-run` 是 world.run 的 journal 化命令执行；它的 running 恢复不可盲目重做，效应
++ * 与只读节点的恢复规则不同。
+  * `report` 有 journal 行却在两张图里都不是节点——它发的是进度而不是次序。
+  * `artifact` 是**用户面产物**的一次发布或一次声明，与
+  * `report` 同族地有行无节点：交付物不是别人能等的一步。⚠ 与 `RunSettlement.artifact`
+@@ -778,7 +778,7 @@ export interface ActorRecord {
+ /**
+  * 节点的落库状态。节点在**准入时**即以 `running` 落库（携带 actorSeq 与 inputHash），
+  * 结算时更新为 completed/failed。因此崩溃于执行中的节点在 journal 里留有 `running` 记录，
+- * resume 时按记录的 actorSeq 位置重新 live 派发（而非当作已完结结果短路）。
++ * ask / 只读节点 resume 时可重新 live 派发；opaque world-run 缺少结算收据时不可盲目重做。
+  *
+  * **report 节点是这条「两次写」规则唯一的例外**：它只写一次、落库即 `completed`——准入与
+  * 结算之间没有 driver 调用，也就没有什么能在中间失败。
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/test/helpers/world-run-recovery-fixture.ts b/apps/zcode-cli/packages/dynamic-workflow/test/helpers/world-run-recovery-fixture.ts
+new file mode 100644
+index 0000000..d2bc631
+--- /dev/null
++++ b/apps/zcode-cli/packages/dynamic-workflow/test/helpers/world-run-recovery-fixture.ts
+@@ -0,0 +1,87 @@
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { WorkflowEngine, type EngineConfig } from "../../src/engine/engine.js";
++import type { WorkflowDriver } from "../../src/engine/types.js";
++import { SqliteSessionStore } from "../../../adapters/src/storage/session-store/sqlite-session-store.js";
++import { createNodeExecutionAdapter } from "../../../adapters/src/exec/node-execution-adapter.js";
++import { NodeFileSystemAdapter } from "../../../adapters/src/fs/index.js";
++import { executeWorldRead } from "../../../bootstrap/src/app/workflow-world-read.js";
++import { reconcileOrphanRuns } from "../../../bootstrap/src/app/dynamic-workflow-run-reconcile.js";
++
++export async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-world-run-recovery-"));
++  const effect = join(root, "effect.txt");
++  const dbPath = join(root, "session.sqlite");
++  let store = new SqliteSessionStore({ dbPath });
++  const executionPort = createNodeExecutionAdapter();
++  const args = [
++    process.execPath,
++    ["-e", "require('node:fs').appendFileSync(process.argv[1], 'effect\\n')", effect],
++  ];
++  const events: unknown[] = [];
++  let dispatches = 0;
++  const engine = (afterExecute?: () => Promise<unknown>, options: Partial<EngineConfig> = {}) => {
++    const driver: WorkflowDriver = {
++      journal: store.workflowJournalStore(),
++      emit: (event) => events.push(event),
++      createActorSession: async () => {
++        throw new Error("No actor in this fixture");
++      },
++      startAsk: () => {
++        throw new Error("No ask in this fixture");
++      },
++      respondToSubmit: () => {},
++      cancelAsk: () => {},
++      executeWorldRead: async (op, input) => {
++        dispatches++;
++        const result = await executeWorldRead(
++          {
++            cwd: root,
++            executionPort,
++            fileSystemPort: new NodeFileSystemAdapter(),
++            declaredRunCommands: new Set([process.execPath]),
++          },
++          op,
++          input,
++        );
++        return afterExecute === undefined ? result : afterExecute();
++      },
++    };
++    return new WorkflowEngine({
++      runId: "proof",
++      parentSessionId: "parent",
++      cwd: root,
++      scriptText: "same immutable script",
++      scriptHash: "samehash",
++      askSpecs: new Map(),
++      caps: { maxConcurrency: 1 },
++      validate: () => true,
++      driver,
++      ...options,
++    });
++  };
++  return {
++    root,
++    effect,
++    args,
++    events,
++    engine,
++    get store() {
++      return store;
++    },
++    get dispatches() {
++      return dispatches;
++    },
++    reopen() {
++      store.close();
++      store = new SqliteSessionStore({ dbPath });
++      reconcileOrphanRuns({ journal: store.workflowJournalStore(), parentSessionId: "parent" });
++    },
++    async close() {
++      await executionPort.close?.();
++      store.close();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts
+new file mode 100644
+index 0000000..bfedfa2
+--- /dev/null
++++ b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts
+@@ -0,0 +1,265 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readFile, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import { WorkflowError } from "../src/engine/types.js";
++import { fixture } from "./helpers/world-run-recovery-fixture.js";
++import {
++  buildImportedCache,
++  rebuildImportedCacheForResume,
++} from "../../bootstrap/src/app/dynamic-workflow-import.js";
++
++test(
++  "an identical completed verifier runs against changed sources after cache closure",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const source = join(f.root, "source.txt");
++      await writeFile(source, "old source");
++      const checkArgs = [
++        process.execPath,
++        [
++          "-e",
++          "process.stdout.write(require('node:fs').readFileSync(process.argv[1], 'utf8'))",
++          source,
++        ],
++      ];
++      const original = f.engine();
++      const first = await original.worldRead("build-site", "run", checkArgs);
++      assert.deepEqual(first, { exitCode: 0, stdout: "old source", stderr: "" });
++      original.complete(first);
++      f.reopen();
++      const built = await buildImportedCache({ journal: f.store.workflowJournalStore() }, "proof");
++      assert.ok(built.ok);
++      const revision = f.engine(undefined, {
++        runId: "revision",
++        resumedFrom: "proof",
++        importedCache: built.cache,
++      });
++      const mutationArgs = [
++        process.execPath,
++        ["-e", "require('node:fs').writeFileSync(process.argv[1], 'new source')", source],
++      ];
++      await revision.worldRead("change-source", "run", mutationArgs);
++      assert.deepEqual(await revision.worldRead("build-site", "run", checkArgs), {
++        exitCode: 0,
++        stdout: "new source",
++        stderr: "",
++      });
++      assert.equal(f.dispatches, 3);
++      revision.complete("current verification complete");
++      f.reopen();
++      const intermediateCache = await buildImportedCache(
++        { journal: f.store.workflowJournalStore() },
++        "proof",
++      );
++      assert.ok(intermediateCache.ok);
++      const intermediate = f.engine(undefined, {
++        runId: "intermediate",
++        resumedFrom: "proof",
++        importedCache: intermediateCache.cache,
++      });
++      const laterMutation = [
++        process.execPath,
++        ["-e", "require('node:fs').writeFileSync(process.argv[1], 'middle source')", source],
++      ];
++      await intermediate.worldRead("change-source", "run", laterMutation);
++      intermediate.complete("changed source without checking");
++      f.reopen();
++      const descendantCache = await buildImportedCache(
++        { journal: f.store.workflowJournalStore() },
++        "intermediate",
++      );
++      assert.ok(descendantCache.ok);
++      const descendant = f.engine(undefined, {
++        runId: "descendant",
++        resumedFrom: "intermediate",
++        importedCache: descendantCache.cache,
++      });
++      // An unconsumed completed ancestor result is a position, not a current-world result.
++      assert.deepEqual(await descendant.worldRead("build-site", "run", checkArgs), {
++        exitCode: 0,
++        stdout: "middle source",
++        stderr: "",
++      });
++      assert.equal(f.dispatches, 5);
++      descendant.complete("current descendant verification complete");
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "amended cold replay retains the completed prefix and the next identical unknown occurrence",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const effected = Promise.withResolvers<void>();
++      let calls = 0;
++      const original = f.engine(async () => {
++        calls++;
++        if (calls === 1) return { exitCode: 0, stdout: "first receipt", stderr: "" };
++        effected.resolve();
++        return new Promise(() => {});
++      });
++      const receipt = await original.worldRead("effect-site", "run", f.args);
++      void original.worldRead("effect-site", "run", f.args);
++      await effected.promise;
++      f.reopen();
++      const built = await buildImportedCache({ journal: f.store.workflowJournalStore() }, "proof");
++      assert.ok(built.ok);
++      const revision = f.engine(undefined, {
++        runId: "revision",
++        resumedFrom: "proof",
++        importedCache: built.cache,
++      });
++      assert.deepEqual(await revision.worldRead("new-site", "run", f.args), receipt);
++      // Crash the successor after the first imported receipt, before reaching the unknown second call.
++      f.reopen();
++      const cache = await rebuildImportedCacheForResume(
++        { journal: f.store.workflowJournalStore() },
++        {
++          runId: "revision",
++          predecessorRunId: "proof",
++        },
++      );
++      const resumed = f.engine(undefined, { runId: "revision", importedCache: cache });
++      assert.deepEqual(await resumed.worldRead("new-site", "run", f.args), receipt);
++      await assert.rejects(resumed.worldRead("new-site", "run", f.args), { code: "Interrupted" });
++      assert.equal((await resumed.settled).status, "stopped");
++      assert.equal(f.dispatches, 2);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\neffect\n");
++      assert.equal(
++        f.store.workflowJournalStore().getNode("revision", "new-site", 2)?.status,
++        "running",
++      );
++      assert.equal(
++        f.store.workflowJournalStore().getNode("revision", "new-site", 2)?.error?.code,
++        "Interrupted",
++      );
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "changed work does not erase unconsumed ancestor uncertainty when it closes the cache",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const effected = Promise.withResolvers<void>();
++      const original = f.engine(() => {
++        effected.resolve();
++        return new Promise(() => {});
++      });
++      void original.worldRead("effect-site", "run", f.args);
++      await effected.promise;
++      f.reopen();
++      const built = await buildImportedCache({ journal: f.store.workflowJournalStore() }, "proof");
++      assert.ok(built.ok);
++      const changedArgs = [
++        process.execPath,
++        ["-e", "require('node:fs').appendFileSync(process.argv[1], 'new\\n')", f.effect],
++      ];
++      const intermediate = f.engine(undefined, {
++        runId: "intermediate",
++        resumedFrom: "proof",
++        importedCache: built.cache,
++      });
++      await intermediate.worldRead("changed-site", "run", changedArgs);
++      intermediate.complete("changed work complete");
++      assert.equal((await intermediate.settled).status, "completed");
++      f.reopen();
++      const nextCache = await buildImportedCache(
++        { journal: f.store.workflowJournalStore() },
++        "intermediate",
++      );
++      assert.ok(nextCache.ok);
++      const next = f.engine(undefined, {
++        runId: "next",
++        resumedFrom: "intermediate",
++        importedCache: nextCache.cache,
++      });
++      // A new different command closes the cache, but cannot authorize the old unknown command.
++      const laterArgs = [
++        process.execPath,
++        ["-e", "require('node:fs').appendFileSync(process.argv[1], 'later\\n')", f.effect],
++      ];
++      await next.worldRead("later-site", "run", laterArgs);
++      assert.deepEqual(await next.worldRead("changed-site", "run", changedArgs), {
++        exitCode: 0,
++        stdout: "",
++        stderr: "",
++      });
++      await assert.rejects(next.worldRead("effect-site", "run", f.args), { code: "Interrupted" });
++      assert.equal((await next.settled).status, "stopped");
++      assert.equal(f.dispatches, 4);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\nnew\nlater\nnew\n");
++      // A separate explicit fresh execution has no recovery lineage and is still allowed.
++      const fresh = f.engine(undefined, { runId: "fresh" });
++      await fresh.worldRead("effect-site", "run", f.args);
++      fresh.complete("new execution");
++      assert.equal(f.dispatches, 5);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\nnew\nlater\nnew\neffect\n");
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "missing or cyclic recovery ancestry fails closed without blocking an independent fresh execution",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const journal = f.store.workflowJournalStore();
++      f.engine().stop("interrupted", new WorkflowError("Interrupted", "fixture crash"));
++      const base = journal.getRun("proof")!;
++      journal.createRun({ ...base, runId: "revision", resumedFrom: "proof" });
++      const reader = {
++        listActors: (runId: string) => journal.listActors(runId),
++        listNodes: (runId: string) => journal.listNodes(runId),
++        getRun: (runId: string) => (runId === "proof" ? undefined : journal.getRun(runId)),
++      };
++      await assert.rejects(
++        rebuildImportedCacheForResume(
++          { journal: reader },
++          {
++            runId: "revision",
++            predecessorRunId: "proof",
++          },
++        ),
++        { code: "Interrupted" },
++      );
++      assert.deepEqual(journal.getRun("revision"), {
++        ...base,
++        runId: "revision",
++        resumedFrom: "proof",
++      });
++      await assert.rejects(buildImportedCache({ journal: reader }, "revision"), {
++        code: "Interrupted",
++      });
++      const cyclic = {
++        ...reader,
++        getRun: (runId: string) =>
++          runId === "proof" ? { ...base, resumedFrom: "revision" } : journal.getRun(runId),
++      };
++      await assert.rejects(buildImportedCache({ journal: cyclic }, "revision"), {
++        code: "Interrupted",
++      });
++      const fresh = f.engine(undefined, { runId: "unrelated" });
++      await fresh.worldRead("effect-site", "run", f.args);
++      fresh.complete("new work");
++      assert.equal(f.dispatches, 1);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++    } finally {
++      await f.close();
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts
+new file mode 100644
+index 0000000..7667c18
+--- /dev/null
++++ b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts
+@@ -0,0 +1,163 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readFile, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import { WorkflowError } from "../src/engine/types.js";
++import { fixture } from "./helpers/world-run-recovery-fixture.js";
++import {
++  snapshotOf,
++  isResumableRecord,
++} from "../../bootstrap/src/app/dynamic-workflow-run-observation.js";
++import { replayRunProgress } from "../../bootstrap/src/app/dynamic-workflow-run-replay.js";
++
++test(
++  "an opaque command with an unknown outcome is not repeated after cold recovery",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const effected = Promise.withResolvers<void>();
++      // The actual child process has committed its effect, but the engine has no receipt.
++      const first = f.engine(() => {
++        effected.resolve();
++        return new Promise(() => {});
++      });
++      void first.worldRead("effect-site", "run", f.args);
++      await effected.promise;
++      assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++      const unresolved = f.store.workflowJournalStore().getNode("proof", "effect-site", 1);
++      assert.equal(unresolved?.status, "running");
++      f.reopen();
++
++      for (let attempt = 0; attempt < 2; attempt++) {
++        const resumed = f.engine();
++        await assert.rejects(resumed.worldRead("effect-site", "run", f.args), (error: unknown) => {
++          assert.ok(error instanceof WorkflowError);
++          assert.equal(error.code, "Interrupted");
++          assert.match(error.message, /outcome is unknown/);
++          assert.match(error.message, /effect-site@1/);
++          assert.match(error.message, /inspect.*effect/i);
++          return true;
++        });
++        const settlement = await resumed.settled;
++        assert.equal(settlement.status, "stopped");
++        assert.equal(settlement.status === "stopped" && settlement.reason, "interrupted");
++        const journal = f.store.workflowJournalStore();
++        assert.deepEqual(journal.getNode("proof", "effect-site", 1), unresolved);
++        const run = journal.getRun("proof")!;
++        assert.equal(run.status, "stopped");
++        assert.equal(run.stopReason, "interrupted");
++        assert.equal(run.failure?.code, "Interrupted");
++        assert.equal(isResumableRecord(run), true);
++        const snapshot = snapshotOf("proof", new Map(), journal)!;
++        assert.equal(snapshot.failure?.code, "Interrupted");
++        assert.match(snapshot.error!, /outcome is unknown/);
++        const row = journal.listRunsByParentSession("parent", 1)[0]!;
++        const terminal = replayRunProgress(row, journal, 1).at(-1)!;
++        assert.equal(terminal.eventType, "run-settled");
++        assert.equal(terminal.payload.resumable, true);
++        assert.deepEqual(terminal.payload.error, run.failure);
++        assert.equal(f.dispatches, 1);
++        assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++        f.reopen();
++      }
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "a changed recovery input refuses before an unknown command can dispatch",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const effected = Promise.withResolvers<void>();
++      const first = f.engine(() => {
++        effected.resolve();
++        return new Promise(() => {});
++      });
++      void first.worldRead("effect-site", "run", f.args);
++      await effected.promise;
++      f.reopen();
++      const resumed = f.engine();
++      await assert.rejects(resumed.worldRead("effect-site", "run", [process.execPath, []]), {
++        code: "InputHashMismatch",
++      });
++      assert.equal((await resumed.settled).status, "errored");
++      assert.equal(f.dispatches, 1);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "completed commands keep their durable cached result across cold recovery",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      const first = f.engine();
++      const result = await first.worldRead("effect-site", "run", f.args);
++      f.reopen();
++      const resumed = f.engine();
++      assert.deepEqual(await resumed.worldRead("effect-site", "run", f.args), result);
++      assert.equal(f.dispatches, 1);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++      resumed.complete(result);
++      assert.equal((await resumed.settled).status, "completed");
++      assert.equal(
++        f.store.workflowJournalStore().getNode("proof", "effect-site", 1)?.status,
++        "completed",
++      );
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "a command with no admission record dispatches normally after cold recovery",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.engine();
++      f.reopen();
++      const resumed = f.engine();
++      const result = await resumed.worldRead("effect-site", "run", f.args);
++      resumed.complete(result);
++      assert.equal((await resumed.settled).status, "completed");
++      assert.equal(f.dispatches, 1);
++      assert.equal(await readFile(f.effect, "utf8"), "effect\n");
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test("an interrupted read retains its safe live replay behavior", { timeout: 10000 }, async () => {
++  const f = await fixture();
++  try {
++    await writeFile(join(f.root, "input.txt"), "old observation");
++    const observed = Promise.withResolvers<void>();
++    const first = f.engine(() => {
++      observed.resolve();
++      return new Promise(() => {});
++    });
++    void first.worldRead("read-site", "read", ["input.txt"]);
++    await observed.promise;
++    f.reopen();
++    await writeFile(join(f.root, "input.txt"), "current observation");
++    const resumed = f.engine();
++    const result = await resumed.worldRead("read-site", "read", ["input.txt"]);
++    assert.equal(result, "current observation");
++    assert.equal(f.dispatches, 2);
++    resumed.complete(result);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/package.json b/package.json
+index ecb8bee..7f4e0b4 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

@@ -1,0 +1,744 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 3e740ca..d3b8404 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -316,6 +316,43 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-deepseek-chat",
++          "templateNameMap": {
++            "zh-CN": "DeepSeek",
++            "en-US": "DeepSeek"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.deepseek.com/api_keys"
++            },
++            "api": {
++              "type": "openai-chat-completions",
++              "baseUrl": "https://api.deepseek.com"
++            },
++            "builtinModelIds": [
++              "deepseek-flash",
++              "deepseek-v4-pro"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "deepseek"
++            }
++          },
++          "catalog": {
++            "vendorId": "deepseek",
++            "vendorNameMap": {
++              "zh-CN": "DeepSeek",
++              "en-US": "DeepSeek"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
++        },
+         {
+           "templateId": "qwen-alibaba-model-studio-cn",
+           "templateNameMap": {
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 3ad33db..a355842 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -17,7 +17,11 @@ import {
+   resolveProviderTemplateName,
+ } from "./config/index.js";
+ import { resolveOwnedOrder } from "./owned-order.js";
+-import { assertProviderProtocolChange, resolveTemplateProtocolFormats } from "./protocol-policy.js";
++import {
++  assertProviderProtocolChange,
++  resolveTemplateProtocolFormats,
++  resolveTemplateProtocolRoutes,
++} from "./protocol-policy.js";
+ import type { ModelSelection } from "@zcode/shared/model-selection";
+ import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
+ 
+@@ -207,6 +211,10 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+           nextTemplateId,
+           zcodeBuiltin.providerTemplates?.toJSON() ?? [],
+         ),
++        resolveTemplateProtocolRoutes(
++          nextTemplateId,
++          zcodeBuiltin.providerTemplates?.toJSON() ?? [],
++        ),
+       );
+       const providers = current.providers.setRule({
+         ...currentRule,
+@@ -266,6 +274,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+         (template ? template.config.overlay(initial) : initial).toJSON(),
+         undefined,
+         resolveTemplateProtocolFormats(templateId, zcodeBuiltin.providerTemplates?.toJSON() ?? []),
++        resolveTemplateProtocolRoutes(templateId, zcodeBuiltin.providerTemplates?.toJSON() ?? []),
+       );
+       const providers = current.providers.setRule({
+         providerId,
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 5900420..be24227 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -1,7 +1,11 @@
+ /* oxlint-disable eslint(max-lines) -- Settings/Selection Facade 共享同一套 Registry 投影与写入边界。 */
+ import type { ConfigValidationIssue } from "./config-overlay.js";
+ import type { ProviderModelMembership } from "./config-service.js";
+-import { resolveTemplateProtocolFormats } from "./protocol-policy.js";
++import {
++  resolveTemplateProtocolFormats,
++  resolveTemplateProtocolRoutes,
++  type ProviderProtocolRoute,
++} from "./protocol-policy.js";
+ import type {
+   ModelConfig,
+   ModelConfigObject,
+@@ -166,6 +170,7 @@ export interface ProviderSettingsProviderView extends Pick<
+   readonly effectiveBuiltinConfig?: ProviderConfigObject;
+   readonly templateConfig?: ProviderConfigObject;
+   readonly templateApiFormats?: readonly ProviderApiType[];
++  readonly templateApiRoutes?: readonly ProviderProtocolRoute[];
+   readonly personalConfig?: ProviderConfigObject;
+   readonly effectiveConfig: ProviderConfigObject;
+   readonly issues: readonly ConfigValidationIssue[];
+@@ -670,6 +675,10 @@ function createProviderSettingsView(input: {
+         provider.templateId,
+         input.zcodeBuiltinProviderTemplates.toJSON(),
+       ),
++      templateApiRoutes: resolveTemplateProtocolRoutes(
++        provider.templateId,
++        input.zcodeBuiltinProviderTemplates.toJSON(),
++      ),
+       ...(provider.effectiveBuiltinConfig
+         ? { effectiveBuiltinConfig: provider.effectiveBuiltinConfig.toJSON() }
+         : {}),
+diff --git a/packages/provider/src/protocol-policy.ts b/packages/provider/src/protocol-policy.ts
+index f63b3d2..11b582d 100644
+--- a/packages/provider/src/protocol-policy.ts
++++ b/packages/provider/src/protocol-policy.ts
+@@ -16,14 +16,19 @@ export interface ProviderProtocolPolicy {
+   readonly formats: readonly ProviderApiType[];
+ }
+ 
+-/** 同一服务/区域/地址的显式变体可以共用格式；不能从同品牌其他套餐推断。 */
+-export function resolveTemplateProtocolFormats(
++export interface ProviderProtocolRoute {
++  readonly type: ProviderApiType;
++  readonly baseUrl: string;
++}
++
++/** 只投影同一服务/区域/认证的显式路由，不能从品牌或协议名称推断端点。 */
++export function resolveTemplateProtocolRoutes(
+   templateId: string | null | undefined,
+   templates: readonly ProviderTemplateObject[],
+-): ProviderApiType[] {
++): ProviderProtocolRoute[] {
+   const template = templates.find((item) => item.templateId === templateId);
+   const catalog = template?.catalog;
+-  const formats = templates
++  return templates
+     .filter(
+       (item) =>
+         item === template ||
+@@ -31,12 +36,40 @@ export function resolveTemplateProtocolFormats(
+           item.catalog?.vendorId === catalog.vendorId &&
+           item.catalog.serviceId === catalog.serviceId &&
+           item.catalog.region === catalog.region &&
+-          endpoint(item.config.api?.baseUrl) === endpoint(template?.config.api?.baseUrl) &&
+-          item.config.access?.type === template?.config.access?.type),
++          item.config.access?.type === template?.config.access?.type &&
++          JSON.stringify(item.config.api?.headers) ===
++            JSON.stringify(template?.config.api?.headers)),
+     )
+-    .map((item) => item.config.api?.type)
+-    .filter((api): api is ProviderApiType => api != null);
+-  return [...new Set(formats)];
++    .flatMap((item) => {
++      const { type, baseUrl } = item.config.api ?? {};
++      return type && baseUrl ? [{ type, baseUrl }] : [];
++    });
++}
++
++/** 不同协议共享同一地址时也必须由目录明确声明。 */
++export function resolveTemplateProtocolFormats(
++  templateId: string | null | undefined,
++  templates: readonly ProviderTemplateObject[],
++): ProviderApiType[] {
++  const baseUrl = templates.find((item) => item.templateId === templateId)?.config.api?.baseUrl;
++  return [
++    ...new Set(
++      resolveTemplateProtocolRoutes(templateId, templates)
++        .filter((route) => endpoint(route.baseUrl) === endpoint(baseUrl))
++        .map((route) => route.type),
++    ),
++  ];
++}
++
++/** 用户明确选择格式时联动预置地址；用户输入的自定义地址不能被覆盖。 */
++export function selectProviderProtocolRoute(
++  type: ProviderApiType,
++  baseUrl: string,
++  routes: readonly ProviderProtocolRoute[] = [],
++): ProviderProtocolRoute {
++  const preset = routes.some((route) => endpoint(route.baseUrl) === endpoint(baseUrl));
++  const target = preset ? routes.find((route) => route.type === type) : undefined;
++  return { type, baseUrl: target?.baseUrl ?? baseUrl };
+ }
+ 
+ function endpoint(value: string | null | undefined): string {
+@@ -48,11 +81,25 @@ export function resolveProviderProtocolPolicy(
+   template: ProviderConfigObject | undefined,
+   config: ProviderConfigObject,
+   declaredFormats?: readonly ProviderApiType[],
++  routes: readonly ProviderProtocolRoute[] = [],
+ ): ProviderProtocolPolicy {
+   const recommended = template?.api?.type ?? undefined;
+   if (template?.access?.type === "subscription" || config.access?.type === "subscription") {
+     return { mode: "subscription", recommended, formats: [] };
+   }
++  const matchingRoutes = routes.filter(
++    (route) => endpoint(route.baseUrl) === endpoint(config.api?.baseUrl),
++  );
++  if (matchingRoutes.length) {
++    const current = config.api?.type;
++    const formats = [...new Set(routes.map((route) => route.type))];
++    const valid = matchingRoutes.some((route) => route.type === current);
++    return {
++      mode: valid ? "preset" : "override",
++      recommended,
++      formats: current && !formats.includes(current) ? [...formats, current] : formats,
++    };
++  }
+   if (
+     !recommended ||
+     !endpoint(template?.api?.baseUrl) ||
+@@ -73,6 +120,7 @@ export function assertProviderProtocolChange(
+   next: ProviderConfigObject,
+   previous?: ProviderConfigObject,
+   declaredFormats?: readonly ProviderApiType[],
++  routes?: readonly ProviderProtocolRoute[],
+ ): void {
+   if (!template) return;
+   if (template.access?.type === "subscription") {
+@@ -87,7 +135,7 @@ export function assertProviderProtocolChange(
+     }
+     return;
+   }
+-  const policy = resolveProviderProtocolPolicy(template, next, declaredFormats);
++  const policy = resolveProviderProtocolPolicy(template, next, declaredFormats, routes);
+   if (policy.mode !== "override") return;
+   if (
+     previous &&
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index c8f718a..9c1b2a8 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -33,12 +33,12 @@ const vendors = groupProviderTemplates(templates, "zh-CN");
+ const family = (id: string) => vendors.find((vendor) => vendor.id === `vendor:${id}`)!.templates;
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 40);
++  assert.equal(templates.length, 41);
+   assert.equal(vendors.length, 19);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    40,
++    41,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/services/test/provider-protocol-policy.test.ts b/packages/services/test/provider-protocol-policy.test.ts
+index 738f045..258a332 100644
+--- a/packages/services/test/provider-protocol-policy.test.ts
++++ b/packages/services/test/provider-protocol-policy.test.ts
+@@ -8,6 +8,8 @@ import {
+   parseProviderConfig,
+   assertProviderProtocolChange,
+   resolveTemplateProtocolFormats,
++  resolveTemplateProtocolRoutes,
++  selectProviderProtocolRoute,
+   parseProviderTemplateMap,
+   resolveProviderProtocolPolicy,
+ } from "@zcode/provider";
+@@ -78,6 +80,104 @@ test("preset defaults are automatic; custom addresses retain explicit adapter ch
+   assert.equal(resolveProviderProtocolPolicy(undefined, preset).mode, "custom");
+ });
+ 
++test("format selection binds the declared endpoint and survives saving/reopening without losing credentials", async () => {
++  const f = await fixture();
++  try {
++    const service = f.runtime.configService;
++    const templates = (await service.read()).zcodeBuiltinProviderTemplates.toJSON();
++    const routes = resolveTemplateProtocolRoutes("deepseek", templates);
++    assert.deepEqual(routes, [
++      { type: "anthropic-messages", baseUrl: "https://api.deepseek.com/anthropic" },
++      { type: "openai-chat-completions", baseUrl: "https://api.deepseek.com" },
++    ]);
++    const { providerId } = await service.createPersonalProvider({
++      templateId: "deepseek",
++      initialConfig: parseProviderConfig({
++        access: { type: "api-key", apiKey: "fixture-key", additionalApiKeys: ["fixture-backup"] },
++      }),
++    });
++    const config = (await service.read()).personalProviders.get(providerId)!.toJSON();
++    const next = selectProviderProtocolRoute(
++      "openai-chat-completions",
++      routes[0]!.baseUrl + "/",
++      routes,
++    );
++    await service.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({ ...config, api: next }),
++    );
++    const reopened = createProviderConfigRuntime({
++      personalFilePath: f.personalFilePath,
++      zcodeBuiltinFilePath: fileURLToPath(
++        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++      ),
++      personalPollingIntervalMs: false,
++      watch: false,
++    });
++    await reopened.start();
++    try {
++      const saved = (await reopened.configService.read()).personalProviders
++        .get(providerId)!
++        .toJSON();
++      assert.deepEqual(saved.api, next);
++      assert.deepEqual(saved.access, config.access);
++      assert.deepEqual(saved.personalModelIds, config.personalModelIds);
++      const template = templates.find((t) => t.templateId === "deepseek")!.config;
++      const policy = resolveProviderProtocolPolicy(
++        template,
++        { ...template, api: next },
++        undefined,
++        routes,
++      );
++      assert.equal(policy.mode, "preset");
++      assert.deepEqual(policy.formats, ["anthropic-messages", "openai-chat-completions"]);
++      const previous = await readFile(f.personalFilePath, "utf8");
++      await assert.rejects(
++        service.savePersonalProviderOverlay(
++          providerId,
++          parseProviderConfig({ ...saved, api: { ...next, type: "anthropic-messages" } }),
++        ),
++        /protocol/i,
++      );
++      assert.equal(await readFile(f.personalFilePath, "utf8"), previous);
++      const back = selectProviderProtocolRoute("anthropic-messages", next.baseUrl, routes);
++      await service.savePersonalProviderOverlay(
++        providerId,
++        parseProviderConfig({ ...saved, api: back }),
++      );
++      assert.deepEqual(
++        (await service.read()).personalProviders.get(providerId)!.api?.toJSON(),
++        back,
++      );
++    } finally {
++      reopened.dispose();
++    }
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("format selection preserves custom URLs and cannot borrow another service or region", async () => {
++  const json = JSON.parse(
++    await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
++  );
++  const templates = parseProviderTemplateMap(
++    json.config.providerConfigRules.templateRules,
++  ).toJSON();
++  const routes = resolveTemplateProtocolRoutes("deepseek", templates);
++  assert.deepEqual(
++    selectProviderProtocolRoute("anthropic-messages", "https://custom.example/v1", routes),
++    {
++      type: "anthropic-messages",
++      baseUrl: "https://custom.example/v1",
++    },
++  );
++  assert.deepEqual(resolveTemplateProtocolRoutes("minimax", templates), [
++    { type: "anthropic-messages", baseUrl: "https://api.minimaxi.com/anthropic" },
++  ]);
++  assert.deepEqual(resolveTemplateProtocolRoutes("openai", templates), [preset.api]);
++});
++
+ test("a legacy override remains selected, never advertised as a recommended protocol", () => {
+   const legacy = resolveProviderProtocolPolicy(preset, {
+     ...preset,
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index d11001f..56d8056 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -2894,12 +2894,12 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.chatCompletions": "Chat",
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+-  "settings.modelProvider.apiFormat.title.chatCompletions": "Chat completions",
++  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI Chat",
+   "settings.modelProvider.protocol.preset": "Configured for this service",
+   "settings.modelProvider.protocol.override": "Existing custom protocol",
+   "settings.modelProvider.protocol.advanced": "Advanced connection settings",
+-  "settings.modelProvider.apiFormat.title.responses": "Responses",
+-  "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic messages",
++  "settings.modelProvider.apiFormat.title.responses": "OpenAI Responses",
++  "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic",
+   "settings.modelProvider.apiKey": "API key",
+   "settings.modelProvider.apiKeyPlaceholder": "Enter API key",
+   "settings.modelProvider.apiKeyDisabledHint": "Set an API key to enable this provider.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6003929..4394c45 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2698,12 +2698,12 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.chatCompletions": "Chat",
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+-  "settings.modelProvider.apiFormat.title.chatCompletions": "Chat Completions",
++  "settings.modelProvider.apiFormat.title.chatCompletions": "OpenAI Chat",
+   "settings.modelProvider.protocol.preset": "已按服务配置",
+   "settings.modelProvider.protocol.override": "保留的自定义协议",
+   "settings.modelProvider.protocol.advanced": "高级连接设置",
+-  "settings.modelProvider.apiFormat.title.responses": "Responses",
+-  "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic Messages",
++  "settings.modelProvider.apiFormat.title.responses": "OpenAI Responses",
++  "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic 格式",
+   "settings.modelProvider.apiKey": "API Key",
+   "settings.modelProvider.apiKeyPlaceholder": "输入 API Key",
+   "settings.modelProvider.apiKeyDisabledHint": "设置 API Key 后即可启用。",
+diff --git a/packages/ui/src/lib/providerSettingsFormProjection.ts b/packages/ui/src/lib/providerSettingsFormProjection.ts
+index 29a9561..53ad0b0 100644
+--- a/packages/ui/src/lib/providerSettingsFormProjection.ts
++++ b/packages/ui/src/lib/providerSettingsFormProjection.ts
+@@ -18,6 +18,7 @@ function projectProviderSettingsProviders(
+     templateId: provider.templateId,
+     templateConfig: provider.templateConfig ?? provider.effectiveBuiltinConfig,
+     templateApiFormats: provider.templateApiFormats,
++    templateApiRoutes: provider.templateApiRoutes,
+     executable: provider.executable,
+     enabled: provider.enabled,
+     accountState: provider.accountState,
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index 5c9ac7b..bcc6514 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -5,6 +5,7 @@ import type {
+   ModelConfigObject,
+   ProviderConfigObject,
+   ProviderApiType,
++  ProviderProtocolRoute,
+   ProviderSettingsProviderView,
+ } from "@zcode/provider";
+ 
+@@ -29,6 +30,7 @@ export interface ProviderSettingsFormProvider extends Pick<
+   /** 模板推荐连接信息来自已有 Registry 投影，不另建客户端供应商目录。 */
+   templateConfig?: ProviderConfigObject;
+   templateApiFormats?: readonly ProviderApiType[];
++  templateApiRoutes?: readonly ProviderProtocolRoute[];
+   /** 只读继承基线与即时表单展示值，不直接持久化。 */
+   config: ProviderConfigObject;
+   models: ProviderSettingsFormModel[];
+diff --git a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+index 55809e7..7fdb191 100644
+--- a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+@@ -25,27 +25,20 @@ export function CredentialAutoSwitchSection({
+         <label id={`${id}-title`} htmlFor={id} className="text-ui-base font-medium text-foreground">
+           {intl.formatMessage({ id: `settings.modelProvider.credentials.${kind}.autoSwitch` })}
+         </label>
+-        {!eligible ? (
+-          <p
+-            id={`${id}-hint`}
+-            className="mt-0.5 text-ui-caption leading-relaxed text-foreground-subtle"
+-          >
+-            {intl.formatMessage({
+-              id: `settings.modelProvider.credentials.${kind}.switchRequiresTwo`,
+-            })}
+-          </p>
+-        ) : null}
++        <p
++          id={`${id}-hint`}
++          className="mt-0.5 text-ui-caption leading-relaxed text-foreground-subtle"
++        >
++          {intl.formatMessage({
++            id: `settings.modelProvider.credentials.${kind}.${eligible ? "switchHint" : "switchRequiresTwo"}`,
++          })}
++        </p>
+       </div>
+       <Switch
+         id={id}
+         className="shrink-0"
+         aria-labelledby={`${id}-title`}
+-        aria-describedby={!eligible ? `${id}-hint` : undefined}
+-        title={
+-          eligible
+-            ? intl.formatMessage({ id: `settings.modelProvider.credentials.${kind}.switchHint` })
+-            : undefined
+-        }
++        aria-describedby={`${id}-hint`}
+         checked={eligible && checked}
+         disabled={disabled || !eligible}
+         onCheckedChange={onCheckedChange}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 120d5ee..a6ae14e 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,3 +1,4 @@
++import { selectProviderProtocolRoute } from "@zcode/provider";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+@@ -601,11 +602,21 @@ export function InlineEditableProviderCard({
+ 
+   const handleApiFormatChange = useCallback(
+     (value: ProviderApiType) => {
++      const next = selectProviderProtocolRoute(
++        value,
++        draftRef.current.baseUrlValue,
++        provider.templateApiRoutes,
++      );
+       markDraftDirty("apiFormat");
+       draftRef.current.apiFormat = value;
+       setApiFormat(value);
++      if (next.baseUrl !== draftRef.current.baseUrlValue) {
++        markDraftDirty("baseUrlValue");
++        draftRef.current.baseUrlValue = next.baseUrl;
++        setBaseUrlValue(next.baseUrl);
++      }
+     },
+-    [markDraftDirty],
++    [markDraftDirty, provider.templateApiRoutes],
+   );
+ 
+   const handleTextCommitKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+index 33d0f69..dbdb746 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+@@ -1,5 +1,5 @@
+ import { CUSTOM_PROVIDER_API_FORMATS, type ProviderApiType } from "@zcode/provider";
+-import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ const PROVIDER_CONNECTION_API_FORMATS = CUSTOM_PROVIDER_API_FORMATS;
+ 
+@@ -50,17 +50,31 @@ export function ProviderApiFormatSelect({
+   const { intl } = useZCodeIntl();
+ 
+   return (
+-    <div id={triggerId}>
+-      <ProviderConnectionChoices
+-        label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++    <div id={triggerId} className="space-y-2">
++      <div className="text-ui-base text-foreground-subtle">
++        {intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++      </div>
++      <Tabs
+         value={value}
+-        disabled={disabled}
+-        items={apiFormatOptions.map((format) => ({
+-          value: format,
+-          label: intl.formatMessage({ id: PROVIDER_CONNECTION_API_FORMAT_TITLE_IDS[format] }),
+-        }))}
+-        onChange={(format) => onChange(format as ProviderApiType)}
+-      />
++        onValueChange={(format) => onChange(format as ProviderApiType)}
++        className="gap-0"
++      >
++        <TabsList
++          aria-label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++          className="flex h-auto w-full rounded-full bg-surface p-0.5 group-data-horizontal/tabs:h-auto"
++        >
++          {apiFormatOptions.map((format) => (
++            <TabsTrigger
++              key={format}
++              value={format}
++              disabled={disabled}
++              className="min-h-7 min-w-0 flex-1 basis-0 rounded-full border-transparent bg-transparent px-2.5 text-ui-base font-medium whitespace-normal text-foreground-subtle data-active:border-transparent data-active:bg-background data-active:text-foreground data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-background"
++            >
++              {resolveProviderConnectionApiFormatTitle(intl, format)}
++            </TabsTrigger>
++          ))}
++        </TabsList>
++      </Tabs>
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 318a59a..ab19523 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -273,6 +273,7 @@ export function ProviderConnectionSection({
+               api: { ...provider.config.api, type: apiFormat, baseUrl: baseUrlValue },
+             },
+             provider.templateApiFormats,
++            provider.templateApiRoutes,
+           )}
+           value={apiFormat}
+           onChange={onApiFormatChange}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+index 89c1093..a196af2 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+@@ -1,18 +1,8 @@
+-import { ChevronDownIcon } from "lucide-react";
+ import type { ProviderApiType, ProviderProtocolPolicy } from "@zcode/provider";
+-import { Button } from "@/components/ui/button.js";
+-import {
+-  Collapsible,
+-  CollapsibleContent,
+-  CollapsibleTrigger,
+-} from "@/components/ui/collapsible.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import {
+-  ProviderApiFormatSelect,
+-  resolveProviderConnectionApiFormatTitle,
+-} from "./ProviderApiFormatSelect.js";
++import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.js";
+ 
+-/** 普通预置连接无需猜协议；自定义端点才直接展示协议，替代路由原位展开。 */
++/** 格式在连接表单内直接可选；订阅的传输仍归认证适配器管理。 */
+ export function ProviderProtocolControl({
+   policy,
+   value,
+@@ -28,39 +18,19 @@ export function ProviderProtocolControl({
+ }) {
+   const { intl } = useZCodeIntl();
+   if (policy.mode === "subscription") return null;
+-  const choices = (
+-    <ProviderApiFormatSelect
+-      value={value}
+-      apiFormatOptions={formats}
+-      disabled={disabled}
+-      onChange={onChange}
+-    />
+-  );
+-  if (policy.mode === "custom") return choices;
+-  const summary = (
+-    <div className="flex min-w-0 flex-wrap items-center gap-2 text-ui-base text-foreground-subtle">
+-      <span>{intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}</span>
+-      <span className="text-foreground">
+-        {resolveProviderConnectionApiFormatTitle(intl, value)}
+-      </span>
++  return (
++    <div className="space-y-2">
++      <ProviderApiFormatSelect
++        value={value}
++        apiFormatOptions={formats}
++        disabled={disabled}
++        onChange={onChange}
++      />
+       {policy.mode === "override" ? (
+-        <span>{intl.formatMessage({ id: "settings.modelProvider.protocol.override" })}</span>
++        <p className="text-ui-sm text-foreground-subtle">
++          {intl.formatMessage({ id: "settings.modelProvider.protocol.override" })}
++        </p>
+       ) : null}
+     </div>
+   );
+-  if (formats.length < 2) return summary;
+-  return (
+-    <Collapsible className="space-y-2" defaultOpen={policy.mode === "override"}>
+-      <div className="flex flex-wrap items-center justify-between gap-2">
+-        {summary}
+-        <CollapsibleTrigger asChild>
+-          <Button type="button" variant="ghost" size="sm" disabled={disabled}>
+-            {intl.formatMessage({ id: "settings.modelProvider.protocol.advanced" })}
+-            <ChevronDownIcon className="size-3.5" />
+-          </Button>
+-        </CollapsibleTrigger>
+-      </div>
+-      <CollapsibleContent>{choices}</CollapsibleContent>
+-    </Collapsible>
+-  );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index d0ed258..5bb4551 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -3,6 +3,8 @@ import { ArrowLeftIcon } from "lucide-react";
+ import {
+   resolveProviderTemplateName,
+   resolveProviderProtocolPolicy,
++  resolveTemplateProtocolRoutes,
++  selectProviderProtocolRoute,
+   type ProviderApiType,
+   type ProviderConfigObject,
+ } from "@zcode/provider";
+@@ -74,12 +76,8 @@ export function ProviderTemplateSetup({
+   const regions = [...new Set(serviceTemplates.map((template) => template.catalog?.region))].filter(
+     (region): region is "cn" | "global" => region !== undefined,
+   );
+-  const protocolRoutes = serviceTemplates.filter(
+-    (template) => template.catalog?.region === selected.catalog?.region,
+-  );
+-  const declaredFormats = [
+-    ...new Set(protocolRoutes.map((template) => template.config.api?.type)),
+-  ].filter((api): api is ProviderApiType => api != null);
++  const protocolRoutes = resolveTemplateProtocolRoutes(selectedId, vendor.templates);
++  const declaredFormats = [...new Set(protocolRoutes.map((route) => route.type))];
+   const protocolPolicy = resolveProviderProtocolPolicy(custom ? undefined : selected.config, {
+     ...selected.config,
+     api: { type: draft.api, baseUrl: draft.baseUrl },
+@@ -95,7 +93,11 @@ export function ProviderTemplateSetup({
+         [next.templateId]: {
+           ...draft,
+           api: next.config.api!.type!,
+-          baseUrl: next.config.api!.baseUrl ?? "",
++          baseUrl: selectProviderProtocolRoute(
++            change.api as ProviderApiType,
++            draft.baseUrl,
++            protocolRoutes,
++          ).baseUrl,
+         },
+       }));
+     setVisible(false);
+diff --git a/scripts/provider-catalog-metadata.mjs b/scripts/provider-catalog-metadata.mjs
+index 81e88a3..73ca379 100644
+--- a/scripts/provider-catalog-metadata.mjs
++++ b/scripts/provider-catalog-metadata.mjs
+@@ -87,7 +87,15 @@ const vendors = [
+       ["opencode-zen-responses", "zen"],
+     ],
+   ],
+-  ["deepseek", "DeepSeek", "DeepSeek", [["deepseek", "api"]]],
++  [
++    "deepseek",
++    "DeepSeek",
++    "DeepSeek",
++    [
++      ["deepseek", "api"],
++      ["fleet-deepseek-chat", "api"],
++    ],
++  ],
+   ["anthropic", "Anthropic", "Anthropic", [["anthropic", "api"]]],
+   [
+     "xai",
+diff --git a/scripts/sync-fleet-provider-catalog.mjs b/scripts/sync-fleet-provider-catalog.mjs
+index 5e682d1..ee6e445 100644
+--- a/scripts/sync-fleet-provider-catalog.mjs
++++ b/scripts/sync-fleet-provider-catalog.mjs
+@@ -183,6 +183,17 @@ const planIds = new Set([
+ for (const template of rules) {
+   if (planIds.has(template.templateId)) template.category = "subscription-plan";
+ }
++// DeepSeek documents two transports with distinct URLs for the same API service.
++// https://api-docs.deepseek.com/ — do not infer a Responses endpoint.
++const deepseek = rules.find((rule) => rule.templateId === "deepseek");
++if (deepseek) {
++  const chat = structuredClone(deepseek);
++  chat.templateId = "fleet-deepseek-chat";
++  chat.config.api = { type: "openai-chat-completions", baseUrl: "https://api.deepseek.com" };
++  const index = rules.findIndex((rule) => rule.templateId === chat.templateId);
++  if (index < 0) rules.push(chat);
++  else rules[index] = chat;
++}
+ applyProviderCatalogMetadata(rules);
+ await writeFile(file, JSON.stringify(data, null, 2) + "\n");
+ console.log(

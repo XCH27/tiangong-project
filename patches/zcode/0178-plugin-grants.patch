@@ -1,0 +1,1052 @@
+From 6aea595c5a68ad95b933f1659d7248b0c36247d2 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:17:23 -0700
+Subject: [PATCH] Third-party plugins run MCP servers and hooks only after
+ approval of exactly what they declare (OV-100 phase 3)
+
+A package installed from a third-party marketplace keeps its skills and
+commands, but its MCP servers and hooks wait until the person allows the
+declared surface; the grant records a fingerprint of the MCP launch
+definitions and hook commands, so an update that changes them asks again.
+Built-in, official and person-declared folders are unchanged. The first
+discovery without a grant store records enabled third-party packages as
+existing installs, and install creates the store first, so upgrading never
+stops a working plugin while new ones ask. Revocation reaches resident
+Sessions through the shared availability check. Settings rows show Needs
+approval with a review dialog listing what will run, and a revoke action.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../packages/adapters/src/plugins/index.ts    |  83 +++++++++++++-
+ .../bootstrap/src/app/plugin-availability.ts  |   8 +-
+ .../bootstrap/src/app/plugin-grants.ts        |  93 ++++++++++++++++
+ .../bootstrap/src/app/startup-marks.ts        |   7 +-
+ .../packages/bootstrap/src/plugins.ts         |  39 ++++++-
+ .../bootstrap/src/zcode-protocol/plugins.ts   |  38 +++++++
+ .../bootstrap/src/zcode-protocol/server.ts    |   6 ++
+ .../bootstrap/test/plugin-grants.test.ts      | 102 ++++++++++++++++++
+ .../packages/contracts/src/plugins/index.ts   |  19 ++++
+ .../services/src/plugins/pluginManagement.ts  |   5 +
+ .../src/plugins/pluginManagementService.ts    |   4 +
+ .../services/src/zcode-agent/zcodeAgent.ts    |   4 +
+ .../src/zcode-agent/zcodeAgentPluginParams.ts |   9 ++
+ .../src/zcode-agent/zcodeAgentService.ts      |  26 +++++
+ packages/shared/src/zcode-protocol/index.ts   |  25 +++++
+ packages/ui/src/i18n/locales/en-US.ts         |   8 ++
+ packages/ui/src/i18n/locales/zh-CN.ts         |   8 ++
+ packages/ui/src/settings/PluginsSection.tsx   |  62 +++++++++++
+ .../ui/src/store/pluginManagementStore.ts     |  31 ++++++
+ 19 files changed, 570 insertions(+), 7 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/bootstrap/src/app/plugin-grants.ts
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 1817053..6b956e9 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -8,6 +8,7 @@ import {
+   rmSync,
+   writeFileSync,
+ } from "node:fs";
++import { createHash } from "node:crypto";
+ import { dirname, join, resolve } from "node:path";
+ import type {
+   CustomCommandRoot,
+@@ -29,6 +30,7 @@ import type {
+ import {
+   HookEventName as HookEventNameValue,
+   HookMatcherConfigSchema,
++  isOfficialMarketplaceId,
+   ZCODE_INLINE_PLUGIN_MARKETPLACE,
+   ZCODE_OFFICIAL_PLUGIN_MARKETPLACE,
+ } from "@zcode/contracts";
+@@ -193,14 +195,33 @@ export class NodePluginAdapter implements PluginPort {
+       // 未启用插件的内置 MCP 就会在管理页完全不可见。这里先读取声明名给 UI 只读展示，
+       // 实际 runtime 注入仍只使用 enabled 分支解析出的 component.mcpServers。
+       const mcpServerDefinitions = loadPluginMcpServerDefinitions({ diagnostics, loaded });
+-      const hooksRunnable = canRunPluginHooks(candidate);
++      // OV-100 phase 3: a third-party package's executable surface runs only while its granted
++      // fingerprint matches. The surface is inspected first so the fingerprint covers what would run.
++      const surface = inspectPluginHooks({ dataPath, diagnostics: [], loaded, runnable: false });
++      const grant = resolvePluginGrant({
++        candidate,
++        grants: request.pluginGrants,
++        hookDetails: surface.details,
++        loaded,
++        mcpServerDefinitions,
++      });
++      if (grant && !grant.granted) {
++        diagnostics.push({
++          code: "plugin_grant_required",
++          message: `MCP servers and hooks of ${loaded.id} are waiting for your approval in Settings → Plugins; its skills and commands are available.`,
++          path: loaded.rootPath,
++          pluginId: loaded.id,
++          severity: "warning",
++        });
++      }
++      const hooksRunnable = canRunPluginHooks(candidate) && grant?.granted !== false;
+       const hookInspection = inspectPluginHooks({
+         dataPath,
+         diagnostics,
+         loaded,
+         runnable: hooksRunnable,
+       });
+-      if (!hooksRunnable && hookInspection.details.length > 0) {
++      if (!canRunPluginHooks(candidate) && hookInspection.details.length > 0) {
+         diagnostics.push({
+           code: "plugin_project_hooks_withheld",
+           message: `Hooks of ${loaded.id} were not run: the plugin is declared only by this Project's configuration. Install it from Plugins, or list its folder in your user configuration, to allow its hooks.`,
+@@ -217,7 +238,7 @@ export class NodePluginAdapter implements PluginPort {
+             hookEvents: hooksRunnable ? hookInspection.events : {},
+             hookDetails: hookInspection.details,
+             loaded,
+-            mcpServerDefinitions,
++            mcpServerDefinitions: grant?.granted === false ? {} : mcpServerDefinitions,
+             options: request.config.options[loaded.id] ?? {},
+             priority,
+             workingDirectory: request.workingDirectory,
+@@ -237,6 +258,7 @@ export class NodePluginAdapter implements PluginPort {
+           enabled,
+           Object.keys(mcpServerDefinitions),
+           request.config.options[loaded.id] ?? {},
++          grant,
+         ),
+       );
+     }
+@@ -320,6 +342,7 @@ function createPluginMetadata(
+   enabled: boolean,
+   declaredMcpServerNames: string[],
+   configuredOptions: Record<string, string | number | boolean>,
++  grant?: PluginMetadata["grant"],
+ ): PluginMetadata {
+   // manifest 的 author/homepage 作为详情页信息区的回退来源（商店 listing 优先）。
+   const author = normalizeAuthorValue(loaded.manifest.author);
+@@ -354,6 +377,7 @@ function createPluginMetadata(
+     skillRootCount: component.skillRoots.length,
+     source: loaded.source,
+     userConfig: loaded.manifest.userConfig,
++    ...(grant ? { grant } : {}),
+     version: loaded.manifest.version,
+   };
+ }
+@@ -388,6 +412,59 @@ function resolveEnabledComponents(input: {
+   };
+ }
+ 
++/**
++ * Grant state for a plugin that can run host code. Packages installed from a third-party
++ * marketplace need a grant; built-in, official and person-declared folders do not. Undefined when
++ * the plugin declares neither MCP servers nor hooks.
++ */
++function resolvePluginGrant(input: {
++  candidate: PluginCandidate;
++  grants: PluginDiscoverRequest["pluginGrants"];
++  hookDetails: PluginHookDetail[];
++  loaded: LoadedPlugin;
++  mcpServerDefinitions: Record<string, unknown>;
++}): PluginMetadata["grant"] | undefined {
++  if (Object.keys(input.mcpServerDefinitions).length === 0 && input.hookDetails.length === 0) {
++    return undefined;
++  }
++  const fingerprint = pluginSurfaceFingerprint(input.mcpServerDefinitions, input.hookDetails);
++  const required =
++    input.candidate.source === "cache" && !isOfficialMarketplaceId(input.loaded.marketplace);
++  const granted = !required || input.grants === undefined || input.grants[input.loaded.id] === fingerprint;
++  return { fingerprint, granted, required };
++}
++
++/** Stable hash of what the plugin would execute: MCP launch definitions and hook commands. */
++export function pluginSurfaceFingerprint(
++  mcpServerDefinitions: Record<string, unknown>,
++  hookDetails: readonly PluginHookDetail[],
++): string {
++  const hooks = hookDetails
++    .map((hook) => ({
++      args: hook.args ?? [],
++      command: hook.command,
++      event: hook.event,
++      matcher: hook.matcher ?? "",
++      shell: hook.shell ?? false,
++    }))
++    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
++  return createHash("sha256")
++    .update(canonicalJson({ hooks, mcp: mcpServerDefinitions }))
++    .digest("hex")
++    .slice(0, 32);
++}
++
++function canonicalJson(value: unknown): string {
++  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
++  if (isRecord(value)) {
++    return `{${Object.keys(value)
++      .sort()
++      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
++      .join(",")}}`;
++  }
++  return JSON.stringify(value ?? null);
++}
++
+ function canRunPluginHooks(candidate: PluginCandidate): boolean {
+   // 用户安装/声明的插件 hook 默认放行（与内置/官方一致）。只由 Project 配置声明的 inline 根
+   // 不放行：Project 直写的 hook 要过工作区 hook 信任审查，插件声明不能成为绕过它的通道（DOM-01）。
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+index 88a0c32..6c0275a 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
+ import { join } from "node:path";
+ import type { PluginAvailabilityPort } from "@zcode/core";
+ import type { Logger, PluginLoadOutcome } from "@zcode/contracts";
++import { pluginGrantsPath } from "./plugin-grants.js";
+ 
+ /**
+  * Whether a plugin a resident Session started with has since been disabled or uninstalled (DOM-02).
+@@ -19,6 +20,8 @@ export function createPluginAvailability(input: {
+   const watched = [
+     ...input.watchedConfigPaths.filter((path): path is string => Boolean(path)),
+     join(input.pluginStorageRoot, "installed_plugins.json"),
++    // A revoked grant (OV-100 phase 3) withholds that plugin's hooks like a disable does.
++    pluginGrantsPath(input.pluginStorageRoot),
+   ];
+   const signature = () =>
+     watched
+@@ -40,7 +43,10 @@ export function createPluginAvailability(input: {
+         seen = current;
+         try {
+           enabled = new Set(
+-            input.discover().plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.id),
++            input
++              .discover()
++              .plugins.filter((plugin) => plugin.enabled && plugin.grant?.granted !== false)
++              .map((plugin) => plugin.id),
+           );
+         } catch (error) {
+           enabled = new Set();
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/plugin-grants.ts b/apps/zcode-cli/packages/bootstrap/src/app/plugin-grants.ts
+new file mode 100644
+index 0000000..4f6bbed
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/plugin-grants.ts
+@@ -0,0 +1,93 @@
++import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
++import { dirname, join } from "node:path";
++import type { PluginLoadOutcome } from "@zcode/contracts";
++
++/**
++ * Per-plugin grants for third-party packages (OV-100 phase 3).
++ *
++ * A package installed from a third-party marketplace runs its MCP servers and hooks only after the
++ * person allows exactly the declared surface (fingerprint). The record lives beside the install
++ * record so the management process and resident Sessions read the same file. The first discovery
++ * after this store existed records every enabled third-party package as already allowed, so
++ * upgrading never silently stops something that worked; later installs and changed surfaces ask.
++ */
++
++const GRANTS_FILE = "plugin-grants.json";
++
++interface PluginGrantRecord {
++  fingerprint: string;
++  grantedAt: string;
++  origin: "person" | "existing-install";
++}
++
++interface PluginGrantFile {
++  version: 1;
++  grants: Record<string, PluginGrantRecord>;
++}
++
++export function pluginGrantsPath(pluginStorageRoot: string): string {
++  return join(pluginStorageRoot, GRANTS_FILE);
++}
++
++/** Granted fingerprints by plugin id, or undefined when no grant store exists yet. */
++export function readPluginGrantsSync(pluginStorageRoot: string): Record<string, string> | undefined {
++  const file = readGrantFile(pluginStorageRoot);
++  if (!file) return undefined;
++  return Object.fromEntries(
++    Object.entries(file.grants).map(([pluginId, record]) => [pluginId, record.fingerprint]),
++  );
++}
++
++/**
++ * Called after a discovery that ran without a grant store: records currently enabled third-party
++ * packages as allowed (their behaviour before this boundary existed) and creates the store.
++ */
++export function seedPluginGrantsIfMissing(
++  pluginStorageRoot: string,
++  outcome: Pick<PluginLoadOutcome, "plugins">,
++): void {
++  if (existsSync(pluginGrantsPath(pluginStorageRoot))) return;
++  const now = new Date().toISOString();
++  const grants: Record<string, PluginGrantRecord> = {};
++  for (const plugin of outcome.plugins) {
++    if (!plugin.grant?.required || !plugin.enabled) continue;
++    grants[plugin.id] = { fingerprint: plugin.grant.fingerprint, grantedAt: now, origin: "existing-install" };
++  }
++  writeGrantFile(pluginStorageRoot, { version: 1, grants });
++}
++
++export function grantPluginSync(pluginStorageRoot: string, pluginId: string, fingerprint: string): void {
++  const file = readGrantFile(pluginStorageRoot) ?? { version: 1, grants: {} };
++  file.grants[pluginId] = { fingerprint, grantedAt: new Date().toISOString(), origin: "person" };
++  writeGrantFile(pluginStorageRoot, file);
++}
++
++export function revokePluginGrantSync(pluginStorageRoot: string, pluginId: string): void {
++  const file = readGrantFile(pluginStorageRoot) ?? { version: 1, grants: {} };
++  delete file.grants[pluginId];
++  writeGrantFile(pluginStorageRoot, file);
++}
++
++function readGrantFile(pluginStorageRoot: string): PluginGrantFile | undefined {
++  const path = pluginGrantsPath(pluginStorageRoot);
++  if (!existsSync(path)) return undefined;
++  try {
++    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<PluginGrantFile>;
++    const grants: Record<string, PluginGrantRecord> = {};
++    for (const [pluginId, record] of Object.entries(parsed.grants ?? {})) {
++      if (record && typeof record.fingerprint === "string") grants[pluginId] = record;
++    }
++    return { version: 1, grants };
++  } catch {
++    // An unreadable store grants nothing: failing closed keeps unapproved code from running.
++    return { version: 1, grants: {} };
++  }
++}
++
++function writeGrantFile(pluginStorageRoot: string, file: PluginGrantFile): void {
++  const path = pluginGrantsPath(pluginStorageRoot);
++  mkdirSync(dirname(path), { recursive: true });
++  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
++  writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
++  renameSync(temporary, path);
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts b/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
+index 078a60e..980c11c 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
+@@ -1,3 +1,4 @@
++import { readPluginGrantsSync, seedPluginGrantsIfMissing } from "./plugin-grants.js";
+ import type { ConfigResult } from "@zcode/adapters/config";
+ import { discoverNodePluginsSync } from "@zcode/adapters/plugins";
+ import type { AgentRuntimeConfig } from "@zcode/core";
+@@ -57,7 +58,8 @@ export function discoverAppPlugins(input: {
+   pluginStorageRoot: string;
+   workingDirectory: string;
+ }): PluginLoadOutcome {
+-  return discoverNodePluginsSync({
++  const pluginGrants = readPluginGrantsSync(input.pluginStorageRoot);
++  const outcome = discoverNodePluginsSync({
+     config: input.configResult.config.plugins,
+     env: input.env ?? process.env,
+     officialPluginRoots: resolveOfficialPluginRoots({
+@@ -72,9 +74,12 @@ export function discoverAppPlugins(input: {
+     // 报 "Skill not found: skill-creator"，但 `zcode plugins list` 却显示它是 enabled。
+     officialPluginsEnabledByDefault: DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
+     projectDeclaredRoots: projectDeclaredPluginRoots(input.configResult),
++    ...(pluginGrants ? { pluginGrants } : {}),
+     storageRoot: input.pluginStorageRoot,
+     workingDirectory: input.workingDirectory,
+   });
++  if (!pluginGrants) seedPluginGrantsIfMissing(input.pluginStorageRoot, outcome);
++  return outcome;
+ }
+ 
+ export function startAppStartup(input: {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+index 4d5fdab..4804342 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+@@ -1,3 +1,9 @@
++import {
++  grantPluginSync,
++  readPluginGrantsSync,
++  revokePluginGrantSync,
++  seedPluginGrantsIfMissing,
++} from "./app/plugin-grants.js";
+ import { rm } from "node:fs/promises";
+ import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
+ import { isDeepStrictEqual } from "node:util";
+@@ -251,8 +257,8 @@ function countVisibleMarketplacePlugins(
+ 
+ export function resolveZCodePlugins(options: ResolveZCodePluginsOptions = {}): PluginLoadOutcome {
+   const { configResult, pluginStorageRoot, workingDirectory } = resolvePluginContext(options);
+-
+-  return discoverNodePluginsSync({
++  const pluginGrants = readPluginGrantsSync(pluginStorageRoot);
++  const outcome = discoverNodePluginsSync({
+     config: configResult.config.plugins,
+     env: options.env ?? process.env,
+     officialPluginRoots: resolveOfficialPluginRoots({
+@@ -264,9 +270,33 @@ export function resolveZCodePlugins(options: ResolveZCodePluginsOptions = {}): P
+     }),
+     officialPluginsEnabledByDefault: DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
+     projectDeclaredRoots: projectDeclaredPluginRoots(configResult),
++    ...(pluginGrants ? { pluginGrants } : {}),
+     storageRoot: pluginStorageRoot,
+     workingDirectory,
+   });
++  if (!pluginGrants) seedPluginGrantsIfMissing(pluginStorageRoot, outcome);
++  return outcome;
++}
++
++/**
++ * Allows a third-party plugin's MCP servers and hooks (OV-100 phase 3). The fingerprint must be the
++ * surface the person was shown, so an update that changed it between display and approval asks again.
++ */
++export function grantZCodePlugin(
++  options: ResolveZCodePluginsOptions & { fingerprint: string; plugin: string },
++): void {
++  const { pluginStorageRoot } = resolvePluginContext(options);
++  const plugin = resolveZCodePlugins(options).plugins.find((candidate) => candidate.id === options.plugin);
++  if (!plugin?.grant?.required) throw new Error(`Plugin does not need approval: ${options.plugin}`);
++  if (plugin.grant.fingerprint !== options.fingerprint) {
++    throw new Error(`Plugin ${options.plugin} changed what it runs; review it again before allowing.`);
++  }
++  grantPluginSync(pluginStorageRoot, plugin.id, plugin.grant.fingerprint);
++}
++
++export function revokeZCodePluginGrant(options: ResolveZCodePluginsOptions & { plugin: string }): void {
++  const { pluginStorageRoot } = resolvePluginContext(options);
++  revokePluginGrantSync(pluginStorageRoot, options.plugin);
+ }
+ 
+ export function getZCodePluginsOverview(
+@@ -600,6 +630,11 @@ export async function installZCodeMarketplacePlugin(
+ ): Promise<ZCodePluginInstallData> {
+   const { configResult, pluginStorageRoot, workingDirectory } = resolvePluginContext(options);
+   ensureDefaultPluginMarketplaces(pluginStorageRoot);
++  // The grant store must exist before a new package arrives; otherwise the first discovery after
++  // this install would record it as an already-allowed existing install (OV-100 phase 3).
++  if (options.dryRun !== true && !readPluginGrantsSync(pluginStorageRoot)) {
++    resolveZCodePlugins({ ...options, configResult, pluginStorageRoot });
++  }
+   if (options.dryRun === true) {
+     const declarationSource = resolveDeclaredMarketplaceSources({
+       configResult,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+index 586282a..03d9ee1 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+@@ -1,6 +1,8 @@
+ import {
+   zcodePluginsConfigureParamsSchema,
+   zcodePluginsResetConfigParamsSchema,
++  zcodePluginsGrantParamsSchema,
++  zcodePluginsRevokeGrantParamsSchema,
+   zcodePluginsInstallParamsSchema,
+   zcodePluginsMarketplaceAddParamsSchema,
+   zcodePluginsMarketplaceRemoveParamsSchema,
+@@ -40,6 +42,8 @@ import {
+   removeZCodePluginMarketplace,
+   resolveZCodePlugins,
+   resetZCodePluginConfig,
++  grantZCodePlugin,
++  revokeZCodePluginGrant,
+   restoreBuiltinPlugin as restoreBuiltinPluginCore,
+   setZCodePluginEnabled,
+   uninstallZCodeMarketplacePlugin,
+@@ -97,6 +101,7 @@ function toPluginInfo(plugin: PluginMetadata, configResult?: ConfigResult): ZCod
+     rootPath: plugin.rootPath,
+     ...(plugin.userConfig ? { userConfig: plugin.userConfig } : {}),
+     ...(Object.keys(configuredOptions).length > 0 ? { configuredOptions } : {}),
++    ...(plugin.grant ? { grant: plugin.grant } : {}),
+     ...(rootSource ? { rootSource } : {}),
+     ...(enabledSource ? { enabledSource } : {}),
+     ...(optionSources && Object.keys(optionSources).length > 0 ? { optionSources } : {}),
+@@ -461,6 +466,39 @@ export async function resetPluginConfig(
+   return { pluginId: params.pluginId, diagnostics: [] };
+ }
+ 
++export async function grantPlugin(
++  context: ZCodeProtocolAgentServerContext,
++  rawParams: unknown,
++): Promise<ZCodePluginsConfigureResult> {
++  const params = parseParams(zcodePluginsGrantParamsSchema, rawParams);
++  const pluginStorageRoot = resolvePluginStorageRoot(params.workspace.workspacePath);
++  await withPluginStorageLock(pluginStorageRoot, async () =>
++    grantZCodePlugin({
++      fingerprint: params.fingerprint,
++      logger: context.logger,
++      plugin: params.pluginId,
++      workingDirectory: params.workspace.workspacePath,
++    }),
++  );
++  return { pluginId: params.pluginId, diagnostics: [] };
++}
++
++export async function revokePluginGrant(
++  context: ZCodeProtocolAgentServerContext,
++  rawParams: unknown,
++): Promise<ZCodePluginsConfigureResult> {
++  const params = parseParams(zcodePluginsRevokeGrantParamsSchema, rawParams);
++  const pluginStorageRoot = resolvePluginStorageRoot(params.workspace.workspacePath);
++  await withPluginStorageLock(pluginStorageRoot, async () =>
++    revokeZCodePluginGrant({
++      logger: context.logger,
++      plugin: params.pluginId,
++      workingDirectory: params.workspace.workspacePath,
++    }),
++  );
++  return { pluginId: params.pluginId, diagnostics: [] };
++}
++
+ export async function validatePlugin(
+   context: ZCodeProtocolAgentServerContext,
+   rawParams: unknown,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+index 5dee835..86e1f74 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+@@ -61,6 +61,8 @@ import {
+   listPlugins,
+   removePluginMarketplace,
+   resetPluginConfig,
++  grantPlugin,
++  revokePluginGrant,
+   restoreBuiltinPlugin,
+   setPluginEnabled,
+   uninstallPlugin,
+@@ -703,6 +705,10 @@ export class ZCodeProtocolAgentServer {
+         return await configurePlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsResetConfig:
+         return await resetPluginConfig(this.context, request.params);
++      case zcodeProtocolMethods.pluginsGrant:
++        return await grantPlugin(this.context, request.params);
++      case zcodeProtocolMethods.pluginsRevokeGrant:
++        return await revokePluginGrant(this.context, request.params);
+       case zcodeProtocolMethods.pluginsValidate:
+         return await validatePlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsDescribe:
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts
+new file mode 100644
+index 0000000..eef123f
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts
+@@ -0,0 +1,102 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { addMarketplace, installMarketplacePlugin } from "@zcode/adapters/plugins";
++import {
++  grantZCodePlugin,
++  resolveZCodePlugins,
++  revokeZCodePluginGrant,
++  setZCodePluginEnabled,
++} from "../src/plugins.js";
++
++// OV-100 phase 3: a package from a third-party marketplace runs its MCP servers and hooks only
++// after the person allows exactly what it declares; skills keep working without approval.
++
++async function fixture() {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-grants-"));
++  const workspace = join(root, "workspace");
++  const userConfigPath = join(root, "user", "config.json");
++  const pluginStorageRoot = join(root, "storage", "cli", "plugins");
++  const market = join(root, "market");
++  const plugin = join(market, "plugins", "runner");
++  for (const dir of [workspace, join(root, "user"), join(market, ".claude-plugin"), join(plugin, ".claude-plugin"), join(plugin, "skills", "notes")]) {
++    await mkdir(dir, { recursive: true });
++  }
++  await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") } }));
++  await writeFile(
++    join(market, ".claude-plugin", "marketplace.json"),
++    JSON.stringify({ name: "third-party", plugins: [{ name: "runner", source: "./plugins/runner" }] }),
++  );
++  await writeFile(
++    join(plugin, ".claude-plugin", "plugin.json"),
++    JSON.stringify({
++      name: "runner",
++      version: "1.0.0",
++      mcpServers: { tool: { command: "node", args: ["server.js"] } },
++      hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "echo checked" }] }] },
++    }),
++  );
++  await writeFile(join(plugin, "skills", "notes", "SKILL.md"), "---\nname: notes\ndescription: Take notes\n---\n");
++  const paths = { env: {}, officialPluginRoots: [], pluginStorageRoot, userConfigPath, workingDirectory: workspace };
++  return { root, market, paths, pluginStorageRoot };
++}
++
++const find = (paths: object) => resolveZCodePlugins(paths).plugins.find((entry) => entry.name === "runner")!;
++
++test("a third-party package waits for approval, and a changed surface asks again", async () => {
++  const f = await fixture();
++  try {
++    resolveZCodePlugins(f.paths); // creates the grant store before anything is installed
++    await addMarketplace({ source: { source: "directory", path: f.market }, storageRoot: f.pluginStorageRoot });
++    const installed = await installMarketplacePlugin({ marketplace: "third-party", name: "runner", storageRoot: f.pluginStorageRoot });
++    await setZCodePluginEnabled({ ...f.paths, enabled: true, plugin: "runner@third-party" });
++
++    let outcome = resolveZCodePlugins(f.paths);
++    let runner = outcome.plugins.find((entry) => entry.name === "runner")!;
++    assert.equal(runner.grant?.required, true);
++    assert.equal(runner.grant?.granted, false);
++    assert.deepEqual(runner.mcpServerNames, [], "MCP servers wait for approval");
++    assert.ok(runner.hookDetails.every((hook) => !hook.runnable), "hooks wait for approval");
++    assert.ok(runner.skillCount > 0, "skills work without approval");
++    assert.ok(outcome.diagnostics.some((diagnostic) => diagnostic.code === "plugin_grant_required"));
++
++    assert.throws(() => grantZCodePlugin({ ...f.paths, fingerprint: "stale", plugin: runner.id }), /changed what it runs/);
++    grantZCodePlugin({ ...f.paths, fingerprint: runner.grant!.fingerprint, plugin: runner.id });
++    runner = find(f.paths);
++    assert.equal(runner.grant?.granted, true);
++    assert.equal(runner.mcpServerNames.length, 1);
++    assert.ok(runner.hookDetails.every((hook) => hook.runnable));
++
++    // An update that changes what runs needs a new approval.
++    const manifestPath = join(installed.installed[0]!.installPath, ".claude-plugin", "plugin.json");
++    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
++    manifest.mcpServers.tool.args = ["other.js"];
++    await writeFile(manifestPath, JSON.stringify(manifest));
++    assert.equal(find(f.paths).grant?.granted, false);
++
++    grantZCodePlugin({ ...f.paths, fingerprint: find(f.paths).grant!.fingerprint, plugin: runner.id });
++    revokeZCodePluginGrant({ ...f.paths, plugin: runner.id });
++    assert.equal(find(f.paths).grant?.granted, false, "revoking withholds it again");
++  } finally {
++    await rm(f.root, { recursive: true, force: true });
++  }
++});
++
++test("packages installed before grants existed keep working after the upgrade", async () => {
++  const f = await fixture();
++  try {
++    await addMarketplace({ source: { source: "directory", path: f.market }, storageRoot: f.pluginStorageRoot });
++    await installMarketplacePlugin({ marketplace: "third-party", name: "runner", storageRoot: f.pluginStorageRoot });
++    await setZCodePluginEnabled({ ...f.paths, enabled: true, plugin: "runner@third-party" });
++    await unlink(join(f.pluginStorageRoot, "plugin-grants.json")).catch(() => undefined);
++
++    assert.equal(find(f.paths).grant?.granted, true, "first discovery records the existing install");
++    const store = JSON.parse(await readFile(join(f.pluginStorageRoot, "plugin-grants.json"), "utf8"));
++    assert.equal(store.grants["runner@third-party"].origin, "existing-install");
++    assert.equal(find(f.paths).grant?.granted, true);
++  } finally {
++    await rm(f.root, { recursive: true, force: true });
++  }
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/plugins/index.ts b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+index 71d7026..c20a959 100644
+--- a/apps/zcode-cli/packages/contracts/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+@@ -40,6 +40,7 @@ export type PluginDiagnosticCode =
+   | "plugin_hook_invalid"
+   | "plugin_hook_unsupported_event"
+   | "plugin_project_hooks_withheld"
++  | "plugin_grant_required"
+   | "plugin_dependency_invalid"
+   | "plugin_dependency_missing"
+   | "plugin_dependency_cycle"
+@@ -199,6 +200,16 @@ export interface PluginMetadata {
+   source: PluginSource;
+   userConfig?: Record<string, PluginUserConfigOption>;
+   version?: string;
++  /** Present when the plugin can run host code (MCP servers or hooks); see PluginDiscoverRequest. */
++  grant?: PluginGrantState;
++}
++
++export interface PluginGrantState {
++  /** True for third-party marketplace plugins, which must be allowed before their code runs. */
++  required: boolean;
++  granted: boolean;
++  /** Hash of the declared MCP servers and hooks; a change asks again. */
++  fingerprint: string;
+ }
+ 
+ export interface PluginDiagnostic {
+@@ -271,6 +282,14 @@ export interface PluginDiscoverRequest {
+    * workspace-hook trust review, and a Project-declared plugin cannot bypass it (DOM-01).
+    */
+   projectDeclaredRoots?: string[];
++  /**
++   * Per-plugin grants (plugin id → granted executable-surface fingerprint) for plugins installed
++   * from third-party marketplaces. Their MCP servers and hooks run only while the granted
++   * fingerprint matches; skills and commands load regardless (OV-100 phase 3). Undefined means no
++   * grant store exists yet: everything stays runnable so existing installs keep working until
++   * bootstrap records them.
++   */
++  pluginGrants?: Readonly<Record<string, string>>;
+   storageRoot: string;
+   trace?: TraceContext;
+   workingDirectory: string;
+diff --git a/packages/services/src/plugins/pluginManagement.ts b/packages/services/src/plugins/pluginManagement.ts
+index 6d8c22f..01865ab 100644
+--- a/packages/services/src/plugins/pluginManagement.ts
++++ b/packages/services/src/plugins/pluginManagement.ts
+@@ -34,6 +34,8 @@ import type {
+   ZCodeAgentPluginReferenceCatalogParams,
+   ZCodeAgentResolveSuggestedPluginReferenceParams,
+   ZCodeAgentResetPluginConfigParams,
++  ZCodeAgentGrantPluginParams,
++  ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentPluginViewParams,
+   ZCodeAgentRemovePluginMarketplaceParams,
+   ZCodeAgentRestoreBuiltinPluginParams,
+@@ -83,6 +85,9 @@ export interface IPluginManagementService {
+   resetPluginConfig(
+     params: ZCodeAgentResetPluginConfigParams,
+   ): Promise<ZCodePluginsConfigureResult>;
++  /** Allows a third-party plugin's MCP servers and hooks for the surface the person reviewed. */
++  grantPlugin(params: ZCodeAgentGrantPluginParams): Promise<ZCodePluginsConfigureResult>;
++  revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+   setPluginEnabled(params: ZCodeAgentSetPluginEnabledParams): Promise<ZCodePluginsSetEnabledResult>;
+diff --git a/packages/services/src/plugins/pluginManagementService.ts b/packages/services/src/plugins/pluginManagementService.ts
+index 60c354e..23fc3c3 100644
+--- a/packages/services/src/plugins/pluginManagementService.ts
++++ b/packages/services/src/plugins/pluginManagementService.ts
+@@ -23,6 +23,8 @@ interface PluginManagementServiceDependencies {
+     | "restoreBuiltinPlugin"
+     | "configurePlugin"
+     | "resetPluginConfig"
++    | "grantPlugin"
++    | "revokePluginGrant"
+     | "validatePlugin"
+     | "describePlugin"
+     | "setPluginEnabled"
+@@ -50,6 +52,8 @@ export function createPluginManagementService(
+     restoreBuiltinPlugin: (params) => agent.restoreBuiltinPlugin(params),
+     configurePlugin: (params) => agent.configurePlugin(params),
+     resetPluginConfig: (params) => agent.resetPluginConfig(params),
++    grantPlugin: (params) => agent.grantPlugin(params),
++    revokePluginGrant: (params) => agent.revokePluginGrant(params),
+     validatePlugin: (params) => agent.validatePlugin(params),
+     describePlugin: (params) => agent.describePlugin(params),
+     setPluginEnabled: (params) => agent.setPluginEnabled(params),
+diff --git a/packages/services/src/zcode-agent/zcodeAgent.ts b/packages/services/src/zcode-agent/zcodeAgent.ts
+index 598905a..3aa06c4 100644
+--- a/packages/services/src/zcode-agent/zcodeAgent.ts
++++ b/packages/services/src/zcode-agent/zcodeAgent.ts
+@@ -112,6 +112,8 @@ import type {
+   ZCodeAgentCancelPluginOperationParams,
+   ZCodeAgentConfigurePluginParams,
+   ZCodeAgentResetPluginConfigParams,
++  ZCodeAgentGrantPluginParams,
++  ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentCreateAutomationParams,
+   ZCodeAgentDeleteAutomationRunParams,
+   ZCodeAgentDescribePluginParams,
+@@ -673,6 +675,8 @@ export interface IZCodeAgentService {
+   resetPluginConfig(
+     params: ZCodeAgentResetPluginConfigParams,
+   ): Promise<ZCodePluginsConfigureResult>;
++  grantPlugin(params: ZCodeAgentGrantPluginParams): Promise<ZCodePluginsConfigureResult>;
++  revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+   setPluginEnabled(params: ZCodeAgentSetPluginEnabledParams): Promise<ZCodePluginsSetEnabledResult>;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+index 899a647..99747c5 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+@@ -77,6 +77,15 @@ export interface ZCodeAgentResetPluginConfigParams extends ZCodeAgentWorkspaceTa
+   scope?: "user" | "workspace";
+ }
+ 
++export interface ZCodeAgentGrantPluginParams extends ZCodeAgentWorkspaceTarget {
++  pluginId: string;
++  fingerprint: string;
++}
++
++export interface ZCodeAgentRevokePluginGrantParams extends ZCodeAgentWorkspaceTarget {
++  pluginId: string;
++}
++
+ export interface ZCodeAgentValidatePluginParams extends ZCodeAgentWorkspaceTarget {
+   marketplace?: string;
+   pluginName?: string;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index 8bb088d..109f880 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -159,6 +159,8 @@ import type {
+   ZCodeAgentCompactParams,
+   ZCodeAgentConfigurePluginParams,
+   ZCodeAgentResetPluginConfigParams,
++  ZCodeAgentGrantPluginParams,
++  ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentCreateSessionParams,
+   ZCodeAgentInstallPluginParams,
+   ZCodeAgentGenerateWorkspaceTextParams,
+@@ -4316,6 +4318,30 @@ export function createZCodeAgentService(
+       );
+     },
+ 
++    async grantPlugin(params: ZCodeAgentGrantPluginParams) {
++      const client = await getPluginManagementClient();
++      return client.request(
++        zcodeProtocolMethods.pluginsGrant,
++        {
++          workspace: buildWorkspaceRef(params),
++          pluginId: params.pluginId,
++          fingerprint: params.fingerprint,
++        },
++        zcodePluginsConfigureResultSchema,
++        { timeoutMs: PLUGIN_MANAGEMENT_REQUEST_TIMEOUT_MS },
++      );
++    },
++
++    async revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams) {
++      const client = await getPluginManagementClient();
++      return client.request(
++        zcodeProtocolMethods.pluginsRevokeGrant,
++        { workspace: buildWorkspaceRef(params), pluginId: params.pluginId },
++        zcodePluginsConfigureResultSchema,
++        { timeoutMs: PLUGIN_MANAGEMENT_REQUEST_TIMEOUT_MS },
++      );
++    },
++
+     async validatePlugin(params: ZCodeAgentValidatePluginParams) {
+       const client = await getPluginManagementClient();
+       return client.request(
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 544d0ad..91be7e9 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -2605,6 +2605,11 @@ export const zcodePluginInfoSchema = z
+     rootSource: zcodePluginScopeSchema.optional(),
+     enabledSource: zcodePluginScopeSchema.optional(),
+     optionSources: z.record(z.string(), zcodePluginScopeSchema).optional(),
++    // OV-100 phase 3: third-party MCP servers and hooks run only while this fingerprint is allowed.
++    grant: z
++      .object({ required: z.boolean(), granted: z.boolean(), fingerprint: nonEmptyString })
++      .strict()
++      .optional(),
+   })
+   .strict();
+ export type ZCodePluginInfo = z.infer<typeof zcodePluginInfoSchema>;
+@@ -3312,6 +3317,24 @@ export const zcodePluginsResetConfigParamsSchema = z
+   .strict();
+ export type ZCodePluginsResetConfigParams = z.infer<typeof zcodePluginsResetConfigParamsSchema>;
+ 
++export const zcodePluginsGrantParamsSchema = z
++  .object({
++    workspace: zcodeWorkspaceRefSchema,
++    pluginId: nonEmptyString,
++    /** The surface the person reviewed; a different current surface is refused. */
++    fingerprint: nonEmptyString,
++  })
++  .strict();
++export type ZCodePluginsGrantParams = z.infer<typeof zcodePluginsGrantParamsSchema>;
++
++export const zcodePluginsRevokeGrantParamsSchema = z
++  .object({
++    workspace: zcodeWorkspaceRefSchema,
++    pluginId: nonEmptyString,
++  })
++  .strict();
++export type ZCodePluginsRevokeGrantParams = z.infer<typeof zcodePluginsRevokeGrantParamsSchema>;
++
+ export const zcodePluginsValidateParamsSchema = z
+   .object({
+     workspace: zcodeWorkspaceRefSchema,
+@@ -3681,6 +3704,8 @@ export const zcodeProtocolMethods = {
+   pluginsRestoreBuiltin: "plugins/restoreBuiltin",
+   pluginsConfigure: "plugins/configure",
+   pluginsResetConfig: "plugins/resetConfig",
++  pluginsGrant: "plugins/grant",
++  pluginsRevokeGrant: "plugins/revokeGrant",
+   pluginsValidate: "plugins/validate",
+   pluginsDescribe: "plugins/describe",
+   automationCreate: "automation/create",
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 3b7d7a0..29aefa3 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4497,6 +4497,14 @@ const enUS: Record<string, string> = {
+   "settings.plugins.marketplaces.chooseDirectory": "Choose directory",
+   "settings.plugins.marketplaces.dropHint": "Drag a file or folder here, or choose a directory.",
+   "settings.plugins.marketplaces.validate": "Validate marketplace",
++  "settings.plugins.grant.required": "Needs approval",
++  "settings.plugins.grant.review": "Review and allow",
++  "settings.plugins.grant.allow": "Allow",
++  "settings.plugins.grant.revoke": "Revoke approval",
++  "settings.plugins.grant.title": "Allow “{name}” to run code?",
++  "settings.plugins.grant.description": "This plugin comes from a third-party marketplace. Once allowed, the following run on your computer; its skills and commands work without approval. An update that changes them asks again.",
++  "settings.plugins.grant.mcp": "MCP servers: {names}",
++  "settings.plugins.grant.hooks": "Hooks: {hooks}",
+   "settings.plugins.marketplaces.add": "Add marketplace",
+   "settings.plugins.marketplaces.update": "Update marketplace",
+   "settings.plugins.marketplaces.remove": "Remove marketplace",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index e7e6dca..e3df6fb 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4177,6 +4177,14 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.marketplaces.chooseDirectory": "选择目录",
+   "settings.plugins.marketplaces.dropHint": "拖入文件或文件夹，或选择目录。",
+   "settings.plugins.marketplaces.validate": "校验插件市场",
++  "settings.plugins.grant.required": "需要授权",
++  "settings.plugins.grant.review": "查看并允许",
++  "settings.plugins.grant.allow": "允许运行",
++  "settings.plugins.grant.revoke": "撤销运行授权",
++  "settings.plugins.grant.title": "允许“{name}”运行代码？",
++  "settings.plugins.grant.description": "该插件来自第三方市场。允许后，它的以下内容会在你的电脑上运行；技能和命令无需授权即可使用。插件更新若改变这些内容，会再次询问。",
++  "settings.plugins.grant.mcp": "MCP 服务器：{names}",
++  "settings.plugins.grant.hooks": "钩子：{hooks}",
+   "settings.plugins.marketplaces.add": "添加插件市场",
+   "settings.plugins.marketplaces.update": "更新插件市场",
+   "settings.plugins.marketplaces.remove": "移除插件市场",
+diff --git a/packages/ui/src/settings/PluginsSection.tsx b/packages/ui/src/settings/PluginsSection.tsx
+index 93d9d36..79feea2 100644
+--- a/packages/ui/src/settings/PluginsSection.tsx
++++ b/packages/ui/src/settings/PluginsSection.tsx
+@@ -8,9 +8,12 @@ import {
+   Plus,
+   RefreshCw,
+   RotateCcw,
++  ShieldCheck,
++  ShieldOff,
+   Trash2,
+   UploadCloud,
+ } from "lucide-react";
++import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+ import { Button } from "@/components/ui/button.js";
+ import { toast } from "@/components/ui/toast.js";
+ import {
+@@ -190,6 +193,9 @@ function PluginList({
+   const configurePlugin = usePluginManagementStore((state) => state.configurePlugin);
+   const currentConfigScope = usePluginManagementStore((state) => state.configScope);
+   const resetPluginConfig = usePluginManagementStore((state) => state.resetPluginConfig);
++  const grantPlugin = usePluginManagementStore((state) => state.grantPlugin);
++  const revokePluginGrant = usePluginManagementStore((state) => state.revokePluginGrant);
++  const confirmDialog = useConfirmDialog();
+   const togglingPluginId = usePluginManagementStore((state) => state.togglingPluginId);
+   const operationId = usePluginManagementStore((state) => state.operationId);
+   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+@@ -483,6 +489,32 @@ function PluginList({
+     });
+   }, [initialize, pluginManagementService, configScope, target, targetServiceResolution.rpcReady]);
+ 
++  // OV-100 phase 3: the person sees what a third-party package will run before it runs.
++  const handleGrantPlugin = async (plugin: ZCodePluginInfo) => {
++    if (!plugin.grant) return;
++    const mcp = plugin.declaredMcpServerNames ?? [];
++    const hooks = (plugin.hookDetails ?? []).map((hook) => `${hook.event} · ${hook.command}`);
++    const surface = [
++      ...(mcp.length > 0
++        ? [intl.formatMessage({ id: "settings.plugins.grant.mcp" }, { names: mcp.join(", ") })]
++        : []),
++      ...(hooks.length > 0
++        ? [intl.formatMessage({ id: "settings.plugins.grant.hooks" }, { hooks: hooks.join("; ") })]
++        : []),
++    ].join("\n");
++    const confirmed = await confirmDialog({
++      title: intl.formatMessage(
++        { id: "settings.plugins.grant.title" },
++        { name: resolveManagedPluginDisplay(plugin, storeItemById.get(plugin.id), locale).name },
++      ),
++      description: `${intl.formatMessage({ id: "settings.plugins.grant.description" })}\n${surface}`,
++      confirmLabel: intl.formatMessage({ id: "settings.plugins.grant.allow" }),
++      testId: "plugin-grant-confirm",
++    });
++    if (!confirmed) return;
++    await grantPlugin(plugin.id, plugin.grant.fingerprint, pluginManagementService);
++  };
++
+   const renderPluginRows = (items: ZCodePluginInfo[]) => (
+     <div className="overflow-hidden rounded-xl bg-surface">
+       {items.map((plugin, index) => (
+@@ -538,11 +570,32 @@ function PluginList({
+                               : undefined
+                       }
+                     />
++                    {plugin.grant?.required && !plugin.grant.granted ? (
++                      <span
++                        className="inline-flex h-5 items-center rounded-full bg-warning/10 px-2 text-ui-xs font-medium text-warning"
++                        data-testid="plugin-grant-required"
++                      >
++                        {intl.formatMessage({ id: "settings.plugins.grant.required" })}
++                      </span>
++                    ) : null}
+                   </div>
+                 </div>
+               </div>
+             </button>
+             <PluginStoreUpdateButton item={storeItemById.get(plugin.id)} actions={actions} />
++            {plugin.grant?.required && !plugin.grant.granted ? (
++              <Button
++                type="button"
++                variant="outline"
++                size="sm"
++                data-testid="plugin-grant-allow"
++                disabled={operationId !== null}
++                onClick={() => void handleGrantPlugin(plugin)}
++              >
++                <ShieldCheck data-icon="inline-start" aria-hidden="true" />
++                {intl.formatMessage({ id: "settings.plugins.grant.review" })}
++              </Button>
++            ) : null}
+             {plugin.packageStatus === "missing" ? null : (
+               <DropdownMenu>
+                 <DropdownMenuTrigger asChild>
+@@ -568,6 +621,15 @@ function PluginList({
+                       })}
+                     </DropdownMenuItem>
+                   ) : null}
++                  {plugin.grant?.required && plugin.grant.granted ? (
++                    <DropdownMenuItem
++                      disabled={operationId !== null}
++                      onSelect={() => void revokePluginGrant(plugin.id, pluginManagementService)}
++                    >
++                      <ShieldOff className="size-4" aria-hidden="true" />
++                      {intl.formatMessage({ id: "settings.plugins.grant.revoke" })}
++                    </DropdownMenuItem>
++                  ) : null}
+                   {configScope === "workspace" && plugin.enabledSource === "workspace" ? (
+                     <DropdownMenuItem
+                       disabled={operationId !== null || togglingPluginId === plugin.id}
+diff --git a/packages/ui/src/store/pluginManagementStore.ts b/packages/ui/src/store/pluginManagementStore.ts
+index aa2e2ad..9065e7e 100644
+--- a/packages/ui/src/store/pluginManagementStore.ts
++++ b/packages/ui/src/store/pluginManagementStore.ts
+@@ -89,6 +89,13 @@ export interface PluginManagementState {
+     pluginService: IPluginManagementService,
+     scope?: ZCodePluginScope,
+   ) => Promise<boolean>;
++  /** OV-100 phase 3: allow / revoke a third-party plugin's MCP servers and hooks. */
++  grantPlugin: (
++    pluginId: string,
++    fingerprint: string,
++    pluginService: IPluginManagementService,
++  ) => Promise<boolean>;
++  revokePluginGrant: (pluginId: string, pluginService: IPluginManagementService) => Promise<boolean>;
+   validateSource: (source: string, pluginService: IPluginManagementService) => Promise<void>;
+   setEnabled: (
+     pluginId: string,
+@@ -347,6 +354,30 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+     );
+   },
+ 
++  async grantPlugin(pluginId, fingerprint, pluginService) {
++    return await runWorkspaceOperation(
++      set,
++      get,
++      pluginService,
++      `plugin:grant:${pluginId}`,
++      async (workspace) => {
++        await pluginService.grantPlugin({ ...workspace, pluginId, fingerprint });
++      },
++    );
++  },
++
++  async revokePluginGrant(pluginId, pluginService) {
++    return await runWorkspaceOperation(
++      set,
++      get,
++      pluginService,
++      `plugin:revoke-grant:${pluginId}`,
++      async (workspace) => {
++        await pluginService.revokePluginGrant({ ...workspace, pluginId });
++      },
++    );
++  },
++
+   async validateSource(source, pluginService) {
+     const { workspacePath, workspaceIdentity } = get();
+     if (!workspacePath) return;
+-- 
+2.54.0 (Apple Git-157)
+

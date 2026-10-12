@@ -1,0 +1,456 @@
+diff --git a/apps/zcode-cli/docs/fleet-local-startup.md b/apps/zcode-cli/docs/fleet-local-startup.md
+index 287e982..53cb5ec 100644
+--- a/apps/zcode-cli/docs/fleet-local-startup.md
++++ b/apps/zcode-cli/docs/fleet-local-startup.md
+@@ -19,7 +19,9 @@ The line-art Lucide `User` fallback does not match that reference. Keep the orig
+ Settings logs record field names only, never the name or encoded avatar.
+ 
+ The owner replaces the lower-left account entry with Cherry Studio's local-profile interaction.
+-Click the existing avatar/name row to open a compact dialog with a name input and editable avatar.
++Click the avatar/name row to open the original ZCode preference menu: language, theme, interface
++mode, desktop zoom, usage statistics, then Edit profile. Edit profile opens the existing compact
++name/avatar dialog; local identity does not replace the preference menu.
+ Changes save locally; there is no account, login, authorization status or developer configuration.
+ Use ZCode's Avatar, Dialog, Input and menu primitives and retain its footer size/alignment.
+ Cherry reference: `src/renderer/components/UserPopup.tsx` at `09d4ea5e`; omit its optional cloud
+@@ -37,8 +39,12 @@ A failed read/decode/write leaves committed settings intact and reports an actio
+ Closing the editor invalidates unfinished image processing; an old image cannot replace a newer
+ selection or a reset. Settings mutations already admitted to the owner complete normally.
+ 
+-Language/interface mode remain in General settings, theme in Appearance, zoom in the native View
+-menu and its existing shortcuts. Settings and remote-control footer buttons keep their owners.
++The menu reads language from IntlProvider, theme/interface mode from the existing ZCode store,
++and desktop zoom through IPlatformService; it creates no parallel preference state. Usage opens
++the existing Usage settings section from both Workspace and Settings, never Back to Workspace.
++Keep the original submenu layout, radio selection, effective shortcut labels and zoom bounds.
++General/Appearance settings and the native View menu remain alternate access paths. Settings and
++remote-control footer buttons keep their owners; commercial upgrade/referral/vendor login stay retired.
+ Remove the superseded, unconfigured native GitHub identity service/hook/menu, not just its text.
+ Repository tools and Copilot authorization are independent and stay intact.
+ 
+@@ -78,5 +84,7 @@ This does not estimate prompts, infer model capacity, or restore vendor purchase
+ 
+ Acceptance: `pnpm test:fleet-local` verifies retired-service isolation, bounded local-profile
+ validation/persistence and guide packaging. Exercise edit/close/reopen/restart, upload/reset,
+-invalid image, Chinese input, offline use and unchanged settings/navigation. Owner visual acceptance
++invalid image, Chinese input and offline use. Check avatar menu with pointer/keyboard, submenu
++selection reflected in Settings, usage navigation from both hosts, desktop zoom/reset and local
++profile focus restoration in light/dark and Chinese/English. Owner visual acceptance
+ is pending. This does not complete contextual Agent assistance or marketplace independence.
+diff --git a/packages/ui/src/LocalProfileControl.tsx b/packages/ui/src/LocalProfileControl.tsx
+index a6325b2..2d40a3d 100644
+--- a/packages/ui/src/LocalProfileControl.tsx
++++ b/packages/ui/src/LocalProfileControl.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useRef, useState } from "react";
++import { LocalProfileMenu } from "@/LocalProfileMenu.js";
+ import defaultProfileAvatar from "@/assets/default-profile-avatar.svg";
+ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -15,7 +16,13 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { prepareLocalProfileAvatar } from "@/lib/localProfileAvatar.js";
+ 
+ /** Cherry's avatar/name editor, backed by the existing local Host settings owner. */
+-export function LocalProfileControl() {
++export function LocalProfileControl({
++  isDesktop = false,
++  onUsageClick,
++}: {
++  isDesktop?: boolean;
++  onUsageClick?: () => void;
++}) {
+   const { intl } = useZCodeIntl();
+   const { settings, error: readError, refresh, update } = useSettings();
+   const [open, setOpen] = useState(false);
+@@ -24,6 +31,7 @@ export function LocalProfileControl() {
+   const imageRequest = useRef(0);
+   const nameRequest = useRef(0);
+   const fileInput = useRef<HTMLInputElement>(null);
++  const profileTrigger = useRef<HTMLButtonElement>(null);
+   useEffect(
+     () => () => {
+       imageRequest.current++;
+@@ -35,6 +43,8 @@ export function LocalProfileControl() {
+   const avatar = settings?.localProfileAvatar;
+   const changeOpen = (value: boolean) => {
+     imageRequest.current++;
++    // 已提交的保存仍由设置服务完成，旧弹窗的失败不能污染重新打开的编辑。
++    nameRequest.current++;
+     setOpen(value);
+     if (value) {
+       setDraftName(undefined);
+@@ -80,25 +90,40 @@ export function LocalProfileControl() {
+   );
+   return (
+     <>
+-      <Button
+-        type="button"
+-        variant="ghost"
+-        size="lg"
+-        className="min-w-0 flex-1 justify-start gap-2 overflow-hidden rounded-tl-2xl rounded-bl-2xl border-0 pl-0"
+-        aria-label={intl.formatMessage({ id: "profile.edit" })}
+-        onClick={() => changeOpen(true)}
++      {/* 本机资料替代账号身份，不应连同原版偏好菜单一起移除。 */}
++      <LocalProfileMenu
++        isDesktop={isDesktop}
++        onUsageClick={onUsageClick}
++        onEditProfile={() => changeOpen(true)}
+       >
+-        {image()}
+-        <div className="min-w-0 flex-1 overflow-hidden text-left">
+-          <div className="flex min-w-0 items-center gap-1.5">
+-            <span className="min-w-0 truncate text-ui-base font-semibold text-foreground">
+-              {name}
+-            </span>
++        <Button
++          ref={profileTrigger}
++          type="button"
++          variant="ghost"
++          size="lg"
++          className="min-w-0 flex-1 justify-start gap-2 overflow-hidden rounded-tl-2xl rounded-bl-2xl border-0 pl-0"
++          aria-label={intl.formatMessage({ id: "profile.menu" })}
++        >
++          {image()}
++          <div className="min-w-0 flex-1 overflow-hidden text-left">
++            <div className="flex min-w-0 items-center gap-1.5">
++              <span className="min-w-0 truncate text-ui-base font-semibold text-foreground">
++                {name}
++              </span>
++            </div>
+           </div>
+-        </div>
+-      </Button>
++        </Button>
++      </LocalProfileMenu>
+       <Dialog open={open} onOpenChange={changeOpen}>
+-        <DialogContent className="max-w-xs gap-5 p-5" aria-describedby={undefined}>
++        <DialogContent
++          className="max-w-xs gap-5 p-5"
++          aria-describedby={undefined}
++          onCloseAutoFocus={(event) => {
++            // 编辑项在菜单关闭后卸载，Dialog 应把焦点还给稳定的头像入口。
++            event.preventDefault();
++            profileTrigger.current?.focus();
++          }}
++        >
+           <DialogTitle className="sr-only">
+             {intl.formatMessage({ id: "profile.edit" })}
+           </DialogTitle>
+diff --git a/packages/ui/src/LocalProfileMenu.tsx b/packages/ui/src/LocalProfileMenu.tsx
+new file mode 100644
+index 0000000..5660eac
+--- /dev/null
++++ b/packages/ui/src/LocalProfileMenu.tsx
+@@ -0,0 +1,235 @@
++import type { ReactElement } from "react";
++import { useCallback, useEffect, useState } from "react";
++import { DesktopCommandIds, TID_SIDEBAR_CODING_PLAN_USAGE_BUTTON } from "@zcode/shared";
++import {
++  BarChart3,
++  Globe,
++  Maximize,
++  Palette,
++  PencilRuler,
++  User,
++  ZoomIn,
++  ZoomOut,
++} from "lucide-react";
++import {
++  DropdownMenu,
++  DropdownMenuContent,
++  DropdownMenuItem,
++  DropdownMenuRadioGroup,
++  DropdownMenuRadioItem,
++  DropdownMenuSeparator,
++  DropdownMenuShortcut,
++  DropdownMenuSub,
++  DropdownMenuSubContent,
++  DropdownMenuSubTrigger,
++  DropdownMenuTrigger,
++} from "@/components/ui/dropdown-menu.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
++import { setPendingSettingsUsageIntent } from "@/lib/settingsNavigation.js";
++import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
++import { useZCodeStore } from "@/store/StoreProvider.js";
++
++const DESKTOP_ZOOM_MIN_LEVEL = -3;
++const DESKTOP_ZOOM_MAX_LEVEL = 5;
++
++/** Original ZCode preference menu, independent of vendor identity and billing. */
++export function LocalProfileMenu({
++  children,
++  isDesktop,
++  onUsageClick,
++  onEditProfile,
++}: {
++  children: ReactElement;
++  isDesktop: boolean;
++  onUsageClick?: () => void;
++  onEditProfile: () => void;
++}) {
++  const { intl, localePreference, setLocalePreference } = useZCodeIntl();
++  const platform = usePlatform();
++  const theme = useZCodeStore((state) => state.theme);
++  const setTheme = useZCodeStore((state) => state.setTheme);
++  const interfaceMode = useZCodeStore((state) => state.interfaceMode);
++  const setInterfaceMode = useZCodeStore((state) => state.setInterfaceMode);
++  const zoomInShortcutLabel = useShortcutCommandLabel("zoomIn");
++  const zoomOutShortcutLabel = useShortcutCommandLabel("zoomOut");
++  const resetZoomShortcutLabel = useShortcutCommandLabel("resetZoom");
++  const [desktopZoomLevel, setDesktopZoomLevel] = useState(0);
++  const runDesktopZoomCommand = useCallback(
++    (command: (typeof DesktopCommandIds)["ZoomIn" | "ZoomOut" | "ResetZoom"]) => {
++      void platform.executeDesktopCommand(command);
++    },
++    [platform],
++  );
++
++  useEffect(() => {
++    if (!isDesktop) {
++      setDesktopZoomLevel(0);
++      return;
++    }
++
++    let isCancelled = false;
++    void platform.getDesktopZoomLevel?.().then((state) => {
++      if (!isCancelled && Number.isFinite(state.zoomLevel)) {
++        setDesktopZoomLevel(state.zoomLevel);
++      }
++    });
++
++    const dispose = platform.onDesktopZoomLevelChanged?.((state) => {
++      if (Number.isFinite(state.zoomLevel)) {
++        setDesktopZoomLevel(state.zoomLevel);
++      }
++    });
++
++    return () => {
++      isCancelled = true;
++      dispose?.();
++    };
++  }, [isDesktop, platform]);
++
++  const canResetDesktopZoom = desktopZoomLevel !== 0;
++  const canZoomIn = desktopZoomLevel < DESKTOP_ZOOM_MAX_LEVEL;
++  const canZoomOut = desktopZoomLevel > DESKTOP_ZOOM_MIN_LEVEL;
++
++  return (
++    <DropdownMenu>
++      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
++      <DropdownMenuContent align="start" className="w-max min-w-50">
++        <DropdownMenuSub>
++          <DropdownMenuSubTrigger>
++            <Globe className="size-4" />
++            {intl.formatMessage({ id: "settings.locale" })}
++          </DropdownMenuSubTrigger>
++          <DropdownMenuSubContent className="w-48">
++            <DropdownMenuRadioGroup
++              value={localePreference}
++              onValueChange={(value) => {
++                if (value === "system" || value === "zh-CN" || value === "en-US")
++                  setLocalePreference(value);
++              }}
++            >
++              <DropdownMenuRadioItem value="system">
++                {intl.formatMessage({
++                  id: "sidebar.settings.systemDefault",
++                })}
++              </DropdownMenuRadioItem>
++              <DropdownMenuRadioItem value="en-US">
++                {intl.formatMessage({
++                  id: "sidebar.settings.locale.en-US",
++                })}
++              </DropdownMenuRadioItem>
++              <DropdownMenuRadioItem value="zh-CN">
++                {intl.formatMessage({
++                  id: "sidebar.settings.locale.zh-CN",
++                })}
++              </DropdownMenuRadioItem>
++            </DropdownMenuRadioGroup>
++          </DropdownMenuSubContent>
++        </DropdownMenuSub>
++        <DropdownMenuSub>
++          <DropdownMenuSubTrigger>
++            <Palette className="size-4" />
++            {intl.formatMessage({ id: "settings.themeMode" })}
++          </DropdownMenuSubTrigger>
++          <DropdownMenuSubContent className="w-48">
++            <DropdownMenuRadioGroup
++              value={theme}
++              onValueChange={(value) => {
++                if (value === "system" || value === "zai-light" || value === "zai-dark")
++                  setTheme(value);
++              }}
++            >
++              <DropdownMenuRadioItem value="system">
++                {intl.formatMessage({
++                  id: "sidebar.settings.systemDefault",
++                })}
++              </DropdownMenuRadioItem>
++              <DropdownMenuRadioItem value="zai-dark">
++                {intl.formatMessage({
++                  id: "sidebar.settings.theme.zai-dark",
++                })}
++              </DropdownMenuRadioItem>
++              <DropdownMenuRadioItem value="zai-light">
++                {intl.formatMessage({
++                  id: "sidebar.settings.theme.zai-light",
++                })}
++              </DropdownMenuRadioItem>
++            </DropdownMenuRadioGroup>
++          </DropdownMenuSubContent>
++        </DropdownMenuSub>
++        <DropdownMenuSub>
++          <DropdownMenuSubTrigger>
++            <PencilRuler className="size-4" />
++            {intl.formatMessage({ id: "settings.interfaceMode" })}
++          </DropdownMenuSubTrigger>
++          <DropdownMenuSubContent className="w-48">
++            <DropdownMenuRadioGroup
++              value={interfaceMode}
++              onValueChange={(value) => setInterfaceMode(normalizeInterfaceMode(value))}
++            >
++              <DropdownMenuRadioItem value="coding">
++                {intl.formatMessage({ id: "settings.interfaceMode.coding" })}
++              </DropdownMenuRadioItem>
++              <DropdownMenuRadioItem value="office">
++                {intl.formatMessage({ id: "settings.interfaceMode.office" })}
++              </DropdownMenuRadioItem>
++            </DropdownMenuRadioGroup>
++          </DropdownMenuSubContent>
++        </DropdownMenuSub>
++        {isDesktop ? (
++          <DropdownMenuSub>
++            <DropdownMenuSubTrigger>
++              <ZoomIn className="size-4" />
++              {intl.formatMessage({ id: "sidebar.settings.interfaceZoom" })}
++            </DropdownMenuSubTrigger>
++            <DropdownMenuSubContent className="w-50">
++              <DropdownMenuItem
++                disabled={!canZoomIn}
++                onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ZoomIn)}
++              >
++                <ZoomIn className="size-4" />
++                {intl.formatMessage({ id: "titleBar.menu.view.zoomIn" })}
++                <DropdownMenuShortcut>{zoomInShortcutLabel}</DropdownMenuShortcut>
++              </DropdownMenuItem>
++              <DropdownMenuItem
++                disabled={!canZoomOut}
++                onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ZoomOut)}
++              >
++                <ZoomOut className="size-4" />
++                {intl.formatMessage({ id: "titleBar.menu.view.zoomOut" })}
++                <DropdownMenuShortcut>{zoomOutShortcutLabel}</DropdownMenuShortcut>
++              </DropdownMenuItem>
++              <DropdownMenuItem
++                disabled={!canResetDesktopZoom}
++                onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ResetZoom)}
++              >
++                <Maximize className="size-4" />
++                {intl.formatMessage({ id: "titleBar.menu.view.actualSize" })}
++                <DropdownMenuShortcut>{resetZoomShortcutLabel}</DropdownMenuShortcut>
++              </DropdownMenuItem>
++            </DropdownMenuSubContent>
++          </DropdownMenuSub>
++        ) : null}
++
++        <DropdownMenuSeparator />
++        <DropdownMenuItem
++          data-testid={TID_SIDEBAR_CODING_PLAN_USAGE_BUTTON}
++          disabled={!onUsageClick}
++          onSelect={() => {
++            setPendingSettingsUsageIntent();
++            onUsageClick?.();
++          }}
++        >
++          <BarChart3 className="size-4" />
++          {intl.formatMessage({ id: "sidebar.usage.plan.openStats" })}
++        </DropdownMenuItem>
++        <DropdownMenuSeparator />
++        <DropdownMenuItem onSelect={onEditProfile}>
++          <User className="size-4" />
++          {intl.formatMessage({ id: "profile.edit" })}
++        </DropdownMenuItem>
++      </DropdownMenuContent>
++    </DropdownMenu>
++  );
++}
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index 0f578a5..04d4a40 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -1519,6 +1519,7 @@ export function SettingsPage({
+               <div className="max-lg:hidden">
+                 <WorkspaceSidebarFooter
+                   onSettingsButtonClick={onBack}
++                  onUsageClick={handleOpenUsageSettings}
+                   settingsButtonMode="back"
+                   isDesktop={isDesktop}
+                 />
+diff --git a/packages/ui/src/WorkspaceSidebar.tsx b/packages/ui/src/WorkspaceSidebar.tsx
+index f8fcae3..0d03386 100644
+--- a/packages/ui/src/WorkspaceSidebar.tsx
++++ b/packages/ui/src/WorkspaceSidebar.tsx
+@@ -1592,6 +1592,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+           <WorkspaceSidebarFooter
+             className="pr-3"
+             onSettingsButtonClick={openSettingsTab}
++            onUsageClick={openSettingsTab}
+             workspacePath={workspacePath}
+             workspaceIdentity={workspaceIdentity}
+             isDesktop={isDesktop}
+diff --git a/packages/ui/src/WorkspaceSidebarFooter.tsx b/packages/ui/src/WorkspaceSidebarFooter.tsx
+index 15d7fed..121d7d9 100644
+--- a/packages/ui/src/WorkspaceSidebarFooter.tsx
++++ b/packages/ui/src/WorkspaceSidebarFooter.tsx
+@@ -12,6 +12,7 @@ import { WorkspaceWebRemoteControlTrigger } from "@/WorkspaceWebRemoteControlTri
+ 
+ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooter({
+   onSettingsButtonClick,
++  onUsageClick,
+   settingsButtonMode = "settings",
+   workspacePath,
+   workspaceIdentity,
+@@ -19,6 +20,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooter({
+   className,
+ }: {
+   onSettingsButtonClick?: () => void;
++  onUsageClick?: () => void;
+   settingsButtonMode?: "settings" | "back";
+   workspacePath?: string;
+   workspaceIdentity?: string;
+@@ -35,7 +37,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooter({
+       <div className="flex min-w-0 gap-2">
+         {/* 个人资料属于本机设置，切换远程项目不能读写远端资料。 */}
+         <ServiceProvider services={localServices}>
+-          <LocalProfileControl />
++          <LocalProfileControl isDesktop={isDesktop} onUsageClick={onUsageClick} />
+         </ServiceProvider>
+         <div className="flex shrink-0 items-center gap-1.5">
+           {isDesktop && workspacePath ? (
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index b49222e..6444682 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1009,6 +1009,7 @@ const enUS: Record<string, string> = {
+   // App header
+   "app.currentTheme": "Current: {theme}",
+   "profile.defaultName": "User",
++  "profile.menu": "Profile menu",
+   "profile.edit": "Profile",
+   "profile.avatar": "Change avatar",
+   "profile.upload": "Choose image",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index f4d85be..98d80b0 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -913,6 +913,7 @@ const zhCN: Record<string, string> = {
+   // 应用头部
+   "app.currentTheme": "当前: {theme}",
+   "profile.defaultName": "用户",
++  "profile.menu": "个人菜单",
+   "profile.edit": "个人资料",
+   "profile.avatar": "更换头像",
+   "profile.upload": "选择图片",

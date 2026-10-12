@@ -1,0 +1,162 @@
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+index e358f5b..a9d85ed 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+@@ -1,11 +1,5 @@
+-import type {
+-  AssistantMessage,
+-  Model as PiModel,
+-  Usage,
+-  TextContent,
+-  ImageContent,
+-} from "@earendil-works/pi-ai";
+-import type { Model, ModelMessageContent } from "../deps.js";
++import type { AssistantMessage, Model as PiModel, Usage } from "@earendil-works/pi-ai";
++import type { Model } from "../deps.js";
+ import type { RuntimeModelTextResult } from "../types.js";
+ 
+ /** Pi is the loop executor. The Host model port owns route, auth, effort/Fast and actual prices. */
+@@ -83,23 +77,3 @@ export function piHostMessage(
+       : {}),
+   };
+ }
+-
+-/** Private SDK outcome projection; provider-visible media still uses the existing Host codec. */
+-export function piToolContent(content: ModelMessageContent): Array<TextContent | ImageContent> {
+-  if (typeof content === "string") return [{ type: "text" as const, text: content }];
+-  return content.flatMap((block): Array<TextContent | ImageContent> => {
+-    if (block.type === "text") return [{ type: "text" as const, text: block.text }];
+-    if (block.type === "image") {
+-      const data = /^data:([^;,]+);base64,([\s\S]+)$/.exec(block.dataUrl);
+-      if (data) return [{ type: "image" as const, mimeType: data[1]!, data: data[2]! }];
+-    }
+-    return [
+-      {
+-        type: "text" as const,
+-        text:
+-          ("source" in block ? block.source?.placeholder : undefined) ??
+-          "Media retained by the Fleet artifact owner",
+-      },
+-    ];
+-  });
+-}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+index e51f806..ca94b97 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -12,11 +12,7 @@ import {
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+ import type { ToolExecutionResult } from "../deps.js";
+-import {
+-  throwIfTurnAborted,
+-  modelContentForToolResult,
+-  isErrorForToolResult,
+-} from "../helpers/index.js";
++import { throwIfTurnAborted, isErrorForToolResult } from "../helpers/index.js";
+ import { prepareRegularModelStep } from "./turn-step-prepare.js";
+ import {
+   runModelBackedTurnStep,
+@@ -25,7 +21,7 @@ import {
+   type ModelStepRequestOptions,
+ } from "./turn-model-step.js";
+ import { executeToolCallsForModelStep } from "./turn-tools.js";
+-import { piHostMessage, piHostModel, piToolContent } from "./pi-turn-message.js";
++import { piHostMessage, piHostModel } from "./pi-turn-message.js";
+ import type { RuntimeModelTextResult } from "../types.js";
+ 
+ /** One full AgentSession owns the model/tool loop for one admitted input in the existing CLI process.
+@@ -90,13 +86,11 @@ export async function runPiTurn(
+       const result = results.get(id);
+       if (!result) throw new Error("Pi tool result does not match the admitted Host call");
+       if (isErrorForToolResult(result)) {
+-        const content = modelContentForToolResult(result);
+-        throw new Error(
+-          typeof content === "string" ? content : (result.error?.message ?? "Fleet tool failed"),
+-        );
++        throw new Error(result.error?.message ?? "Fleet tool failed");
+       }
+       return {
+-        content: piToolContent(modelContentForToolResult(result)),
++        // The Host already persists and sends the real payload. Pi's private loop needs only its receipt.
++        content: [{ type: "text", text: "Tool completed; result retained in Host context." }],
+         details: { hostToolCallId: id },
+       };
+     },
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+index 0eceea8..8cbd08d 100644
+--- a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -9,6 +9,7 @@ import {
+ } from "@zcode/contracts";
+ import { AgentRuntime } from "../../src/runtime/agent-runtime.js";
+ import { SqliteSessionStore } from "../../../adapters/src/storage/session-store/sqlite-session-store.js";
++import { NodeToolArtifactStore } from "../../../adapters/src/storage/index.js";
+ 
+ type Step = (request: any, selection: any) => unknown | Promise<unknown>;
+ export const usage = {
+@@ -122,6 +123,11 @@ export async function fixture(executor?: "pi" | "zcode", streaming = false) {
+       {
+         eventStore: createInMemorySessionEventStore(),
+         sessionStore: store,
++        artifactStore: new NodeToolArtifactStore({
++          rootDir: join(dir, "artifacts"),
++          imageCacheRootDir: join(dir, "images"),
++          videoCacheRootDir: join(dir, "videos"),
++        }),
+         modelFactory: factory,
+         providerRuntimeHeadersPort: {
+           async refreshBeforeModelRequest(input: any) {
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index bcece90..19334ba 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -4,6 +4,48 @@ import { readFile, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { fixture, selection, reply, call, usage } from "./helpers/pi-runtime-fixture.js";
+ 
++test(
++  "a compact private Pi receipt preserves the Host's full text and image tool result",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    const text = "host-owned-result ".repeat(200);
++    const dataUrl =
++      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
++    try {
++      const entry = f.runtime.getToolRegistry().get("Probe")!;
++      entry.handler = async () => ({ saved: true });
++      entry.formatModelContent = () => [
++        { type: "text", text },
++        { type: "image", dataUrl, mediaType: "image/png" },
++      ];
++      f.steps.push(
++        () => reply("working", [call("media", "fixture")]),
++        (request) => {
++          const payload = request.messages
++            .filter((message: any) => message.role === "tool")
++            .flatMap((message: any) =>
++              Array.isArray(message.content)
++                ? message.content
++                : [{ type: "text", text: message.content }],
++            );
++          assert.ok(
++            payload.some((block: any) => block.type === "text" && block.text.includes(text)),
++          );
++          assert.ok(
++            payload.some((block: any) => block.type === "image" && block.dataUrl === dataUrl),
++          );
++          return reply("complete");
++        },
++      );
++      assert.equal((await f.runtime.executeTurn("Inspect the result")).response, "complete");
++      assert.equal(f.requests.length, 2);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
+ test(
+   "full Pi executor writes model and tool results through the existing Host, once per call",
+   { timeout: 10000 },

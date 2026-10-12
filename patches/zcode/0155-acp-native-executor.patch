@@ -1,0 +1,1823 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts
+new file mode 100644
+index 0000000..2bd557e
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts
+@@ -0,0 +1,172 @@
++import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
++import { StringDecoder } from "node:string_decoder";
++
++/**
++ * Agent Client Protocol v1 over stdio (newline-delimited JSON-RPC 2.0), hand-written like the
++ * Codex app-server client so no ACP SDK dependency is added. Fleet is the client: it never
++ * advertises fs/terminal capabilities, so the agent keeps its own tools.
++ */
++export interface AcpNotification {
++  method: string;
++  params?: Record<string, unknown>;
++}
++export interface AcpIncomingRequest extends AcpNotification {
++  id: number | string;
++}
++export class AcpRpcError extends Error {
++  constructor(
++    message: string,
++    readonly code?: number,
++    readonly data?: unknown,
++  ) {
++    super(message);
++  }
++}
++
++export interface AcpClientOptions {
++  executable: string;
++  args: string[];
++  cwd: string;
++  env: NodeJS.ProcessEnv;
++  onNotification(notification: AcpNotification): void;
++  /** Agent → client requests (permission). Unknown methods are answered "method not found". */
++  onRequest(request: AcpIncomingRequest): Promise<unknown>;
++  onExit(code: number | null, stderr: string): void;
++}
++
++export class AcpClient {
++  private readonly child: ChildProcessWithoutNullStreams;
++  private readonly pending = new Map<
++    number,
++    { resolve(value: unknown): void; reject(error: Error): void }
++  >();
++  private nextId = 0;
++  private buffer = "";
++  private stderr = "";
++  private exited = false;
++
++  constructor(private readonly options: AcpClientOptions) {
++    this.child = spawn(options.executable, options.args, {
++      cwd: options.cwd,
++      env: options.env,
++      stdio: "pipe",
++      detached: process.platform !== "win32",
++      windowsHide: true,
++    });
++    const decoder = new StringDecoder("utf8");
++    this.child.stdout.on("data", (chunk: Buffer) => this.consume(decoder.write(chunk)));
++    this.child.stderr.on("data", (chunk: Buffer) => {
++      this.stderr = (this.stderr + chunk.toString()).slice(-4096);
++    });
++    this.child.on("error", (error) => this.terminate(error));
++    this.child.on("close", (code) => {
++      this.exited = true;
++      this.terminate(new Error(`ACP agent exited (${code ?? "signal"})`));
++      options.onExit(code, this.stderr);
++    });
++  }
++
++  get diagnostics(): string {
++    return this.stderr;
++  }
++
++  /** `timeoutMs` bounds setup calls; a prompt turn is unbounded and ends via cancel or exit. */
++  request<T = Record<string, unknown>>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
++    if (this.exited) return Promise.reject(new Error("ACP agent is not running"));
++    const id = ++this.nextId;
++    return new Promise<T>((resolve, reject) => {
++      const timer = timeoutMs
++        ? setTimeout(() => {
++            if (!this.pending.delete(id)) return;
++            reject(new AcpRpcError(`ACP ${method} timed out`, -32001));
++          }, timeoutMs)
++        : undefined;
++      timer?.unref();
++      this.pending.set(id, {
++        resolve: (value) => {
++          clearTimeout(timer);
++          (resolve as (value: unknown) => void)(value);
++        },
++        reject: (error) => {
++          clearTimeout(timer);
++          reject(error);
++        },
++      });
++      this.write({ jsonrpc: "2.0", id, method, params });
++    });
++  }
++
++  notify(method: string, params: unknown): void {
++    if (!this.exited) this.write({ jsonrpc: "2.0", method, params });
++  }
++
++  close(): void {
++    if (this.exited) return;
++    this.child.stdin.end();
++    const pid = this.child.pid;
++    const kill = (signal: NodeJS.Signals) => {
++      if (this.exited || !pid) return;
++      try {
++        if (process.platform === "win32") this.child.kill(signal);
++        else process.kill(-pid, signal);
++      } catch {
++        this.child.kill(signal);
++      }
++    };
++    kill("SIGTERM");
++    setTimeout(() => kill("SIGKILL"), 2000).unref();
++  }
++
++  private write(message: unknown) {
++    this.child.stdin.write(`${JSON.stringify(message)}\n`);
++  }
++
++  private terminate(error: Error) {
++    for (const entry of this.pending.values()) entry.reject(error);
++    this.pending.clear();
++  }
++
++  private consume(text: string) {
++    this.buffer += text;
++    for (let index = this.buffer.indexOf("\n"); index >= 0; index = this.buffer.indexOf("\n")) {
++      const line = this.buffer.slice(0, index).trim();
++      this.buffer = this.buffer.slice(index + 1);
++      if (!line) continue;
++      let message: Record<string, unknown>;
++      try {
++        message = JSON.parse(line) as Record<string, unknown>;
++      } catch {
++        continue; // Agents may log non-protocol lines; only JSON-RPC frames are meaningful.
++      }
++      const id = message.id;
++      if (typeof message.method === "string") {
++        const params = (message.params ?? undefined) as Record<string, unknown> | undefined;
++        if (id === undefined || id === null) {
++          this.options.onNotification({ method: message.method, params });
++          continue;
++        }
++        const request = { id: id as number | string, method: message.method, params };
++        void this.options.onRequest(request).then(
++          (result) => this.write({ jsonrpc: "2.0", id, result: result ?? null }),
++          (error: unknown) =>
++            this.write({
++              jsonrpc: "2.0",
++              id,
++              error:
++                error instanceof AcpRpcError
++                  ? { code: error.code ?? -32603, message: error.message }
++                  : { code: -32603, message: error instanceof Error ? error.message : "Request failed" },
++            }),
++        );
++        continue;
++      }
++      if (typeof id !== "number") continue;
++      const entry = this.pending.get(id);
++      if (!entry) continue;
++      this.pending.delete(id);
++      const error = message.error as { code?: number; message?: string; data?: unknown } | undefined;
++      if (error) entry.reject(new AcpRpcError(error.message ?? "ACP request failed", error.code, error.data));
++      else entry.resolve(message.result ?? {});
++    }
++  }
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+new file mode 100644
+index 0000000..40093e7
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+@@ -0,0 +1,73 @@
++import { execFile } from "node:child_process";
++import { ACP_PROFILES, acpLocalAccount, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
++import { acpOption, acpOptionValues, openAcpSession } from "./acp-session.js";
++import { acpCliVersion } from "./acp-turn.js";
++import { withNativeExecutorNetwork } from "./native-network.js";
++
++export interface AcpInspection {
++  version: string;
++  accountId: string;
++  accountName: string;
++  models: { id: string; name: string }[];
++  /** Session-level thinking levels (ACP `thought_level` option), when the CLI offers them. */
++  thoughtLevels: string[];
++  images: boolean;
++}
++
++/** Cursor reports its signed-in email through the public `about` command. */
++function cursorAccount(executable: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
++  return new Promise((resolve) => {
++    execFile(executable, ["about"], { env, timeout: 15_000 }, (error, stdout) => {
++      const email = /User Email\s+(\S+@\S+)/u.exec(stdout ?? "")?.[1];
++      resolve(error ? undefined : email);
++    });
++  });
++}
++
++/**
++ * Connection check through the CLI's own ACP server: one throwaway session lists the models this
++ * account can use. No prompt is sent; the probe session is deleted when the CLI supports it.
++ */
++export async function inspectAcpConnection(input: {
++  kind: AcpExecutorKind;
++  executable?: string;
++  cwd: string;
++  env?: Record<string, string | undefined>;
++}): Promise<AcpInspection> {
++  const profile = ACP_PROFILES[input.kind];
++  const executable = resolveAcpExecutable(input.kind, input.executable);
++  const env = withNativeExecutorNetwork({ ...process.env, ...input.env, NO_BROWSER: "true" }, input.kind);
++  const version = await acpCliVersion(executable, env);
++  const session = await openAcpSession({
++    kind: input.kind,
++    executable,
++    cwd: input.cwd,
++    env,
++    onNotification: () => {},
++    onRequest: async () => ({ outcome: { outcome: "cancelled" } }),
++    onExit: () => {},
++  });
++  try {
++    const models = acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
++      id: entry.value,
++      name: entry.name,
++    }));
++    if (!models.length) throw new Error(`${profile.label} returned no models for this account`);
++    const thoughtLevels = acpOptionValues(acpOption(session.configOptions, "thought_level"))
++      .map((entry) => entry.value)
++      .filter((value) => value !== "none" && value !== "default");
++    const email = input.kind === "cursor" ? await cursorAccount(executable, env) : undefined;
++    if (session.canDelete)
++      await session.client.request("session/delete", { sessionId: session.sessionId }, 10_000).catch(() => undefined);
++    return {
++      version,
++      accountId: email ?? acpLocalAccount(input.kind),
++      accountName: email ?? profile.label,
++      models,
++      thoughtLevels,
++      images: session.images,
++    };
++  } finally {
++    session.client.close();
++  }
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+new file mode 100644
+index 0000000..8e000df
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -0,0 +1,100 @@
++import { accessSync, constants } from "node:fs";
++import { homedir } from "node:os";
++import { join } from "node:path";
++import type { CollaborationMode } from "@zcode/contracts";
++
++export type AcpExecutorKind = "cursor" | "kimi" | "opencode";
++
++/**
++ * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
++ * initialize + session/new handshake (2026-10-06): Kimi Code CLI 0.37.2, OpenCode 1.18.32,
++ * Cursor Agent 2026.08.04. Fleet keeps the vendor's own login; it never reads their tokens.
++ */
++export interface AcpProfile {
++  kind: AcpExecutorKind;
++  /** Name for diagnostics and the local account identity when the CLI exposes no account. */
++  label: string;
++  binary: string;
++  /** Default install locations; desktop apps do not inherit the shell PATH. */
++  candidates: string[];
++  args: string[];
++  /** ACP authenticate method to call before sessions (Cursor requires it after `agent login`). */
++  authMethodId?: string;
++  /** Vendor mode option values: plan uses the vendor's read-only plan; others stay on manual approval. */
++  planMode: string;
++  manualMode: string;
++  /** Extra environment for a Fleet permission mode (e.g. make OpenCode ask instead of auto-allow). */
++  environment(mode: CollaborationMode | undefined): Record<string, string>;
++  billingProvider: string;
++  loginCommand: string;
++}
++
++const home = homedir();
++const bin = (name: string) => (process.platform === "win32" ? `${name}.exe` : name);
++
++export const ACP_PROFILES: Record<AcpExecutorKind, AcpProfile> = {
++  kimi: {
++    kind: "kimi",
++    label: "Kimi Code",
++    binary: bin("kimi"),
++    candidates: [join(home, ".kimi-code", "bin", bin("kimi")), join(home, ".local", "bin", bin("kimi"))],
++    args: ["acp"],
++    planMode: "plan",
++    manualMode: "default",
++    environment: () => ({}),
++    billingProvider: "moonshot",
++    loginCommand: "kimi login",
++  },
++  opencode: {
++    kind: "opencode",
++    label: "OpenCode",
++    binary: bin("opencode"),
++    candidates: [
++      join(home, ".opencode", "bin", bin("opencode")),
++      "/opt/homebrew/bin/opencode",
++      "/usr/local/bin/opencode",
++      join(home, ".local", "bin", bin("opencode")),
++    ],
++    args: ["acp"],
++    planMode: "plan",
++    manualMode: "build",
++    // OpenCode 默认放行编辑与命令；Fleet 的确认档需要它把这些操作作为 ACP 权限请求发回来。
++    environment: (mode): Record<string, string> =>
++      mode === "yolo"
++        ? {}
++        : { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { edit: "ask", bash: "ask", webfetch: "ask" } }) },
++    billingProvider: "opencode",
++    loginCommand: "opencode auth login",
++  },
++  cursor: {
++    kind: "cursor",
++    label: "Cursor",
++    binary: bin("cursor-agent"),
++    candidates: [join(home, ".local", "bin", bin("cursor-agent")), join(home, ".local", "bin", bin("agent"))],
++    args: ["acp"],
++    authMethodId: "cursor_login",
++    planMode: "plan",
++    manualMode: "agent",
++    environment: () => ({}),
++    billingProvider: "cursor",
++    loginCommand: "cursor-agent login",
++  },
++};
++
++export function resolveAcpExecutable(kind: AcpExecutorKind, override?: string): string {
++  if (override) return override;
++  const profile = ACP_PROFILES[kind];
++  for (const candidate of profile.candidates) {
++    try {
++      accessSync(candidate, constants.X_OK);
++      return candidate;
++    } catch {
++      /* try the next location, then PATH */
++    }
++  }
++  return profile.binary;
++}
++
++export const acpLocalAccount = (kind: AcpExecutorKind) => `${kind}-local`;
++export const isAcpExecutorKind = (value: unknown): value is AcpExecutorKind =>
++  value === "cursor" || value === "kimi" || value === "opencode";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+new file mode 100644
+index 0000000..4dc0222
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+@@ -0,0 +1,181 @@
++import { AcpClient, AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
++import { ACP_PROFILES, type AcpExecutorKind } from "./acp-profiles.js";
++
++export interface AcpConfigOption {
++  id: string;
++  category?: string;
++  currentValue?: unknown;
++  options?: { value?: string; name?: string; options?: { value?: string; name?: string }[] }[];
++}
++export interface AcpSession {
++  client: AcpClient;
++  sessionId: string;
++  version: string;
++  configOptions: AcpConfigOption[];
++  canClose: boolean;
++  canDelete: boolean;
++  /** promptCapabilities.image: the agent accepts image content blocks. */
++  images: boolean;
++}
++
++const SET_MODEL_OPTION = "__acp_session_model";
++const SETUP_TIMEOUT_MS = 60_000;
++const AUTH_TIMEOUT_MS = 20_000;
++const SIGN_IN = (kind: AcpExecutorKind) =>
++  `Sign in to the official ${ACP_PROFILES[kind].label} CLI first: run \`${ACP_PROFILES[kind].loginCommand}\` in a terminal`;
++
++/** Flattens grouped select options (ACP allows one level of groups). */
++export function acpOptionValues(option: AcpConfigOption | undefined): { value: string; name: string }[] {
++  const values: { value: string; name: string }[] = [];
++  for (const entry of option?.options ?? []) {
++    if (entry.options) {
++      for (const nested of entry.options)
++        if (typeof nested.value === "string") values.push({ value: nested.value, name: nested.name ?? nested.value });
++    } else if (typeof entry.value === "string") values.push({ value: entry.value, name: entry.name ?? entry.value });
++  }
++  return values;
++}
++
++export const acpOption = (options: readonly AcpConfigOption[], category: string) =>
++  options.find((option) => option.category === category || option.id === category);
++
++function authFailure(kind: AcpExecutorKind, error: unknown): Error {
++  const message = error instanceof Error ? error.message : String(error);
++  return /auth|sign.?in|log.?in/iu.test(message) ? new Error(SIGN_IN(kind)) : error instanceof Error ? error : new Error(message);
++}
++
++/**
++ * Opens one ACP session. A continuation prefers `session/resume` (no replay), then
++ * `session/load` (replayed history is ignored); otherwise a new session is created.
++ */
++export async function openAcpSession(input: {
++  kind: AcpExecutorKind;
++  executable: string;
++  cwd: string;
++  env: NodeJS.ProcessEnv;
++  resumeSessionId?: string;
++  onNotification(notification: AcpNotification): void;
++  onRequest(request: AcpIncomingRequest): Promise<unknown>;
++  onExit(code: number | null, stderr: string): void;
++}): Promise<AcpSession> {
++  const profile = ACP_PROFILES[input.kind];
++  let replaying = false;
++  const client = new AcpClient({
++    executable: input.executable,
++    args: profile.args,
++    cwd: input.cwd,
++    env: input.env,
++    onNotification: (notification) => {
++      if (!replaying) input.onNotification(notification);
++    },
++    onRequest: (request) => input.onRequest(request),
++    onExit: input.onExit,
++  });
++  try {
++    const initialized = await client.request<{
++      protocolVersion?: number;
++      agentCapabilities?: {
++        loadSession?: boolean;
++        sessionCapabilities?: Record<string, unknown>;
++        promptCapabilities?: { image?: boolean };
++      };
++      agentInfo?: { version?: string };
++    }>(
++      "initialize",
++      {
++        protocolVersion: 1,
++        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
++        clientInfo: { name: "Fleet", version: "1" },
++      },
++      SETUP_TIMEOUT_MS,
++    );
++    if (initialized.protocolVersion !== 1) throw new Error("This CLI does not speak ACP protocol version 1");
++    if (profile.authMethodId)
++      // 未登录时 Cursor 的 authenticate 不返回；超时按未登录处理。
++      await client.request("authenticate", { methodId: profile.authMethodId }, AUTH_TIMEOUT_MS).catch(() => {
++        throw new Error(SIGN_IN(input.kind));
++      });
++    const capabilities = initialized.agentCapabilities?.sessionCapabilities ?? {};
++    const common = { cwd: input.cwd, mcpServers: [] };
++    let sessionId = input.resumeSessionId;
++    let result: {
++      sessionId?: string;
++      configOptions?: AcpConfigOption[];
++      models?: { currentModelId?: string; availableModels?: { modelId?: string; name?: string }[] };
++    };
++    if (sessionId && capabilities.resume) {
++      result = await client.request("session/resume", { sessionId, ...common }, SETUP_TIMEOUT_MS);
++    } else if (sessionId && initialized.agentCapabilities?.loadSession) {
++      replaying = true;
++      try {
++        result = await client.request("session/load", { sessionId, ...common }, SETUP_TIMEOUT_MS);
++      } finally {
++        replaying = false;
++      }
++    } else if (sessionId) {
++      throw new Error(`${profile.label} cannot resume this conversation`);
++    } else {
++      result = await client.request("session/new", common, SETUP_TIMEOUT_MS).catch((error: unknown) => {
++        throw authFailure(input.kind, error);
++      });
++      sessionId = result.sessionId;
++    }
++    if (!sessionId) throw new Error(`${profile.label} did not return a session`);
++    const configOptions = Array.isArray(result.configOptions) ? [...result.configOptions] : [];
++    // 未提供 model 配置项的 agent（ACP unstable `models`）改用 session/set_model 选择。
++    if (!acpOption(configOptions, "model") && result.models?.availableModels?.length)
++      configOptions.push({
++        id: SET_MODEL_OPTION,
++        category: "model",
++        currentValue: result.models.currentModelId,
++        options: result.models.availableModels.map((model) => ({ value: model.modelId, name: model.name })),
++      });
++    // Cursor 通过扩展方法列出可用模型（Paseo cursor-acp-agent.ts）；只读，不切换 CLI 偏好。
++    if (!acpOption(configOptions, "model") && input.kind === "cursor") {
++      const listed = await client
++        .request<{ models?: { value?: string; name?: string }[] }>("cursor/list_available_models", {}, SETUP_TIMEOUT_MS)
++        .catch(() => ({ models: [] }));
++      if (listed.models?.length)
++        configOptions.push({
++          id: SET_MODEL_OPTION,
++          category: "model",
++          options: listed.models.map((model) => ({ value: model.value, name: model.name })),
++        });
++    }
++    return {
++      client,
++      sessionId,
++      version: initialized.agentInfo?.version ?? "acp",
++      configOptions,
++      canClose: Boolean(capabilities.close),
++      canDelete: Boolean(capabilities.delete),
++      images: initialized.agentCapabilities?.promptCapabilities?.image === true,
++    };
++  } catch (error) {
++    client.close();
++    throw error instanceof AcpRpcError ? authFailure(input.kind, error) : error;
++  }
++}
++
++/** Sets a select option only when the agent offers that value; returns whether it was applied. */
++export async function setAcpOption(
++  session: AcpSession,
++  category: string,
++  value: string | undefined,
++): Promise<boolean> {
++  const option = acpOption(session.configOptions, category);
++  if (!option || !value || option.currentValue === value) return Boolean(option && value && option.currentValue === value);
++  if (!acpOptionValues(option).some((entry) => entry.value === value)) return false;
++  if (option.id === SET_MODEL_OPTION) {
++    await session.client.request("session/set_model", { sessionId: session.sessionId, modelId: value });
++    option.currentValue = value;
++    return true;
++  }
++  const response = await session.client.request<{ configOptions?: AcpConfigOption[] }>(
++    "session/set_config_option",
++    { sessionId: session.sessionId, configId: option.id, value },
++    SETUP_TIMEOUT_MS,
++  );
++  if (Array.isArray(response.configOptions)) session.configOptions = response.configOptions;
++  return true;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+new file mode 100644
+index 0000000..5bc3164
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -0,0 +1,277 @@
++import { execFile } from "node:child_process";
++import { createHash } from "node:crypto";
++import type {
++  CollaborationMode,
++  Model,
++  ModelResult,
++  ModelUsage,
++  NativeAgentContinuation,
++  NativeAgentPort,
++} from "@zcode/contracts";
++import { NativeEvents } from "./native-events.js";
++import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
++import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
++import { openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
++import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
++import { withNativeExecutorNetwork } from "./native-network.js";
++
++const cachePath = (kind: string, sessionId: string) => `acp:${kind}:${sessionId}`;
++const fingerprint = (kind: string, sessionId: string, version: string) =>
++  createHash("sha256").update(JSON.stringify([kind, sessionId, version])).digest("hex");
++
++/** `<cli> --version` first line; fences resumption to the build that owns the vendor session. */
++export function acpCliVersion(executable: string, env: NodeJS.ProcessEnv): Promise<string> {
++  return new Promise((resolve, reject) => {
++    execFile(executable, ["--version"], { env, timeout: 15_000 }, (error, stdout) => {
++      if (error) reject(new Error("The official CLI is not installed or cannot start"));
++      else resolve(stdout.trim().split(/\r?\n/u)[0] || "acp");
++    });
++  });
++}
++
++export type AcpApproval = "allow" | "deny" | "ask";
++
++/**
++ * Fleet's permission choice answers the vendor's own permission requests (OV-094): plan refuses
++ * changes, ask-before-changes asks the user, auto-edit allows file edits and asks for the rest,
++ * full access allows everything. The vendor's plan mode is also selected for plan.
++ */
++export function acpApprovalDecision(mode: CollaborationMode | undefined, toolKind: unknown): AcpApproval {
++  if (mode === "yolo") return "allow";
++  if (mode === "plan") return "deny";
++  if (mode === "edit" && (toolKind === "edit" || toolKind === "delete" || toolKind === "move")) return "allow";
++  return "ask";
++}
++
++interface PermissionOption {
++  optionId?: string;
++  kind?: string;
++}
++function pickOption(options: readonly PermissionOption[], allow: boolean): string | undefined {
++  const order = allow ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
++  for (const kind of order) {
++    const option = options.find((entry) => entry.kind === kind && typeof entry.optionId === "string");
++    if (option) return option.optionId;
++  }
++  return undefined;
++}
++
++function acpUsage(value: unknown): ModelUsage {
++  const usage = (value ?? {}) as Record<string, unknown>;
++  const count = (entry: unknown) =>
++    typeof entry === "number" && Number.isSafeInteger(entry) && entry >= 0 ? entry : undefined;
++  return {
++    inputTokens: count(usage.inputTokens),
++    outputTokens: count(usage.outputTokens),
++    reasoningTokens: count(usage.thoughtTokens),
++    cacheReadTokens: count(usage.cachedReadTokens),
++    cacheWriteTokens: count(usage.cachedWriteTokens),
++    totalTokens: count(usage.totalTokens),
++  };
++}
++
++/** One shared executor for every CLI that offers ACP (decision H6); per-CLI facts live in profiles. */
++export function createAcpNativeAgentPort(
++  kind: AcpExecutorKind,
++  options: { env?: Record<string, string | undefined> } = {},
++): NativeAgentPort {
++  const profile = ACP_PROFILES[kind];
++  const environment = (mode: CollaborationMode | undefined) =>
++    withNativeExecutorNetwork({ ...process.env, ...options.env, ...profile.environment(mode) }, kind);
++  return {
++    async canResume(continuation, request) {
++      if (!continuation.sessionId || continuation.cachePath !== cachePath(kind, continuation.sessionId)) return false;
++      try {
++        const version = await acpCliVersion(
++          resolveAcpExecutable(kind, request.model.nativeExecutor?.executable),
++          environment(request.collaborationMode),
++        );
++        return (
++          version === continuation.executorVersion &&
++          continuation.cacheFingerprint === fingerprint(kind, continuation.sessionId, version)
++        );
++      } catch {
++        return false;
++      }
++    },
++    createTurn(request) {
++      if (!isAcpExecutorKind(request.model.nativeExecutor?.kind) || request.model.nativeExecutor.kind !== kind)
++        throw new Error("Unsupported native Agent executor");
++      const events = new NativeEvents();
++      const executable = resolveAcpExecutable(kind, request.model.nativeExecutor.executable);
++      const mode = request.collaborationMode;
++      let session: AcpSession | undefined;
++      let started = false;
++      let closed = false;
++      let completed = false;
++      let version: string | undefined;
++      let text = "";
++      const refused: string[] = [];
++      const fail = (error: unknown) => {
++        if (closed) return;
++        closed = true;
++        events.push(error instanceof Error ? error : new Error(`${profile.label} execution failed`));
++        session?.client.close();
++      };
++      const onNotification = (notification: AcpNotification) => {
++        if (notification.method !== "session/update" || closed) return;
++        const update = (notification.params?.update ?? {}) as Record<string, unknown>;
++        const content = update.content as { type?: string; text?: string } | undefined;
++        if (content?.type !== "text" || !content.text) return;
++        if (update.sessionUpdate === "agent_message_chunk") {
++          text += content.text;
++          events.push({ type: "text_delta", text: content.text });
++        } else if (update.sessionUpdate === "agent_thought_chunk") {
++          events.push({ type: "reasoning_delta", text: content.text });
++        }
++      };
++      const onRequest = async (incoming: AcpIncomingRequest): Promise<unknown> => {
++        if (incoming.method !== "session/request_permission")
++          throw new AcpRpcError("Method not found", -32601);
++        const params = incoming.params ?? {};
++        const toolCall = (params.toolCall ?? {}) as Record<string, unknown>;
++        const choices = (Array.isArray(params.options) ? params.options : []) as PermissionOption[];
++        const title = typeof toolCall.title === "string" && toolCall.title ? toolCall.title : String(toolCall.kind ?? "tool");
++        let allow = false;
++        const decision = acpApprovalDecision(mode, toolCall.kind);
++        if (decision === "allow") allow = true;
++        else if (decision === "ask" && request.requestApproval && !closed && !request.signal.aborted)
++          allow = await request.requestApproval({
++            toolCallId: `${kind}:${String(toolCall.toolCallId ?? incoming.id)}`,
++            toolName: `${profile.label}: ${title}`,
++            input: toolCall.rawInput ?? toolCall.content ?? {},
++            reason: `${profile.label} wants to run ${title}`,
++            riskLevel: toolCall.kind === "execute" || toolCall.kind === "delete" ? "high" : "medium",
++          });
++        if (!allow && decision === "deny") refused.push(title);
++        const optionId = closed ? undefined : pickOption(choices, allow);
++        return { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } };
++      };
++      const finish = (stopReason: unknown, usage: ModelUsage, sessionId: string) => {
++        completed = true;
++        if (refused.length) {
++          const note = `\n\n> ${profile.label} 未执行计划模式下的改动：${refused.join("、")}。如需执行，请切换权限后重试。`;
++          text += note;
++          events.push({ type: "text_delta", text: note });
++        }
++        const result: ModelResult = {
++          text,
++          usage,
++          finishReason: stopReason === "max_tokens" ? "length" : stopReason === "refusal" ? "content-filter" : "stop",
++          providerMetadata: {
++            nativeExecutor: kind,
++            nativeSessionId: sessionId,
++            nativeContinuationMode: request.continuation ? "resume" : "fresh",
++            fleetAccounting: {
++              billingProvider: profile.billingProvider,
++              authKind: "subscription",
++              accountId: request.model.nativeExecutor?.accountId,
++            },
++          },
++        };
++        events.push({
++          type: "finish",
++          finishReason: result.finishReason,
++          usage: result.usage,
++          providerMetadata: result.providerMetadata,
++        });
++      };
++      const launch = (messages: Parameters<Model["streamText"]>[0]["messages"]) => {
++        if (started) return;
++        started = true;
++        void (async () => {
++          if (request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
++          const env = environment(mode);
++          version = await acpCliVersion(executable, env);
++          session = await openAcpSession({
++            kind,
++            executable,
++            cwd: request.workingDirectory,
++            env,
++            resumeSessionId: request.continuation?.sessionId,
++            onNotification,
++            onRequest,
++            onExit: (code, stderr) => {
++              if (!completed && !closed)
++                fail(new Error(stderr.trim().split("\n").at(-1) || `${profile.label} exited (${code ?? "signal"})`));
++            },
++          });
++          if (closed) {
++            session.client.close();
++            return;
++          }
++          const modelId = String(request.model.modelId);
++          if (!(await setAcpOption(session, "model", modelId)))
++            throw new Error(`${profile.label} does not offer model ${modelId} for this account`);
++          await setAcpOption(session, "mode", mode === "plan" ? profile.planMode : profile.manualMode);
++          const effort = request.model.options.reasoningLevel;
++          if (effort && effort !== "auto") await setAcpOption(session, "thought_level", effort);
++          const resumed = Boolean(request.continuation);
++          const images = session.images ? latestImageBlocks(messages) : [];
++          const prompt = nativeTranscriptPrompt(messages, resumed, request.continuationMessageOffset, {
++            images: images.length > 0,
++          });
++          if (!prompt && !images.length) throw new Error(`${profile.label} received an empty prompt`);
++          const response = await session.client.request<{ stopReason?: string; usage?: unknown }>("session/prompt", {
++            sessionId: session.sessionId,
++            prompt: [{ type: "text", text: prompt }, ...images],
++          });
++          if (response.stopReason === "cancelled") throw new Error(`${profile.label} turn stopped`);
++          finish(response.stopReason, acpUsage(response.usage), session.sessionId);
++        })().catch(fail);
++      };
++      const model: Model = {
++        ...request.model,
++        bind() {
++          return model;
++        },
++        async generateText(input) {
++          let body = "";
++          for await (const event of model.streamText(input)) {
++            if (event.type === "text_delta") body += event.text;
++            if (event.type === "finish")
++              return { text: body, finishReason: event.finishReason, usage: event.usage, providerMetadata: event.providerMetadata };
++          }
++          throw new Error(`${profile.label} ended without a result`);
++        },
++        async *streamText(input) {
++          launch(input.messages);
++          for (;;) {
++            const event = await events.next();
++            yield event;
++            if (event.type === "finish") return;
++          }
++        },
++      };
++      const stop = () => {
++        // ACP cancellation: notify, then the agent answers the prompt with stopReason "cancelled".
++        if (session && !completed) session.client.notify("session/cancel", { sessionId: session.sessionId });
++        setTimeout(() => fail(new Error(`${profile.label} turn stopped`)), 3000).unref();
++      };
++      request.signal.addEventListener("abort", stop, { once: true });
++      return {
++        model,
++        async checkpoint(): Promise<NativeAgentContinuation | undefined> {
++          if (!completed || !session || !version) return undefined;
++          return {
++            sessionId: session.sessionId,
++            cachePath: cachePath(kind, session.sessionId),
++            cacheFingerprint: fingerprint(kind, session.sessionId, version),
++            executorVersion: version,
++          };
++        },
++        admitNextStep() {
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
++          events.push({ type: "start" });
++        },
++        // 工具在厂商进程内执行；需要确认的操作经 requestApproval 走 Host 的审批卡片，没有回执需回传。
++        retainToolReceipts() {},
++        async close() {
++          request.signal.removeEventListener("abort", stop);
++          closed = true;
++          session?.client.close();
++        },
++      };
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+index 39809c7..c7a90cf 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+@@ -1,4 +1,4 @@
+-import type { CollaborationMode, ModelInputMessage, ModelUsage } from "@zcode/contracts";
++import type { CollaborationMode, ModelUsage } from "@zcode/contracts";
+ 
+ /**
+  * Antigravity CLI (`agy`) stream-json contract, as captured from agy 1.2.13 by Paseo
+@@ -109,45 +109,5 @@ export function agyDeniedNote(denied: readonly { action?: string; display_name?:
+   return `\n\n> Antigravity 未执行需要确认的操作：${names.join("、")}。如需执行，请在输入框切换到“${onlyEdits ? "自动编辑" : "完全访问"}”后重试。`;
+ }
+ 
+-function text(content: ModelInputMessage["content"]): string {
+-  if (typeof content === "string") return content;
+-  return content
+-    .map((block) =>
+-      block.type === "text"
+-        ? block.text
+-        : block.type === "image"
+-          ? "[An attached image is not available to Antigravity in this turn]"
+-          : block.type === "reasoning"
+-            ? ""
+-            : "",
+-    )
+-    .filter(Boolean)
+-    .join("\n");
+-}
+-
+-/**
+- * One user event per Fleet turn. A resumed agy conversation already holds its history, so only
+- * messages after the covered offset are sent; a fresh one receives Fleet instructions and the
+- * visible transcript once.
+- */
+-export function agyPrompt(
+-  messages: readonly ModelInputMessage[],
+-  resumed: boolean,
+-  offset = 0,
+-): string {
+-  const system = messages.filter((message) => message.role === "system").map((m) => text(m.content));
+-  const visible = messages.filter((message) => message.role !== "system");
+-  const pending = resumed ? visible.slice(offset) : visible;
+-  const last = pending.at(-1);
+-  const prior = pending.slice(0, -1);
+-  const parts: string[] = [];
+-  if (!resumed && system.length) parts.push(system.join("\n\n"));
+-  if (prior.length)
+-    parts.push(
+-      prior
+-        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${text(message.content)}`)
+-        .join("\n\n"),
+-    );
+-  if (last) parts.push(text(last.content));
+-  return parts.join("\n\n").trim();
+-}
++/** agy keeps its own conversation; the shared transcript prompt applies unchanged. */
++export { nativeTranscriptPrompt as agyPrompt } from "./native-prompt.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index 5de9978..ed4f624 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -9,3 +9,5 @@ export { inspectClaudeNativeConnection, requireClaudeSubscriptionAccount, readCl
+ export { startClaudeNativeLogin } from "./claude-login.js";
+ export { readClaudeOAuthUsage } from "./claude-oauth-usage.js";
+ export { inspectAntigravityConnection, parseAgyModels, ANTIGRAVITY_LOCAL_ACCOUNT } from "./antigravity-inspect.js";
++export { inspectAcpConnection, type AcpInspection } from "./acp-inspect.js";
++export { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+index 38e42eb..d9e1016 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+@@ -5,6 +5,7 @@ import { createNativeAgentPort } from "./native-port.js";
+ import { resolveCodexNativeExecutable } from "./codex-executable.js";
+ import { resolveClaudeNativeExecutable } from "./claude-executable.js";
+ import { resolveAntigravityExecutable } from "./antigravity-inspect.js";
++import { resolveAcpExecutable } from "./acp-profiles.js";
+ import { getCurrentModelInvocationContext } from "@zcode/contracts";
+ 
+ /** Native route; auxiliary no-tool requests use the same official executor and account fence. */
+@@ -24,7 +25,9 @@ export function createNativeAgentModel(
+           ? resolveClaudeNativeExecutable(access.executable)
+           : access.provider === "codex"
+             ? resolveCodexNativeExecutable(access.executable)
+-            : resolveAntigravityExecutable(access.executable),
++            : access.provider === "antigravity"
++              ? resolveAntigravityExecutable(access.executable)
++              : resolveAcpExecutable(access.provider, access.executable),
+       configDir: access.configDir,
+       accountId: access.accountId,
+     },
+@@ -93,6 +96,8 @@ export function createNativeAgentModel(
+         sessionId: randomUUID(),
+         turnId: randomUUID(),
+         workingDirectory: process.cwd(),
++        // 标题等辅助请求不应触发工具：自带工具的 CLI（agy、ACP）以计划模式运行。
++        collaborationMode: "plan",
+         signal: request.abortSignal ?? AbortSignal.timeout(60000),
+       });
+       try {
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 90200c5..57ddb23 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,7 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity";
++export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
+index e27ab96..3355f68 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-port.ts
+@@ -2,16 +2,24 @@ import type { NativeAgentPort } from "@zcode/contracts";
+ import { createClaudeNativeAgentPort } from "./claude.js";
+ import { createCodexNativeAgentPort } from "./codex-turn.js";
+ import { createAntigravityNativeAgentPort } from "./antigravity-turn.js";
++import { createAcpNativeAgentPort } from "./acp-turn.js";
++import { isAcpExecutorKind, type AcpExecutorKind } from "./acp-profiles.js";
+ 
+ /** One executor per admitted model; the Host and its durable writers remain unchanged. */
+ export function createNativeAgentPort(): NativeAgentPort {
+   const claude = createClaudeNativeAgentPort(),
+     codex = createCodexNativeAgentPort(),
+     antigravity = createAntigravityNativeAgentPort();
++  const acp = new Map<AcpExecutorKind, NativeAgentPort>();
+   const select = (kind?: string) => {
+     if (kind === "claude") return claude;
+     if (kind === "codex") return codex;
+     if (kind === "antigravity") return antigravity;
++    if (isAcpExecutorKind(kind)) {
++      let port = acp.get(kind);
++      if (!port) acp.set(kind, (port = createAcpNativeAgentPort(kind)));
++      return port;
++    }
+     throw new Error("Unsupported native Agent executor");
+   };
+   return {
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts
+new file mode 100644
+index 0000000..8afd730
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts
+@@ -0,0 +1,53 @@
++import type { ModelInputMessage } from "@zcode/contracts";
++
++const IMAGE_PLACEHOLDER = "[An attached image is not available to this executor in this turn]";
++
++function text(content: ModelInputMessage["content"], images: boolean): string {
++  if (typeof content === "string") return content;
++  return content
++    .map((block) =>
++      block.type === "text" ? block.text : block.type === "image" ? (images ? "" : IMAGE_PLACEHOLDER) : "",
++    )
++    .filter(Boolean)
++    .join("\n");
++}
++
++/**
++ * One prompt per Fleet turn for executors that own their conversation (agy, ACP CLIs). A resumed
++ * vendor session already holds its history, so only messages after the covered offset are sent;
++ * a fresh one receives Fleet instructions and the visible transcript once.
++ */
++export function nativeTranscriptPrompt(
++  messages: readonly ModelInputMessage[],
++  resumed: boolean,
++  offset = 0,
++  options: { images?: boolean } = {},
++): string {
++  const images = options.images === true;
++  const system = messages.filter((message) => message.role === "system").map((m) => text(m.content, images));
++  const visible = messages.filter((message) => message.role !== "system");
++  const pending = resumed ? visible.slice(offset) : visible;
++  const last = pending.at(-1);
++  const prior = pending.slice(0, -1);
++  const parts: string[] = [];
++  if (!resumed && system.length) parts.push(system.join("\n\n"));
++  if (prior.length)
++    parts.push(
++      prior
++        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${text(message.content, images)}`)
++        .join("\n\n"),
++    );
++  if (last) parts.push(text(last.content, images));
++  return parts.join("\n\n").trim();
++}
++
++/** ACP image blocks for the newest user message, when the agent declared image prompts. */
++export function latestImageBlocks(messages: readonly ModelInputMessage[]): { type: "image"; mimeType: string; data: string }[] {
++  const last = [...messages].reverse().find((message) => message.role === "user");
++  if (!last || typeof last.content === "string") return [];
++  return last.content.flatMap((block) => {
++    if (block.type !== "image") return [];
++    const match = /^data:([^;,]+);base64,(.*)$/su.exec(block.dataUrl);
++    return match ? [{ type: "image" as const, mimeType: match[1]!, data: match[2]! }] : [];
++  });
++}
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+index 03b832a..e5e44bb 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+@@ -13,11 +13,24 @@ export interface NativeAgentTurnRequest {
+   signal: AbortSignal;
+   /** The Session's current permission choice; executors whose own tools run inside the vendor map it. */
+   collaborationMode?: CollaborationMode;
++  /**
++   * Asks the user through the Host's existing approval card for an action the vendor executes
++   * itself (ACP `session/request_permission`). Resolves false when denied, cancelled or stopped.
++   */
++  requestApproval?(input: NativeAgentApprovalRequest): Promise<boolean>;
+   /** Supplied only by the durable Host Session path; auxiliary calls remain ephemeral. */
+   persistContinuation?: boolean;
+   continuation?: NativeAgentContinuation;
+   continuationMessageOffset?: number;
+ }
++export interface NativeAgentApprovalRequest {
++  toolCallId: string;
++  /** Vendor tool title/kind shown on the approval card. */
++  toolName: string;
++  input: unknown;
++  reason: string;
++  riskLevel: "low" | "medium" | "high";
++}
+ export interface NativeAgentContinuation {
+   sessionId: string;
+   cachePath: string;
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 5729ad3..1afcd7b 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -44,7 +44,12 @@ export type ModelEvent = ModelStreamEvent;
+ 
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+-  readonly nativeExecutor?: { kind: "claude" | "codex" | "antigravity"; executable?: string; configDir?: string; accountId?: string };
++  readonly nativeExecutor?: {
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
++    executable?: string;
++    configDir?: string;
++    accountId?: string;
++  };
+   readonly providerId: ModelProviderId;
+   readonly modelId: ModelId;
+   /** null explicitly says the registry has no sourced capacity; undefined preserves legacy models. */
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+index bcdad2f..383b7c7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+@@ -9,6 +9,73 @@ import {
+   throwIfTurnAborted,
+ } from "../helpers/index.js";
+ import { prepareNativeContinuation } from "./native-continuation.js";
++import { SessionEventType } from "../deps.js";
++import type { NativeAgentApprovalRequest } from "@zcode/contracts";
++
++/**
++ * Vendor-executed actions (ACP permission requests) use the Host's existing approval card: the
++ * same PermissionRequested/Resolved events and broker as Fleet tools, so the UI, Stop and timeout
++ * paths stay single-owned. Anything but an explicit allow is a refusal.
++ */
++function nativeApprovalRequester(runtime: AgentRuntimeInternal, state: RegularTurnLoopState) {
++  return async (input: NativeAgentApprovalRequest): Promise<boolean> => {
++    const trace = { ...runtime.rootTraceContext, turnId: state.turnId };
++    const requestId = `perm_${crypto.randomUUID()}`;
++    await runtime.appendEvent(
++      runtime.createEvent(
++        SessionEventType.PermissionRequested,
++        {
++          requestId,
++          toolCallId: input.toolCallId,
++          toolName: input.toolName,
++          riskLevel: input.riskLevel,
++          reason: input.reason,
++          input: input.input,
++          suggestedPermissionUpdates: [],
++          // 厂商动作不受 Fleet 规则约束，"始终允许"不会生效，只提供本次允许/拒绝。
++          optionsPolicy: "no-always-allow",
++        },
++        trace,
++      ),
++      trace,
++    );
++    let decision: "allow" | "deny" = "deny";
++    let reason: string | undefined;
++    try {
++      const result = await runtime.permissionBroker.requestPermission(
++        {
++          requestId,
++          sessionId: runtime.sessionId,
++          turnId: state.turnId,
++          traceId: trace.traceId,
++          toolCallId: input.toolCallId as never,
++          toolName: input.toolName,
++          input: input.input,
++          mode: runtime.getMode(),
++          ruleId: "native-executor",
++          reason: input.reason,
++          riskLevel: input.riskLevel,
++          optionsPolicy: "no-always-allow",
++          requestedAt: new Date(),
++        },
++        { signal: state.turnAbortSignal, timeoutMs: runtime.config.permissionTimeoutMs },
++      );
++      decision = result.decision === "allow" ? "allow" : "deny";
++      reason = result.reason;
++    } catch (error) {
++      reason = error instanceof Error ? error.message : String(error);
++    }
++    await runtime.appendEvent(
++      runtime.createEvent(
++        SessionEventType.PermissionResolved,
++        { requestId, toolCallId: input.toolCallId, decision, reason },
++        trace,
++      ),
++      trace,
++    );
++    return decision === "allow";
++  };
++}
+ 
+ /** Observe native continuation through the original Host writers; never run an outer inference loop. */
+ export async function runNativeAgentTurn(
+@@ -30,6 +97,7 @@ export async function runNativeAgentTurn(
+       workingDirectory: runtime.workingDirectory,
+       signal: state.turnAbortSignal,
+       collaborationMode: runtime.getMode(),
++      requestApproval: nativeApprovalRequester(runtime, state),
+     });
+     return { native: port.createTurn(continuation.request), continuation };
+   };
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index f917696..e8838e3 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -59,6 +59,13 @@ access allows everything. It cannot ask mid-run, so refused actions are listed a
+ reply; switch the permission as suggested and retry. It offers no allowance query, so its card
+ shows no allowance.
+ 
++Cursor, Kimi Code CLI and OpenCode CLI connect through the official CLI's ACP mode; sign in with
++each CLI first (`cursor-agent login`, `kimi login`, `opencode auth login`). Plan mode uses the CLI's
++own planning mode. Under Ask before changes, file edits and commands raise Fleet's approval card and
++run only after you allow them; Edit automatically allows file edits and still asks for other
++actions; Full access allows everything. Available models come from the CLI's account list, and a
++model outside your plan fails when requested.
++
+ Subscription allowance appears in the account card. API plans such as OpenCode Go, MiniMax Token
+ Plan and Kimi Code read their allowance with the same saved key and show it in the connection card. Values come
+ from the provider; an unread or missing value stays unknown and is never shown as zero or full.
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 27fba2d..b49fa29 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -45,6 +45,12 @@ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作
+ 运行中弹出确认，被拒的操作列在回复末尾，按提示切换权限后重试即可。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
++Cursor、Kimi Code CLI、OpenCode CLI 通过官方 CLI 的 ACP 模式接入，先在终端完成各自登录
++（`cursor-agent login`、`kimi login`、`opencode auth login`）。计划模式使用 CLI 自己的规划模式；
++变更前确认下，它们要改文件或执行命令时会弹出 Fleet 的确认卡片，你允许后才执行；自动编辑直接
++允许改文件、其它操作仍会询问；完全访问全部放行。可用模型以 CLI 返回的账号列表为准，套餐不包含
++的模型会在请求时报错。
++
+ 订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan、Kimi Code 等 API 套餐用已保存的同一把密钥读取额度，
+ 显示在连接卡片中。额度由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
+ 
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 114b920..1906c4b 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2110,6 +2110,102 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-cursor-native",
++          "templateNameMap": {
++            "zh-CN": "Cursor",
++            "en-US": "Cursor"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "cursor",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "cursor"
++            }
++          },
++          "catalog": {
++            "vendorId": "cursor",
++            "vendorNameMap": {
++              "zh-CN": "Cursor",
++              "en-US": "Cursor"
++            },
++            "serviceId": "cursor-cli",
++            "serviceNameMap": {
++              "zh-CN": "Cursor",
++              "en-US": "Cursor"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-kimi-cli-native",
++          "templateNameMap": {
++            "zh-CN": "Kimi Code CLI",
++            "en-US": "Kimi Code CLI"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "kimi",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "moonshot-kimi"
++            }
++          },
++          "catalog": {
++            "vendorId": "kimi",
++            "vendorNameMap": {
++              "zh-CN": "Kimi",
++              "en-US": "Kimi"
++            },
++            "serviceId": "kimi-cli",
++            "serviceNameMap": {
++              "zh-CN": "Kimi Code CLI",
++              "en-US": "Kimi Code CLI"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-opencode-native",
++          "templateNameMap": {
++            "zh-CN": "OpenCode CLI",
++            "en-US": "OpenCode CLI"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "opencode",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "opencode"
++            }
++          },
++          "catalog": {
++            "vendorId": "opencode",
++            "vendorNameMap": {
++              "zh-CN": "OpenCode",
++              "en-US": "OpenCode"
++            },
++            "serviceId": "opencode-cli",
++            "serviceNameMap": {
++              "zh-CN": "OpenCode CLI",
++              "en-US": "OpenCode CLI"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-typesafe-system-one",
+           "templateNameMap": {
+diff --git a/package.json b/package.json
+index f2fbf2a..6c21d2a 100644
+--- a/package.json
++++ b/package.json
+@@ -60,7 +60,7 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles",
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index bfd41d1..b97ab2e 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -78,7 +78,7 @@ export const completeSubscriptionAccessDataSchema = subscriptionAccessDataSchema
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity"]),
++    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode"]),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 3fa781a..b953bc4 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -18,7 +18,7 @@ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity";
++    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
+     executable?: string;
+     configDir?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 3c7099e..3d93d93 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -9,7 +9,13 @@ import {
+   readCodexNativeUsage,
+   inspectAntigravityConnection,
+   ANTIGRAVITY_LOCAL_ACCOUNT,
++  inspectAcpConnection,
++  isAcpExecutorKind,
++  ACP_PROFILES,
+ } from "@zcode/adapters/native-agent";
++import { mkdirSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
+ import { parseClaudeNativeUsage, parseCodexNativeUsage } from "./nativeCliUsage.js";
+ 
+@@ -87,7 +93,7 @@ export function mapCodexNativeModels(
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity",
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode",
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+@@ -140,6 +146,50 @@ export function createNativeCliConnectionAdapter(
+           },
+         };
+       }
++      if (isAcpExecutorKind(access.provider)) {
++        // ACP CLI 的连接检查只建一个临时会话读取本账号可用模型；工作目录与用户项目隔离。
++        const cwd = join(tmpdir(), "fleet-acp-inspect");
++        mkdirSync(cwd, { recursive: true });
++        const inspected = await inspectAcpConnection({
++          kind: access.provider,
++          executable: access.executable,
++          cwd,
++          env: await resolveEnvironment(access.provider),
++        });
++        if (access.accountId && access.accountId !== inspected.accountId)
++          throw new Error("Native CLI account changed; reconnect this connection");
++        return {
++          accountId: inspected.accountId,
++          accountName: inspected.accountName,
++          catalog: {
++            source: "provider" as const,
++            models: inspected.models.map((model) => ({
++              id: model.id,
++              name: model.name,
++              config: {
++                properties: {
++                  inputFormat: {
++                    supportsText: true,
++                    // ACP 的 image 能力属于会话而非单个模型；未知时不标视觉，避免把文本模型标成可看图。
++                    supportsImage: false,
++                    supportsPdf: false,
++                    supportsAudio: false,
++                    supportsVideo: false,
++                  },
++                  outputFormat: { supportsText: true },
++                },
++                ...(inspected.thoughtLevels.length
++                  ? {
++                      optionSpecs: {
++                        reasoningLevel: { values: ["auto", ...inspected.thoughtLevels], map: "{}" },
++                      },
++                    }
++                  : {}),
++              },
++            })),
++          },
++        };
++      }
+       if (access.provider === "antigravity") {
+         // agy 不提供账号查询；以本机唯一登录为身份，模型目录来自官方 `agy models`。
+         const inspected = await inspectAntigravityConnection({
+@@ -194,6 +244,12 @@ export function createNativeCliConnectionAdapter(
+     login: async (options) => {
+       if (options.provider === "antigravity")
+         throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
++      if (isAcpExecutorKind(options.provider)) {
++        const profile = ACP_PROFILES[options.provider];
++        throw new Error(
++          `Sign in to the official ${profile.label} CLI first: run \`${profile.loginCommand}\` in a terminal`,
++        );
++      }
+       return options.provider === "codex"
+         ? startCodexNativeLogin({ ...options, env: await resolveEnvironment("codex") })
+         : startClaudeNativeLogin({ ...options, env: await resolveEnvironment("claude") });
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 0aa6ed3..55b187b 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2866,12 +2866,18 @@ const NATIVE_CLI_LOGIN_ENDPOINTS = {
+   claude: "https://claude.ai/oauth/authorize",
+   codex: "https://auth.openai.com/oauth/authorize",
+   antigravity: "https://accounts.google.com/o/oauth2/v2/auth",
++  cursor: "https://api2.cursor.sh/",
++  kimi: "https://api.kimi.com/coding/v1",
++  opencode: "https://opencode.ai/zen/v1",
+ } as const;
+ 
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+   claude: "https://api.anthropic.com/",
+   codex: "https://chatgpt.com/backend-api",
+   antigravity: "https://www.googleapis.com/",
++  cursor: "https://api2.cursor.sh/",
++  kimi: "https://api.kimi.com/coding/v1",
++  opencode: "https://opencode.ai/zen/v1",
+ } as const;
+ 
+ async function resolveNativeExecutorNetworkEnv(transport: {
+diff --git a/packages/services/test/acp-native.test.ts b/packages/services/test/acp-native.test.ts
+new file mode 100644
+index 0000000..1d785df
+--- /dev/null
++++ b/packages/services/test/acp-native.test.ts
+@@ -0,0 +1,213 @@
++import assert from "node:assert/strict";
++import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import {
++  acpApprovalDecision,
++  createAcpNativeAgentPort,
++} from "../../../apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.js";
++import { inspectAcpConnection } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.js";
++
++test("Fleet's permission choice answers vendor permission requests (OV-094)", () => {
++  assert.equal(acpApprovalDecision("yolo", "execute"), "allow");
++  assert.equal(acpApprovalDecision("plan", "edit"), "deny");
++  assert.equal(acpApprovalDecision("edit", "edit"), "allow");
++  assert.equal(acpApprovalDecision("edit", "execute"), "ask");
++  assert.equal(acpApprovalDecision("build", "edit"), "ask");
++});
++
++/**
++ * A stand-in ACP agent modelled on the Kimi Code CLI handshake captured on 2026-10-06: config
++ * options for model/mode, resume support, one permission request per prompt.
++ */
++function fakeAgent() {
++  const dir = mkdtempSync(join(tmpdir(), "fake-acp-"));
++  const script = join(dir, "kimi");
++  const log = join(dir, "log.jsonl");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++const fs = require("node:fs");
++if (process.argv[2] === "--version") { console.log("9.9.9"); process.exit(0); }
++const log = (entry) => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + "\\n");
++const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
++const config = (model, mode) => [
++  { id: "model", category: "model", type: "select", currentValue: model, options: [{ value: "k3", name: "K3" }, { value: "k2", name: "K2" }] },
++  { id: "mode", category: "mode", type: "select", currentValue: mode, options: [{ value: "default" }, { value: "plan" }] },
++];
++let model = "k2", mode = "default", nextId = 1000; const waiting = new Map();
++let buffer = "";
++process.stdin.on("data", (chunk) => {
++  buffer += chunk;
++  let index;
++  while ((index = buffer.indexOf("\\n")) >= 0) {
++    const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
++    if (!line.trim()) continue;
++    const message = JSON.parse(line);
++    log(message);
++    if (message.method === undefined && waiting.has(message.id)) { waiting.get(message.id)(message.result); waiting.delete(message.id); continue; }
++    const reply = (result) => send({ jsonrpc: "2.0", id: message.id, result });
++    switch (message.method) {
++      case "initialize": reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: false }, sessionCapabilities: { resume: {}, delete: {} } }, agentInfo: { version: "9.9.9" } }); break;
++      case "session/new": reply({ sessionId: "sess-1", configOptions: config(model, mode) }); break;
++      case "session/resume": reply({ configOptions: config(model, mode) }); break;
++      case "session/delete": reply({}); break;
++      case "session/set_config_option": if (message.params.configId === "model") model = message.params.value; else mode = message.params.value; reply({ configOptions: config(model, mode) }); break;
++      case "session/prompt": {
++        send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1", update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } } } });
++        const id = nextId++;
++        waiting.set(id, (result) => {
++          log({ permissionOutcome: result.outcome });
++          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "你好，" } } } });
++          send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "完成" } } } });
++          reply({ stopReason: "end_turn", usage: { inputTokens: 11, outputTokens: 4, totalTokens: 15 } });
++        });
++        send({ jsonrpc: "2.0", id, method: "session/request_permission", params: { sessionId: "sess-1", toolCall: { toolCallId: "t1", title: "Write file", kind: "edit", rawInput: { path: "a.txt" } }, options: [{ optionId: "yes", kind: "allow_once", name: "Allow" }, { optionId: "no", kind: "reject_once", name: "Reject" }] } });
++        break;
++      }
++      default: send({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "not found" } });
++    }
++  }
++});
++`,
++  );
++  chmodSync(script, 0o755);
++  return {
++    script,
++    log: () =>
++      readFileSync(log, "utf8")
++        .trim()
++        .split("\n")
++        .map((line) => JSON.parse(line) as Record<string, any>),
++  };
++}
++
++function request(executable: string, extra: Record<string, unknown> = {}) {
++  return {
++    model: { modelId: "k3", options: {}, nativeExecutor: { kind: "kimi" as const, executable, accountId: "kimi-local" } } as never,
++    messages: [{ role: "user" as const, content: "写个文件" }],
++    tools: [],
++    sessionId: "s1",
++    turnId: "t1",
++    workingDirectory: tmpdir(),
++    signal: new AbortController().signal,
++    ...extra,
++  };
++}
++
++async function drain(turn: ReturnType<ReturnType<typeof createAcpNativeAgentPort>["createTurn"]>) {
++  turn.admitNextStep();
++  const events = [];
++  for await (const event of turn.model.streamText({ messages: request("").messages } as never)) events.push(event);
++  return events;
++}
++
++test("connection inspection lists the account's models from the ACP session and deletes the probe", async () => {
++  const agent = fakeAgent();
++  const inspected = await inspectAcpConnection({ kind: "kimi", executable: agent.script, cwd: tmpdir() });
++  assert.deepEqual(inspected.models, [
++    { id: "k3", name: "K3" },
++    { id: "k2", name: "K2" },
++  ]);
++  assert.equal(inspected.accountId, "kimi-local");
++  assert.ok(agent.log().some((entry) => entry.method === "session/delete"));
++});
++
++test("a turn selects the model, asks the Host to approve the vendor's edit, streams text and checkpoints", async () => {
++  const agent = fakeAgent();
++  const approvals: unknown[] = [];
++  const turn = createAcpNativeAgentPort("kimi").createTurn(
++    request(agent.script, {
++      collaborationMode: "build",
++      requestApproval: async (input: unknown) => {
++        approvals.push(input);
++        return true;
++      },
++    }),
++  );
++  const events = await drain(turn);
++  const text = events.flatMap((event) => (event.type === "text_delta" ? [event.text] : [])).join("");
++  assert.equal(text, "你好，完成");
++  assert.ok(events.some((event) => event.type === "reasoning_delta"));
++  const finish = events.at(-1);
++  assert.equal(finish?.type, "finish");
++  if (finish?.type === "finish") assert.equal(finish.usage?.inputTokens, 11);
++  assert.equal(approvals.length, 1);
++  const log = agent.log();
++  assert.ok(log.some((entry) => entry.method === "session/set_config_option" && entry.params.value === "k3"));
++  assert.deepEqual(log.find((entry) => entry.permissionOutcome)?.permissionOutcome, { outcome: "selected", optionId: "yes" });
++  const checkpoint = await turn.checkpoint?.();
++  assert.equal(checkpoint?.sessionId, "sess-1");
++  await turn.close();
++  assert.equal(await createAcpNativeAgentPort("kimi").canResume!(checkpoint!, request(agent.script)), true);
++});
++
++test("plan mode selects the vendor's plan mode and refuses changes without asking", async () => {
++  const agent = fakeAgent();
++  let asked = false;
++  const turn = createAcpNativeAgentPort("kimi").createTurn(
++    request(agent.script, {
++      collaborationMode: "plan",
++      requestApproval: async () => {
++        asked = true;
++        return true;
++      },
++    }),
++  );
++  const events = await drain(turn);
++  await turn.close();
++  assert.equal(asked, false);
++  const log = agent.log();
++  assert.ok(log.some((entry) => entry.method === "session/set_config_option" && entry.params.value === "plan"));
++  assert.deepEqual(log.find((entry) => entry.permissionOutcome)?.permissionOutcome, { outcome: "selected", optionId: "no" });
++  assert.match(events.flatMap((event) => (event.type === "text_delta" ? [event.text] : [])).join(""), /计划模式/u);
++});
++
++test("a resumed turn uses session/resume and sends only the uncovered tail", async () => {
++  const agent = fakeAgent();
++  const turn = createAcpNativeAgentPort("kimi").createTurn(
++    request(agent.script, {
++      collaborationMode: "yolo",
++      continuation: { sessionId: "sess-1", cachePath: "acp:kimi:sess-1", cacheFingerprint: "x", executorVersion: "9.9.9" },
++      continuationMessageOffset: 0,
++    }),
++  );
++  await drain(turn);
++  await turn.close();
++  const log = agent.log();
++  assert.ok(log.some((entry) => entry.method === "session/resume" && entry.params.sessionId === "sess-1"));
++  assert.ok(!log.some((entry) => entry.method === "session/new"));
++});
++
++test("an unoffered model fails the turn instead of silently using the CLI default", async () => {
++  const agent = fakeAgent();
++  const turn = createAcpNativeAgentPort("kimi").createTurn({
++    ...request(agent.script),
++    model: { modelId: "missing", options: {}, nativeExecutor: { kind: "kimi", executable: agent.script } } as never,
++  });
++  await assert.rejects(drain(turn), /does not offer model missing/u);
++  await turn.close();
++});
++
++test("an ACP setup request that never answers fails after its timeout instead of hanging", async () => {
++  const { AcpClient } = await import("../../../apps/zcode-cli/packages/adapters/src/native-agent/acp-client.js");
++  const dir = mkdtempSync(join(tmpdir(), "silent-acp-"));
++  const script = join(dir, "silent");
++  writeFileSync(script, "#!/usr/bin/env node\nprocess.stdin.resume();\n");
++  chmodSync(script, 0o755);
++  const client = new AcpClient({
++    executable: script,
++    args: [],
++    cwd: dir,
++    env: process.env,
++    onNotification: () => {},
++    onRequest: async () => ({}),
++    onExit: () => {},
++  });
++  try {
++    await assert.rejects(client.request("authenticate", {}, 200), /timed out/u);
++  } finally {
++    client.close();
++  }
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 9a163cb..e4b2231 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -61,12 +61,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 51);
+-  assert.equal(vendors.length, 21);
++  assert.equal(templates.length, 54);
++  assert.equal(vendors.length, 22);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    51,
++    54,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+@@ -77,11 +77,12 @@ test("registry serialization and settings projection retain every route under on
+ 
+ test("all OpenCode services and protocols remain reachable, with no duplicate vendor cards", () => {
+   const routes = family("opencode");
+-  assert.equal(routes.length, 6);
++  // Go/Zen 各三种协议，加上官方 OpenCode CLI（ACP）连接。
++  assert.equal(routes.length, 7);
+   for (const target of routes) {
+     const selected = selectProviderTemplate(routes, routes[0]!.templateId, {
+       serviceId: target.catalog!.serviceId,
+-      api: target.config.api!.type!,
++      ...(target.config.api?.type ? { api: target.config.api.type } : {}),
+     });
+     assert.equal(selected?.templateId, target.templateId);
+     assert.deepEqual(selected?.config, target.config);
+@@ -334,8 +335,9 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(xai.templates[0]?.config.logo?.key, "xai");
+   assert.equal(subscriptions.find((g) => g.id === "vendor:openai")?.label, "ChatGPT");
+   assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code");
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
++  // Kimi Code（API Key）与 Kimi Code CLI 同属一个厂商卡片，由服务选择区分。
++  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi");
++  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode");
+   assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
+ });
+ 
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e753fec..54872d7 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7317,6 +7317,21 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.antigravity.login": "Run agy in a terminal and sign in with your Google account, then connect again.",
+   "settings.modelProvider.nativeCli.antigravity.network": "Cannot reach Google's official service. Check the network or proxy settings and try again.",
+   "settings.modelProvider.nativeCli.antigravity.guide": "Antigravity CLI setup and sign-in",
++  "settings.modelProvider.nativeCli.cursor.title": "Cursor account",
++  "settings.modelProvider.nativeCli.cursor.flow": "Connect the account signed in to the Cursor CLI (cursor-agent) on this machine.",
++  "settings.modelProvider.nativeCli.cursor.missing": "Cursor CLI (cursor-agent) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.cursor.login": "Run cursor-agent login in a terminal to sign in to Cursor, then connect again.",
++  "settings.modelProvider.nativeCli.cursor.guide": "Cursor CLI setup and sign-in",
++  "settings.modelProvider.nativeCli.kimi.title": "Kimi Code account",
++  "settings.modelProvider.nativeCli.kimi.flow": "Connect the account signed in to the Kimi Code CLI (kimi) on this machine.",
++  "settings.modelProvider.nativeCli.kimi.missing": "Kimi Code CLI (kimi) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.kimi.login": "Run kimi login in a terminal to sign in to Kimi, then connect again.",
++  "settings.modelProvider.nativeCli.kimi.guide": "Kimi Code CLI setup and sign-in",
++  "settings.modelProvider.nativeCli.opencode.title": "OpenCode account",
++  "settings.modelProvider.nativeCli.opencode.flow": "Connect the signed-in OpenCode (opencode) account and its configured providers on this machine.",
++  "settings.modelProvider.nativeCli.opencode.missing": "OpenCode (opencode) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.opencode.login": "Run opencode auth login in a terminal, then connect again.",
++  "settings.modelProvider.nativeCli.opencode.guide": "OpenCode ACP guide",
+   "settings.modelProvider.nativeCli.flow":
+     "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index b50b726..24704df 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6929,6 +6929,21 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.antigravity.login": "请先在终端运行 agy，登录 Google 账号后再连接。",
+   "settings.modelProvider.nativeCli.antigravity.network": "无法连接 Google 官方服务，请检查网络或代理设置后重试。",
+   "settings.modelProvider.nativeCli.antigravity.guide": "Antigravity CLI 安装与登录",
++  "settings.modelProvider.nativeCli.cursor.title": "Cursor 账号",
++  "settings.modelProvider.nativeCli.cursor.flow": "连接本机 Cursor CLI（cursor-agent）当前登录的账号。",
++  "settings.modelProvider.nativeCli.cursor.missing": "未找到 Cursor CLI（cursor-agent），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.cursor.login": "请先在终端运行 cursor-agent login 登录 Cursor 账号，然后再连接。",
++  "settings.modelProvider.nativeCli.cursor.guide": "Cursor CLI 安装与登录",
++  "settings.modelProvider.nativeCli.kimi.title": "Kimi Code 账号",
++  "settings.modelProvider.nativeCli.kimi.flow": "连接本机 Kimi Code CLI（kimi）当前登录的账号。",
++  "settings.modelProvider.nativeCli.kimi.missing": "未找到 Kimi Code CLI（kimi），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.kimi.login": "请先在终端运行 kimi login 登录 Kimi 账号，然后再连接。",
++  "settings.modelProvider.nativeCli.kimi.guide": "Kimi Code CLI 安装与登录",
++  "settings.modelProvider.nativeCli.opencode.title": "OpenCode 账号",
++  "settings.modelProvider.nativeCli.opencode.flow": "连接本机 OpenCode（opencode）当前登录的账号与已配置的服务商。",
++  "settings.modelProvider.nativeCli.opencode.missing": "未找到 OpenCode（opencode），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.opencode.login": "请先在终端运行 opencode auth login 登录，然后再连接。",
++  "settings.modelProvider.nativeCli.opencode.guide": "OpenCode ACP 说明",
+   "settings.modelProvider.nativeCli.flow":
+     "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index bf81cac..00330d3 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -45,12 +45,18 @@ function NativeCliAllowance({
+ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], ReadonlySet<string>>> = {
+   codex: new Set(["title", "flow", "missing", "login", "network", "timeout"]),
+   antigravity: new Set(["title", "flow", "missing", "login", "network", "guide"]),
++  cursor: new Set(["title", "flow", "missing", "login", "guide"]),
++  kimi: new Set(["title", "flow", "missing", "login", "guide"]),
++  opencode: new Set(["title", "flow", "missing", "login", "guide"]),
+ };
+ 
+ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+   claude: "https://code.claude.com/docs/en/setup",
+   codex: "https://learn.chatgpt.com/docs/cli",
+   antigravity: "https://antigravity.google/docs/cli",
++  cursor: "https://cursor.com/docs/cli/overview",
++  kimi: "https://moonshotai.github.io/kimi-cli/",
++  opencode: "https://opencode.ai/docs/acp/",
+ };
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 3db2fc9..1a5b732 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -19,6 +19,7 @@ import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg";
+ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
+ import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
++import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+ import Groq from "@lobehub/icons-static-svg/icons/groq.svg";
+ import Cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg";
+@@ -50,6 +51,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   grok: { src: Grok, color: false },
+   openrouter: { src: openrouterLight, dark: openrouterDark, color: true },
+   opencode: { src: OpenCode, color: false },
++  cursor: { src: Cursor, color: false },
+   github: { src: GithubCopilot, color: false },
+   groq: { src: Groq, color: false },
+   cerebras: { src: Cerebras, color: true },

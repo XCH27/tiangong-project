@@ -1,0 +1,811 @@
+diff --git a/package.json b/package.json
+index a089ea8..5a2daae 100644
+--- a/package.json
++++ b/package.json
+@@ -55,7 +55,7 @@
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+-    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests"
++    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index 47cf9c8..d45c0fd 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -8,6 +8,7 @@ import { logger } from "@/logger.js";
+ import { useProviderSettingsServiceView } from "@/hooks/useProviderSettingsView.js";
+ import {
+   projectProviderSettingsViewToFormProviders,
++  projectProviderSettingsSaveReceipt,
+   resolveProviderSettingsFormProviders,
+   resolveProviderOrdering,
+ } from "@/lib/providerSettingsFormProjection.js";
+@@ -176,16 +177,17 @@ export function useModelProviders(target: {
+         .addPersonalModel(providerId, modelId, config, useRecommendedConfig)
+         .then((view) => {
+           commitProviderSettingsView(view);
+-          return view;
++          return projectProviderSettingsSaveReceipt(view, providerId);
+         }),
+     [commitProviderSettingsView, providerSettingsService],
+   );
+ 
+   const savePersonalModelDraft = useCallback(
+     async (input: Parameters<typeof providerSettingsService.savePersonalModelDraft>[0]) => {
++      const providerId = input.providerId;
+       const view = await providerSettingsService.savePersonalModelDraft(input);
+       commitProviderSettingsView(view);
+-      return view;
++      return projectProviderSettingsSaveReceipt(view, providerId);
+     },
+     [commitProviderSettingsView, providerSettingsService],
+   );
+@@ -199,7 +201,7 @@ export function useModelProviders(target: {
+         providerSettingsView?.revision,
+       );
+       commitProviderSettingsView(view);
+-      return view;
++      return projectProviderSettingsSaveReceipt(view, providerId);
+     },
+     [commitProviderSettingsView, providerSettingsService, providerSettingsView?.revision],
+   );
+@@ -228,6 +230,7 @@ export function useModelProviders(target: {
+     async (providerId: string, modelIds: readonly string[]) => {
+       const view = await providerSettingsService.reorderPersonalModels(providerId, modelIds);
+       commitProviderSettingsView(view);
++      return projectProviderSettingsSaveReceipt(view, providerId);
+     },
+     [commitProviderSettingsView, providerSettingsService],
+   );
+diff --git a/packages/ui/src/lib/providerSettingsFormProjection.ts b/packages/ui/src/lib/providerSettingsFormProjection.ts
+index cd9744e..6e8ac18 100644
+--- a/packages/ui/src/lib/providerSettingsFormProjection.ts
++++ b/packages/ui/src/lib/providerSettingsFormProjection.ts
+@@ -1,5 +1,8 @@
+ import type { ProviderSettingsView } from "@zcode/services";
+-import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
++import type {
++  ProviderSettingsFormProvider,
++  ProviderSettingsSaveReceipt,
++} from "@/lib/providerSettingsFormTypes.js";
+ import type { ProviderOrderView } from "@/lib/modelProviderOrdering.js";
+ 
+ /** 把正式 Settings View 复制成当前编辑会话使用的可变表单状态。 */
+@@ -9,6 +12,15 @@ export function projectProviderSettingsViewToFormProviders(
+   return projectProviderSettingsProviders(view.providers);
+ }
+ 
++export function projectProviderSettingsSaveReceipt(
++  view: ProviderSettingsView,
++  providerId: string,
++): ProviderSettingsSaveReceipt {
++  const provider = view.providers.find((item) => item.providerId === providerId);
++  if (!provider) throw new Error("Provider no longer exists");
++  return { provider: projectProviderSettingsProviders([provider])[0]!, revision: view.revision };
++}
++
+ function projectProviderSettingsProviders(
+   providers: ProviderSettingsView["providers"],
+ ): ProviderSettingsFormProvider[] {
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index 7d995a6..74d56c1 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -3,6 +3,7 @@ import {
+   getProviderFormApiKeyManagementUrl,
+   type ProviderSettingsFormProvider,
+   type ProviderSettingsSaveHandler,
++  type ProviderSettingsSaveReceipt,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelProviderNavItem } from "./constants.js";
+ import { InlineEditableProviderCard } from "./InlineEditableProviderCard.js";
+@@ -32,15 +33,20 @@ export function ModelProviderSectionDetail({
+     modelId: string,
+     config: ProviderSettingsFormProvider["models"][number]["personalConfig"],
+     useRecommendedConfig?: boolean,
+-  ) => Promise<unknown>;
+-  onSavePersonalModelDraft?: (input: SavePersonalModelDraftInput) => Promise<unknown>;
++  ) => Promise<ProviderSettingsSaveReceipt>;
++  onSavePersonalModelDraft?: (
++    input: SavePersonalModelDraftInput,
++  ) => Promise<ProviderSettingsSaveReceipt>;
+   onSetPersonalModelEnabled?: (
+     providerId: string,
+     modelId: string,
+     enabled: boolean,
+-  ) => Promise<unknown>;
++  ) => Promise<ProviderSettingsSaveReceipt>;
+   onDelete: (provider: ProviderSettingsFormProvider) => Promise<void>;
+-  onReorderProviderModels?: (providerId: string, modelIds: string[]) => Promise<void>;
++  onReorderProviderModels?: (
++    providerId: string,
++    modelIds: string[],
++  ) => Promise<ProviderSettingsSaveReceipt>;
+   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+   onConnectionChanged?: (providerId: string) => void;
+   expandedAccountId?: string | null;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 15b1d49..74a0577 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -7,6 +7,7 @@ import {
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+   type ProviderSettingsSaveHandler,
++  type ProviderSettingsSaveReceipt,
+   type ProviderSettingsFormModel,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+@@ -134,19 +135,21 @@ export function InlineEditableProviderCard({
+     modelId: string,
+     config: ProviderSettingsFormModel["personalConfig"],
+     useRecommendedConfig?: boolean,
+-  ) => Promise<unknown>;
+-  onSavePersonalModelDraft?: (input: SavePersonalModelDraftInput) => Promise<unknown>;
++  ) => Promise<ProviderSettingsSaveReceipt>;
++  onSavePersonalModelDraft?: (
++    input: SavePersonalModelDraftInput,
++  ) => Promise<ProviderSettingsSaveReceipt>;
+   onSetPersonalModelEnabled?: (
+     providerId: string,
+     modelId: string,
+     enabled: boolean,
+-  ) => Promise<unknown>;
++  ) => Promise<ProviderSettingsSaveReceipt>;
+   onDelete?: () => void | Promise<void>;
+   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+   onConnectionChanged?: (providerId: string) => void;
+   expandedAccountId?: string | null;
+   onExpandedAccountChange?: (providerId: string, accountId: string | null) => void;
+-  onReorderModelIds?: (modelIds: string[]) => Promise<void>;
++  onReorderModelIds?: (modelIds: string[]) => Promise<ProviderSettingsSaveReceipt>;
+   readOnlyEndpoints?: boolean;
+   presetApiKeyUrl?: string;
+   onOpenPresetApiKey?: () => void;
+@@ -402,15 +405,44 @@ export function InlineEditableProviderCard({
+     [],
+   );
+ 
++  const commitOwnReceipt = useCallback(
++    (
++      saved: ProviderSettingsSaveReceipt,
++      submittedProvider: ProviderSettingsFormProvider,
++      basedOnRevision: number,
++    ) => {
++      if (
++        !mountedRef.current ||
++        providerIdRef.current !== submittedProvider.providerId ||
++        saved.provider.providerId !== submittedProvider.providerId ||
++        saved.revision < committedRevisionRef.current
++      )
++        return;
++      committedRevisionRef.current = saved.revision;
++      committedProviderRef.current = saved.provider;
++      const submitted = readProviderDraftValues(submittedProvider);
++      const acknowledged = readProviderDraftValues(saved.provider);
++      for (const [field, revision] of dirtyProviderFieldsRef.current)
++        if (
++          revision === basedOnRevision &&
++          JSON.stringify(submitted[field]) === JSON.stringify(acknowledged[field])
++        )
++          dirtyProviderFieldsRef.current.set(field, saved.revision);
++    },
++    [],
++  );
++
+   const persistModelOrder = useCallback(
+     async (modelIds: readonly string[]) => {
+       const target = reorderModelIdsTargetRef.current;
+       if (!target) throw new Error("当前设置入口未装配 Model 调序能力");
++      const before = committedProviderRef.current;
++      const revision = committedRevisionRef.current;
+       await runSaveOperation(async () => {
+-        await target([...modelIds]);
++        commitOwnReceipt(await target([...modelIds]), before, revision);
+       });
+     },
+-    [provider.providerId, runSaveOperation],
++    [provider.providerId, runSaveOperation, commitOwnReceipt],
+   );
+   const optimisticModelOrder = useOptimisticReorder({
+     authoritativeIds: authoritativeModelIds,
+@@ -433,24 +465,7 @@ export function InlineEditableProviderCard({
+       const operation = async () => {
+         const saved = await onSave(nextProvider, basedOnRevision);
+         savedRevision = saved.revision;
+-        if (
+-          mountedRef.current &&
+-          providerIdRef.current === nextProvider.providerId &&
+-          saved.revision >= committedRevisionRef.current
+-        ) {
+-          committedRevisionRef.current = saved.revision;
+-          committedProviderRef.current = saved.provider;
+-          // Only our acknowledged write can advance an existing draft's base.
+-          // Incoming views never rebase dirty input onto someone else's edit.
+-          const submitted = readProviderDraftValues(nextProvider);
+-          const acknowledged = readProviderDraftValues(saved.provider);
+-          for (const [field, revision] of dirtyProviderFieldsRef.current)
+-            if (
+-              revision === basedOnRevision &&
+-              JSON.stringify(submitted[field]) === JSON.stringify(acknowledged[field])
+-            )
+-              dirtyProviderFieldsRef.current.set(field, saved.revision);
+-        }
++        commitOwnReceipt(saved, nextProvider, basedOnRevision);
+       };
+       await runSaveOperation(operation, { draftOwnsRetry: true }).catch((error) => {
+         logger.warn("[ModelProviderSection] 保存 Provider 草稿失败", {
+@@ -461,7 +476,7 @@ export function InlineEditableProviderCard({
+       });
+       return savedRevision;
+     },
+-    [onSave, provider.providerId, runSaveOperation],
++    [onSave, provider.providerId, runSaveOperation, commitOwnReceipt],
+   );
+ 
+   const applyKeyDraft = (keys: readonly string[], automatic: boolean) => {
+@@ -807,9 +822,10 @@ export function InlineEditableProviderCard({
+       if (JSON.stringify(next) === JSON.stringify(models)) {
+         return;
+       }
++      const before = committedProviderRef.current;
+       await runSaveOperation(
+         async () => {
+-          await onSavePersonalModelDraft({
++          const saved = await onSavePersonalModelDraft({
+             providerId: provider.providerId,
+             originalModelId: currentModel.modelId,
+             nextModelId: trimmed,
+@@ -819,23 +835,30 @@ export function InlineEditableProviderCard({
+               : { useRecommendedConfig: nextModel.useRecommendedConfig }),
+             basedOnRevision,
+           });
++          commitOwnReceipt(saved, before, basedOnRevision);
+         },
+         { modelId: trimmed, draftOwnsRetry: true },
+       );
+     },
+-    [models, onSavePersonalModelDraft, provider.providerId, runSaveOperation],
++    [models, onSavePersonalModelDraft, provider.providerId, runSaveOperation, commitOwnReceipt],
+   );
+ 
+   const handleModelEnabledChange = useCallback(
+     async (modelId: string, enabled: boolean) => {
+       if (!onSetPersonalModelEnabled) throw new Error("当前设置入口未装配 Model 启停能力");
++      const before = committedProviderRef.current;
++      const revision = committedRevisionRef.current;
+       await runSaveOperation(
+-        () =>
+-          onSetPersonalModelEnabled(provider.providerId, modelId, enabled).then(() => undefined),
++        async () =>
++          commitOwnReceipt(
++            await onSetPersonalModelEnabled(provider.providerId, modelId, enabled),
++            before,
++            revision,
++          ),
+         { modelId },
+       );
+     },
+-    [onSetPersonalModelEnabled, provider.providerId, runSaveOperation],
++    [onSetPersonalModelEnabled, provider.providerId, runSaveOperation, commitOwnReceipt],
+   );
+ 
+   const handleAddModel = useCallback(
+@@ -843,19 +866,22 @@ export function InlineEditableProviderCard({
+       if (!onAddPersonalModel) throw new Error("当前设置入口未装配 Personal Model 添加能力");
+       const added = { ...model, modelId: model.modelId.trim(), hasPersonalConfig: true };
+       if (!added.modelId) return;
++      const before = committedProviderRef.current;
++      const revision = committedRevisionRef.current;
+       await runSaveOperation(
+         async () => {
+-          await onAddPersonalModel(
++          const saved = await onAddPersonalModel(
+             provider.providerId,
+             added.modelId,
+             structuredClone(added.personalConfig),
+             added.useRecommendedConfig,
+           );
++          commitOwnReceipt(saved, before, revision);
+         },
+         { modelId: added.modelId, draftOwnsRetry: true },
+       );
+     },
+-    [onAddPersonalModel, provider.providerId, runSaveOperation],
++    [onAddPersonalModel, provider.providerId, runSaveOperation, commitOwnReceipt],
+   );
+ 
+   const handleReorderModelIds = useCallback(
+diff --git a/packages/ui/test/helpers/providerDraftFixture.tsx b/packages/ui/test/helpers/providerDraftFixture.tsx
+new file mode 100644
+index 0000000..99d2244
+--- /dev/null
++++ b/packages/ui/test/helpers/providerDraftFixture.tsx
+@@ -0,0 +1,208 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../../src/hooks/useServices.js";
++import { ZCodeIntlProvider } from "../../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../../src/components/ui/tooltip.js";
++import { InlineEditableProviderCard } from "../../src/settings/model-provider-section/InlineEditableProviderCard.js";
++import { ProviderDetailFeedbackBoundary } from "../../src/settings/model-provider-section/ProviderDetailFeedback.js";
++import type { SavePersonalModelDraftInput } from "@zcode/provider";
++import type {
++  ProviderSettingsFormProvider,
++  ProviderSettingsSaveReceipt,
++} from "../../src/lib/providerSettingsFormTypes.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++
++export function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++export function provider(
++  id = "A",
++  url = "https://fixture.invalid/v1",
++  key = "synthetic-original",
++): ProviderSettingsFormProvider {
++  const config = {
++    group: "standard-personal" as const,
++    api: { type: "openai-chat-completions" as const, baseUrl: url },
++    access: { type: "api-key" as const, apiKey: key },
++  };
++  return {
++    providerId: id,
++    providerName: id,
++    enabled: true,
++    executable: true,
++    hasPersonalConfig: true,
++    personalConfig: config,
++    config,
++    models: [],
++  };
++}
++
++export async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
++  const container = document.createElement("div");
++  document.body.append(container);
++  const root = createRoot(container);
++  const writes: Array<{
++    provider: ProviderSettingsFormProvider;
++    revision?: number;
++    result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
++  }> = [];
++  const modelWrites: Array<{
++    input: SavePersonalModelDraftInput;
++    result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
++  }> = [];
++  const modelActions: Array<{
++    kind: "enabled" | "add" | "order";
++    result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
++  }> = [];
++  let currentModel: ProviderSettingsFormProvider["models"][number] | undefined;
++  const services = {
++    providerSettingsService: {
++      async discoverModels() {
++        return { models: [], warnings: [] };
++      },
++      async resolveModelConfig() {
++        return {
++          inheritedConfig: currentModel?.config ?? {},
++          effectiveConfig: currentModel?.config ?? {},
++          evidenceConfig: currentModel?.config ?? {},
++          issues: [],
++        };
++      },
++    },
++  };
++  return {
++    container,
++    writes,
++    modelWrites,
++    modelActions,
++    conflictText: locale === "zh-CN" ? "设置已变更" : "Settings changed",
++    async render(value: ProviderSettingsFormProvider, revision: number) {
++      currentModel = value.models[0];
++      await act(async () => {
++        root.render(
++          <ServiceProvider services={services as never}>
++            <ZCodeIntlProvider initialLocale={locale}>
++              <TooltipProvider>
++                <ProviderDetailFeedbackBoundary>
++                  <InlineEditableProviderCard
++                    provider={value}
++                    settingsRevision={revision}
++                    nameEditable
++                    onSavePersonalModelDraft={(input) => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      modelWrites.push({ input, result });
++                      return result.promise;
++                    }}
++                    onSetPersonalModelEnabled={() => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      modelActions.push({ kind: "enabled", result });
++                      return result.promise;
++                    }}
++                    onAddPersonalModel={() => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      modelActions.push({ kind: "add", result });
++                      return result.promise;
++                    }}
++                    onReorderModelIds={() => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      modelActions.push({ kind: "order", result });
++                      return result.promise;
++                    }}
++                    onSave={(next, basedOnRevision) => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      writes.push({ provider: next, revision: basedOnRevision, result });
++                      return result.promise;
++                    }}
++                  />
++                </ProviderDetailFeedbackBoundary>
++              </TooltipProvider>
++            </ZCodeIntlProvider>
++          </ServiceProvider>,
++        );
++      });
++    },
++    input(selector: string) {
++      const input = container.querySelector<HTMLInputElement>(selector);
++      check(input, `Missing input: ${selector}`);
++      return input;
++    },
++    async type(input: HTMLInputElement, value: string) {
++      await act(async () => {
++        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++          input,
++          value,
++        );
++        input.dispatchEvent(new Event("input", { bubbles: true }));
++      });
++    },
++    async key(input: HTMLInputElement, key: string) {
++      await act(async () => {
++        input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
++      });
++    },
++    async settle(index: number, value: ProviderSettingsSaveReceipt | Error) {
++      await act(async () => {
++        if (value instanceof Error) writes[index]!.result.reject(value);
++        else writes[index]!.result.resolve(value);
++      });
++    },
++    async close() {
++      await act(async () => {
++        root.unmount();
++      });
++      container.remove();
++    },
++    async failModel(index: number) {
++      await act(async () => {
++        modelWrites[index]!.result.reject(
++          new Error("Provider Settings revision conflict: expected 40, current 41"),
++        );
++      });
++    },
++    async settleModelAction(index: number, value: ProviderSettingsSaveReceipt) {
++      await act(async () => {
++        modelActions[index]!.result.resolve(value);
++      });
++    },
++  };
++}
++
++export function providerWithModel(): ProviderSettingsFormProvider {
++  const value = provider();
++  const config = {
++    enabled: true,
++    properties: {
++      contextWindow: 128_000,
++      supportsToolCall: true,
++      inputFormat: {
++        supportsText: true,
++        supportsImage: false,
++        supportsVideo: false,
++        supportsAudio: false,
++        supportsPdf: false,
++      },
++      outputFormat: { supportsText: true },
++    },
++    optionSpecs: {
++      maxOutputTokens: { max: 8192, map: "{}" },
++      reasoningLevel: { values: ["off"], map: "{}" },
++    },
++  };
++  value.models = [
++    {
++      kind: "candidate",
++      modelId: "fixture-model",
++      builtin: false,
++      config,
++      inheritedConfig: config,
++      evidenceConfig: config,
++      personalConfig: {},
++      hasPersonalConfig: false,
++      executable: true,
++      selectable: true,
++    },
++  ];
++  return value;
++}
+diff --git a/packages/ui/test/providerDrafts.browser.tsx b/packages/ui/test/providerDrafts.browser.tsx
+index e675531..1c57802 100644
+--- a/packages/ui/test/providerDrafts.browser.tsx
++++ b/packages/ui/test/providerDrafts.browser.tsx
+@@ -1,148 +1,5 @@
+ import { act } from "react";
+-import { createRoot } from "react-dom/client";
+-import { ServiceProvider } from "../src/hooks/useServices.js";
+-import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+-import { TooltipProvider } from "../src/components/ui/tooltip.js";
+-import { InlineEditableProviderCard } from "../src/settings/model-provider-section/InlineEditableProviderCard.js";
+-import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
+-import type { SavePersonalModelDraftInput } from "@zcode/provider";
+-import type {
+-  ProviderSettingsFormProvider,
+-  ProviderSettingsSaveReceipt,
+-} from "../src/lib/providerSettingsFormTypes.js";
+-
+-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+-
+-function check(value: unknown, message: string): asserts value {
+-  if (!value) throw new Error(message);
+-}
+-
+-function provider(
+-  id = "A",
+-  url = "https://fixture.invalid/v1",
+-  key = "synthetic-original",
+-): ProviderSettingsFormProvider {
+-  const config = {
+-    group: "standard-personal" as const,
+-    api: { type: "openai-chat-completions" as const, baseUrl: url },
+-    access: { type: "api-key" as const, apiKey: key },
+-  };
+-  return {
+-    providerId: id,
+-    providerName: id,
+-    enabled: true,
+-    executable: true,
+-    hasPersonalConfig: true,
+-    personalConfig: config,
+-    config,
+-    models: [],
+-  };
+-}
+-
+-async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
+-  const container = document.createElement("div");
+-  document.body.append(container);
+-  const root = createRoot(container);
+-  const writes: Array<{
+-    provider: ProviderSettingsFormProvider;
+-    revision?: number;
+-    result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
+-  }> = [];
+-  const modelWrites: Array<{
+-    input: SavePersonalModelDraftInput;
+-    result: ReturnType<typeof Promise.withResolvers<void>>;
+-  }> = [];
+-  let currentModel: ProviderSettingsFormProvider["models"][number] | undefined;
+-  const services = {
+-    providerSettingsService: {
+-      async discoverModels() {
+-        return { models: [], warnings: [] };
+-      },
+-      async resolveModelConfig() {
+-        return {
+-          inheritedConfig: currentModel?.config ?? {},
+-          effectiveConfig: currentModel?.config ?? {},
+-          evidenceConfig: currentModel?.config ?? {},
+-          issues: [],
+-        };
+-      },
+-    },
+-  };
+-  return {
+-    container,
+-    writes,
+-    modelWrites,
+-    conflictText: locale === "zh-CN" ? "设置已变更" : "Settings changed",
+-    async render(value: ProviderSettingsFormProvider, revision: number) {
+-      currentModel = value.models[0];
+-      await act(async () => {
+-        root.render(
+-          <ServiceProvider services={services as never}>
+-            <ZCodeIntlProvider initialLocale={locale}>
+-              <TooltipProvider>
+-                <ProviderDetailFeedbackBoundary>
+-                  <InlineEditableProviderCard
+-                    provider={value}
+-                    settingsRevision={revision}
+-                    nameEditable
+-                    onSavePersonalModelDraft={(input) => {
+-                      const result = Promise.withResolvers<void>();
+-                      modelWrites.push({ input, result });
+-                      return result.promise;
+-                    }}
+-                    onSave={(next, basedOnRevision) => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      writes.push({ provider: next, revision: basedOnRevision, result });
+-                      return result.promise;
+-                    }}
+-                  />
+-                </ProviderDetailFeedbackBoundary>
+-              </TooltipProvider>
+-            </ZCodeIntlProvider>
+-          </ServiceProvider>,
+-        );
+-      });
+-    },
+-    input(selector: string) {
+-      const input = container.querySelector<HTMLInputElement>(selector);
+-      check(input, `Missing input: ${selector}`);
+-      return input;
+-    },
+-    async type(input: HTMLInputElement, value: string) {
+-      await act(async () => {
+-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+-          input,
+-          value,
+-        );
+-        input.dispatchEvent(new Event("input", { bubbles: true }));
+-      });
+-    },
+-    async key(input: HTMLInputElement, key: string) {
+-      await act(async () => {
+-        input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+-      });
+-    },
+-    async settle(index: number, value: ProviderSettingsSaveReceipt | Error) {
+-      await act(async () => {
+-        if (value instanceof Error) writes[index]!.result.reject(value);
+-        else writes[index]!.result.resolve(value);
+-      });
+-    },
+-    async close() {
+-      await act(async () => {
+-        root.unmount();
+-      });
+-      container.remove();
+-    },
+-    async failModel(index: number) {
+-      await act(async () => {
+-        modelWrites[index]!.result.reject(
+-          new Error("Provider Settings revision conflict: expected 40, current 41"),
+-        );
+-      });
+-    },
+-  };
+-}
++import { check, fixture, provider } from "./helpers/providerDraftFixture.js";
+ 
+ async function run() {
+   const cases: Record<string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>> = {
+diff --git a/packages/ui/test/providerModelWrites.browser.tsx b/packages/ui/test/providerModelWrites.browser.tsx
+new file mode 100644
+index 0000000..783ce7a
+--- /dev/null
++++ b/packages/ui/test/providerModelWrites.browser.tsx
+@@ -0,0 +1,116 @@
++import { act } from "react";
++import { check, fixture, providerWithModel } from "./helpers/providerDraftFixture.js";
++
++async function run() {
++  const cases: Record<string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>> = {
++    "a model switch acknowledges the next connection revision without discarding its dirty address":
++      async (f) => {
++        const before = providerWithModel();
++        await f.render(before, 60);
++        const address = f.input('input[value="https://fixture.invalid/v1"]');
++        await f.type(address, "https://typed.invalid/v1");
++        const toggle = f.container.querySelector<HTMLButtonElement>(
++          '[role="switch"][aria-label="禁用"],[role="switch"][aria-label="Disable"]',
++        );
++        check(toggle, "model switch is unavailable");
++        await act(async () => {
++          toggle.click();
++        });
++        const saved = structuredClone(before);
++        saved.models[0]!.config.enabled = false;
++        await f.settleModelAction(0, { provider: saved, revision: 61 });
++        // Host can publish its view either before or after the callback receipt.
++        await f.render(saved, 61);
++        check(
++          address.value === "https://typed.invalid/v1",
++          "model save discarded connection input",
++        );
++        await f.key(address, "Enter");
++        check(f.writes[0]?.revision === 61, "normal model save caused a false connection conflict");
++        await f.settle(0, { provider: f.writes[0]!.provider, revision: 62 });
++      },
++    "a model receipt containing an intervening external connection edit cannot rebase old input":
++      async (f) => {
++        const before = providerWithModel();
++        await f.render(before, 70);
++        const address = f.input('input[value="https://fixture.invalid/v1"]');
++        await f.type(address, "https://typed.invalid/v1");
++        const toggle = f.container.querySelector<HTMLButtonElement>(
++          '[role="switch"][aria-label="禁用"],[role="switch"][aria-label="Disable"]',
++        );
++        check(toggle, "model switch is unavailable");
++        await act(async () => {
++          toggle.click();
++        });
++        const saved = structuredClone(before);
++        saved.config.api!.baseUrl = "https://external.invalid/v1";
++        saved.personalConfig.api!.baseUrl = "https://external.invalid/v1";
++        await f.render(saved, 72);
++        await f.settleModelAction(0, { provider: saved, revision: 72 });
++        await f.key(address, "Enter");
++        check(
++          f.writes[0]?.revision === 70,
++          "model receipt concealed an external connection change",
++        );
++        await f.settle(
++          0,
++          new Error("Provider Settings revision conflict: expected 70, current 72"),
++        );
++        check(address.value === "https://typed.invalid/v1", "conflict lost the dirty address");
++      },
++    "model metadata confirmation acknowledges unchanged connection fields before their next save":
++      async (f) => {
++        const before = providerWithModel();
++        await f.render(before, 80);
++        const address = f.input('input[value="https://fixture.invalid/v1"]');
++        await f.type(address, "https://typed.invalid/v1");
++        const edit = f.container.querySelector<HTMLButtonElement>(
++          'button[aria-label="编辑模型配置"],button[aria-label="Edit model settings"]',
++        );
++        check(edit, "model editor is unavailable");
++        await act(async () => {
++          edit.click();
++        });
++        const capacity = document.querySelector<HTMLInputElement>(
++          '[role="dialog"] input[inputmode="numeric"]',
++        );
++        check(capacity, "context input is unavailable");
++        await f.type(capacity, "200000");
++        const save = [
++          ...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
++        ].find((b) => b.textContent === "保存" || b.textContent === "Save");
++        check(save, "model save is unavailable");
++        await act(async () => {
++          save.click();
++        });
++        const saved = structuredClone(before);
++        saved.models[0]!.config.properties!.contextWindow = 200000;
++        await act(async () => {
++          f.modelWrites[0]!.result.resolve({ provider: saved, revision: 81 });
++        });
++        await f.key(address, "Enter");
++        check(f.writes[0]?.revision === 81, "metadata save caused a false connection conflict");
++        await f.settle(0, { provider: f.writes[0]!.provider, revision: 82 });
++      },
++  };
++  const results: Array<{ name: string; error?: string }> = [];
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const [name, execute] of Object.entries(cases)) {
++      const f = await fixture(locale);
++      try {
++        await execute(f);
++        results.push({ name: `${locale}: ${name}` });
++      } catch (error) {
++        results.push({
++          name: `${locale}: ${name}`,
++          error: error instanceof Error ? error.stack : String(error),
++        });
++      } finally {
++        await f.close();
++      }
++    }
++  return results;
++}
++(
++  window as unknown as { __providerModelWriteTests: ReturnType<typeof run> }
++).__providerModelWriteTests = run();

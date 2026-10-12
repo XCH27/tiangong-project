@@ -1,0 +1,216 @@
+diff --git a/apps/zcode-cli/package.json b/apps/zcode-cli/package.json
+index 1fa58ea..8354118 100644
+--- a/apps/zcode-cli/package.json
++++ b/apps/zcode-cli/package.json
+@@ -7,7 +7,7 @@
+   "scripts": {
+     "build": "turbo run build",
+     "build:sea": "pnpm --filter @zcode/cli build:sea",
+-    "check": "pnpm registry:check && turbo run typecheck",
++    "check": "pnpm registry:check && pnpm typecheck",
+     "clean": "turbo run clean",
+     "cli:build": "pnpm --filter @zcode/cli build",
+     "cli:dev": "pnpm --filter @zcode/cli dev",
+@@ -15,9 +15,9 @@
+     "dev": "pnpm --filter @zcode/cli dev",
+     "format": "oxfmt --write package.json \"packages/**/*.json\" \"packages/**/*.ts\" \"packages/**/*.mjs\"",
+     "format:check": "oxfmt --check package.json \"packages/**/*.json\" \"packages/**/*.ts\" \"packages/**/*.mjs\"",
+-    "lint": "turbo run lint",
++    "lint": "pnpm -r --no-bail --filter './packages/*' --if-present run lint",
+     "lint:count": "node scripts/count-ts-lines.mjs",
+-    "lint:fix": "turbo run lint:fix",
++    "lint:fix": "pnpm -r --filter './packages/*' --if-present run lint:fix",
+     "prompt-trajectory:model-io": "pnpm --filter @zcode/prompt-trajectory model-io --",
+     "prompt-trajectory:prompt": "pnpm --filter @zcode/prompt-trajectory record:prompt --",
+     "registry:check": "node scripts/generate-bash-command-registry.mjs --check",
+@@ -25,7 +25,7 @@
+     "release": "node ../../node_modules/release-it/bin/release-it.js --config .release-it.json",
+     "release:dry": "pnpm run release --release-version",
+     "sea": "pnpm --filter @zcode/cli sea",
+-    "typecheck": "turbo run typecheck"
++    "typecheck": "pnpm -r --filter './packages/*' --if-present run typecheck"
+   },
+   "dependencies": {
+     "dotenv": "^17.4.2",
+diff --git a/apps/zcode-cli/packages/adapters/package.json b/apps/zcode-cli/packages/adapters/package.json
+index 3d6c05a..58ed488 100644
+--- a/apps/zcode-cli/packages/adapters/package.json
++++ b/apps/zcode-cli/packages/adapters/package.json
+@@ -99,8 +99,8 @@
+     "build": "tsc",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@ai-sdk/anthropic": "4.0.71",
+diff --git a/apps/zcode-cli/packages/bootstrap/package.json b/apps/zcode-cli/packages/bootstrap/package.json
+index d4df6ab..cf60f0d 100644
+--- a/apps/zcode-cli/packages/bootstrap/package.json
++++ b/apps/zcode-cli/packages/bootstrap/package.json
+@@ -19,8 +19,8 @@
+     "build": "tsc",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@zcode/adapters": "workspace:*",
+diff --git a/apps/zcode-cli/packages/cli/package.json b/apps/zcode-cli/packages/cli/package.json
+index c9d6bf1..2be5e26 100644
+--- a/apps/zcode-cli/packages/cli/package.json
++++ b/apps/zcode-cli/packages/cli/package.json
+@@ -20,8 +20,8 @@
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "dev": "tsx src/main.ts",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@zcode/adapters": "workspace:*",
+diff --git a/apps/zcode-cli/packages/contracts/package.json b/apps/zcode-cli/packages/contracts/package.json
+index 07aafd7..ade8960 100644
+--- a/apps/zcode-cli/packages/contracts/package.json
++++ b/apps/zcode-cli/packages/contracts/package.json
+@@ -91,8 +91,8 @@
+     "build": "tsc",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@zcode/shared": "workspace:*",
+diff --git a/apps/zcode-cli/packages/debug/package.json b/apps/zcode-cli/packages/debug/package.json
+index 8117570..e136a1d 100644
+--- a/apps/zcode-cli/packages/debug/package.json
++++ b/apps/zcode-cli/packages/debug/package.json
+@@ -6,8 +6,8 @@
+   "scripts": {
+     "build": "tsc -p tsconfig.server.json && vite build",
+     "dev": "tsx scripts/dev.ts",
+-    "lint": "oxlint src server scripts",
+-    "lint:fix": "oxlint --write src server scripts",
++    "lint": "oxlint src server scripts --no-ignore",
++    "lint:fix": "oxlint --fix src server scripts --no-ignore",
+     "start": "node dist-server/server/index.js",
+     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+   },
+diff --git a/apps/zcode-cli/packages/dynamic-workflow-runtime/package.json b/apps/zcode-cli/packages/dynamic-workflow-runtime/package.json
+index 0a7a163..8c88072 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow-runtime/package.json
++++ b/apps/zcode-cli/packages/dynamic-workflow-runtime/package.json
+@@ -16,8 +16,8 @@
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "pretypecheck": "pnpm --filter @zcode/dynamic-workflow build",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@zcode/dynamic-workflow": "workspace:*"
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/package.json b/apps/zcode-cli/packages/dynamic-workflow/package.json
+index 6824bd3..90c7d88 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/package.json
++++ b/apps/zcode-cli/packages/dynamic-workflow/package.json
+@@ -20,8 +20,8 @@
+     "charts": "node scripts/generate-libs.mjs && tsc && node scripts/generate-mermaid.mjs",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "node scripts/generate-libs.mjs && tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "typescript": "^5.9.0"
+diff --git a/apps/zcode-cli/packages/i18n/package.json b/apps/zcode-cli/packages/i18n/package.json
+index a5b216a..8406e11 100644
+--- a/apps/zcode-cli/packages/i18n/package.json
++++ b/apps/zcode-cli/packages/i18n/package.json
+@@ -15,12 +15,11 @@
+     "build": "tsc",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@zcode/contracts": "workspace:*"
+   },
+-  "devDependencies": {
+-  }
++  "devDependencies": {}
+ }
+diff --git a/apps/zcode-cli/packages/telemetry/package.json b/apps/zcode-cli/packages/telemetry/package.json
+index 3ef379f..51d9d8d 100644
+--- a/apps/zcode-cli/packages/telemetry/package.json
++++ b/apps/zcode-cli/packages/telemetry/package.json
+@@ -16,7 +16,7 @@
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+     "lint": "oxlint src --no-ignore",
+-    "lint:fix": "oxlint --write src"
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@opentelemetry/api": "^1.9.0",
+diff --git a/apps/zcode-cli/packages/tui/package.json b/apps/zcode-cli/packages/tui/package.json
+index 2526a02..478e4c1 100644
+--- a/apps/zcode-cli/packages/tui/package.json
++++ b/apps/zcode-cli/packages/tui/package.json
+@@ -15,8 +15,8 @@
+     "build": "tsc && node scripts/build.mjs",
+     "clean": "node ../../scripts/clean-dist.mjs",
+     "typecheck": "tsc --noEmit",
+-    "lint": "oxlint src",
+-    "lint:fix": "oxlint --write src"
++    "lint": "oxlint src --no-ignore",
++    "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+     "@mbears/opentui-core": "0.2.15",
+diff --git a/package.json b/package.json
+index 2a50a8a..a58f847 100644
+--- a/package.json
++++ b/package.json
+@@ -55,12 +55,12 @@
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts apps/zcode-cli/packages/core/test/model-tool-capability.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts apps/zcode-cli/packages/core/test/model-tool-capability.test.ts apps/zcode-cli/packages/core/test/request-budget.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/claude-native-errors.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts apps/zcode-cli/packages/adapters/test/native-detect.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/claude-native-errors.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts apps/zcode-cli/packages/adapters/test/native-detect.test.ts apps/zcode-cli/packages/adapters/test/acp-stop.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts apps/zcode-cli/packages/core/test/codex-native-errors.test.ts",
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/providerDetailFeedback.browser.test.tsx __providerFeedbackTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/connectionIntake.browser.test.tsx __connectionIntakeTests --desktop-styles",
+@@ -78,7 +78,8 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts",
++    "lint:cli": "pnpm --dir apps/zcode-cli lint"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

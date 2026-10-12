@@ -1,0 +1,479 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+index d4dbbf2..5163ff8 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+@@ -14,7 +14,7 @@ export interface AcpInspection {
+   version: string;
+   accountId: string;
+   accountName: string;
+-  models: { id: string; name: string }[];
++  models: { id: string; name: string; images?: boolean; contextWindow?: number }[];
+   /** Session-level thinking levels (ACP `thought_level` option), when the CLI offers them. */
+   thoughtLevels: string[];
+   images: boolean;
+@@ -59,6 +59,7 @@ export async function inspectAcpConnection(input: {
+       : acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
+           id: entry.value,
+           name: entry.name,
++          ...session.modelMeta.get(entry.value),
+         }));
+     if (!models.length) throw new Error(`${profile.label} returned no models for this account`);
+     const thoughtLevels = acpOptionValues(acpOption(session.configOptions, "thought_level"))
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+index b2068c2..a141cff 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -3,7 +3,7 @@ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import type { CollaborationMode } from "@zcode/contracts";
+ 
+-export type AcpExecutorKind = "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
++export type AcpExecutorKind = "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
+ 
+ /**
+  * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
+@@ -83,6 +83,19 @@ export const ACP_PROFILES: Record<AcpExecutorKind, AcpProfile> = {
+     billingProvider: "cursor",
+     loginCommand: "cursor-agent login",
+   },
++  codebuddy: {
++    kind: "codebuddy",
++    label: "CodeBuddy",
++    binary: bin("codebuddy"),
++    candidates: [join(home, ".local", "bin", bin("codebuddy")), "/opt/homebrew/bin/codebuddy", "/usr/local/bin/codebuddy"],
++    // CodeBuddy Code 2.127.2：`--acp` 握手实测，模式 default/acceptEdits/plan/…，模型带 _meta 能力。
++    args: ["--acp"],
++    planMode: "plan",
++    manualMode: "default",
++    environment: () => ({}),
++    billingProvider: "tencent",
++    loginCommand: "codebuddy",
++  },
+   hermes: {
+     kind: "hermes",
+     label: "Hermes",
+@@ -129,7 +142,12 @@ export function resolveAcpExecutable(kind: AcpExecutorKind, override?: string):
+ 
+ export const acpLocalAccount = (kind: AcpExecutorKind) => `${kind}-local`;
+ export const isAcpExecutorKind = (value: unknown): value is AcpExecutorKind =>
+-  value === "cursor" || value === "kimi" || value === "opencode" || value === "hermes" || value === "openclaw";
++  value === "cursor" ||
++  value === "kimi" ||
++  value === "opencode" ||
++  value === "hermes" ||
++  value === "openclaw" ||
++  value === "codebuddy";
+ 
+ /** The single catalog entry for CLIs whose agent configuration owns the model. */
+ export const ACP_FIXED_MODEL_ID = "agent-default";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+index 4dc0222..d00e719 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+@@ -16,12 +16,14 @@ export interface AcpSession {
+   canDelete: boolean;
+   /** promptCapabilities.image: the agent accepts image content blocks. */
+   images: boolean;
++  /** Per-model facts some agents publish in `models.availableModels[]._meta` (CodeBuddy). */
++  modelMeta: Map<string, { images?: boolean; contextWindow?: number }>;
+ }
+ 
+ const SET_MODEL_OPTION = "__acp_session_model";
+ const SETUP_TIMEOUT_MS = 60_000;
+ const AUTH_TIMEOUT_MS = 20_000;
+-const SIGN_IN = (kind: AcpExecutorKind) =>
++export const acpSignInMessage = (kind: AcpExecutorKind) =>
+   `Sign in to the official ${ACP_PROFILES[kind].label} CLI first: run \`${ACP_PROFILES[kind].loginCommand}\` in a terminal`;
+ 
+ /** Flattens grouped select options (ACP allows one level of groups). */
+@@ -41,7 +43,7 @@ export const acpOption = (options: readonly AcpConfigOption[], category: string)
+ 
+ function authFailure(kind: AcpExecutorKind, error: unknown): Error {
+   const message = error instanceof Error ? error.message : String(error);
+-  return /auth|sign.?in|log.?in/iu.test(message) ? new Error(SIGN_IN(kind)) : error instanceof Error ? error : new Error(message);
++  return /auth|sign.?in|log.?in/iu.test(message) ? new Error(acpSignInMessage(kind)) : error instanceof Error ? error : new Error(message);
+ }
+ 
+ /**
+@@ -93,7 +95,7 @@ export async function openAcpSession(input: {
+     if (profile.authMethodId)
+       // 未登录时 Cursor 的 authenticate 不返回；超时按未登录处理。
+       await client.request("authenticate", { methodId: profile.authMethodId }, AUTH_TIMEOUT_MS).catch(() => {
+-        throw new Error(SIGN_IN(input.kind));
++        throw new Error(acpSignInMessage(input.kind));
+       });
+     const capabilities = initialized.agentCapabilities?.sessionCapabilities ?? {};
+     const common = { cwd: input.cwd, mcpServers: [] };
+@@ -101,7 +103,10 @@ export async function openAcpSession(input: {
+     let result: {
+       sessionId?: string;
+       configOptions?: AcpConfigOption[];
+-      models?: { currentModelId?: string; availableModels?: { modelId?: string; name?: string }[] };
++      models?: {
++        currentModelId?: string;
++        availableModels?: { modelId?: string; name?: string; _meta?: Record<string, unknown> }[];
++      };
+     };
+     if (sessionId && capabilities.resume) {
+       result = await client.request("session/resume", { sessionId, ...common }, SETUP_TIMEOUT_MS);
+@@ -142,9 +147,19 @@ export async function openAcpSession(input: {
+           options: listed.models.map((model) => ({ value: model.value, name: model.name })),
+         });
+     }
++    const modelMeta = new Map<string, { images?: boolean; contextWindow?: number }>();
++    for (const model of result.models?.availableModels ?? []) {
++      if (!model.modelId || !model._meta) continue;
++      const tokens = model._meta.maxInputTokens;
++      modelMeta.set(model.modelId, {
++        ...(typeof model._meta.supportsImages === "boolean" ? { images: model._meta.supportsImages } : {}),
++        ...(typeof tokens === "number" && Number.isSafeInteger(tokens) && tokens > 0 ? { contextWindow: tokens } : {}),
++      });
++    }
+     return {
+       client,
+       sessionId,
++      modelMeta,
+       version: initialized.agentInfo?.version ?? "acp",
+       configOptions,
+       canClose: Boolean(capabilities.close),
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index 8ce9e8e..aab8b49 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -11,7 +11,7 @@ import type {
+ import { NativeEvents } from "./native-events.js";
+ import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
+ import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+-import { openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
++import { acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
+ import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
+ 
+@@ -212,11 +212,22 @@ export function createAcpNativeAgentPort(
+             images: images.length > 0,
+           });
+           if (!prompt && !images.length) throw new Error(`${profile.label} received an empty prompt`);
+-          const response = await session.client.request<{ stopReason?: string; usage?: unknown }>("session/prompt", {
+-            sessionId: session.sessionId,
+-            prompt: [{ type: "text", text: prompt }, ...images],
+-          });
++          const response = await session.client
++            .request<{ stopReason?: string; usage?: unknown }>("session/prompt", {
++              sessionId: session.sessionId,
++              prompt: [{ type: "text", text: prompt }, ...images],
++            })
++            .catch((error: unknown) => {
++              // 登录过期等厂商拒绝以 JSON-RPC 错误返回（CodeBuddy 记为 category=auth）。
++              const message = error instanceof Error ? error.message : String(error);
++              const data = (error as { data?: { category?: unknown } }).data;
++              throw /auth|sign.?in|log.?in/iu.test(message) || data?.category === "auth"
++                ? new Error(acpSignInMessage(kind))
++                : error;
++            });
+           if (response.stopReason === "cancelled") throw new Error(`${profile.label} turn stopped`);
++          if (response.stopReason === "refusal" && !text.trim())
++            throw new Error(`${profile.label} refused this turn; check its sign-in (\`${profile.loginCommand}\`) and plan`);
+           finish(response.stopReason, acpUsage(response.usage), session.sessionId);
+         })().catch(fail);
+       };
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 44c5abe..9028995 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,7 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
++export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 74db7a3..7358f6d 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -45,7 +45,7 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+   readonly nativeExecutor?: {
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 82e4bb2..beba93e 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -59,9 +59,9 @@ access allows everything. It cannot ask mid-run, so refused actions are listed a
+ reply; switch the permission as suggested and retry. It offers no allowance query, so its card
+ shows no allowance.
+ 
+-Cursor, Kimi Code CLI, OpenCode CLI, Hermes and OpenClaw connect through the official CLI's ACP
+-mode; sign in or configure each CLI first (`cursor-agent login`, `kimi login`, `opencode auth login`,
+-`hermes setup`, `openclaw onboard`). OpenClaw uses the model configured in its gateway. Plan mode
++Cursor, Kimi Code CLI, OpenCode CLI, CodeBuddy, Hermes and OpenClaw connect through the official CLI's
++ACP mode; sign in or configure each CLI first (`cursor-agent login`, `kimi login`, `opencode auth
++login`, `codebuddy`, `hermes setup`, `openclaw onboard`). OpenClaw uses the model configured in its gateway. Plan mode
+ uses the CLI's own planning mode. Under Ask before changes, file edits and commands raise Fleet's approval card and
+ run only after you allow them; Edit automatically allows file edits and still asks for other
+ actions; Full access allows everything. Available models come from the CLI's account list, and a
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index b907e3d..d5f4c43 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -45,9 +45,9 @@ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作
+ 运行中弹出确认，被拒的操作列在回复末尾，按提示切换权限后重试即可。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+-Cursor、Kimi Code CLI、OpenCode CLI、Hermes、OpenClaw 通过官方 CLI 的 ACP 模式接入，先在终端完成
+-各自登录或配置（`cursor-agent login`、`kimi login`、`opencode auth login`、`hermes setup`、
+-`openclaw onboard`）。OpenClaw 使用其网关中配置的模型。计划模式使用 CLI 自己的规划模式；
++Cursor、Kimi Code CLI、OpenCode CLI、CodeBuddy、Hermes、OpenClaw 通过官方 CLI 的 ACP 模式接入，先在
++终端完成各自登录或配置（`cursor-agent login`、`kimi login`、`opencode auth login`、`codebuddy`、
++`hermes setup`、`openclaw onboard`）。OpenClaw 使用其网关中配置的模型。计划模式使用 CLI 自己的规划模式；
+ 变更前确认下，它们要改文件或执行命令时会弹出 Fleet 的确认卡片，你允许后才执行；自动编辑直接
+ 允许改文件、其它操作仍会询问；完全访问全部放行。可用模型以 CLI 返回的账号列表为准，套餐不包含
+ 的模型会在请求时报错。
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index cf29cbb..c21e489 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2142,6 +2142,38 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-codebuddy-native",
++          "templateNameMap": {
++            "zh-CN": "CodeBuddy",
++            "en-US": "CodeBuddy"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "codebuddy",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "codebuddy"
++            }
++          },
++          "catalog": {
++            "vendorId": "codebuddy",
++            "vendorNameMap": {
++              "zh-CN": "CodeBuddy",
++              "en-US": "CodeBuddy"
++            },
++            "serviceId": "codebuddy-cli",
++            "serviceNameMap": {
++              "zh-CN": "CodeBuddy",
++              "en-US": "CodeBuddy"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-hermes-native",
+           "templateNameMap": {
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 762bd98..8c8dcaf 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -78,7 +78,7 @@ export const completeSubscriptionAccessDataSchema = subscriptionAccessDataSchema
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw"]),
++    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy"]),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 576b240..aeacf3c 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -18,7 +18,7 @@ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
++    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
+     executable?: string;
+     configDir?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 4232437..d4399aa 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -93,7 +93,7 @@ export function mapCodexNativeModels(
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw",
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy",
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+@@ -168,10 +168,11 @@ export function createNativeCliConnectionAdapter(
+               name: model.name,
+               config: {
+                 properties: {
++                  ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+                   inputFormat: {
+                     supportsText: true,
+-                    // ACP 的 image 能力属于会话而非单个模型；未知时不标视觉，避免把文本模型标成可看图。
+-                    supportsImage: false,
++                    // ACP 的 image 能力属于会话；只有 agent 按模型声明（_meta）时才标视觉。
++                    supportsImage: model.images === true,
+                     supportsPdf: false,
+                     supportsAudio: false,
+                     supportsVideo: false,
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 1ddcc12..502b7ba 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2871,6 +2871,7 @@ const NATIVE_CLI_LOGIN_ENDPOINTS = {
+   opencode: "https://opencode.ai/zen/v1",
+   hermes: "https://portal.nousresearch.com/",
+   openclaw: "https://openclaw.ai/",
++  codebuddy: "https://www.codebuddy.ai/",
+ } as const;
+ 
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+@@ -2882,6 +2883,7 @@ const NATIVE_EXECUTOR_ENDPOINTS = {
+   opencode: "https://opencode.ai/zen/v1",
+   hermes: "https://portal.nousresearch.com/",
+   openclaw: "https://openclaw.ai/",
++  codebuddy: "https://www.codebuddy.ai/",
+ } as const;
+ 
+ async function resolveNativeExecutorNetworkEnv(transport: {
+diff --git a/packages/services/test/acp-native.test.ts b/packages/services/test/acp-native.test.ts
+index 4285758..91dec14 100644
+--- a/packages/services/test/acp-native.test.ts
++++ b/packages/services/test/acp-native.test.ts
+@@ -237,3 +237,28 @@ test("Hermes has no plan mode, so Fleet's plan refuses its change requests itsel
+   assert.ok(!log.some((entry) => entry.method === "session/set_config_option" && entry.params.value === "plan"));
+   assert.deepEqual(log.find((entry) => entry.permissionOutcome)?.permissionOutcome, { outcome: "selected", optionId: "no" });
+ });
++
++test("a vendor auth refusal during the prompt surfaces the CLI's sign-in instruction", async () => {
++  const dir = mkdtempSync(join(tmpdir(), "auth-acp-"));
++  const script = join(dir, "codebuddy");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++if (process.argv[2] === "--version") { console.log("1.0"); process.exit(0); }
++let buf = "";
++const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
++process.stdin.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
++  if (m.method === "initialize") send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: 1, agentCapabilities: {} } });
++  else if (m.method === "session/new") send({ jsonrpc: "2.0", id: m.id, result: { sessionId: "s", configOptions: [{ id: "model", category: "model", currentValue: "hy3", options: [{ value: "hy3" }] }] } });
++  else if (m.method === "session/prompt") send({ jsonrpc: "2.0", id: m.id, error: { code: -32000, message: "Prompt refused", data: { category: "auth" } } });
++  else send({ jsonrpc: "2.0", id: m.id, result: {} }); } });
++`,
++  );
++  chmodSync(script, 0o755);
++  const turn = createAcpNativeAgentPort("codebuddy").createTurn({
++    ...request(script),
++    model: { modelId: "hy3", options: {}, nativeExecutor: { kind: "codebuddy", executable: script } } as never,
++  });
++  await assert.rejects(drain(turn), /Sign in to the official CodeBuddy CLI first/u);
++  await turn.close();
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index f662e39..d494572 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -61,12 +61,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 56);
+-  assert.equal(vendors.length, 24);
++  assert.equal(templates.length, 57);
++  assert.equal(vendors.length, 25);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    56,
++    57,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 67f9a7e..70dfe5d 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7346,6 +7346,11 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.openclaw.missing": "OpenClaw (openclaw) was not found. Install the official CLI first.",
+   "settings.modelProvider.nativeCli.openclaw.login": "Run openclaw onboard in a terminal and start the gateway, then connect again.",
+   "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP guide",
++  "settings.modelProvider.nativeCli.codebuddy.title": "CodeBuddy account",
++  "settings.modelProvider.nativeCli.codebuddy.flow": "Connect the account signed in to CodeBuddy Code (codebuddy) on this machine.",
++  "settings.modelProvider.nativeCli.codebuddy.missing": "CodeBuddy Code (codebuddy) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.codebuddy.login": "Run codebuddy in a terminal to sign in, then connect again.",
++  "settings.modelProvider.nativeCli.codebuddy.guide": "CodeBuddy Code setup and sign-in",
+   "settings.modelProvider.nativeCli.flow":
+     "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 176638d..6940833 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6958,6 +6958,11 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.openclaw.missing": "未找到 OpenClaw（openclaw），请先安装官方 CLI。",
+   "settings.modelProvider.nativeCli.openclaw.login": "请先在终端运行 openclaw onboard 完成配置并启动网关，然后再连接。",
+   "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP 说明",
++  "settings.modelProvider.nativeCli.codebuddy.title": "CodeBuddy 账号",
++  "settings.modelProvider.nativeCli.codebuddy.flow": "连接本机 CodeBuddy Code（codebuddy）当前登录的账号。",
++  "settings.modelProvider.nativeCli.codebuddy.missing": "未找到 CodeBuddy Code（codebuddy），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.codebuddy.login": "请先在终端运行 codebuddy 完成登录，然后再连接。",
++  "settings.modelProvider.nativeCli.codebuddy.guide": "CodeBuddy Code 安装与登录",
+   "settings.modelProvider.nativeCli.flow":
+     "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index 9089bbf..2de909f 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -50,6 +50,7 @@ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], Rea
+   opencode: new Set(["title", "flow", "missing", "login", "guide"]),
+   hermes: new Set(["title", "flow", "missing", "login", "guide"]),
+   openclaw: new Set(["title", "flow", "missing", "login", "guide"]),
++  codebuddy: new Set(["title", "flow", "missing", "login", "guide"]),
+ };
+ 
+ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+@@ -61,6 +62,7 @@ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+   opencode: "https://opencode.ai/docs/acp/",
+   hermes: "https://hermes-agent.nousresearch.com/",
+   openclaw: "https://docs.openclaw.ai/cli/acp",
++  codebuddy: "https://www.codebuddy.cn/docs/cli/overview",
+ };
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index f636e9c..c9982fc 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -20,6 +20,7 @@ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
+ import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
+ import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg";
++import CodeBuddy from "@lobehub/icons-static-svg/icons/codebuddy-color.svg";
+ import Hermes from "@lobehub/icons-static-svg/icons/hermesagent.svg";
+ import OpenClaw from "@lobehub/icons-static-svg/icons/openclaw-color.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+@@ -54,6 +55,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   openrouter: { src: openrouterLight, dark: openrouterDark, color: true },
+   opencode: { src: OpenCode, color: false },
+   cursor: { src: Cursor, color: false },
++  codebuddy: { src: CodeBuddy, color: true },
+   hermes: { src: Hermes, color: false },
+   openclaw: { src: OpenClaw, color: true },
+   github: { src: GithubCopilot, color: false },

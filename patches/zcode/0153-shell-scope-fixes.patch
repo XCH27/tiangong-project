@@ -1,0 +1,124 @@
+diff --git a/packages/ui/src/App.tsx b/packages/ui/src/App.tsx
+index ca4c0b9..4c2de03 100644
+--- a/packages/ui/src/App.tsx
++++ b/packages/ui/src/App.tsx
+@@ -47,6 +47,7 @@ import {
+ } from "@/lib/settingsNavigation.js";
+ import { runWorkspaceVisibleCommand } from "@/lib/workspaceVisibleCommand.js";
+ import { LOCAL_HELP_REQUEST, localHelpSource } from "@/lib/productDocs.js";
++import { LocalHelpDialog } from "@/LocalHelpDialog.js";
+ import appLogoUrl from "@/assets/provider-icons/logo-zai.svg";
+ import { resolveTheme } from "@/useTheme.js";
+ import { WorkspaceShellLayout } from "@/app-shell/WorkspaceShellLayout.js";
+@@ -680,9 +681,15 @@ export function App({
+     };
+   }, [openFeedbackSubmit, openFeedbackTickets, platform]);
+   const handleOpenCommunity = useCallback(() => platform.openCommunity(), [platform]);
++  const [localHelpDialogOpen, setLocalHelpDialogOpen] = useState(false);
+   const handleOpenProductDocs = useCallback(() => {
++    // Settings 在前台时不离开它：返回工作区会卸载未保存的设置表单（SHELL-HELP-DRAFT）。
++    if (!isWorkspaceVisible) {
++      setLocalHelpDialogOpen(true);
++      return;
++    }
+     runVisibleWorkspaceCommand(() => handleOpenCodeViewer(localHelpSource(locale)));
+-  }, [handleOpenCodeViewer, locale, runVisibleWorkspaceCommand]);
++  }, [handleOpenCodeViewer, isWorkspaceVisible, locale, runVisibleWorkspaceCommand]);
+   useEffect(() => {
+     window.addEventListener(LOCAL_HELP_REQUEST, handleOpenProductDocs);
+     return () => window.removeEventListener(LOCAL_HELP_REQUEST, handleOpenProductDocs);
+@@ -1110,6 +1117,12 @@ export function App({
+ 
+   return (
+     <>
++      <LocalHelpDialog
++        open={localHelpDialogOpen}
++        locale={locale}
++        onOpenChange={setLocalHelpDialogOpen}
++        onOpenExternalUrl={(url) => void platform.openExternal(url)}
++      />
+       <CommandCenterDialog
+         open={isQuickPickOpen}
+         commands={quickPickCommands}
+diff --git a/packages/ui/src/LocalHelpDialog.tsx b/packages/ui/src/LocalHelpDialog.tsx
+new file mode 100644
+index 0000000..944b49c
+--- /dev/null
++++ b/packages/ui/src/LocalHelpDialog.tsx
+@@ -0,0 +1,43 @@
++import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { MessageResponse } from "@/components/ai-elements/message.js";
++import { cn } from "@/components/lib/utils.js";
++import { localHelpSource } from "@/lib/productDocs.js";
++
++/**
++ * Settings 在前台时的本地指南。工作区的侧栏查看器需要先离开 Settings，会卸载未保存的表单
++ * （SHELL-HELP-DRAFT）；这里以对话框覆盖在 Settings 之上，内容与侧栏查看器同源。
++ */
++export function LocalHelpDialog({
++  open,
++  locale,
++  onOpenChange,
++  onOpenExternalUrl,
++}: {
++  open: boolean;
++  locale: string;
++  onOpenChange(open: boolean): void;
++  onOpenExternalUrl?: (url: string) => void;
++}) {
++  const source = localHelpSource(locale);
++  return (
++    <Dialog open={open} onOpenChange={onOpenChange}>
++      <DialogContent className="max-h-[min(85vh,760px)] max-w-2xl overflow-hidden p-0">
++        <DialogHeader className="border-b border-popover-border px-5 pt-4 pb-3">
++          <DialogTitle className="pr-8 text-ui-lg">{source.title}</DialogTitle>
++        </DialogHeader>
++        <div className="max-h-[calc(min(85vh,760px)-4rem)] overflow-y-auto px-5 pb-5">
++          <MessageResponse
++            className={cn(
++              "prose prose-sm max-w-none text-ui-base leading-relaxed text-foreground dark:prose-invert",
++              "prose-headings:font-semibold prose-headings:tracking-tight",
++              "prose-h1:text-ui-lg prose-h2:text-ui-base prose-h3:text-ui-base",
++            )}
++            onOpenExternalUrl={onOpenExternalUrl}
++          >
++            {source.content}
++          </MessageResponse>
++        </div>
++      </DialogContent>
++    </Dialog>
++  );
++}
+diff --git a/packages/ui/src/settings/SubagentsSection.tsx b/packages/ui/src/settings/SubagentsSection.tsx
+index 5c0aae3..2d730dd 100644
+--- a/packages/ui/src/settings/SubagentsSection.tsx
++++ b/packages/ui/src/settings/SubagentsSection.tsx
+@@ -1035,7 +1035,8 @@ function SubagentForm({
+           </span>
+           <PluginScopeMenu
+             align="end"
+-            disabled={Boolean(initial)}
++            // 保存进行中锁定范围：完成后的刷新与关表单属于发起保存的范围（SHELL-SUBAGENT-SCOPE）。
++            disabled={Boolean(initial) || saving}
+             selectedScopeKey={scopeKey}
+             workspaceTabs={workspaceTabs}
+             onScopeKeyChange={onScopeKeyChange}
+diff --git a/packages/ui/src/v4/composer/toolbarShortcuts.ts b/packages/ui/src/v4/composer/toolbarShortcuts.ts
+index 6fb7e13..be1d26e 100644
+--- a/packages/ui/src/v4/composer/toolbarShortcuts.ts
++++ b/packages/ui/src/v4/composer/toolbarShortcuts.ts
+@@ -193,6 +193,14 @@ export function useToolbarShortcutBindings(params: {
+       if (isShortcutRecordingActive()) {
+         return;
+       }
++      // 页面助手浮窗内的输入属于它自己的对话；窗口级监听不能把按键转给底层主输入框的
++      // 模型/思考控件（SHELL-SHORTCUT-SCOPE）。浮窗本身不挂载这些控件。
++      if (
++        event.target instanceof Element &&
++        event.target.closest('[data-slot="page-assistant-window"]')
++      ) {
++        return;
++      }
+       // Windows/Linux 上 Cmd/Ctrl+P 已由 useAppKeyboard 用于「搜索
+       // 文件」，与工具栏旧版 ⌃P 同类按键冲突。模式切换改为 Ctrl+Shift+M，仍尊重
+       // defaultPrevented，避免与其它捕获阶段快捷键重复处理。

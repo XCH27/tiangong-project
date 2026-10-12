@@ -1,0 +1,569 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 3ae8564..4ada95c 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1,6 +1,6 @@
+ {
+   "schemaVersion": 1,
+-  "revision": 34,
++  "revision": 35,
+   "config": {
+     "providerConfigRules": {
+       "templateRules": [
+@@ -2456,6 +2456,306 @@
+             },
+             "builtinModelIds": ["multilingual", "typed-decisions"]
+           }
++        },
++        {
++          "templateId": "fleet-volcengine-coding-plan",
++          "templateNameMap": {
++            "zh-CN": "火山方舟 Coding Plan",
++            "en-US": "Volcengine Ark Coding Plan"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://ark.cn-beijing.volces.com/api/coding"
++            },
++            "builtinModelIds": [
++              "ark-code-latest"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "volcengine"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "volcengine",
++            "vendorNameMap": {
++              "zh-CN": "火山引擎",
++              "en-US": "Volcengine"
++            },
++            "serviceId": "coding-plan",
++            "serviceNameMap": {
++              "zh-CN": "Coding Plan",
++              "en-US": "Coding Plan"
++            },
++            "region": "cn"
++          }
++        },
++        {
++          "templateId": "fleet-volcengine-agent-plan",
++          "templateNameMap": {
++            "zh-CN": "火山方舟 Agent Plan",
++            "en-US": "Volcengine Ark Agent Plan"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://ark.cn-beijing.volces.com/api/plan"
++            },
++            "builtinModelIds": [
++              "ark-code-latest"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "volcengine"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "volcengine",
++            "vendorNameMap": {
++              "zh-CN": "火山引擎",
++              "en-US": "Volcengine"
++            },
++            "serviceId": "agent-plan",
++            "serviceNameMap": {
++              "zh-CN": "Agent Plan",
++              "en-US": "Agent Plan"
++            },
++            "region": "cn"
++          }
++        },
++        {
++          "templateId": "fleet-tencent-token-plan",
++          "templateNameMap": {
++            "zh-CN": "腾讯云 Token Plan",
++            "en-US": "Tencent Cloud Token Plan"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://console.cloud.tencent.com/tokenhub/tokenplan"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.lkeap.cloud.tencent.com/plan/anthropic"
++            },
++            "builtinModelIds": [
++              "tc-code-latest"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "tencentcloud"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "tencent",
++            "vendorNameMap": {
++              "zh-CN": "腾讯云",
++              "en-US": "Tencent Cloud"
++            },
++            "serviceId": "token-plan",
++            "serviceNameMap": {
++              "zh-CN": "腾讯云 Token Plan",
++              "en-US": "Tencent Token Plan"
++            },
++            "region": "cn"
++          }
++        },
++        {
++          "templateId": "fleet-qianfan-coding-plan",
++          "templateNameMap": {
++            "zh-CN": "百度千帆 Coding Plan",
++            "en-US": "Baidu Qianfan Coding Plan"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://qianfan.baidubce.com/anthropic/coding"
++            },
++            "builtinModelIds": [
++              "qianfan-code-latest"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "baidu-qianfan"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "baidu",
++            "vendorNameMap": {
++              "zh-CN": "百度智能云",
++              "en-US": "Baidu AI Cloud"
++            },
++            "serviceId": "coding-plan",
++            "serviceNameMap": {
++              "zh-CN": "千帆 Coding Plan",
++              "en-US": "Qianfan Coding Plan"
++            },
++            "region": "cn"
++          }
++        },
++        {
++          "templateId": "fleet-stepfun-step-plan-cn",
++          "templateNameMap": {
++            "zh-CN": "阶跃星辰 Step Plan 中国",
++            "en-US": "StepFun Step Plan China"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.stepfun.com/interface-key"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.stepfun.com/step_plan"
++            },
++            "builtinModelIds": [
++              "step-3.5-flash-2603"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "stepfun"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "stepfun",
++            "vendorNameMap": {
++              "zh-CN": "阶跃星辰",
++              "en-US": "StepFun"
++            },
++            "serviceId": "step-plan",
++            "serviceNameMap": {
++              "zh-CN": "阶跃 Step Plan",
++              "en-US": "StepFun Step Plan"
++            },
++            "region": "cn"
++          }
++        },
++        {
++          "templateId": "fleet-stepfun-step-plan",
++          "templateNameMap": {
++            "zh-CN": "阶跃星辰 Step Plan 国际",
++            "en-US": "StepFun Step Plan International"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.stepfun.ai/interface-key"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.stepfun.ai/step_plan"
++            },
++            "builtinModelIds": [
++              "step-3.5-flash-2603"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "stepfun"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "stepfun",
++            "vendorNameMap": {
++              "zh-CN": "阶跃星辰",
++              "en-US": "StepFun"
++            },
++            "serviceId": "step-plan",
++            "serviceNameMap": {
++              "zh-CN": "阶跃 Step Plan",
++              "en-US": "StepFun Step Plan"
++            },
++            "region": "global"
++          }
++        },
++        {
++          "templateId": "fleet-modelscope",
++          "templateNameMap": {
++            "zh-CN": "魔搭 ModelScope",
++            "en-US": "ModelScope"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://modelscope.cn/my/myaccesstoken"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api-inference.modelscope.cn"
++            },
++            "builtinModelIds": [
++              "ZhipuAI/GLM-5.2"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "modelscope"
++            }
++          },
++          "catalog": {
++            "vendorId": "modelscope",
++            "vendorNameMap": {
++              "zh-CN": "魔搭社区",
++              "en-US": "ModelScope"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-ppio",
++          "templateNameMap": {
++            "zh-CN": "PPIO 派欧云",
++            "en-US": "PPIO"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://ppio.com/settings/key-management"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.ppio.com/anthropic"
++            },
++            "builtinModelIds": [
++              "deepseek/deepseek-v4-flash-0731"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "ppio"
++            }
++          },
++          "catalog": {
++            "vendorId": "ppio",
++            "vendorNameMap": {
++              "zh-CN": "PPIO 派欧云",
++              "en-US": "PPIO"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
+         }
+       ],
+       "providerRules": [
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsage.ts b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+index 6a28fa6..d92a035 100644
+--- a/packages/services/src/model-provider/apiKeyPlanUsage.ts
++++ b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+@@ -178,6 +178,67 @@ export function parseKimiCodeUsage(payload: unknown, observedAt: number): Subscr
+     : { status: "unavailable", unavailableReason: "no-provider-data" };
+ }
+ 
++const ZAI_UNIT_MINUTES: Readonly<Record<number, number>> = { 1: 1440, 3: 60, 5: 1, 6: 10_080 };
++
++function zaiWindowName(minutes: number): string {
++  return minutes === 300 ? "five_hour" : minutes === 10_080 ? "weekly" : minutes === 43_200 ? "monthly" : `${minutes}m`;
++}
++
++/**
++ * Z.ai / BigModel Coding Plan `GET /api/monitor/usage/quota/limit`: data.limits[] of TOKENS_LIMIT /
++ * CREDIT_LIMIT (plan windows) and TIME_LIMIT (MCP). Field semantics follow CodexBar
++ * `Plugins/zai.js`: integer unit/number/percentage, unit 1=day 3=hour 5=minute 6=week, counts
++ * override the rounded percentage, `TIME_LIMIT` 1 minute marks the monthly MCP quota, and a
++ * five-hour reset further than five hours away is dropped rather than guessed.
++ */
++export function parseZaiCodingPlanUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const limits = Array.isArray(data?.limits) ? data.limits : [];
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const raw of limits) {
++    const row = record(raw);
++    const type = row?.type;
++    if (type !== "TOKENS_LIMIT" && type !== "CREDIT_LIMIT" && type !== "TIME_LIMIT") continue;
++    const unit = row?.unit;
++    const number = row?.number;
++    const percentage = row?.percentage;
++    if (!Number.isInteger(unit) || !Number.isInteger(number) || !Number.isInteger(percentage))
++      return { status: "unavailable", unavailableReason: "no-provider-data" };
++    const usage = Number.isInteger(row?.usage) ? (row!.usage as number) : undefined;
++    const current = Number.isInteger(row?.currentValue) ? (row!.currentValue as number) : undefined;
++    const remaining = Number.isInteger(row?.remaining) ? (row!.remaining as number) : undefined;
++    let percent = percentage as number;
++    if (usage !== undefined && usage > 0) {
++      const used =
++        remaining !== undefined ? Math.max(usage - remaining, current ?? usage - remaining) : current;
++      if (used !== undefined) percent = (Math.max(0, Math.min(usage, used)) / usage) * 100;
++    }
++    const mcpMonthly = type === "TIME_LIMIT" && unit === 5 && number === 1;
++    const multiplier = ZAI_UNIT_MINUTES[unit as number];
++    const windowMinutes = mcpMonthly
++      ? 43_200
++      : (number as number) > 0 && multiplier
++        ? (number as number) * multiplier
++        : undefined;
++    if (windowMinutes === undefined) continue;
++    const reset = Number.isInteger(row?.nextResetTime) ? (row!.nextResetTime as number) : undefined;
++    const plausibleReset =
++      reset !== undefined && !(type !== "TIME_LIMIT" && windowMinutes === 300 && reset > observedAt + 301 * 60_000);
++    windows.push({
++      id: type === "TIME_LIMIT" ? `MCP:${zaiWindowName(windowMinutes)}` : `default:${zaiWindowName(windowMinutes)}`,
++      usedPercent: clampPercent(percent),
++      windowMinutes,
++      ...(plausibleReset ? { resetAt: reset } : {}),
++    });
++  }
++  const plan = [data?.planName, data?.plan, data?.plan_type, data?.packageName, data?.level].find(
++    (value): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 128,
++  );
++  return windows.length
++    ? { status: "available", source: "Z.ai Coding Plan", observedAt, windows, ...(plan ? { plan } : {}) }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
+ const balanceResult = (
+   source: string,
+   observedAt: number,
+@@ -272,6 +333,8 @@ export async function readApiKeyPlanUsage(
+       ? "https://opencode.ai/zen/go/v1/usage"
+       : route === "kimi-code"
+         ? kimiUsageUrl(baseUrl)
++        : route === "zai-coding-plan"
++          ? `${origin}/api/monitor/usage/quota/limit`
+         : route === "deepseek-balance"
+           ? "https://api.deepseek.com/user/balance"
+           : route === "moonshot-balance"
+@@ -308,6 +371,8 @@ export async function readApiKeyPlanUsage(
+         return parseOpenCodeGoUsage(payload, now());
+       case "kimi-code":
+         return parseKimiCodeUsage(payload, now());
++      case "zai-coding-plan":
++        return parseZaiCodingPlanUsage(payload, now());
+       case "deepseek-balance":
+         return parseDeepSeekBalance(payload, now());
+       case "moonshot-balance":
+diff --git a/packages/services/test/api-key-plan-usage.test.ts b/packages/services/test/api-key-plan-usage.test.ts
+index 07af246..9b0c411 100644
+--- a/packages/services/test/api-key-plan-usage.test.ts
++++ b/packages/services/test/api-key-plan-usage.test.ts
+@@ -9,6 +9,7 @@ import {
+   parseOpenCodeGoUsage,
+   parseOpenRouterKey,
+   parseSiliconFlowBalance,
++  parseZaiCodingPlanUsage,
+   readApiKeyPlanUsage,
+ } from "../src/model-provider/apiKeyPlanUsage.js";
+ 
+@@ -193,3 +194,67 @@ test("balance reads use each vendor's documented endpoint with the saved key", a
+     "https://api.siliconflow.cn/v1/user/info",
+   ]);
+ });
++
++test("Z.ai / BigModel Coding Plan reads plan windows only for Coding Plan connections", async () => {
++  assert.equal(apiKeyPlanRoute({ templateId: "zai-api", baseUrl: "https://api.z.ai/api/anthropic" }), "zai-coding-plan");
++  assert.equal(apiKeyPlanRoute({ templateId: "bigmodel-api", baseUrl: "https://open.bigmodel.cn/api/anthropic" }), "zai-coding-plan");
++  // Same hosts, pay-as-you-go API: no plan allowance.
++  assert.equal(apiKeyPlanRoute({ templateId: "zai-standard-api", baseUrl: "https://api.z.ai/api/paas/v4" }), undefined);
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://open.bigmodel.cn/api/paas/v4" }), undefined);
++
++  const now = Date.UTC(2026, 9, 6, 12);
++  const parsed = parseZaiCodingPlanUsage(
++    {
++      code: 200,
++      data: {
++        planName: "GLM Coding Pro",
++        limits: [
++          // Counts override the rounded percentage: 1500 of 2000 used.
++          { type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 74, usage: 2000, currentValue: 1500, nextResetTime: now + 3_600_000 },
++          { type: "TOKENS_LIMIT", unit: 6, number: 1, percentage: 12, nextResetTime: now + 86_400_000 },
++          // A one-minute TIME_LIMIT marks the monthly MCP quota.
++          { type: "TIME_LIMIT", unit: 5, number: 1, percentage: 40 },
++          { type: "FUTURE_LIMIT", unit: 1, number: 1, percentage: 1 },
++        ],
++      },
++    },
++    now,
++  );
++  assert.equal(parsed.status, "available");
++  if (parsed.status !== "available") return;
++  assert.equal(parsed.plan, "GLM Coding Pro");
++  assert.deepEqual(
++    parsed.windows.map((w) => [w.id, w.windowMinutes, Math.round(w.usedPercent ?? -1), w.resetAt !== undefined]),
++    [
++      ["default:five_hour", 300, 75, true],
++      ["default:weekly", 10_080, 12, true],
++      ["MCP:monthly", 43_200, 40, false],
++    ],
++  );
++  // A five-hour reset ten hours away is dropped, never timezone-corrected.
++  const skewed = parseZaiCodingPlanUsage(
++    { data: { limits: [{ type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 10, nextResetTime: now + 10 * 3_600_000 }] } },
++    now,
++  );
++  assert.equal(skewed.status === "available" && skewed.windows[0]?.resetAt, undefined);
++  // Malformed known entries make the reading unavailable rather than 0 %.
++  assert.equal(
++    parseZaiCodingPlanUsage({ data: { limits: [{ type: "TOKENS_LIMIT", unit: "hour", number: 5, percentage: 1 }] } }, now).status,
++    "unavailable",
++  );
++  assert.equal(parseZaiCodingPlanUsage({ data: { limits: [] } }, now).status, "unavailable");
++
++  const seen: string[] = [];
++  const result = await readApiKeyPlanUsage(
++    "zai-coding-plan",
++    "synthetic-zai-key",
++    "https://open.bigmodel.cn/api/anthropic",
++    (async (url: string, init: RequestInit) => {
++      seen.push(`${url} ${(init.headers as Record<string, string>).Authorization}`);
++      return new Response(JSON.stringify({ data: { limits: [{ type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 5 }] } }), { status: 200 });
++    }) as typeof fetch,
++    () => now,
++  );
++  assert.deepEqual(seen, ["https://open.bigmodel.cn/api/monitor/usage/quota/limit Bearer synthetic-zai-key"]);
++  assert.equal(result.status, "available");
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 47db302..f387524 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -62,12 +62,14 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 60);
+-  assert.equal(vendors.length, 25);
++  // 68 = 60 + Volcengine Coding/Agent Plan, Tencent Token Plan, Qianfan Coding Plan, StepFun Step
++  // Plan CN/global, ModelScope and PPIO (endpoints from cc-switch 5c573f1 presets).
++  assert.equal(templates.length, 68);
++  assert.equal(vendors.length, 31);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    60,
++    68,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/shared/src/api-key-plan-usage.ts b/packages/shared/src/api-key-plan-usage.ts
+index a2fe446..ab1cd8d 100644
+--- a/packages/shared/src/api-key-plan-usage.ts
++++ b/packages/shared/src/api-key-plan-usage.ts
+@@ -6,6 +6,7 @@ export type ApiKeyPlanRoute =
+   | "opencode-go"
+   | "minimax-token-plan"
+   | "kimi-code"
++  | "zai-coding-plan"
+   | "deepseek-balance"
+   | "moonshot-balance"
+   | "openrouter-key"
+@@ -19,6 +20,8 @@ export const isApiKeyBalanceRoute = (route: ApiKeyPlanRoute | undefined) =>
+   route === "siliconflow-balance";
+ 
+ const MINIMAX_TOKEN_PLAN_TEMPLATES = new Set(["fleet-minimax-token-plan", "fleet-minimax-token-plan-cn"]);
++// Z.ai / BigModel 的按量 API 与 Coding Plan 共用域名；只对 Coding Plan 模板读取套餐额度。
++const ZAI_CODING_PLAN_TEMPLATES = new Set(["zai-api", "fleet-zai-coding-chat", "fleet-zai-coding-responses", "bigmodel-api"]);
+ 
+ export function apiKeyPlanRoute(provider: {
+   templateId?: string | null;
+@@ -44,5 +47,8 @@ export function apiKeyPlanRoute(provider: {
+     if (url?.hostname === "api.minimax.io" || url?.hostname === "api.minimaxi.com")
+       return "minimax-token-plan";
+   }
++  if (provider.templateId && ZAI_CODING_PLAN_TEMPLATES.has(provider.templateId)) {
++    if (url?.hostname === "api.z.ai" || url?.hostname === "open.bigmodel.cn") return "zai-coding-plan";
++  }
+   return undefined;
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index e3d27f6..de3c7d2 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -35,6 +35,11 @@ import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg";
+ import Antigravity from "@lobehub/icons-static-svg/icons/antigravity-color.svg";
+ import SiliconCloud from "@lobehub/icons-static-svg/icons/siliconcloud-color.svg";
+ import Volcengine from "@lobehub/icons-static-svg/icons/volcengine-color.svg";
++import TencentCloud from "@lobehub/icons-static-svg/icons/tencentcloud-color.svg";
++import BaiduCloud from "@lobehub/icons-static-svg/icons/baiducloud-color.svg";
++import StepFun from "@lobehub/icons-static-svg/icons/stepfun-color.svg";
++import ModelScope from "@lobehub/icons-static-svg/icons/modelscope-color.svg";
++import Ppio from "@lobehub/icons-static-svg/icons/ppio-color.svg";
+ 
+ type ProviderLogoRef = NonNullable<ProviderConfigObject["logo"]>;
+ 
+@@ -71,6 +76,11 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   antigravity: { src: Antigravity, color: true },
+   siliconflow: { src: SiliconCloud, color: true },
+   volcengine: { src: Volcengine, color: true },
++  tencentcloud: { src: TencentCloud, color: true },
++  "baidu-qianfan": { src: BaiduCloud, color: true },
++  stepfun: { src: StepFun, color: true },
++  modelscope: { src: ModelScope, color: true },
++  ppio: { src: Ppio, color: true },
+   "start-plan": { src: startPlanLogo, color: true },
+ };
+ 

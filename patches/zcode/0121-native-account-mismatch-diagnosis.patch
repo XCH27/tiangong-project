@@ -1,0 +1,121 @@
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+index 0d07f62..b8a235b 100644
+--- a/packages/services/src/model-provider/nativeCliUsage.ts
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -223,7 +223,9 @@ export function createNativeCliUsageReader(
+         try {
+           value = await native.usage!({ ...access } as NativeCliAccessConfigObject);
+         } catch (error) {
++          const accountChanged = error instanceof Error && /account changed/.test(error.message);
+           value = {
++            ...(accountChanged ? { authRequiredReason: "account-changed" as const } : {}),
+             status:
+               error instanceof Error &&
+               /account changed|Sign in to the official (Claude|Codex) CLI/.test(error.message)
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index 7beec6d..30a4336 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -25,6 +25,8 @@ export type SubscriptionUsageResult = {
+   connectionRevision?: string;
+   /** The native control succeeded but supplied no plan windows; not an authentication verdict. */
+   unavailableReason?: "no-provider-data";
++  /** The CLI changed identity; this is distinct from an expired authorization. */
++  authRequiredReason?: "account-changed";
+ } & (
+   | {
+       status: "available";
+diff --git a/packages/services/test/native-cli-usage.test.ts b/packages/services/test/native-cli-usage.test.ts
+index caefcf6..ee45365 100644
+--- a/packages/services/test/native-cli-usage.test.ts
++++ b/packages/services/test/native-cli-usage.test.ts
+@@ -213,7 +213,9 @@ test("native usage coalesces reads, retains dated last-good on network failure,
+     assert.equal(stale.refreshError, "unavailable");
+   }
+   read = () => Promise.reject(new Error("Native CLI account changed; reconnect this connection"));
+-  assert.equal((await reader.read("P", true)).status, "auth-required");
++  const changedAccount = await reader.read("P", true);
++  assert.equal(changedAccount.status, "auth-required");
++  assert.equal(changedAccount.authRequiredReason, "account-changed");
+   const pending = Promise.withResolvers<SubscriptionUsageResult>();
+   read = () => pending.promise;
+   const old = reader.read("P", true);
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 02ab6c2..9998184 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -188,8 +188,10 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.allowance.loading": "Reading account allowance…",
+   "settings.modelProvider.allowance.not-read":
+     "Refresh to read the current account’s plan allowance.",
++  "settings.modelProvider.allowance.accountChanged":
++    "The official client account changed. Reconnect this connection.",
+   "settings.modelProvider.allowance.auth-required":
+-    "Authorization expired. Reconnect this account.",
++    "Reconnect this account.",
+   "settings.modelProvider.allowance.access-denied":
+     "The provider denied this allowance read; sign-in status is not confirmed.",
+   "settings.modelProvider.allowance.rate-limited": "Too many requests. Refresh again later.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 580fcdb..af12ece 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -159,7 +159,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.allowance.observed": "更新于",
+   "settings.modelProvider.allowance.loading": "正在读取账号额度…",
+   "settings.modelProvider.allowance.not-read": "点击刷新，获取当前账号的订阅额度。",
+-  "settings.modelProvider.allowance.auth-required": "授权已失效，请重新连接此账号。",
++  "settings.modelProvider.allowance.accountChanged": "官方客户端账号已切换，请重新连接。",
++  "settings.modelProvider.allowance.auth-required": "请重新连接此账号。",
+   "settings.modelProvider.allowance.access-denied": "服务商拒绝查询额度，尚不能判定登录失效。",
+   "settings.modelProvider.allowance.rate-limited": "查询过于频繁，请稍后刷新。",
+   "settings.modelProvider.allowance.unavailable": "暂时无法读取额度，请稍后刷新。",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 53adba5..3ce091f 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -104,7 +104,19 @@ export function SubscriptionUsageSection({
+         />
+       ) : (
+         <p className="text-ui-base text-foreground-subtle" role="status">
+-          {t(paused ? "offline" : busy ? "loading" : result?.status === "unavailable" && result.unavailableReason === "no-provider-data" ? "noProviderData" : (result?.status ?? "not-read"))}
++          {t(
++            paused
++              ? "offline"
++              : busy
++                ? "loading"
++                : result?.status === "auth-required" &&
++                    result.authRequiredReason === "account-changed"
++                  ? "accountChanged"
++                  : result?.status === "unavailable" &&
++                      result.unavailableReason === "no-provider-data"
++                    ? "noProviderData"
++                    : (result?.status ?? "not-read"),
++          )}
+         </p>
+       )}
+     </div>
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index a772758..1ad0e3d 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -272,6 +272,19 @@ async function run() {
+         }
+       });
+     }
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    await test(`${locale}: a changed CLI account is diagnosed without expired-token or quota claims`, async () => {
++      const f = await fixture();
++      f.setUsage(async (id) => ({ status: "auth-required", authRequiredReason: "account-changed", accountId: id, connectionRevision: id }));
++      try {
++        await f.render("A", locale, true);
++        check(f.node.textContent?.includes(locale === "zh-CN" ? "官方客户端账号已切换" : "official client account changed"), "Account switch reason was lost in the real quota view");
++        check(!f.node.textContent?.includes(locale === "zh-CN" ? "授权已失效" : "expired"), "Identity mismatch was presented as token expiry");
++        check(f.node.querySelectorAll('[role="progressbar"]').length === 0 && f.changed() === 0,
++          "Mismatch invented allowance or replaced the existing binding");
++      } finally { await f.close(); }
++    });
++  }
+   await test("native allowance never renders the previous connection's late quota", async () => {
+     const f = await fixture();
+     const late = Promise.withResolvers<any>();

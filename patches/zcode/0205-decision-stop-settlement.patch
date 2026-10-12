@@ -1,0 +1,238 @@
+diff --git a/apps/zcode-cli/docs/automatic-model-selection.md b/apps/zcode-cli/docs/automatic-model-selection.md
+index 7249a2a..24c2d64 100644
+--- a/apps/zcode-cli/docs/automatic-model-selection.md
++++ b/apps/zcode-cli/docs/automatic-model-selection.md
+@@ -85,3 +85,8 @@ Decide keeps explicit approval and returns receipt/accounting state; automatic p
+ offered model on duplicate or accounting failure. `usageRecoveryPending` means a recovery instruction
+ was saved at receipt time, not that cold reconciliation has completed. Missing result acknowledgement
+ never proves inference did not run. Both consumers expose/retain the declared observed usage fields.
++
++Automatic foreground waiting races the original Stop/deadline against the one shared operation.
++The existing residency owner retains unfinished receipt/accounting settlement; it never republishes
++a late tier into another turn. A slow unknown-intent write cannot dispatch after cancellation.
++Delayed ledger/result acknowledgement retains the same ID and observed facts, with no inference replay.
+diff --git a/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts b/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts
+index 7c2a1cb..8dde5b4 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts
+@@ -78,6 +78,8 @@ export async function executeDecisionOperation(input: {
+     );
+   let result: DecisionModelResult;
+   try {
++    // Stop 可能发生在未知意图落盘期间；落盘完成不再授予派发机会。
++    signal.throwIfAborted();
+     result = await port.classify({
+       ...input.request,
+       binding: prepared.binding,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+index a312220..9c91523 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+@@ -172,24 +172,45 @@ async function executeAutomaticDecision(
+     .digest("hex");
+   const id = `automatic-decision:${key}`;
+   const prepared = await runtime.decisionModelPort!.prepare(request, signal);
+-  const receipt = await executeDecisionOperation({
+-    port: runtime.decisionModelPort!,
+-    request,
+-    prepared,
+-    id,
+-    sessionId: runtime.sessionId,
+-    toolCallId: id,
+-    offered,
+-    signal,
+-    trace: operation.trace,
+-    traceId: operation.trace.traceId,
+-    turnId: operation.trace.turnId,
+-    artifactStore: runtime.artifactStore,
+-    sessionStore: runtime.sessionStore,
+-    admission: runtime.modelRequestAdmission,
+-    logger: runtime.logger,
+-    workspacePath: runtime.config.workspacePath,
+-  });
++  const settlement = runtime.trackResidencyBlockingWork(
++    executeDecisionOperation({
++      port: runtime.decisionModelPort!,
++      request,
++      prepared,
++      id,
++      sessionId: runtime.sessionId,
++      toolCallId: id,
++      offered,
++      signal,
++      trace: operation.trace,
++      traceId: operation.trace.traceId,
++      turnId: operation.trace.turnId,
++      artifactStore: runtime.artifactStore,
++      sessionStore: runtime.sessionStore,
++      admission: runtime.modelRequestAdmission,
++      logger: runtime.logger,
++      workspacePath: runtime.config.workspacePath,
++    }),
++  );
++  // 只结束当前前台等待；已发生调用的用量/结果仍由原常驻 owner 结算。
++  void settlement.catch((error) =>
++    runtime.logger?.warn("Automatic decision settlement failed", {
++      event: "decision.operation.settlement_failed",
++      module: "core.runtime",
++      operationId: id,
++      error: error instanceof Error ? error.message : String(error),
++    }),
++  );
++  signal.throwIfAborted();
++  const aborted = Promise.withResolvers<never>();
++  const onAbort = () => aborted.reject(signal.reason);
++  signal.addEventListener("abort", onAbort, { once: true });
++  let receipt: Awaited<typeof settlement>;
++  try {
++    receipt = await Promise.race([settlement, aborted.promise]);
++  } finally {
++    signal.removeEventListener("abort", onAbort);
++  }
+   signal.throwIfAborted();
+   if (!receipt.usageRecorded)
+     throw new Error("Automatic decision accounting unavailable; retaining offered model");
+diff --git a/apps/zcode-cli/packages/core/test/automatic-model.test.ts b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+index 99b91a7..4e28e54 100644
+--- a/apps/zcode-cli/packages/core/test/automatic-model.test.ts
++++ b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+@@ -96,6 +96,7 @@ test("automatic Host operation records usage and fences unknown receipts after S
+     artifactStore: artifacts,
+     config: { workspacePath: root },
+     rootTraceContext: trace,
++    trackResidencyBlockingWork: (work: Promise<unknown>) => work,
+     logger: { info() {}, warn() {} },
+     modelRequestAdmission: {
+       acquire: async () => {
+@@ -431,3 +432,131 @@ test("automatic routing requires an explicit automatic-default marker and an int
+   );
+   assert.equal(calls, 1);
+ });
++
++for (const delayed of ["intent", "ledger-before", "ledger-ack", "result-ack"] as const) {
++  test(
++    `automatic Stop closes foreground during delayed ${delayed} without losing owned settlement`,
++    { timeout: 5000 },
++    async () => {
++      const entered = Promise.withResolvers<void>();
++      const release = Promise.withResolvers<void>();
++      const settled = Promise.withResolvers<void>();
++      let calls = 0;
++      const usage = {
++        inputTokens: 40,
++        outputTokens: 12,
++        totalTokens: 52,
++        cacheReadTokens: 7,
++        reasoningTokens: 2,
++      };
++      const port: DecisionModelPort = {
++        isAvailable: () => true,
++        listModels: () => [],
++        prepare: async () => ({
++          binding: randomUUID(),
++          model: { providerId: "fixture", modelId: "classifier" },
++          inputDigest: "c".repeat(64),
++        }),
++        classify: async () => {
++          calls++;
++          return {
++            status: "completed",
++            requestedModel: { providerId: "fixture", modelId: "classifier" },
++            inputDigest: "c".repeat(64),
++            answers: {},
++            usage,
++          };
++        },
++        automaticModel: async (_value, _signal, execute) => {
++          await execute({
++            state: "Synthetic evidence",
++            questions: {
++              q: { type: "bool", instructions: "Check", criteria: { true: "yes", false: "no" } },
++            },
++          });
++          return { selection: { providerId: "fixture", modelId: "deep" }, tier: "deep" };
++        },
++      };
++      const f = await hostFixture(undefined, false, { deps: { decisionModelPort: port } });
++      const rt = f.runtime as any;
++      const artifact = rt.artifactStore.writeToolResultArtifactOnce.bind(rt.artifactStore);
++      const ledger = f.store.recordModelUsage.bind(f.store);
++      rt.artifactStore.writeToolResultArtifactOnce = async (input: any) => {
++        if (delayed === "intent" && input.idempotencyKey.endsWith(":intent")) {
++          entered.resolve();
++          await release.promise;
++        }
++        const receipt = await artifact(input);
++        if (input.idempotencyKey.endsWith(":result")) {
++          if (delayed === "result-ack") {
++            entered.resolve();
++            await release.promise;
++          }
++          settled.resolve();
++        }
++        return receipt;
++      };
++      f.store.recordModelUsage = async (record) => {
++        if (record.querySource !== "decision_classification") return ledger(record);
++        if (delayed === "ledger-before") {
++          entered.resolve();
++          await release.promise;
++        }
++        await ledger(record);
++        if (delayed === "ledger-ack") {
++          entered.resolve();
++          await release.promise;
++        }
++      };
++      let first: Promise<unknown> | undefined;
++      try {
++        first = f.runtime.executeTurn("Synthetic first", undefined, {
++          inputId: "stopped-operation",
++          intent: { modelSelection: selection(), allowAutomaticModelSelection: true },
++        } as never);
++        const rejected = assert.rejects(first);
++        await entered.promise;
++        f.runtime.stopActiveForegroundExecution();
++        const stopped = await Promise.race([
++          rejected.then(() => true),
++          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 100)),
++        ]);
++        assert.equal(stopped, true, "Stop must not await storage settlement");
++        assert.equal(f.requests.length, 0);
++        assert.equal(rt.residencyBlockingWorkCount, 1);
++        f.steps.push(() => {
++          assert.equal(rt.activeTurn.steerable, true);
++          return reply("Next manual turn");
++        });
++        await f.runtime.executeTurn("Next manual turn", undefined, {
++          intent: { modelSelection: selection(), allowAutomaticModelSelection: false },
++        } as never);
++        assert.equal(f.requests[0]?.selection.modelId, "model-a");
++        release.resolve();
++        await settled.promise;
++        await new Promise<void>((resolve) => setImmediate(resolve));
++        assert.equal(rt.residencyBlockingWorkCount, 0);
++        assert.equal(f.runtime.getSessionModelSelection().modelId, "model-a");
++        assert.equal(calls, delayed === "intent" ? 0 : 1);
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          const rows = db
++            .prepare("select * from model_usage where query_source='decision_classification'")
++            .all();
++          assert.equal(rows.length, 1);
++          if (delayed !== "intent")
++            assert.deepEqual(JSON.parse(String(rows[0]!.raw_usage_json)), usage);
++          else assert.equal(rows[0]!.status, "cancelled");
++        } finally {
++          db.close();
++        }
++        await f.reopen();
++        assert.equal(calls, delayed === "intent" ? 0 : 1);
++      } finally {
++        release.resolve();
++        if (first) await first.catch(() => {});
++        await f.close();
++      }
++    },
++  );
++}

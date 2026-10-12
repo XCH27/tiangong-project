@@ -1,0 +1,172 @@
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+index 3e49ee8..5b86a85 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+@@ -68,8 +68,11 @@ export async function testModelConnectivity(
+       querySource: "provider_settings_connectivity",
+     },
+   });
+-  const abortSignal =
+-    options?.abortSignal ?? AbortSignal.timeout(WORKSPACE_GENERATE_TEXT_TIMEOUT_MS);
++  const probeStop = new AbortController();
++  const abortSignal = AbortSignal.any([
++    options?.abortSignal ?? AbortSignal.timeout(WORKSPACE_GENERATE_TEXT_TIMEOUT_MS),
++    probeStop.signal,
++  ]);
+   const request: ModelRequest = {
+     abortSignal,
+     messages: [
+@@ -80,30 +83,42 @@ export async function testModelConnectivity(
+   let finished = false;
+   let lastFailure: import("@zcode/contracts").ModelRequestFailedStatusEvent | undefined;
+   try {
+-  await runWithModelInvocationContext(
+-    {
+-      metadata: traceContextToLogContext(traceContext),
+-      modelRequestSessionType: "other",
+-      modelCall: { operation: "workspace_generate_text" },
+-      statusSink: this.createModelStatusSink(traceContext, [], {onStatus: event => {if(event.type === "model_request_failed") lastFailure=event;}}),
+-      traceContext,
+-      refreshRuntimeHeadersBeforeAttempt: createRefreshRuntimeHeadersBeforeModelAttempt(this, {
+-        abortSignal,
+-        model,
++    await runWithModelInvocationContext(
++      {
++        metadata: traceContextToLogContext(traceContext),
++        modelRequestSessionType: "other",
++        modelCall: { operation: "workspace_generate_text" },
++        statusSink: this.createModelStatusSink(traceContext, [], {
++          onStatus: (event) => {
++            if (event.type !== "model_request_failed" || lastFailure) return;
++            // A test reports the first observed failure. Stop its retry wait, not other calls.
++            lastFailure = event;
++            probeStop.abort();
++          },
++        }),
+         traceContext,
+-      }),
+-    },
+-    async () => {
+-      for await (const event of model.streamText(request)) {
+-        if (event.type === "error") throw normalizeStreamError(event.error);
+-        if (event.type === "finish") finished = true;
+-      }
+-    },
+-  );
+-  if (!finished) throw new Error("模型连通性测试流在 finish 事件前结束");
++        refreshRuntimeHeadersBeforeAttempt: createRefreshRuntimeHeadersBeforeModelAttempt(this, {
++          abortSignal,
++          model,
++          traceContext,
++        }),
++      },
++      async () => {
++        for await (const event of model.streamText(request)) {
++          if (event.type === "error") throw normalizeStreamError(event.error);
++          if (event.type === "finish") finished = true;
++        }
++      },
++    );
++    if (!finished) throw new Error("模型连通性测试流在 finish 事件前结束");
+   } catch (error) {
+-    // 连接测试保留现有网络诊断；RPC 仅投影分类/状态码，不能退化成不可定位的英文字符串。
+-    throw Object.assign(new Error("Model connectivity test failed", {cause:error}), {connectivityFailure:lastFailure??error});
++    const timedOut = abortSignal.aborted && abortSignal.reason?.name === "TimeoutError";
++    // The deadline may be emitted as cancellation by the adapter. Preserve the actual cause.
++    throw Object.assign(new Error("Model connectivity test failed", { cause: error }), {
++      connectivityFailure: timedOut
++        ? { reason: "timeout", errorCode: "model_request_timeout" }
++        : (lastFailure ?? error),
++    });
+   }
+ }
+ 
+diff --git a/packages/services/test/model-connectivity-diagnostics.test.ts b/packages/services/test/model-connectivity-diagnostics.test.ts
+index be7e4f3..0783df1 100644
+--- a/packages/services/test/model-connectivity-diagnostics.test.ts
++++ b/packages/services/test/model-connectivity-diagnostics.test.ts
+@@ -1,7 +1,84 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { createServer } from "node:net";
+ import { modelConnectivityFailure, modelConnectivityResultSchema } from "@zcode/shared";
+ import { createProviderSettingsConnectivityTester } from "../src/model-provider/providerSettingsConnectivity.js";
++import { AiSdkModelAdapter } from "../../../apps/zcode-cli/packages/adapters/src/model/runner.js";
++import { createRegistryModelConfig, createRegistryProviderConfig, parseModelConfig, parseProviderConfig } from "@zcode/provider";
++import { testModelConnectivity } from "../../../apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.js";
++
++function probeRuntime(model: any) {
++  return {
++    config: {}, rootTraceContext: { traceId: "trace", spanId: "span", attributes: {} },
++    modelFactory: () => model,
++    createModelStatusSink: (_trace: unknown, _events: unknown, options: any) => ({
++      publish: async (event: unknown) => options.onStatus(event),
++    }),
++  } as any;
++}
++
++test("a real provider adapter reports the first failed probe without hidden retries", async () => {
++  const socket = createServer();
++  await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
++  const port = (socket.address() as { port: number }).port;
++  await new Promise<void>((resolve) => socket.close(() => resolve()));
++  const provider = createRegistryProviderConfig(parseProviderConfig({
++    group: "standard-personal", api: { type: "openai-chat-completions", baseUrl: `http://127.0.0.1:${port}/v1` },
++    access: { type: "api-key", apiKey: "synthetic" },
++  }));
++  const model = createRegistryModelConfig(parseModelConfig({
++    enabled: true,
++    properties: {
++      contextWindow: 4096, requiresMfjsToolSchema: false,
++      inputFormat: { supportsText: true, supportsImage: false, supportsAudio: false, supportsVideo: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall: false, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: false,
++    },
++    optionSpecs: { maxOutputTokens: { max: 512, map: "{}" }, reasoningLevel: { values: ["low"], map: "{}" } },
++  }));
++  assert.ok(provider.ok && model.ok);
++  let calls = 0;
++  const adapter = new AiSdkModelAdapter({
++    retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1, jitter: false },
++    transport: async (input, init) => { calls++; return globalThis.fetch(input, init); },
++  });
++  const target = adapter.createModel({ providerId: "p", modelId: "m", providerConfig: provider.config,
++    modelConfig: model.config, options: { reasoningLevel: "low", maxOutputTokens: 1 } });
++  let caught: unknown;
++  try {
++    await testModelConnectivity.call(probeRuntime(target), { selection: { providerId: "p", modelId: "m" } as never },
++      { abortSignal: AbortSignal.timeout(500) });
++  } catch (error) { caught = error; }
++  const failed = modelConnectivityFailure(caught);
++  assert.equal(calls, 1, "A test must not silently replay failed inference");
++  assert.equal(failed.success, false);
++  if (!failed.success) assert.equal(failed.error.kind, "network");
++  calls = 0;
++  await assert.rejects(async () => { for await (const _ of target.streamText({ messages: [{ role: "user", content: "hi" }] })) {} });
++  assert.equal(calls, 3, "Ordinary requests must retain their configured retry policy");
++});
++
++test("a probe deadline is timeout while an explicit caller abort is cancellation", async () => {
++  for (const [reason, expected] of [[new DOMException("deadline", "TimeoutError"), "timeout"], [new DOMException("stop", "AbortError"), "cancelled"]] as const) {
++    const model: any = {
++      providerId: "p", modelId: "m", properties: {}, options: {},
++      optionSpecs: { reasoningLevel: { values: ["low"] } }, bind() { return this; },
++      async *streamText() {
++        const { getCurrentModelInvocationContext } = await import("../../../apps/zcode-cli/packages/contracts/dist/index.js");
++        await getCurrentModelInvocationContext()?.statusSink?.publish({ type: "model_request_failed", reason: "cancelled", errorCode: "model_request_cancelled" } as never);
++        throw reason;
++      },
++    };
++    let caught: unknown;
++    try {
++      await testModelConnectivity.call(probeRuntime(model), { selection: { providerId: "p", modelId: "m" } as never },
++        { abortSignal: AbortSignal.abort(reason) });
++    } catch (error) { caught = error; }
++    const result = modelConnectivityFailure(caught);
++    assert.equal(result.success, false);
++    if (!result.success) assert.equal(result.error.kind, expected);
++  }
++});
+ 
+ test("connectivity failures retain safe cause classes and never infer plan expiry from authorization", () => {
+   const check = (facts: unknown, kind: string) => {

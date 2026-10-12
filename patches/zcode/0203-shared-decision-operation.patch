@@ -1,0 +1,719 @@
+diff --git a/apps/zcode-cli/docs/automatic-model-selection.md b/apps/zcode-cli/docs/automatic-model-selection.md
+index 5396a3d..7249a2a 100644
+--- a/apps/zcode-cli/docs/automatic-model-selection.md
++++ b/apps/zcode-cli/docs/automatic-model-selection.md
+@@ -73,3 +73,15 @@ reasons abstain while retaining observed billing facts, including server-tool-on
+ Choice distributions retain only documented four-decimal rounding tolerance, matching the installed
+ classifier rule `max(0.001, labelCount * 0.00005)`. Choice/score confidence must be a reported finite
+ value in [0,1]; missing or invalid values fail instead of borrowing the selected probability or zero.
++
++## Shared Host operation
++
++`core/src/runtime/decision-operation.ts` owns the common prepared operation: existing storage
++preflight, unchanged operation IDs and `:intent`/`:result` artifact keys, durable unknown claim,
++admitted dispatch, one frozen usage record, pending Session usage recovery and result receipt.
++Preparation remains with each caller so Decide binds before its existing approval and automatic
++routing retains its original total deadline. No migration, new store or permission path is added.
++Decide keeps explicit approval and returns receipt/accounting state; automatic policy keeps the
++offered model on duplicate or accounting failure. `usageRecoveryPending` means a recovery instruction
++was saved at receipt time, not that cold reconciliation has completed. Missing result acknowledgement
++never proves inference did not run. Both consumers expose/retain the declared observed usage fields.
+diff --git a/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts b/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts
+new file mode 100644
+index 0000000..7c2a1cb
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/decision-operation.ts
+@@ -0,0 +1,166 @@
++import type { DecisionInput } from "@zcode/shared";
++import type {
++  SessionId,
++  TurnId,
++  TraceId,
++  DecisionModelPort,
++  DecisionModelResult,
++  ModelSelection,
++  ModelUsageRecord,
++  ModelRequestAdmission,
++  SessionStorePort,
++  ToolArtifactStorePort,
++  UsageStorePort,
++  TraceContext,
++  Logger,
++} from "@zcode/contracts";
++import { retainPendingModelUsage } from "./methods/usage-recovery.js";
++
++/** One prepared Host operation; callers retain their distinct approval and outcome policies. */
++export async function executeDecisionOperation(input: {
++  port: DecisionModelPort;
++  request: DecisionInput;
++  prepared: Awaited<ReturnType<DecisionModelPort["prepare"]>>;
++  id: string;
++  sessionId: SessionId;
++  toolCallId: string;
++  turnId?: TurnId;
++  traceId?: TraceId;
++  trace?: TraceContext;
++  signal: AbortSignal;
++  workspacePath?: string;
++  offered?: ModelSelection;
++  artifactStore?: ToolArtifactStorePort;
++  sessionStore?: SessionStorePort;
++  admission?: ModelRequestAdmission;
++  logger?: Logger;
++}): Promise<{
++  result: DecisionModelResult;
++  receiptUri: string;
++  usageRecorded: boolean;
++  usageRecoveryPending: boolean;
++}> {
++  const { port, prepared, id, signal } = input;
++  const artifacts = input.artifactStore;
++  const usage = input.sessionStore as Partial<UsageStorePort> | undefined;
++  if (
++    !artifacts?.writeToolResultArtifactOnce ||
++    !usage?.recordModelUsage ||
++    !input.sessionStore?.saveSessionEntry
++  )
++    throw new Error(
++      "Decision receipt/accounting recovery storage is unavailable; no inference was made",
++    );
++  const startedAt = Date.now();
++  const artifact = (suffix: string, content: unknown) =>
++    artifacts.writeToolResultArtifactOnce!({
++      sessionId: input.sessionId,
++      toolCallId: input.toolCallId,
++      toolName: "DecisionReceipt",
++      idempotencyKey: `${id}:${suffix}`,
++      content: JSON.stringify(content),
++      contentType: "application/json",
++      retention: "session",
++      trace: input.trace,
++    });
++  const claim = await artifact("intent", {
++    version: 1,
++    status: "unknown",
++    id,
++    model: prepared.model,
++    ...(input.offered ? { offered: input.offered } : {}),
++    inputDigest: prepared.inputDigest,
++    startedAt,
++  });
++  if (!claim.created)
++    throw new Error(
++      `Decision inference may already exist. Receipt ${claim.uri}; do not repeat it automatically`,
++    );
++  let result: DecisionModelResult;
++  try {
++    result = await port.classify({
++      ...input.request,
++      binding: prepared.binding,
++      signal,
++      admission: input.admission,
++      trace: input.trace,
++    });
++  } catch {
++    result = {
++      status: signal.aborted ? "cancelled" : "error",
++      requestedModel: prepared.model,
++      inputDigest: prepared.inputDigest,
++      answers: {},
++      message: "Decision binding is unavailable; no replacement model was used",
++    };
++  }
++  const completedAt = Date.now();
++  const record: ModelUsageRecord = {
++    id,
++    logicalRequestId: id,
++    sessionID: input.sessionId,
++    turnID: input.turnId,
++    traceID: input.traceId,
++    querySource: "decision_classification",
++    providerId: result.requestedModel.providerId,
++    modelId: result.requestedModel.modelId,
++    startedAt,
++    completedAt,
++    status:
++      result.status === "completed"
++        ? "completed"
++        : result.status === "cancelled"
++          ? "cancelled"
++          : "error",
++    inputTokens: result.usage?.inputTokens,
++    outputTokens: result.usage?.outputTokens,
++    reasoningTokens: result.usage?.reasoningTokens,
++    cacheCreationInputTokens: result.usage?.cacheWriteTokens,
++    cacheReadInputTokens: result.usage?.cacheReadTokens,
++    providerTotalTokens: result.usage?.totalTokens,
++    rawUsage: result.usage,
++    errorMessage: result.message,
++    providerMetadata: {
++      operation: "classifier",
++      reportedModelId: result.reportedModelId,
++      inputDigest: result.inputDigest,
++      fleetAccounting: {
++        billingProvider: result.billingProvider,
++        workspacePath: input.workspacePath,
++        reportedRequestUsd: result.reportedCostUsd,
++      },
++    },
++  };
++  let usageRecorded = true;
++  let usageRecoveryPending = false;
++  try {
++    await usage.recordModelUsage!(record);
++  } catch {
++    usageRecorded = false;
++    // 复用已有 Session 恢复指令；已提交但回执丢失也按原始 ID 对账，绝不重发推理。
++    try {
++      await retainPendingModelUsage(
++        { sessionId: input.sessionId, sessionStore: input.sessionStore },
++        record,
++      );
++      usageRecoveryPending = true;
++    } catch (error) {
++      input.logger?.warn("Decision usage recovery instruction unavailable", {
++        event: "usage.model.recovery.failed",
++        module: "core.runtime",
++        receiptId: id,
++        error: error instanceof Error ? error.message : String(error),
++      });
++    }
++  }
++  const receipt = await artifact("result", {
++    version: 1,
++    id,
++    startedAt,
++    completedAt,
++    ...result,
++    usageRecorded,
++    usageRecoveryPending,
++  });
++  return { result, receiptUri: receipt.uri, usageRecorded, usageRecoveryPending };
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+index 08b7288..a312220 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+@@ -7,15 +7,13 @@ import {
+   type TraceContext,
+   type TurnInputIntentMetadata,
+   type DecisionModelResult,
+-  type UsageStorePort,
+-  type ModelUsageRecord,
+ } from "@zcode/contracts";
+ import { getCurrentModelInvocationContext } from "../deps.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { cloneModelSelection } from "../model-selection.js";
+ import { createRefreshRuntimeHeadersBeforeModelAttempt } from "./model-runtime-headers.js";
+ import { createRuntimeModel, withModelInvocationContext } from "./runtime-model.js";
+-import { retainPendingModelUsage } from "./usage-recovery.js";
++import { executeDecisionOperation } from "../decision-operation.js";
+ import { applyRuntimeExecutionState } from "../execution-state.js";
+ 
+ export function createTurnModel(
+@@ -160,17 +158,6 @@ async function executeAutomaticDecision(
+   prompt: string,
+   operation: { signal: AbortSignal; trace: TraceContext; inputId?: string },
+ ): Promise<DecisionModelResult> {
+-  const port = runtime.decisionModelPort!;
+-  const artifacts = runtime.artifactStore;
+-  const usage = runtime.sessionStore as Partial<UsageStorePort> | undefined;
+-  if (
+-    !artifacts?.writeToolResultArtifactOnce ||
+-    !usage?.recordModelUsage ||
+-    !runtime.sessionStore?.saveSessionEntry
+-  )
+-    throw new Error(
+-      "Automatic decision receipt/accounting storage unavailable; no inference was made",
+-    );
+   const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(10000)]);
+   signal.throwIfAborted();
+   const key = createHash("sha256")
+@@ -184,117 +171,29 @@ async function executeAutomaticDecision(
+     )
+     .digest("hex");
+   const id = `automatic-decision:${key}`;
+-  const prepared = await port.prepare(request, signal);
+-  const startedAt = Date.now();
+-  const artifact = (suffix: string, content: unknown) =>
+-    artifacts.writeToolResultArtifactOnce!({
+-      sessionId: runtime.sessionId,
+-      toolCallId: id,
+-      toolName: "DecisionReceipt",
+-      idempotencyKey: `${id}:${suffix}`,
+-      content: JSON.stringify(content),
+-      contentType: "application/json",
+-      retention: "session",
+-      trace: operation.trace,
+-    });
+-  const claim = await artifact("intent", {
+-    version: 1,
+-    status: "unknown",
++  const prepared = await runtime.decisionModelPort!.prepare(request, signal);
++  const receipt = await executeDecisionOperation({
++    port: runtime.decisionModelPort!,
++    request,
++    prepared,
+     id,
+-    model: prepared.model,
++    sessionId: runtime.sessionId,
++    toolCallId: id,
+     offered,
+-    inputDigest: prepared.inputDigest,
+-    startedAt,
+-  });
+-  if (!claim.created)
+-    throw new Error("Automatic decision may already exist; no repeated inference was made");
+-  let result: DecisionModelResult;
+-  try {
+-    result = await port.classify({
+-      ...request,
+-      binding: prepared.binding,
+-      signal,
+-      admission: runtime.modelRequestAdmission,
+-      trace: operation.trace,
+-    });
+-  } catch {
+-    result = {
+-      status: signal.aborted ? "cancelled" : "error",
+-      requestedModel: prepared.model,
+-      inputDigest: prepared.inputDigest,
+-      answers: {},
+-      message: "Automatic decision binding unavailable",
+-    };
+-  }
+-  const completedAt = Date.now();
+-  const record: ModelUsageRecord = {
+-    id,
+-    logicalRequestId: id,
+-    sessionID: runtime.sessionId,
+-    turnID: operation.trace.turnId,
+-    traceID: operation.trace.traceId,
+-    querySource: "decision_classification",
+-    providerId: result.requestedModel.providerId,
+-    modelId: result.requestedModel.modelId,
+-    startedAt,
+-    completedAt,
+-    status:
+-      result.status === "completed"
+-        ? "completed"
+-        : result.status === "cancelled"
+-          ? "cancelled"
+-          : "error",
+-    inputTokens: result.usage?.inputTokens,
+-    outputTokens: result.usage?.outputTokens,
+-    reasoningTokens: result.usage?.reasoningTokens,
+-    cacheCreationInputTokens: result.usage?.cacheWriteTokens,
+-    cacheReadInputTokens: result.usage?.cacheReadTokens,
+-    providerTotalTokens: result.usage?.totalTokens,
+-    rawUsage: result.usage,
+-    errorMessage: result.message,
+-    providerMetadata: {
+-      operation: "classifier",
+-      reportedModelId: result.reportedModelId,
+-      inputDigest: result.inputDigest,
+-      fleetAccounting: {
+-        billingProvider: result.billingProvider,
+-        workspacePath: runtime.config.workspacePath,
+-        reportedRequestUsd: result.reportedCostUsd,
+-      },
+-    },
+-  };
+-  let usageRecorded = true;
+-  let usageRecoveryPending = false;
+-  try {
+-    await usage.recordModelUsage!(record);
+-  } catch {
+-    usageRecorded = false;
+-    // 复用已有 Session 恢复指令；已提交但回执丢失也按原始 ID 对账，绝不重发推理。
+-    try {
+-      await retainPendingModelUsage(runtime, record);
+-      usageRecoveryPending = true;
+-    } catch (error) {
+-      runtime.logger?.warn("Automatic decision usage recovery instruction unavailable", {
+-        event: "usage.model.recovery.failed",
+-        module: "core.runtime",
+-        receiptId: id,
+-        error: error instanceof Error ? error.message : String(error),
+-      });
+-    }
+-  }
+-  await artifact("result", {
+-    version: 1,
+-    id,
+-    startedAt,
+-    completedAt,
+-    ...result,
+-    usageRecorded,
+-    usageRecoveryPending,
++    signal,
++    trace: operation.trace,
++    traceId: operation.trace.traceId,
++    turnId: operation.trace.turnId,
++    artifactStore: runtime.artifactStore,
++    sessionStore: runtime.sessionStore,
++    admission: runtime.modelRequestAdmission,
++    logger: runtime.logger,
++    workspacePath: runtime.config.workspacePath,
+   });
+   signal.throwIfAborted();
+-  if (!usageRecorded)
++  if (!receipt.usageRecorded)
+     throw new Error("Automatic decision accounting unavailable; retaining offered model");
+-  return result;
++  return receipt.result;
+ }
+ 
+ export function sameModelSelection(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts
+index 1bc7620..aa17231 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-recovery.ts
+@@ -8,7 +8,7 @@ const entryId = (record: ModelUsageRecord) =>
+ 
+ /** A failed write's recovery instruction in the existing Session journal, not another ledger. */
+ export async function retainPendingModelUsage(
+-  runtime: AgentRuntimeInternal,
++  runtime: Pick<AgentRuntimeInternal, "sessionId" | "sessionStore">,
+   record: ModelUsageRecord,
+ ): Promise<void> {
+   if (!runtime.sessionStore?.saveSessionEntry)
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts b/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
+index da9ee19..6d03d2c 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
+@@ -1,6 +1,7 @@
++import { executeDecisionOperation } from "../../runtime/decision-operation.js";
+ import { z } from "zod";
+ import { decisionInputSchema } from "@zcode/shared";
+-import type { DecisionModelPort, DecisionModelResult, UsageStorePort } from "@zcode/contracts";
++import type { DecisionModelPort } from "@zcode/contracts";
+ import type { ToolEntry } from "../types.js";
+ import { toolUsageId } from "../../runtime/usage-identity.js";
+ 
+@@ -17,12 +18,26 @@ const outputSchema = z.object({
+   answers: z.record(z.string(), z.unknown()),
+   message: z.string().optional(),
+   usage: z
+-    .object({ inputTokens: z.number().optional(), outputTokens: z.number().optional() })
++    .object({
++      inputTokens: z.number().optional(),
++      outputTokens: z.number().optional(),
++      totalTokens: z.number().optional(),
++      reasoningTokens: z.number().optional(),
++      cacheReadTokens: z.number().optional(),
++      cacheWriteTokens: z.number().optional(),
++      serverToolUse: z
++        .object({
++          webSearchRequests: z.number().optional(),
++          webFetchRequests: z.number().optional(),
++        })
++        .optional(),
++    })
+     .optional(),
+   reportedCostUsd: z.number().optional(),
+   billingProvider: z.string().optional(),
+   receiptUri: z.string(),
+   usageRecorded: z.boolean(),
++  usageRecoveryPending: z.boolean(),
+ });
+ 
+ /** Explicit, separately approved inference; normal tool receipts and the existing usage ledger remain owners. */
+@@ -70,116 +85,30 @@ export function createDecisionModelTool(port: DecisionModelPort): ToolEntry {
+     },
+     async handler(input, context) {
+       const request = executionSchema.parse(input);
+-      const artifacts = context.artifactStore;
+-      const usage = context.sessionStore as Partial<UsageStorePort> | undefined;
+-      if (!artifacts?.writeToolResultArtifactOnce || !usage?.recordModelUsage)
+-        throw new Error(
+-          "Decision receipt/accounting storage is unavailable; no inference was made",
+-        );
+       const assistant = context.traceContext?.attributes?.assistantMessageId;
+       const id = `decision:${toolUsageId(context.sessionId, context.toolCallId, context.turnId, typeof assistant === "string" ? assistant : context.parentSpanId)}`;
+-      const startedAt = Date.now();
+-      const claim = await artifacts.writeToolResultArtifactOnce({
++      const receipt = await executeDecisionOperation({
++        port,
++        request: { state: request.state, questions: request.questions },
++        prepared: request,
++        id,
+         sessionId: context.sessionId,
+         toolCallId: context.toolCallId,
+-        toolName: "DecisionReceipt",
+-        idempotencyKey: `${id}:intent`,
+-        content: JSON.stringify({
+-          version: 1,
+-          status: "unknown",
+-          id,
+-          model: request.model,
+-          inputDigest: request.inputDigest,
+-          startedAt,
+-        }),
+-        contentType: "application/json",
+-        retention: "session",
++        turnId: context.turnId,
++        traceId: context.traceId,
+         trace: context.traceContext,
++        signal: context.abortSignal,
++        artifactStore: context.artifactStore,
++        sessionStore: context.sessionStore,
++        admission: context.modelRequestAdmission,
++        workspacePath: context.workspaceRoot,
+       });
+-      if (!claim.created)
+-        throw new Error(
+-          `Decision inference may already exist. Receipt ${claim.uri}; do not repeat it automatically`,
+-        );
+-      let result: DecisionModelResult;
+-      try {
+-        result = await port.classify({
+-          state: request.state,
+-          questions: request.questions,
+-          binding: request.binding,
+-          signal: context.abortSignal,
+-          admission: context.modelRequestAdmission,
+-          trace: context.traceContext,
+-        });
+-      } catch {
+-        result = {
+-          status: context.abortSignal.aborted ? "cancelled" : "error",
+-          requestedModel: request.model,
+-          inputDigest: request.inputDigest,
+-          answers: {},
+-          message: "Decision binding is unavailable; no replacement model was used",
+-        };
+-      }
+-      const completedAt = Date.now();
+-      // A provider charge survives local save/cancellation failures. The same ledger owns it.
+-      let usageRecorded = true;
+-      try {
+-        await usage.recordModelUsage({
+-          id,
+-          logicalRequestId: id,
+-          sessionID: context.sessionId,
+-          turnID: context.turnId,
+-          traceID: context.traceId,
+-          querySource: "decision_classification",
+-          providerId: result.requestedModel.providerId,
+-          modelId: result.requestedModel.modelId,
+-          startedAt,
+-          completedAt,
+-          status:
+-            result.status === "completed"
+-              ? "completed"
+-              : result.status === "cancelled"
+-                ? "cancelled"
+-                : "error",
+-          inputTokens: result.usage?.inputTokens,
+-          outputTokens: result.usage?.outputTokens,
+-          reasoningTokens: result.usage?.reasoningTokens,
+-          cacheCreationInputTokens: result.usage?.cacheWriteTokens,
+-          cacheReadInputTokens: result.usage?.cacheReadTokens,
+-          providerTotalTokens: result.usage?.totalTokens,
+-          rawUsage: result.usage,
+-          errorMessage: result.message,
+-          providerMetadata: {
+-            operation: "classifier",
+-            reportedModelId: result.reportedModelId,
+-            inputDigest: result.inputDigest,
+-            fleetAccounting: {
+-              billingProvider: result.billingProvider,
+-              workspacePath: context.workspaceRoot,
+-              reportedRequestUsd: result.reportedCostUsd,
+-            },
+-          },
+-        });
+-      } catch {
+-        usageRecorded = false;
+-      }
+-      const receipt = await artifacts.writeToolResultArtifactOnce({
+-        sessionId: context.sessionId,
+-        toolCallId: context.toolCallId,
+-        toolName: "DecisionReceipt",
+-        idempotencyKey: `${id}:result`,
+-        content: JSON.stringify({
+-          version: 1,
+-          id,
+-          startedAt,
+-          completedAt,
+-          ...result,
+-          usageRecorded,
+-        }),
+-        contentType: "application/json",
+-        retention: "session",
+-        trace: context.traceContext,
++      return outputSchema.parse({
++        ...receipt.result,
++        receiptUri: receipt.receiptUri,
++        usageRecorded: receipt.usageRecorded,
++        usageRecoveryPending: receipt.usageRecoveryPending,
+       });
+-      return outputSchema.parse({ ...result, usageRecorded, receiptUri: receipt.uri });
+     },
+     permission: {
+       permission: "model.decide",
+diff --git a/apps/zcode-cli/packages/core/test/automatic-model.test.ts b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+index bf86594..99b91a7 100644
+--- a/apps/zcode-cli/packages/core/test/automatic-model.test.ts
++++ b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+@@ -233,6 +233,35 @@ test("automatic Host operation records usage and fences unknown receipts after S
+       false,
+     );
+     assert.equal(calls, 3, "committed result with lost ACK must not repeat inference");
++    const ledgerWrite = store.recordModelUsage.bind(store);
++    const journalWrite = store.saveSessionEntry.bind(store);
++    store.recordModelUsage = async () => {
++      throw new Error("Synthetic ledger unavailable");
++    };
++    store.saveSessionEntry = async (entry) => {
++      if (entry.type === "runtime/pending_model_usage")
++        throw new Error("Synthetic recovery journal unavailable");
++      return journalWrite(entry);
++    };
++    const lostAccountingContext = { ...context, inputId: "unwritable-accounting" };
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", lostAccountingContext)).changed,
++      false,
++    );
++    const noPending = await store.sessionEntries({
++      sessionID: "session" as never,
++      type: "runtime/pending_model_usage",
++    });
++    assert.equal(noPending.length, 0);
++    store.recordModelUsage = ledgerWrite;
++    store.close();
++    store = new SqliteSessionStore({ dbPath: path });
++    rt.sessionStore = store;
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", lostAccountingContext)).changed,
++      false,
++    );
++    assert.equal(calls, 4, "unknown fence survives missing ledger and recovery journal");
+   } finally {
+     store.close();
+     await rm(root, { recursive: true, force: true });
+diff --git a/apps/zcode-cli/packages/core/test/decision-tool.test.ts b/apps/zcode-cli/packages/core/test/decision-tool.test.ts
+index d962caa..e753247 100644
+--- a/apps/zcode-cli/packages/core/test/decision-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/decision-tool.test.ts
+@@ -1,3 +1,4 @@
++import { DatabaseSync } from "node:sqlite";
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import { randomUUID } from "node:crypto";
+@@ -68,6 +69,11 @@ test("off means absent from the model's tool context; explicit discovery uses th
+     );
+     p.setAvailable(true);
+     assert.ok(f.runtime.getTools().some((tool) => tool.name === "Decide"));
++    const classify = p.port.classify;
++    p.port.classify = async (input) => {
++      assert.equal(f.permissionCalls, 1, "the existing approval must finish before decision dispatch");
++      return classify(input);
++    };
+     f.steps.push(
+       () =>
+         reply("find", [
+@@ -190,6 +196,7 @@ test("local result-save failure retains the provider charge; ledger failure is v
+         },
+       },
+       sessionStore: {
++        async saveSessionEntry() {},
+         async recordModelUsage(record: any) {
+           records.push(record);
+           if (fault === "ledger") throw new Error("ledger failure");
+@@ -204,3 +211,94 @@ test("local result-save failure retains the provider charge; ledger failure is v
+     assert.equal(records[0]?.providerMetadata?.fleetAccounting?.reportedRequestUsd, 0.005);
+   }
+ });
++
++for (const failure of ["write", "committed-ack", "journal-unavailable"] as const) {
++  test(`Decide ${failure} retains one frozen receipt and never repeats inference on reopen`, async () => {
++    const p = modelPort();
++    const baseClassify = p.port.classify;
++    const usage = {
++      inputTokens: 37,
++      outputTokens: 4,
++      totalTokens: 41,
++      cacheReadTokens: 9,
++      cacheWriteTokens: 2,
++      reasoningTokens: 3,
++      serverToolUse: { webSearchRequests: 1, webFetchRequests: 0 },
++    };
++    p.port.classify = async (input) => ({ ...(await baseClassify(input)), usage });
++    const f = await fixture(undefined, false, { deps: { decisionModelPort: p.port } });
++    const tool = createDecisionModelTool(p.port);
++    const runtime = f.runtime as any;
++    const trace = runtime.rootTraceContext;
++    const context = {
++      sessionId: "session",
++      toolCallId: "frozen-decision",
++      turnId: "turn",
++      traceId: trace.traceId,
++      traceContext: trace,
++      abortSignal: new AbortController().signal,
++      artifactStore: runtime.artifactStore,
++      sessionStore: f.store,
++      workspaceRoot: f.dir,
++    } as any;
++    const write = f.store.recordModelUsage.bind(f.store);
++    const journal = f.store.saveSessionEntry.bind(f.store);
++    let frozen: any;
++    f.store.recordModelUsage = async (record) => {
++      if (record.querySource !== "decision_classification") return write(record);
++      frozen ??= structuredClone(record);
++      if (failure === "committed-ack") await write(record);
++      throw new Error("Synthetic ledger failure");
++    };
++    if (failure === "journal-unavailable")
++      f.store.saveSessionEntry = async (entry) => {
++        if (entry.type === "runtime/pending_model_usage")
++          throw new Error("Synthetic journal unavailable");
++        return journal(entry);
++      };
++    const rows = () => {
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        return db
++          .prepare("select * from model_usage where query_source='decision_classification'")
++          .all();
++      } finally {
++        db.close();
++      }
++    };
++    try {
++      f.steps.push(() => reply("Synthetic Session ready"));
++      await f.runtime.executeTurn("Create synthetic Session");
++      const prepared = (
++        (await tool.resolveInput!(evidence, { abortSignal: context.abortSignal } as never)) as any
++      ).input;
++      const result = (await tool.handler(prepared, context)) as any;
++      assert.deepEqual(result.usage, usage);
++      assert.equal(result.usageRecorded, false);
++      assert.equal(result.usageRecoveryPending, failure !== "journal-unavailable");
++      const pending = await f.store.sessionEntries({
++        sessionID: "session" as never,
++        type: "runtime/pending_model_usage",
++      });
++      assert.equal(pending.length, failure === "journal-unavailable" ? 0 : 1);
++      if (pending.length)
++        assert.deepEqual(pending[0]!.data, { record: JSON.parse(JSON.stringify(frozen)) });
++      await f.reopen();
++      context.sessionStore = f.store;
++      assert.equal(rows().length, failure === "journal-unavailable" ? 0 : 1);
++      if (failure !== "journal-unavailable") {
++        const row = rows()[0]!;
++        assert.equal(row.id, frozen.id);
++        assert.equal(row.started_at, frozen.startedAt);
++        assert.equal(row.completed_at, frozen.completedAt);
++        assert.deepEqual(JSON.parse(String(row.raw_usage_json)), usage);
++      }
++      await assert.rejects(tool.handler(prepared, context), /already exist/);
++      assert.equal(p.calls, 1);
++      await f.reopen();
++      assert.equal(rows().length, failure === "journal-unavailable" ? 0 : 1);
++    } finally {
++      await f.close();
++    }
++  });
++}

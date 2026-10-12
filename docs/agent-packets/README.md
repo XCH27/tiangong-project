@@ -4,7 +4,8 @@
 
 ## Current Packet Status
 
-Only `wave-0.1-control-plane-reconciliation.md` is active, and it is Lead-only documentation/
+D57 adds `zcode-kernel-rectification.md` for the explicitly authorized existing ZCode corrections.
+The historical `wave-0.1-control-plane-reconciliation.md` is Lead-only documentation/
 migration work. All historical W1/W2/W3/F-Track packets in this directory are marked superseded
 and authorize no implementation. They are retained until a later archive pass because deleting
 evidence before replacement packets exist is prohibited.

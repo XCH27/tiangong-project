@@ -1,0 +1,362 @@
+diff --git a/package.json b/package.json
+index d0a2ee4..25debe2 100644
+--- a/package.json
++++ b/package.json
+@@ -55,7 +55,7 @@
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+-    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests",
++    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests"
+   },
+   "dependencies": {
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index d45c0fd..ca202d2 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -48,31 +48,39 @@ export function useModelProviders(target: {
+     () => resolveProviderSettingsFormProviders({ view: providerSettingsView }),
+     [providerSettingsView],
+   );
+-  const providerScopes = useMemo(
+-    () =>
+-      new Map(
+-        baseModelProviders.map((provider) => [provider.providerId, providerProbeScope(provider)]),
+-      ),
++  const providersById = useMemo(
++    () => new Map(baseModelProviders.map((provider) => [provider.providerId, provider])),
+     [baseModelProviders],
+   );
+-  const currentProbeScope = useRef({ service: providerSettingsService, scopes: providerScopes });
+-  currentProbeScope.current = { service: providerSettingsService, scopes: providerScopes };
++  const currentProbeScope = useRef({ service: providerSettingsService, providers: providersById });
++  const subscriptionRevisions = useRef(new Map<string, string>());
++  if (currentProbeScope.current.service !== providerSettingsService)
++    subscriptionRevisions.current.clear();
++  currentProbeScope.current = { service: providerSettingsService, providers: providersById };
+   const probeSequence = useRef(new Map<string, number>());
+-  const invalidateConnectionTest = useCallback((providerId: string) => {
+-    probeSequence.current.set(providerId, (probeSequence.current.get(providerId) ?? 0) + 1);
+-    setProbeResults((previous) => {
+-      if (!previous[providerId]) return previous;
+-      const next = { ...previous };
+-      delete next[providerId];
+-      return next;
+-    });
+-  }, []);
++  const invalidateConnectionTest = useCallback(
++    (providerId: string, revision?: string) => {
++      if (currentProbeScope.current.service !== providerSettingsService) return;
++      if (revision !== undefined) {
++        if (subscriptionRevisions.current.get(providerId) === revision) return;
++        subscriptionRevisions.current.set(providerId, revision);
++      }
++      probeSequence.current.set(providerId, (probeSequence.current.get(providerId) ?? 0) + 1);
++      setProbeResults((previous) => {
++        if (!previous[providerId]) return previous;
++        const next = { ...previous };
++        delete next[providerId];
++        return next;
++      });
++    },
++    [providerSettingsService],
++  );
+   const effectiveModelProviders = useMemo(
+     () =>
+       baseModelProviders.map((provider) => {
+         const probe = probeResults[provider.providerId];
+         return probe?.service === providerSettingsService &&
+-          probe.scope === providerScopes.get(provider.providerId)
++          probe.scope === providerProbeScope(provider, probe.modelId)
+           ? {
+               ...provider,
+               connectionTest: {
+@@ -83,7 +91,7 @@ export function useModelProviders(target: {
+             }
+           : provider;
+       }),
+-    [baseModelProviders, providerScopes, providerSettingsService, probeResults],
++    [baseModelProviders, providerSettingsService, probeResults],
+   );
+   const providerOrdering = useMemo(
+     () =>
+@@ -271,7 +279,8 @@ export function useModelProviders(target: {
+           },
+         };
+       }
+-      const scope = providerScopes.get(providerId);
++      const provider = providersById.get(providerId);
++      const scope = provider && providerProbeScope(provider, modelId);
+       const sequence = (probeSequence.current.get(providerId) ?? 0) + 1;
+       probeSequence.current.set(providerId, sequence);
+       let result: ModelConnectivityResult;
+@@ -284,9 +293,11 @@ export function useModelProviders(target: {
+       } catch (error) {
+         result = modelConnectivityFailure(error);
+       }
++      const currentProvider = currentProbeScope.current.providers.get(providerId);
+       if (
+         currentProbeScope.current.service !== providerSettingsService ||
+-        currentProbeScope.current.scopes.get(providerId) !== scope ||
++        !currentProvider ||
++        providerProbeScope(currentProvider, modelId) !== scope ||
+         probeSequence.current.get(providerId) !== sequence
+       )
+         return { success: false, error: { message: "Connection changed", kind: "changed" } };
+@@ -304,7 +315,7 @@ export function useModelProviders(target: {
+     },
+     [
+       providerSettingsService,
+-      providerScopes,
++      providersById,
+       target.connectivityUnavailableMessage,
+       target.connectivityWorkspacePath,
+       target.connectivityWorkspaceRequired,
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index 74d56c1..0a53344 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -48,7 +48,7 @@ export function ModelProviderSectionDetail({
+     modelIds: string[],
+   ) => Promise<ProviderSettingsSaveReceipt>;
+   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+-  onConnectionChanged?: (providerId: string) => void;
++  onConnectionChanged?: (providerId: string, revision?: string) => void;
+   expandedAccountId?: string | null;
+   onExpandedAccountChange?: (providerId: string, accountId: string | null) => void;
+   onOpenApiKeyUrl: (url: string) => void;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 74a0577..c8913e6 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -146,7 +146,7 @@ export function InlineEditableProviderCard({
+   ) => Promise<ProviderSettingsSaveReceipt>;
+   onDelete?: () => void | Promise<void>;
+   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+-  onConnectionChanged?: (providerId: string) => void;
++  onConnectionChanged?: (providerId: string, revision?: string) => void;
+   expandedAccountId?: string | null;
+   onExpandedAccountChange?: (providerId: string, accountId: string | null) => void;
+   onReorderModelIds?: (modelIds: string[]) => Promise<ProviderSettingsSaveReceipt>;
+@@ -229,7 +229,7 @@ export function InlineEditableProviderCard({
+     if (lastSubscriptionRevision.current === revision) return;
+     lastSubscriptionRevision.current = revision;
+     setSubscriptionRevision(revision);
+-    onConnectionChanged?.(provider.providerId);
++    onConnectionChanged?.(provider.providerId, revision);
+   };
+   const discoveryConnectionIdentity = useMemo(
+     () => ({}),
+diff --git a/packages/ui/src/settings/model-provider-section/providerStatus.ts b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+index d097d16..0287474 100644
+--- a/packages/ui/src/settings/model-provider-section/providerStatus.ts
++++ b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+@@ -6,13 +6,15 @@ type StatusFacts = Pick<ProviderSettingsFormProvider, "enabled" | "executable" |
+ /** A non-secret comparison token; the serialized key material is discarded immediately. */
+ export function providerProbeScope(
+   provider: Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "config" | "models">,
++  modelId: string,
+ ): string {
++  const model = provider.models.find((candidate) => candidate.modelId === modelId);
+   const value = JSON.stringify([
+     provider.enabled,
+     provider.executable,
+     provider.config.api,
+     provider.config.access,
+-    provider.models.map((model) => [model.modelId, model.config, model.executable]),
++    [modelId, model?.config, model?.executable],
+   ]);
+   const hashes = [0x811c9dc5, 0x9e3779b1];
+   for (const char of value) {
+diff --git a/packages/ui/test/providerProbeScope.browser.tsx b/packages/ui/test/providerProbeScope.browser.tsx
+new file mode 100644
+index 0000000..2681d03
+--- /dev/null
++++ b/packages/ui/test/providerProbeScope.browser.tsx
+@@ -0,0 +1,136 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { useModelProviders } from "../src/hooks/useModelProviders.js";
++import type { ProviderSettingsView } from "@zcode/services";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++
++async function run() {
++  const container = document.createElement("div");
++  document.body.append(container);
++  const root = createRoot(container);
++  let current!: ReturnType<typeof useModelProviders>;
++  let publish!: (view: ProviderSettingsView) => void;
++  const config = {
++    group: "standard-personal",
++    api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" },
++    access: { type: "api-key", apiKey: "synthetic-original" },
++  };
++  const model = (id: string) => ({ modelId: id, effectiveConfig: {}, executable: true });
++  let view = {
++    revision: 1,
++    providers: [
++      {
++        providerId: "fixture",
++        enabled: true,
++        executable: true,
++        effectiveConfig: config,
++        models: [model("tested")],
++      },
++    ],
++    providerTemplates: [],
++  } as unknown as ProviderSettingsView;
++  let response = Promise.resolve({ success: true as const });
++  const service = {
++    async getView() {
++      return view;
++    },
++    onDidChange(callback: typeof publish) {
++      publish = callback;
++      return { dispose() {} };
++    },
++    async testModelConnectivity() {
++      return response;
++    },
++  };
++  function Reader() {
++    current = useModelProviders({ workspacePath: "/fixture" });
++    return <div>{String(current.modelProviders[0]?.connectionTest?.result.success ?? false)}</div>;
++  }
++  const results: Array<{ name: string; error?: string }> = [];
++  try {
++    await act(async () => {
++      root.render(
++        <ServiceProvider services={{ providerSettingsService: service } as never}>
++          <Reader />
++        </ServiceProvider>,
++      );
++    });
++    await act(async () => {
++      current.invalidateConnectionTest("fixture", "account-revision-1");
++      await current.testModelConnectivity("fixture", "tested");
++    });
++    check(container.textContent === "true", "initial test did not publish");
++    await act(async () => {
++      view = {
++        ...view,
++        revision: 2,
++        providers: [
++          {
++            ...view.providers[0]!,
++            models: [...view.providers[0]!.models, model("unrelated") as never],
++          },
++        ],
++      };
++      publish(view);
++    });
++    check(container.textContent === "true", "an unrelated model erased the completed probe");
++    await act(async () => {
++      current.invalidateConnectionTest("fixture", "account-revision-1");
++    });
++    check(
++      container.textContent === "true",
++      "reopening unchanged subscription details erased the probe",
++    );
++    await act(async () => {
++      current.invalidateConnectionTest("fixture", "account-revision-2");
++    });
++    check(
++      container.textContent === "false",
++      "a changed subscription revision retained the old probe",
++    );
++    const pending = Promise.withResolvers<{ success: true }>();
++    response = pending.promise;
++    let probe!: Promise<unknown>;
++    await act(async () => {
++      probe = current.testModelConnectivity("fixture", "tested");
++    });
++    await act(async () => {
++      view = {
++        ...view,
++        revision: 3,
++        providers: [
++          {
++            ...view.providers[0]!,
++            effectiveConfig: {
++              ...config,
++              access: { type: "api-key", apiKey: "synthetic-new" },
++            } as never,
++          },
++        ],
++      };
++      publish(view);
++      pending.resolve({ success: true });
++      await probe;
++    });
++    check(container.textContent === "false", "a late test marked the new credential ready");
++    results.push({
++      name: "actual provider hook retains exact-model health through unrelated refresh/reopen and rejects changed account or credential evidence",
++    });
++  } catch (error) {
++    results.push({
++      name: "provider probe scope",
++      error: error instanceof Error ? error.stack : String(error),
++    });
++  } finally {
++    await act(async () => root.unmount());
++    container.remove();
++  }
++  return results;
++}
++(window as unknown as { __providerProbeTests: ReturnType<typeof run> }).__providerProbeTests =
++  run();
+diff --git a/packages/ui/test/providerStatus.test.ts b/packages/ui/test/providerStatus.test.ts
+index 4ab5361..b2a9654 100644
+--- a/packages/ui/test/providerStatus.test.ts
++++ b/packages/ui/test/providerStatus.test.ts
+@@ -76,17 +76,37 @@ test("probe evidence survives unrelated refreshes but not credential or model ch
+     },
+     models: [{ modelId: "m", config: { contextWindow: 128000 }, executable: true }],
+   } as Parameters<typeof providerProbeScope>[0];
+-  const first = providerProbeScope(provider);
+-  assert.equal(providerProbeScope(structuredClone(provider)), first);
++  const first = providerProbeScope(provider, "m");
++  assert.equal(providerProbeScope(structuredClone(provider), "m"), first);
++  assert.equal(
++    providerProbeScope(
++      {
++        ...provider,
++        models: [
++          { ...provider.models[0]!, modelId: "unrelated", executable: false },
++          provider.models[0]!,
++        ],
++      },
++      "m",
++    ),
++    first,
++    "unrelated model changes must not erase the tested model's result",
++  );
+   assert.notEqual(
+-    providerProbeScope({
+-      ...provider,
+-      config: { ...provider.config, access: { type: "api-key", apiKey: "secret-b" } },
+-    } as typeof provider),
++    providerProbeScope(
++      {
++        ...provider,
++        config: { ...provider.config, access: { type: "api-key", apiKey: "secret-b" } },
++      } as typeof provider,
++      "m",
++    ),
+     first,
+   );
+   assert.notEqual(
+-    providerProbeScope({ ...provider, models: [{ ...provider.models[0]!, modelId: "different" }] }),
++    providerProbeScope(
++      { ...provider, models: [{ ...provider.models[0]!, modelId: "different" }] },
++      "m",
++    ),
+     first,
+   );
+ });

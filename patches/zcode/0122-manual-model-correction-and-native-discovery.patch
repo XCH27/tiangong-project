@@ -1,0 +1,676 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
+index 890fbe8..d8872ec 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
+@@ -69,13 +69,15 @@ export async function inspectCodexNativeConnection(options: CodexClientOptions =
+   try {
+     const initialized = (await client.initialize()) as {
+       userAgent: string;
+-      fleetHostToolScope?: { version: number; tools: string[] };
++      fleetHostToolScope?: { version: number; tools: string[]; modelCatalogRefresh?: boolean };
+     };
+     if (
+       initialized.fleetHostToolScope?.version !== 1 ||
+       initialized.fleetHostToolScope.tools.length
+     )
+       throw new Error("Native Codex cannot enforce the Host connection scope");
++    if (initialized.fleetHostToolScope.modelCatalogRefresh !== true)
++      throw new Error("Native Codex cannot refresh the model catalog; update the scoped executor");
+     const { userAgent } = initialized;
+     const identity = await readCodexNativeIdentity(client);
+     const models: CodexNativeModelInfo[] = [];
+diff --git a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+index 08f319d..5901562 100644
+--- a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+@@ -7,12 +7,13 @@ import { join } from "node:path";
+ import { zstdDecompressSync } from "node:zlib";
+ import { WebSocketServer } from "ws";
+ import { fixture } from "./helpers/pi-runtime-fixture.js";
++import { inspectCodexNativeConnection } from "../../adapters/src/native-agent/codex-inspect.js";
+ import { SessionEventType } from "@zcode/contracts";
+ import { createCodexNativeAgentPort } from "../../adapters/src/native-agent/codex-turn.js";
+ import { resolveCodexNativeExecutable } from "../../adapters/src/native-agent/codex-executable.js";
+ 
+ const executable = resolveCodexNativeExecutable(process.env.FLEET_CODEX_TEST_CLI);
+-async function nativeFixture() {
++async function nativeFixture(modelId = "gpt-6-sol") {
+   assert.ok(executable, "Build and select the scoped Codex binary before this test");
+   const profile = await mkdtemp(join(tmpdir(), "fleet-codex-native-"));
+   const payload = Buffer.from(
+@@ -42,6 +43,18 @@ async function nativeFixture() {
+     }),
+     { mode: 0o600 },
+   );
++  let catalogModel = "old-catalog-model";
++  let catalogStatus = 200;
++  let catalogReads = 0;
++  const modelInfo = () => ({
++    base_instructions: "Isolated local fixture",
++    slug: catalogModel, display_name: catalogModel, description: "Local catalog fixture",
++    default_reasoning_level: "high", supported_reasoning_levels: [{ effort: "high", description: "Fixture" }],
++    shell_type: "unified_exec", visibility: "list", supported_in_api: true, priority: 1,
++    availability_nux: null, upgrade: null, support_verbosity: false, default_verbosity: null,
++    apply_patch_tool_type: null, truncation_policy: { mode: "tokens", limit: 10000 },
++    experimental_supported_tools: [], input_modalities: ["text"],
++  });
+   const requests: any[] = [];
+   let diagnostics = "";
+   let failure: unknown;
+@@ -56,6 +69,7 @@ async function nativeFixture() {
+         .flatMap((item: any) => item.tools);
+     if (declared.length) retainedTools = declared;
+     const tools = retainedTools;
++    assert.equal(body.model, modelId, "Native executor rewrote a user supplied model ID");
+     assert.equal(body.reasoning?.effort, "high");
+     assert.deepEqual(
+       tools.map((t: any) =>
+@@ -127,6 +141,12 @@ async function nativeFixture() {
+       );
+       return;
+     }
++    if (req.method === "GET" && req.url?.includes("models")) {
++      catalogReads++;
++      res.writeHead(catalogStatus, { "content-type": "application/json" });
++      res.end(catalogStatus === 200 ? JSON.stringify({ models: [modelInfo()] }) : '{"error":"fixture-catalog-unavailable"}');
++      return;
++    }
+     if (req.method !== "POST" || !req.url?.includes("responses")) {
+       res.writeHead(200, { "content-type": "application/json" });
+       res.end(JSON.stringify({ models: [], data: [] }));
+@@ -221,7 +241,7 @@ async function nativeFixture() {
+       toolAllowlist: ["Probe"],
+       modelSelection: {
+         providerId: "fixture",
+-        modelId: "gpt-6-sol",
++        modelId,
+         options: { reasoningLevel: "high" },
+       } as never,
+     },
+@@ -233,6 +253,12 @@ async function nativeFixture() {
+   return {
+     f,
+     requests,
++    catalogReads: () => catalogReads,
++    catalog(model: string, status = 200) { catalogModel = model; catalogStatus = status; },
++    inspect: () => inspectCodexNativeConnection({ executable, configDir: profile, onDiagnostic: chunk => { diagnostics = (diagnostics + chunk).slice(-8192); }, args: [
++      "app-server", "--listen", "stdio://", "--host-tools-json", "[]",
++      "-c", `openai_base_url="${base}"`, "-c", `chatgpt_base_url="${base}"`,
++    ] }),
+     reasons,
+     assertTransport() {
+       if (failure) throw new Error(`Native transport failed: ${String(failure)}\n${diagnostics}`);
+@@ -270,6 +296,39 @@ test(
+   },
+ );
+ 
++test("manually supplied model absent from the bundled catalog reaches native transport unchanged", { timeout: 45000 }, async () => {
++  const n = await nativeFixture("gpt-6.1-sol");
++  try {
++    await n.f.runtime.executeTurn("Use Probe once and complete.");
++    n.assertTransport();
++    assert.equal(n.requests.length, 2);
++    assert.equal(n.f.effects, 1);
++    await n.f.reopen();
++    await n.f.runtime.executeTurn("after-restart-input: retain the chosen model.");
++    n.assertTransport();
++    assert.equal(n.requests.length, 3);
++    assert.equal(n.f.effects, 1);
++    assert.ok(n.requests.every((request) => request.model === "gpt-6.1-sol"));
++  } finally { await n.close(); }
++});
++
++test("explicit native discovery refreshes a warm cache and rejects failed catalog reads", { timeout: 45000 }, async () => {
++  const n = await nativeFixture();
++  try {
++    const old = await n.inspect().catch(error => { throw new Error(n.diagnostics(), { cause: error }); });
++    assert.deepEqual(old.models.map(model => model.model), ["old-catalog-model"]);
++    const reads = n.catalogReads();
++    n.catalog("gpt-6.1-sol");
++    const fresh = await n.inspect();
++    assert.deepEqual(fresh.models.map(model => model.model), ["gpt-6.1-sol"]);
++    assert.equal(fresh.accountId, old.accountId);
++    assert.ok(n.catalogReads() > reads, "Explicit refresh reused a warm cache");
++    n.catalog("unavailable", 503);
++    await assert.rejects(n.inspect(), /failed|503|unavailable/i);
++    assert.equal(n.requests.length, 0, "Discovery sent an inference request");
++  } finally { await n.close(); }
++});
++
+ test("native Codex refusal does not execute the Host effect", { timeout: 45000 }, async () => {
+   const n = await nativeFixture();
+   try {
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 212318f..d2a079c 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -386,14 +386,19 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+       return {
+         providers: current.providers.set(
+           normalizedProviderId,
+-          provider.withPersonalModelIds([...currentModelIds, normalizedModelId]).withModelOrder(
+-            // 添加不能重新按成员名单排序，否则会丢掉用户已经保存的顺序。
+-            normalizeModelOrder(
+-              builtinModelIds,
+-              [...currentModelIds, normalizedModelId],
+-              provider.modelOrder ?? [],
++          provider
++            .withPersonalModelIds([...currentModelIds, normalizedModelId])
++            .withManualModelIds([
++              ...new Set([...(provider.manualModelIds ?? []), normalizedModelId]),
++            ])
++            .withModelOrder(
++              // 添加不能重新按成员名单排序，否则会丢掉用户已经保存的顺序。
++              normalizeModelOrder(
++                builtinModelIds,
++                [...currentModelIds, normalizedModelId],
++                provider.modelOrder ?? [],
++              ),
+             ),
+-          ),
+         ),
+         models: current.models.setExact(
+           normalizedProviderId,
+@@ -446,7 +451,9 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+       const incomingIds = [...new Set(incoming.map((model) => model.modelId))];
+       const inherited = replace ? [] : inheritedBaseline;
+       const personal = replace
+-        ? incomingIds.filter((modelId) => !inherited.includes(modelId))
++        ? [...new Set([...incomingIds, ...(provider.manualModelIds ?? [])])].filter(
++            (modelId) => !inherited.includes(modelId),
++          )
+         : [...(provider.personalModelIds ?? [])];
+       const existing = new Set([...inherited, ...personal]);
+       // 订阅目录属于当前账号；只替换观察和成员，精确/手动修正保持休眠以供切回恢复。
+@@ -520,6 +527,12 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+           normalizedProviderId,
+           provider
+             .withPersonalModelIds(modelIds)
++            .withManualModelIds([
++              ...new Set([
++                ...(provider.manualModelIds ?? []).map((id) => (id === currentId ? nextId : id)),
++                nextId,
++              ]),
++            ])
+             .withModelOrder(normalizeModelOrder(builtinModelIds, modelIds, requestedOrder)),
+         ),
+         models: current.models.renameExactModel(normalizedProviderId, currentId, nextId),
+@@ -621,6 +634,12 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+           normalizedProviderId,
+           provider
+             .withPersonalModelIds(modelIds)
++            .withManualModelIds([
++              ...new Set([
++                ...(provider.manualModelIds ?? []).map((id) => (id === originalId ? nextId : id)),
++                nextId,
++              ]),
++            ])
+             .withModelOrder(normalizeModelOrder(builtinModelIds, modelIds, requestedOrder)),
+         );
+         models = models.renameExactModel(normalizedProviderId, originalId, nextId);
+@@ -659,6 +678,9 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+             .withPersonalModelIds(
+               provider.personalModelIds.filter((candidate) => candidate !== normalizedModelId),
+             )
++            .withManualModelIds(
++              (provider.manualModelIds ?? []).filter((id) => id !== normalizedModelId),
++            )
+             .withModelOrder(
+               normalizeModelOrder(
+                 inherited,
+@@ -748,6 +770,10 @@ function normalizePersonalProviderMembership(
+     (modelId) => !builtinSet.has(modelId),
+   );
+   let normalized = personal.withPersonalModelIds(personalModelIds);
++  if (personal.manualModelIds != null)
++    normalized = normalized.withManualModelIds(
++      uniqueInOrder(personal.manualModelIds).filter((id) => personalModelIds.includes(id)),
++    );
+   if (personal.modelOrder !== undefined && personal.modelOrder !== null) {
+     normalized = normalized.withModelOrder(
+       normalizeModelOrder(builtinModelIds, personalModelIds, personal.modelOrder),
+diff --git a/packages/provider/src/config/provider-config.ts b/packages/provider/src/config/provider-config.ts
+index 7b012ea..9c4bc10 100644
+--- a/packages/provider/src/config/provider-config.ts
++++ b/packages/provider/src/config/provider-config.ts
+@@ -277,6 +277,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+   readonly api?: ProviderApiConfig | null;
+   readonly builtinModelIds?: ProviderConfigObject["builtinModelIds"];
+   readonly personalModelIds?: ProviderConfigObject["personalModelIds"];
++  readonly manualModelIds?: ProviderConfigObject["manualModelIds"];
+   readonly modelOrder?: ProviderConfigObject["modelOrder"];
+   readonly visibility?: ProviderConfigObject["visibility"];
+ 
+@@ -288,6 +289,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+     this.api = input.api;
+     this.builtinModelIds = freezeModelIds(input.builtinModelIds);
+     this.personalModelIds = freezeModelIds(input.personalModelIds);
++    this.manualModelIds = freezeModelIds(input.manualModelIds);
+     this.modelOrder = freezeModelIds(input.modelOrder);
+     this.visibility = input.visibility;
+     Object.freeze(this);
+@@ -301,6 +303,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+       api: this.overlayConfig(this.api, next.api),
+       builtinModelIds: this.overlayValue(this.builtinModelIds, next.builtinModelIds),
+       personalModelIds: this.overlayValue(this.personalModelIds, next.personalModelIds),
++      manualModelIds: this.overlayValue(this.manualModelIds, next.manualModelIds),
+       modelOrder: this.overlayValue(this.modelOrder, next.modelOrder),
+       visibility: this.overlayValue(this.visibility, next.visibility),
+     });
+@@ -314,6 +317,10 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+     return this.overlay(new ProviderConfig({ personalModelIds: modelIds }));
+   }
+ 
++  withManualModelIds(modelIds: readonly ModelId[]): ProviderConfig {
++    return this.overlay(new ProviderConfig({ manualModelIds: modelIds }));
++  }
++
+   withModelOrder(modelOrder: readonly ModelId[]): ProviderConfig {
+     return this.overlay(new ProviderConfig({ modelOrder }));
+   }
+@@ -325,6 +332,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+       api: this.api,
+       builtinModelIds: this.builtinModelIds,
+       personalModelIds: this.personalModelIds,
++      manualModelIds: this.manualModelIds,
+       modelOrder: this.modelOrder,
+       visibility: this.visibility,
+     });
+@@ -339,6 +347,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+       api: this.api,
+       builtinModelIds: source?.builtinModelIds,
+       personalModelIds: source?.personalModelIds,
++      manualModelIds: source?.manualModelIds,
+       modelOrder: source?.modelOrder,
+       visibility: this.visibility,
+     });
+@@ -357,6 +366,7 @@ export class ProviderConfig extends ConfigOverlay<ProviderConfig> {
+       api: this.api?.toJSON() ?? this.api,
+       builtinModelIds: this.builtinModelIds,
+       personalModelIds: this.personalModelIds,
++      manualModelIds: this.manualModelIds,
+       modelOrder: this.modelOrder,
+       visibility: this.visibility,
+     });
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index b0de41d..b54ab81 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -136,6 +136,7 @@ export const providerConfigDataSchema = z
+     api: providerApiDataSchema.nullable().optional(),
+     builtinModelIds: modelIdsDataSchema,
+     personalModelIds: modelIdsDataSchema,
++    manualModelIds: modelIdsDataSchema,
+     modelOrder: modelIdsDataSchema,
+     visibility: providerVisibilityDataSchema.nullable().optional(),
+   })
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index fb2a3f5..316a767 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -98,6 +98,7 @@ export function serializeRegistryProviderConfig(
+       : {}),
+     ...(config.builtinModelIds == null ? {} : { builtinModelIds: [...config.builtinModelIds] }),
+     ...(config.personalModelIds == null ? {} : { personalModelIds: [...config.personalModelIds] }),
++    ...(config.manualModelIds == null ? {} : { manualModelIds: [...config.manualModelIds] }),
+     ...(config.modelOrder == null ? {} : { modelOrder: [...config.modelOrder] }),
+     ...(config.visibility === undefined ? {} : { visibility: config.visibility }),
+   };
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 87bfc95..60f0e90 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -868,14 +868,82 @@ test("OpenCode Go discovery only merges models declared for the saved wire proto
+ test("official OpenAI image membership uses exact published models, survives restart and stays out of chat", async () => {
+   const f = await fixture();
+   try {
+-    const provider = (await f.service.getView()).providers.find((row) => row.providerId === f.providerId)!;
+-    await f.service.savePersonalProviderOverlay(f.providerId, { ...provider.personalConfig, api: { type: "openai-responses", baseUrl: "https://api.openai.com/v1" }, access: { type: "api-key", apiKey: "synthetic" } });
+-    f.setFetch(async () => Response.json({ data: [{ id: "gpt-image-2" }, { id: "gpt-image-future" }, { id: "gpt-4.1" }] }));
+-    await f.service.discoverModels(f.providerId); await f.restart();
++    const provider = (await f.service.getView()).providers.find(
++      (row) => row.providerId === f.providerId,
++    )!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...provider.personalConfig,
++      api: { type: "openai-responses", baseUrl: "https://api.openai.com/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    });
++    f.setFetch(async () =>
++      Response.json({
++        data: [{ id: "gpt-image-2" }, { id: "gpt-image-future" }, { id: "gpt-4.1" }],
++      }),
++    );
++    await f.service.discoverModels(f.providerId);
++    await f.restart();
+     const models = await f.models();
+     const image = models.find((model) => model.modelId === "gpt-image-2")!;
+-    assert.equal(image.effectiveConfig.properties?.outputFormat?.supportsImage, true); assert.equal(image.selectable, false);
+-    assert.equal(models.find((model) => model.modelId === "gpt-image-future")!.effectiveConfig.properties?.outputFormat?.supportsImage, undefined);
+-    assert.equal(models.find((model) => model.modelId === "gpt-4.1")!.effectiveConfig.properties?.outputFormat?.supportsImage, undefined);
+-  } finally { await f.dispose(); }
++    assert.equal(image.effectiveConfig.properties?.outputFormat?.supportsImage, true);
++    assert.equal(image.selectable, false);
++    assert.equal(
++      models.find((model) => model.modelId === "gpt-image-future")!.effectiveConfig.properties
++        ?.outputFormat?.supportsImage,
++      undefined,
++    );
++    assert.equal(
++      models.find((model) => model.modelId === "gpt-4.1")!.effectiveConfig.properties?.outputFormat
++        ?.supportsImage,
++      undefined,
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("manual subscription correction survives restart and empty fresh catalog without exporting credentials", async () => {
++  let ids = ["old-auto"];
++  const subscriptions = {
++    accounts: async () => ({ accounts: [], autoSwitch: false, revision: "same-account" }),
++    models: async () => ({
++      source: "provider",
++      models: ids.map((id) => ({ id, name: id, config: {} })),
++    }),
++  } as unknown as SubscriptionConnectionOwner;
++  const f = await fixture(subscriptions);
++  try {
++    await f.service.discoverModels(f.providerId);
++    await f.service.addPersonalModel(f.providerId, "gpt-6.1-sol", {
++      enabled: true,
++      properties: { contextWindow: 321000 },
++    });
++    await f.restart();
++    ids = [];
++    await f.service.discoverModels(f.providerId);
++    const model = (await f.models())[0]!;
++    assert.equal(model.modelId, "gpt-6.1-sol");
++    assert.equal(model.effectiveConfig.properties?.contextWindow, 321000);
++    const stored = JSON.parse(await f.disk());
++    assert.deepEqual(
++      stored.config.providerConfigRules.providerRules.find(
++        (rule: any) => rule.providerId === f.providerId,
++      ).config.manualModelIds,
++      ["gpt-6.1-sol"],
++    );
++    const parsed = parseProviderConfig({
++      group: "standard-personal",
++      api: { type: "openai-responses", baseUrl: "https://fixture.invalid/v1" },
++      access: { type: "subscription", provider: "openai-codex", connected: true },
++      manualModelIds: ["gpt-6.1-sol"],
++      personalModelIds: ["gpt-6.1-sol"],
++    });
++    const registry = createRegistryProviderConfig(parsed);
++    assert.ok(registry.ok);
++    assert.deepEqual(serializeRegistryProviderConfig(registry.config).manualModelIds, [
++      "gpt-6.1-sol",
++    ]);
++  } finally {
++    await f.dispose();
++  }
+ });
+diff --git a/packages/services/test/subscription-catalog-replacement.test.ts b/packages/services/test/subscription-catalog-replacement.test.ts
+index 163e496..e8e7f30 100644
+--- a/packages/services/test/subscription-catalog-replacement.test.ts
++++ b/packages/services/test/subscription-catalog-replacement.test.ts
+@@ -482,3 +482,55 @@ test("native subscription efforts constrain legacy off rules without deleting ma
+     await f.dispose();
+   }
+ });
++
++test("explicit model additions survive catalog replacement, overlap, empty reads and account changes", async () => {
++  const f = await fixture();
++  try {
++    await f.service.discoverModels(f.providerId);
++    await f.service.addPersonalModel(f.providerId, "manual-new", {
++      enabled: true,
++      properties: { contextWindow: 321000 },
++    });
++    f.setCatalog(async () => catalog(["common", "manual-new"], 64000));
++    await f.service.discoverModels(f.providerId);
++    f.setCatalog(async () => catalog(["b-only"]));
++    await f.service.updateSubscriptionAccounts(f.providerId, { select: "account-b" });
++    await f.service.discoverModels(f.providerId);
++    let view = await f.service.getView();
++    let provider = view.providers.find((p) => p.providerId === f.providerId)!;
++    assert.ok(provider.models.some((m) => m.modelId === "manual-new"));
++    assert.ok(!provider.models.some((m) => m.modelId === "a-only"));
++    assert.equal(
++      provider.models.find((m) => m.modelId === "manual-new")!.effectiveConfig.properties
++        ?.contextWindow,
++      321000,
++    );
++    assert.deepEqual(provider.effectiveConfig.manualModelIds, ["manual-new"]);
++    await f.service.savePersonalModelDraft({
++      providerId: f.providerId,
++      originalModelId: "manual-new",
++      nextModelId: "corrected-model",
++      personalConfig: { enabled: false },
++      basedOnRevision: view.revision,
++    });
++    f.setCatalog(async () => catalog([]));
++    await f.service.discoverModels(f.providerId);
++    view = await f.service.getView();
++    provider = view.providers.find((p) => p.providerId === f.providerId)!;
++    assert.deepEqual(
++      provider.models.map((m) => m.modelId),
++      ["corrected-model"],
++    );
++    assert.equal(provider.models[0]!.enabled, false);
++    assert.deepEqual(provider.effectiveConfig.manualModelIds, ["corrected-model"]);
++    await f.service.deletePersonalModel(f.providerId, "corrected-model");
++    await f.service.discoverModels(f.providerId);
++    assert.deepEqual(
++      (await f.service.getView()).providers.find((p) => p.providerId === f.providerId)!
++        .effectiveConfig.manualModelIds,
++      [],
++    );
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index f8628f6..2fd8195 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -739,7 +739,7 @@ export function ProviderModelsSection({
+       <ModelDiscoverySection
+         providerId={providerId}
+         discoveryEnabled={providerAccess?.type !== "zhipu-account"}
+-        manualAddEnabled={!accountManagedModels}
++        manualAddEnabled={providerAccess?.type !== "zhipu-account"}
+         disabledReason={
+           discoveryBlockedReason
+             ? intl.formatMessage({
+diff --git a/packages/ui/test/helpers/providerDraftFixture.tsx b/packages/ui/test/helpers/providerDraftFixture.tsx
+index d853b35..06ff395 100644
+--- a/packages/ui/test/helpers/providerDraftFixture.tsx
++++ b/packages/ui/test/helpers/providerDraftFixture.tsx
+@@ -1,5 +1,6 @@
+ import { act } from "react";
+ import { createRoot } from "react-dom/client";
++import { PlatformProvider } from "../../src/hooks/usePlatform.js";
+ import { ServiceProvider } from "../../src/hooks/useServices.js";
+ import { ZCodeIntlProvider } from "../../src/i18n/IntlProvider.js";
+ import { TooltipProvider } from "../../src/components/ui/tooltip.js";
+@@ -54,11 +55,18 @@ export async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
+   }> = [];
+   const modelActions: Array<{
+     kind: "enabled" | "add" | "order";
++    modelId?: string;
++    config?: unknown;
++    useRecommendedConfig?: boolean;
+     result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
+   }> = [];
+   let currentModel: ProviderSettingsFormProvider["models"][number] | undefined;
+   const services = {
+     providerSettingsService: {
++      onDidChange: () => ({ dispose() {} }),
++      async getSubscriptionAccounts() {
++        return { accounts: [], autoSwitch: false, revision: "fixture" };
++      },
+       async discoverModels() {
+         return { models: [], warnings: [] };
+       },
+@@ -83,43 +91,51 @@ export async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
+       await act(async () => {
+         root.render(
+           <ServiceProvider services={services as never}>
+-            <ZCodeIntlProvider initialLocale={locale}>
+-              <TooltipProvider>
+-                <ProviderDetailFeedbackBoundary>
+-                  <InlineEditableProviderCard
+-                    provider={value}
+-                    renameRequestId={renameRequestId}
+-                    settingsRevision={revision}
+-                    nameEditable
+-                    onSavePersonalModelDraft={(input) => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      modelWrites.push({ input, result });
+-                      return result.promise;
+-                    }}
+-                    onSetPersonalModelEnabled={() => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      modelActions.push({ kind: "enabled", result });
+-                      return result.promise;
+-                    }}
+-                    onAddPersonalModel={() => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      modelActions.push({ kind: "add", result });
+-                      return result.promise;
+-                    }}
+-                    onReorderModelIds={() => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      modelActions.push({ kind: "order", result });
+-                      return result.promise;
+-                    }}
+-                    onSave={(next, basedOnRevision) => {
+-                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
+-                      writes.push({ provider: next, revision: basedOnRevision, result });
+-                      return result.promise;
+-                    }}
+-                  />
+-                </ProviderDetailFeedbackBoundary>
+-              </TooltipProvider>
+-            </ZCodeIntlProvider>
++            <PlatformProvider platform={{ openExternal: async () => {} } as never}>
++              <ZCodeIntlProvider initialLocale={locale}>
++                <TooltipProvider>
++                  <ProviderDetailFeedbackBoundary>
++                    <InlineEditableProviderCard
++                      provider={value}
++                      renameRequestId={renameRequestId}
++                      settingsRevision={revision}
++                      nameEditable
++                      onSavePersonalModelDraft={(input) => {
++                        const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                        modelWrites.push({ input, result });
++                        return result.promise;
++                      }}
++                      onSetPersonalModelEnabled={() => {
++                        const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                        modelActions.push({ kind: "enabled", result });
++                        return result.promise;
++                      }}
++                      onAddPersonalModel={(_providerId, modelId, config, useRecommendedConfig) => {
++                        const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                        modelActions.push({
++                          kind: "add",
++                          modelId,
++                          config,
++                          useRecommendedConfig,
++                          result,
++                        });
++                        return result.promise;
++                      }}
++                      onReorderModelIds={() => {
++                        const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                        modelActions.push({ kind: "order", result });
++                        return result.promise;
++                      }}
++                      onSave={(next, basedOnRevision) => {
++                        const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                        writes.push({ provider: next, revision: basedOnRevision, result });
++                        return result.promise;
++                      }}
++                    />
++                  </ProviderDetailFeedbackBoundary>
++                </TooltipProvider>
++              </ZCodeIntlProvider>
++            </PlatformProvider>
+           </ServiceProvider>,
+         );
+       });
+diff --git a/packages/ui/test/providerCatalogFilters.browser.test.tsx b/packages/ui/test/providerCatalogFilters.browser.test.tsx
+index c82b52e..73f959b 100644
+--- a/packages/ui/test/providerCatalogFilters.browser.test.tsx
++++ b/packages/ui/test/providerCatalogFilters.browser.test.tsx
+@@ -224,6 +224,66 @@ async function run() {
+       }
+     }
+   }
++  for (const access of [
++    {
++      type: "native-cli" as const,
++      provider: "codex" as const,
++      connected: true,
++      accountId: "fixture",
++      accountName: "fixture@example.invalid",
++    },
++    { type: "subscription" as const, provider: "openai-codex" as const, connected: true },
++  ]) {
++    for (const locale of ["zh-CN", "en-US"] as const) {
++      const f = await fixture(locale);
++      try {
++        const value = catalog("manual", 1);
++        value.config.access = access;
++        value.personalConfig!.access = access;
++        await f.render(value, 10);
++        const add = f.container.querySelector<HTMLButtonElement>(
++          `[data-testid="${TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}"]`,
++        );
++        check(add, "Subscription/native connection hid the original manual Add");
++        await act(async () => add.click());
++        const input = f.input(
++          locale === "zh-CN" ? 'input[aria-label="模型 ID"]' : 'input[aria-label="Model ID"]',
++        );
++        await f.type(input, "text-0");
++        await f.key(input, "Enter");
++        check(f.modelActions.length === 0, "Duplicate manual ID was submitted");
++        await f.type(input, "gpt-6.1-sol");
++        await f.key(input, "Enter");
++        check(
++          Number(f.modelActions.length) === 1,
++          "Manual ID did not invoke one original model command",
++        );
++        check(f.modelActions[0]!.modelId === "gpt-6.1-sol", "Native model ID was rewritten");
++        check(
++          JSON.stringify(f.modelActions[0]!.config) === "{}" &&
++            f.modelActions[0]!.useRecommendedConfig === true,
++          "Manual Add fabricated capabilities",
++        );
++        await f.settleModelAction(0, { revision: 11, provider: value } as never);
++        check(!f.container.contains(input), "Successful manual draft did not close");
++        await act(async () => add.click());
++        const cancelled = f.input(
++          locale === "zh-CN" ? 'input[aria-label="模型 ID"]' : 'input[aria-label="Model ID"]',
++        );
++        await f.key(cancelled, "Escape");
++        check(!f.container.contains(cancelled), "Escape did not retire the original draft");
++        check(f.modelActions.length === 1, "Cancel submitted another model command");
++        results.push({ name: `${locale} ${access.type}: manual correction, duplicate and cancel` });
++      } catch (error) {
++        results.push({
++          name: `${locale} ${access.type}: manual correction`,
++          error: error instanceof Error ? error.stack : String(error),
++        });
++      } finally {
++        await f.close();
++      }
++    }
++  }
+   document.documentElement.classList.remove("dark");
+   return results;
+ }

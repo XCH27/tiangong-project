@@ -1,0 +1,776 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+index c2a0d4b..28cbf89 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+@@ -1,3 +1,4 @@
++import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
+ import { createCredentialFailoverFetch } from "./credential-failover.js";
+ import { createStatusContext, publishModelStatus } from "./runner-status.js";
+ import {
+@@ -144,8 +145,11 @@ export function createPiSubscriptionModel(
+       const attemptedAccountIds = auth.credentialSelection
+         ? [auth.credentialSelection.accountId]
+         : [];
++      // Host 为本次订阅请求解析 OS/PAC；不修改进程环境，也不借用另一个账号的出口。
++      const subscriptionFetch = auth.network
++        ? createNetworkProxyFetch({ ...auth.network, env: {} }) : fetch;
+       const credentialFetch = createCredentialFailoverFetch({
+-        fetch,
++        fetch: subscriptionFetch,
+         baseUrl: model.baseUrl,
+         async next(status) {
+           if (!auth.credentialSelection) return undefined;
+diff --git a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+index aca5552..0721416 100644
+--- a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+@@ -406,3 +406,34 @@ test("new Grok catalog IDs use the real Pi Responses serializer with the subscri
+   }, () => model.generateText({ messages: [{ role: "user", content: "synthetic fixture" }], tools: [{ name: "read_file", inputSchema: { type: "object", properties: {} } }], options: binding.options }));
+   assert.equal(calls, 1);
+ });
++
++
++test("subscription inference uses the Host OS route without replacing the process network", async () => {
++  const { createServer } = await import("node:http");
++  const { once } = await import("node:events");
++  let requests = 0;
++  const proxy = createServer((req, response) => {
++    requests++;
++    assert.equal(req.url, "http://subscription.example/backend-api/test");
++    response.end("subscription-route");
++  });
++  proxy.listen(0, "127.0.0.1");
++  await once(proxy, "listening");
++  const f = fixture();
++  const before = process.env.HTTPS_PROXY;
++  try {
++    await runWithModelInvocationContext({
++      ...f.context,
++      async refreshRuntimeHeadersBeforeAttempt() {
++        return { headersApplied: true, requestAuth: {
++          apiKey: "fixture-token", baseUrl: "http://subscription.example/backend-api",
++          network: { httpProxy: `http://127.0.0.1:${(proxy.address() as { port: number }).port}`, noProxy: "", caCertFile: "" },
++        } };
++      },
++    }, () => f.model.generateText({ messages: [{ role: "user", content: "test" }] }));
++    const response = await f.captured.options.fetch("http://subscription.example/backend-api/test");
++    assert.equal(await response.text(), "subscription-route");
++    assert.equal(requests, 1);
++    assert.equal(process.env.HTTPS_PROXY, before);
++  } finally { proxy.closeAllConnections(); proxy.close(); }
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+index a155a94..3b0e056 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+@@ -52,6 +52,8 @@ export interface ModelRequestAuth {
+   baseUrl?: string;
+   apiKey?: string;
+   credentialSelection?: { accountId: string; revision: string };
++  /** Host-resolved route for this subscription request only. */
++  network?: { httpProxy: string; noProxy: string; caCertFile: string };
+   headers?: Record<string, string>;
+ }
+ 
+diff --git a/package.json b/package.json
+index c120e95..a9a381c 100644
+--- a/package.json
++++ b/package.json
+@@ -46,7 +46,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
+   },
+diff --git a/packages/desktop/src/host/index.ts b/packages/desktop/src/host/index.ts
+index c43e2af..78cfe8c 100644
+--- a/packages/desktop/src/host/index.ts
++++ b/packages/desktop/src/host/index.ts
+@@ -1,3 +1,4 @@
++import { createSubscriptionSystemProxyBridge } from "./subscriptionSystemProxyBridge.js";
+ /* eslint-disable max-lines -- Host 入口集中编排 local/remote service wiring，本次退出保护需要在同一处桥接 host 上报。 */
+ /* eslint-disable max-lines -- host process 入口集中维护 local/remote 初始化和资源回收，realtime bridge 接入后先保持同文件收口。 */
+ /**
+@@ -229,6 +230,12 @@ function authorizeLocalMediaPreviewPath(path: string): Promise<string> {
+   });
+ }
+ 
++const subscriptionSystemProxy = createSubscriptionSystemProxyBridge((message) => {
++  if (!parentPort) throw new Error("Subscription network resolver is unavailable");
++  parentPort.postMessage(message);
++});
++process.once("exit", () => subscriptionSystemProxy.dispose());
++
+ // browser-use host↔main 桥：把 agent 的 browser 命令经 parentPort 转给 main（WebContentsView+CDP）。
+ // parentPort 为空（不应发生于 host 进程）时 postToMain 抛错，bridge 自身返回 backend_unavailable。
+ const browserControlMainBridge = createBrowserControlMainBridge({
+@@ -2145,6 +2152,7 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
+   disposeHostResourcesInFlight = (async () => {
+     logger.info(`disposing host resources, reason=${reason}`);
+ 
++    subscriptionSystemProxy.dispose();
+     stopHostNetworkTelemetry();
+     hostSelfResourceTelemetry.stop();
+     disposeLocalResourceTelemetry();
+@@ -2349,6 +2357,11 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
+     return;
+   }
+ 
++  if (msg.type === HostMessageTypes.SubscriptionSystemProxyResult) {
++    subscriptionSystemProxy.accept(msg);
++    return;
++  }
++
+   if (msg.type === HostMessageTypes.LocalMediaPreviewPathAuthorizeResult) {
+     const pending = pendingLocalMediaPreviewPathAuthorizations.get(msg.requestId);
+     if (!pending) return;
+@@ -2827,14 +2840,17 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
+         // 只注入 service 会跳过默认装配分支，导致缺组织的升级用户永远无法恢复连接。
+         const { service: settingService, prepareLegacyAccountConnections } =
+           createSettingServiceWithMigrations();
+-        const hostApiNetworkTransport = createHostApiNetworkTransport(async () => {
+-          const settings = await settingService.get();
+-          return {
+-            httpProxy: settings.httpProxy,
+-            noProxy: settings.httpProxyNoProxy,
+-            caCertPath: settings.httpProxyCaCertPath,
+-          };
+-        });
++        const hostApiNetworkTransport = createHostApiNetworkTransport(
++          async () => {
++            const settings = await settingService.get();
++            return {
++              httpProxy: settings.httpProxy,
++              noProxy: settings.httpProxyNoProxy,
++              caCertPath: settings.httpProxyCaCertPath,
++            };
++          },
++          { resolveSystemProxy: subscriptionSystemProxy.resolve },
++        );
+         const services = await initializeHostApiNetworkTransportOwner({
+           transport: hostApiNetworkTransport,
+           log: (message, details) => logger.warn(message, details),
+diff --git a/packages/desktop/src/host/subscriptionSystemProxyBridge.ts b/packages/desktop/src/host/subscriptionSystemProxyBridge.ts
+new file mode 100644
+index 0000000..1c7865d
+--- /dev/null
++++ b/packages/desktop/src/host/subscriptionSystemProxyBridge.ts
+@@ -0,0 +1,51 @@
++import { randomUUID } from "node:crypto";
++import { HostResponseTypes } from "@zcode/shared";
++
++export function createSubscriptionSystemProxyBridge(post: (message: unknown) => void) {
++  let disposed = false;
++  const pending = new Map<
++    string,
++    {
++      resolve: (proxy: string | undefined) => void;
++      reject: (error: Error) => void;
++      timer: ReturnType<typeof setTimeout>;
++    }
++  >();
++  return {
++    resolve(url: string): Promise<string | undefined> {
++      if (disposed) return Promise.reject(new Error("System proxy resolver disposed"));
++      const requestId = randomUUID();
++      return new Promise((resolve, reject) => {
++        const timer = setTimeout(() => {
++          pending.delete(requestId);
++          reject(new Error("System proxy resolution timed out"));
++        }, 5000);
++        timer.unref?.();
++        pending.set(requestId, { resolve, reject, timer });
++        try {
++          post({ type: HostResponseTypes.SubscriptionSystemProxyRequest, requestId, url });
++        } catch (error) {
++          clearTimeout(timer);
++          pending.delete(requestId);
++          reject(error);
++        }
++      });
++    },
++    accept(result: { requestId: string; ok: boolean; proxy?: string; error?: string }) {
++      const entry = pending.get(result.requestId);
++      if (!entry) return;
++      pending.delete(result.requestId);
++      clearTimeout(entry.timer);
++      if (result.ok) entry.resolve(result.proxy);
++      else entry.reject(new Error(result.error ?? "System proxy resolution failed"));
++    },
++    dispose() {
++      disposed = true;
++      for (const entry of pending.values()) {
++        clearTimeout(entry.timer);
++        entry.reject(new Error("System proxy resolver disposed"));
++      }
++      pending.clear();
++    },
++  };
++}
+diff --git a/packages/desktop/src/main/desktopHostProcess.ts b/packages/desktop/src/main/desktopHostProcess.ts
+index 72bf5d6..2847bdf 100644
+--- a/packages/desktop/src/main/desktopHostProcess.ts
++++ b/packages/desktop/src/main/desktopHostProcess.ts
+@@ -1,3 +1,4 @@
++import { resolveSubscriptionSystemProxy } from "./subscriptionSystemProxy.js";
+ import { ingestToolExecResource } from "./desktopResourceTelemetry.js";
+ import { ingestMcpResourceSamples } from "./processResourceMcpTelemetrySource.js";
+ /* eslint-disable max-lines -- host process 统一处理 main↔host 生命周期、日志、ZCode Agent，拆分前先保持跨进程消息收口。 */
+@@ -368,6 +369,29 @@ export function spawnHostProcess(
+       return;
+     }
+ 
++    if (result.data.type === HostResponseTypes.SubscriptionSystemProxyRequest) {
++      const { requestId, url } = result.data;
++      void resolveSubscriptionSystemProxy(url)
++        .then(
++          (proxy) =>
++            child.postMessage({
++              type: HostMessageTypes.SubscriptionSystemProxyResult,
++              requestId,
++              ok: true,
++              proxy,
++            }),
++          (error: unknown) =>
++            child.postMessage({
++              type: HostMessageTypes.SubscriptionSystemProxyResult,
++              requestId,
++              ok: false,
++              error: error instanceof Error ? error.message : "System proxy resolution failed",
++            }),
++        )
++        .catch(() => {}); // Host may have exited during OS resolution.
++      return;
++    }
++
+     if (result.data.type === HostResponseTypes.LocalMediaPreviewPathAuthorizeRequest) {
+       const request = result.data;
+       const authorize = dependencies.authorizeLocalMediaPreviewPath;
+@@ -566,7 +590,6 @@ export function spawnHostProcess(
+       return;
+     }
+ 
+-
+     if (result.data.type === HostResponseTypes.BotRemoteWorkspaceReconnectRequest) {
+       const request = result.data;
+       const handler = dependencies.handleBotRemoteWorkspaceReconnectRequest;
+diff --git a/packages/desktop/src/main/subscriptionSystemProxy.ts b/packages/desktop/src/main/subscriptionSystemProxy.ts
+new file mode 100644
+index 0000000..02bea1c
+--- /dev/null
++++ b/packages/desktop/src/main/subscriptionSystemProxy.ts
+@@ -0,0 +1,14 @@
++import { parseHostSystemProxy } from "@zcode/services/node";
++import { session } from "electron";
++
++/** Use Chromium's OS/PAC resolver without changing the app or browser session. */
++export async function resolveSubscriptionSystemProxy(url: string): Promise<string | undefined> {
++  const target = new URL(url);
++  if (!["https:", "http:"].includes(target.protocol) || target.username || target.password)
++    throw new Error("Invalid subscription network target");
++  // OAuth 的浏览器与 Node Host 曾走不同出口；复用 Craft 的独立内存 session，
++  // 只解析网络路由，不把凭据、请求正文或 cookie 交给 Main。
++  const resolver = session.fromPartition("fleet-subscription-network");
++  await resolver.setProxy({ mode: "system" });
++  return parseHostSystemProxy(await resolver.resolveProxy(target.href));
++}
+diff --git a/packages/services/src/model-provider/accountProviderRequestAuthService.ts b/packages/services/src/model-provider/accountProviderRequestAuthService.ts
+index e9f043c..4097a7b 100644
+--- a/packages/services/src/model-provider/accountProviderRequestAuthService.ts
++++ b/packages/services/src/model-provider/accountProviderRequestAuthService.ts
+@@ -11,6 +11,8 @@ export interface AccountRequestAuthMaterial {
+   baseUrl?: string;
+   apiKey?: string;
+   credentialSelection?: { accountId: string; revision: string };
++  /** Host-resolved route for this subscription request only. */
++  network?: { httpProxy: string; noProxy: string; caCertFile: string };
+   headers?: Record<string, string>;
+ }
+ 
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 7d50d68..b6158ee 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -234,6 +234,7 @@ export {
+ export { createNodeApiClient, NodeApiClient } from "./providers/api/nodeApiClient.js";
+ export {
+   createHostApiNetworkTransport,
++  parseHostSystemProxy,
+   type HostApiNetworkTransport,
+ } from "./providers/api/nodeApiNetwork.js";
+ export {
+@@ -1571,7 +1572,7 @@ export function createLocalServices(options: {
+     | Pick<IZCodeAgentService, "testModelConnectivity">
+     | undefined;
+   const subscriptionConnections = createSubscriptionConnections({
+-    fetch: hostApiNetworkTransport.fetch,
++    fetch: hostApiNetworkTransport.fetchWithSystemProxy ?? hostApiNetworkTransport.fetch,
+     credentials: credentialService,
+     withConnectionLock: (id, operation) =>
+       withFileLock(
+@@ -2053,8 +2054,27 @@ export function createLocalServices(options: {
+           resolveOffPeakTaskService: () => offPeakTaskServiceForAgent,
+         };
+   const zcodeAgentService = createZCodeAgentService({
+-    resolveSubscriptionAuth: (id, kind, modelId, recovery) =>
+-      subscriptionConnections.resolve(id, kind, modelId, recovery),
++    resolveSubscriptionAuth: async (id, kind, modelId, recovery) => {
++      const auth = await subscriptionConnections.resolve(id, kind, modelId, recovery);
++      if (!hostApiNetworkTransport.resolveSystemNetwork) return auth;
++      const baseUrl =
++        auth.baseUrl ??
++        (kind === "openai-codex"
++          ? "https://chatgpt.com/backend-api"
++          : kind === "xai"
++            ? "https://cli-chat-proxy.grok.com/v1"
++            : "https://api.individual.githubcopilot.com");
++      const network = await hostApiNetworkTransport.resolveSystemNetwork(baseUrl);
++      // 授权与模型请求必须走同一路由；只传给此订阅请求，不改 Bash/MCP 或进程环境。
++      return {
++        ...auth,
++        network: {
++          httpProxy: network.httpProxy ?? "",
++          noProxy: network.noProxy ?? "",
++          caCertFile: network.caCertPath ?? "",
++        },
++      };
++    },
+     ...(agentAccountProviderConfigSource
+       ? { accountProviderConfigSource: agentAccountProviderConfigSource }
+       : {}),
+diff --git a/packages/services/src/providers/api/nodeApiNetwork.ts b/packages/services/src/providers/api/nodeApiNetwork.ts
+index 6b8a9c6..5fb82a4 100644
+--- a/packages/services/src/providers/api/nodeApiNetwork.ts
++++ b/packages/services/src/providers/api/nodeApiNetwork.ts
+@@ -10,6 +10,9 @@ export interface HostApiNetworkOptions {
+ 
+ export interface HostApiNetworkTransport {
+   fetch: typeof fetch;
++  /** Subscription traffic follows the OS route only when no explicit application proxy wins. */
++  fetchWithSystemProxy?: typeof fetch;
++  resolveSystemNetwork?: (url: string) => Promise<HostApiNetworkOptions>;
+   dispose(): void;
+   disposeAndWait(): Promise<void>;
+ }
+@@ -86,6 +89,7 @@ export function resolveHostProxyForUrl(
+ 
+ interface HostApiNetworkTransportDependencies {
+   createDispatcher?: typeof createDispatcher;
++  resolveSystemProxy?: (url: string) => Promise<string | undefined>;
+   fetchWithDispatcher?: (
+     input: string,
+     init: Omit<RequestInit, "dispatcher"> & { dispatcher: Dispatcher },
+@@ -98,7 +102,6 @@ export function createHostApiNetworkTransport(
+ ): HostApiNetworkTransport {
+   // Host 是独立 Node 进程，Electron Session.setProxy 不会影响它的 globalThis.fetch；
+   // 在 NodeApiClient 出口按请求注入 dispatcher，避免把 telemetry 等其它裸 fetch 全局改道。
+-  let optionsPromise: Promise<HostApiNetworkOptions> | undefined;
+   const dispatcherPromises = new Map<string, Promise<Dispatcher>>();
+   let disposed = false;
+   let generation = 0;
+@@ -113,84 +116,93 @@ export function createHostApiNetworkTransport(
+     dependencies.fetchWithDispatcher ??
+     ((input, init) => undiciFetch(input, init as never) as unknown as Promise<Response>);
+ 
+-  const fetch: typeof globalThis.fetch = async (input, init) => {
+-    if (disposed) {
+-      throw new Error("Host API network transport has been disposed");
++  const resolveNetwork = async (url: string, useSystemProxy: boolean) => {
++    if (disposed) throw new Error("Host API network transport has been disposed");
++    // 不能永久缓存首次读取：用户修正网络设置后，下一次授权必须读取新配置。
++    const options = await resolveOptions();
++    const explicit = resolveHostProxyForUrl(url, options);
++    if (explicit.kind === "invalid") throw new Error(explicit.reason);
++    if (
++      useSystemProxy &&
++      !options.httpProxy?.trim() &&
++      explicit.kind === "direct" &&
++      !explicit.noProxyMatched &&
++      dependencies.resolveSystemProxy
++    ) {
++      const httpProxy = await dependencies.resolveSystemProxy(url);
++      if (disposed) throw new Error("Host API network transport has been disposed");
++      return { ...options, httpProxy, noProxy: httpProxy ? undefined : "*" };
+     }
+-    const requestGeneration = generation;
+-    if (!optionsPromise) {
+-      // 设置读取失败只影响当前请求；清掉 rejected promise，避免一次瞬时 IPC/启动竞态
+-      // 把 Host API 永久锁死，同时仍保持失败请求不回退到直连。
+-      optionsPromise = resolveOptions().catch((error: unknown) => {
+-        optionsPromise = undefined;
+-        throw error;
+-      });
+-    }
+-    const options = await optionsPromise;
+-    if (disposed || generation !== requestGeneration) {
+-      throw new Error("Host API network transport has been disposed");
+-    }
+-    const requestUrl = input instanceof Request ? input.url : String(input);
+-    const route = resolveHostProxyForUrl(requestUrl, options);
+-    if (route.kind === "invalid") {
+-      throw new Error(route.reason);
+-    }
+-    if (route.kind === "direct" && !options.caCertPath) {
+-      return globalThis.fetch(input as Parameters<typeof fetch>[0], init);
+-    }
+-
+-    const dispatcherKey = `${route.kind}:${route.kind === "proxy" ? route.proxyUrl : "direct"}:${options.caCertPath ?? ""}`;
+-    let dispatcherPromise = dispatcherPromises.get(dispatcherKey);
+-    if (!dispatcherPromise) {
+-      if (disposed) {
++    return options;
++  };
++  const makeFetch =
++    (useSystemProxy: boolean): typeof globalThis.fetch =>
++    async (input, init) => {
++      if (disposed) throw new Error("Host API network transport has been disposed");
++      const requestGeneration = generation;
++      const requestUrl = input instanceof Request ? input.url : String(input);
++      const options = await resolveNetwork(requestUrl, useSystemProxy);
++      if (disposed || generation !== requestGeneration) {
+         throw new Error("Host API network transport has been disposed");
+       }
+-      const dispatcherGeneration = generation;
+-      pendingDispatcherCreations += 1;
+-      dispatcherPromise = dispatcherFactory(route, options.caCertPath);
+-      dispatcherPromises.set(dispatcherKey, dispatcherPromise);
+-      void dispatcherPromise
+-        .then((dispatcher) => {
+-          if (
+-            (disposed || generation !== dispatcherGeneration) &&
+-            dispatcherPromises.get(dispatcherKey) === dispatcherPromise
+-          ) {
++      const route = resolveHostProxyForUrl(requestUrl, options);
++      if (route.kind === "invalid") throw new Error(route.reason);
++      if (route.kind === "direct" && !options.caCertPath) {
++        return globalThis.fetch(input as Parameters<typeof globalThis.fetch>[0], init);
++      }
++
++      const dispatcherKey = `${route.kind}:${route.kind === "proxy" ? route.proxyUrl : "direct"}:${options.caCertPath ?? ""}`;
++      let dispatcherPromise = dispatcherPromises.get(dispatcherKey);
++      if (!dispatcherPromise) {
++        if (disposed) {
++          throw new Error("Host API network transport has been disposed");
++        }
++        const dispatcherGeneration = generation;
++        pendingDispatcherCreations += 1;
++        dispatcherPromise = dispatcherFactory(route, options.caCertPath);
++        dispatcherPromises.set(dispatcherKey, dispatcherPromise);
++        void dispatcherPromise
++          .then((dispatcher) => {
++            if (
++              (disposed || generation !== dispatcherGeneration) &&
++              dispatcherPromises.get(dispatcherKey) === dispatcherPromise
++            ) {
++              dispatcherPromises.delete(dispatcherKey);
++              const cleanupPromise = Promise.resolve(
++                disposeMode === "close" ? dispatcher.close() : dispatcher.destroy(),
++              ).catch(() => {});
++              lateDisposePromises.push(cleanupPromise);
++            }
++          })
++          .catch(() => {});
++        const markDispatcherCreationDone = () => {
++          pendingDispatcherCreations -= 1;
++          if (pendingDispatcherCreations === 0) {
++            resolveDispatcherCreations?.();
++            resolveDispatcherCreations = undefined;
++          }
++        };
++        void dispatcherPromise.then(markDispatcherCreationDone, markDispatcherCreationDone);
++        dispatcherPromise.catch(() => {
++          // 设置/CA 等临时 IO 失败只影响当前请求；清理 rejected dispatcher，避免一次启动竞态
++          // 把同一路由永久锁死，同时仍保持失败请求 fail-closed、不回退到直连。
++          if (dispatcherPromises.get(dispatcherKey) === dispatcherPromise) {
+             dispatcherPromises.delete(dispatcherKey);
+-            const cleanupPromise = Promise.resolve(
+-              disposeMode === "close" ? dispatcher.close() : dispatcher.destroy(),
+-            ).catch(() => {});
+-            lateDisposePromises.push(cleanupPromise);
+           }
+-        })
+-        .catch(() => {});
+-      const markDispatcherCreationDone = () => {
+-        pendingDispatcherCreations -= 1;
+-        if (pendingDispatcherCreations === 0) {
+-          resolveDispatcherCreations?.();
+-          resolveDispatcherCreations = undefined;
+-        }
+-      };
+-      void dispatcherPromise.then(markDispatcherCreationDone, markDispatcherCreationDone);
+-      dispatcherPromise.catch(() => {
+-        // 设置/CA 等临时 IO 失败只影响当前请求；清理 rejected dispatcher，避免一次启动竞态
+-        // 把同一路由永久锁死，同时仍保持失败请求 fail-closed、不回退到直连。
+-        if (dispatcherPromises.get(dispatcherKey) === dispatcherPromise) {
+-          dispatcherPromises.delete(dispatcherKey);
+-        }
+-      });
+-    }
+-    const dispatcher = await dispatcherPromise;
+-    if (disposed || generation !== requestGeneration) {
+-      throw new Error("Host API network transport has been disposed");
+-    }
+-    return fetchWithDispatcher(
+-      input as unknown as string,
+-      {
+-        ...init,
+-        dispatcher,
+-      } as Omit<RequestInit, "dispatcher"> & { dispatcher: Dispatcher },
+-    );
+-  };
++        });
++      }
++      const dispatcher = await dispatcherPromise;
++      if (disposed || generation !== requestGeneration) {
++        throw new Error("Host API network transport has been disposed");
++      }
++      return fetchWithDispatcher(
++        input as unknown as string,
++        {
++          ...init,
++          dispatcher,
++        } as Omit<RequestInit, "dispatcher"> & { dispatcher: Dispatcher },
++      );
++    };
+ 
+   const startDispose = (mode: "close" | "destroy"): Promise<void> => {
+     if (disposePromise) return disposePromise;
+@@ -225,7 +237,11 @@ export function createHostApiNetworkTransport(
+   };
+ 
+   return {
+-    fetch,
++    fetch: makeFetch(false),
++    fetchWithSystemProxy: makeFetch(true),
++    resolveSystemNetwork: dependencies.resolveSystemProxy
++      ? (url) => resolveNetwork(url, true)
++      : undefined,
+     dispose() {
+       void startDispose("destroy");
+     },
+@@ -250,3 +266,21 @@ async function createDispatcher(
+   }
+   return new Agent({ connect: ca ? { ca } : undefined });
+ }
++
++export function parseHostSystemProxy(value: string): string | undefined {
++  const first = value
++    .split(";")
++    .map((part) => part.trim())
++    .find(Boolean);
++  if (first === "DIRECT") return undefined;
++  const match = /^(PROXY|HTTPS)\s+(\S+)$/i.exec(first ?? "");
++  // 不支持的 SOCKS/PAC 路由不能悄悄变成直连；用户可用现有网络设置指定 HTTP 代理。
++  if (!match)
++    throw new Error(
++      "System proxy type is unsupported; configure an HTTP proxy in Network settings",
++    );
++  const proxy = new URL(`${match[1]!.toUpperCase() === "HTTPS" ? "https" : "http"}://${match[2]}`);
++  if (proxy.username || proxy.password || proxy.pathname !== "/" || proxy.search || proxy.hash)
++    throw new Error("Invalid system proxy result");
++  return proxy.href;
++}
+diff --git a/packages/services/test/subscription-network.test.ts b/packages/services/test/subscription-network.test.ts
+new file mode 100644
+index 0000000..2c7ed99
+--- /dev/null
++++ b/packages/services/test/subscription-network.test.ts
+@@ -0,0 +1,116 @@
++import assert from "node:assert/strict";
++import { createServer } from "node:http";
++import { connect } from "node:net";
++import { once } from "node:events";
++import test from "node:test";
++import {
++  createHostApiNetworkTransport,
++  parseHostSystemProxy,
++} from "../src/providers/api/nodeApiNetwork.js";
++import { createSubscriptionSystemProxyBridge } from "../../desktop/src/host/subscriptionSystemProxyBridge.js";
++
++test("OS/PAC routing respects its first route and never silently falls through", () => {
++  assert.equal(parseHostSystemProxy("PROXY localhost:7890; DIRECT"), "http://localhost:7890/");
++  assert.equal(parseHostSystemProxy("HTTPS enterprise.example:443"), "https://enterprise.example/");
++  assert.equal(parseHostSystemProxy("DIRECT; PROXY localhost:7890"), undefined);
++  for (const invalid of ["SOCKS5 localhost:7890; DIRECT", "", "PROXY user:secret@localhost:7890"])
++    assert.throws(() => parseHostSystemProxy(invalid), /proxy/i);
++});
++
++test("the existing transport applies OS proxy to subscriptions only, honors edits and cleans up", async () => {
++  const target = createServer((_req, response) => response.end("OK"));
++  target.listen(0, "127.0.0.1");
++  await once(target, "listening");
++  const targetPort = (target.address() as { port: number }).port;
++  let tunnels = 0;
++  const proxy = createServer();
++  proxy.on("connect", (_req, client, head) => {
++    tunnels++;
++    const upstream = connect(targetPort, "127.0.0.1", () => {
++      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
++      if (head.length) upstream.write(head);
++      client.pipe(upstream).pipe(client);
++    });
++    client.on("error", () => upstream.destroy());
++    upstream.on("error", () => client.destroy());
++    client.on("close", () => upstream.destroy());
++  });
++  proxy.listen(0, "127.0.0.1");
++  await once(proxy, "listening");
++  const proxyUrl = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
++  const url = `http://127.0.0.1:${targetPort}/oauth/token`;
++  let settings: { httpProxy?: string; noProxy?: string } = {};
++  let resolutions = 0;
++  const transport = createHostApiNetworkTransport(async () => settings, {
++    resolveSystemProxy: async () => {
++      resolutions++;
++      return proxyUrl;
++    },
++  });
++  try {
++    assert.equal(await (await transport.fetchWithSystemProxy!(url)).text(), "OK");
++    assert.equal(tunnels, 1);
++    assert.equal(resolutions, 1);
++    // API-key/ordinary Host traffic retains its explicit configuration policy.
++    assert.equal(await (await transport.fetch(url)).text(), "OK");
++    assert.equal(resolutions, 1);
++    settings = { noProxy: "127.0.0.1" };
++    assert.equal(await (await transport.fetchWithSystemProxy!(url)).text(), "OK");
++    assert.equal(resolutions, 1);
++    settings = { httpProxy: proxyUrl };
++    assert.equal(await (await transport.fetchWithSystemProxy!(url)).text(), "OK");
++    assert.equal(resolutions, 1);
++    settings = { httpProxy: "socks://localhost:7890" };
++    await assert.rejects(transport.fetchWithSystemProxy!(url), /invalid/);
++  } finally {
++    transport.dispose();
++    await transport.disposeAndWait();
++    target.closeAllConnections();
++    target.close();
++    proxy.close();
++  }
++  await assert.rejects(transport.fetchWithSystemProxy!(url), /disposed/);
++});
++
++test("OS resolution failures fail before fetch and the next request can recover", async () => {
++  let failure = true;
++  const transport = createHostApiNetworkTransport(async () => ({}), {
++    resolveSystemProxy: async () => {
++      if (failure) throw new Error("System proxy unavailable");
++      return undefined;
++    },
++  });
++  await assert.rejects(
++    transport.fetchWithSystemProxy!("https://never-fetch.invalid"),
++    /System proxy unavailable/,
++  );
++  failure = false;
++  assert.deepEqual(await transport.resolveSystemNetwork!("https://auth.openai.com"), {
++    httpProxy: undefined,
++    noProxy: "*",
++  });
++  await transport.disposeAndWait();
++});
++
++test("Main bridge correlates concurrent requests, rejects errors and ignores late replies", async () => {
++  const messages: any[] = [];
++  const bridge = createSubscriptionSystemProxyBridge((message) => messages.push(message));
++  const first = bridge.resolve("https://auth.openai.com");
++  const second = bridge.resolve("https://chatgpt.com/backend-api");
++  const rejected = assert.rejects(first, /unsupported/);
++  bridge.accept({ requestId: messages[1].requestId, ok: true, proxy: "http://localhost:7890" });
++  bridge.accept({ requestId: messages[0].requestId, ok: false, error: "unsupported" });
++  assert.equal(await second, "http://localhost:7890");
++  await rejected;
++  const third = bridge.resolve("https://api.github.com");
++  const disposed = assert.rejects(third, /disposed/);
++  bridge.dispose();
++  bridge.accept({ requestId: messages[2].requestId, ok: true });
++  await disposed;
++});
++
++test("a non-desktop Host does not override the remote Agent network policy", async () => {
++  const transport = createHostApiNetworkTransport(async () => ({}));
++  assert.equal(transport.resolveSystemNetwork, undefined);
++  await transport.disposeAndWait();
++});
+diff --git a/packages/shared/src/channels.ts b/packages/shared/src/channels.ts
+index 84992b2..82d4b12 100644
+--- a/packages/shared/src/channels.ts
++++ b/packages/shared/src/channels.ts
+@@ -555,6 +555,7 @@ export const HostMessageTypes = {
+   OffPeakRun: "off-peak-run",
+   /** main → host：browser-use 命令执行结果（CDP 执行完回传，按 requestId 关联） */
+   BrowserExecuteResult: "browser-execute-result",
++  SubscriptionSystemProxyResult: "subscription-system-proxy-result",
+   /** main → host：本地视频 canonical path 授权结果 */
+   LocalMediaPreviewPathAuthorizeResult: "local-media-preview-path-authorize-result",
+   /** Main → Host：全局前台 ZCode 窗口派生的 producer focus fact。 */
+@@ -652,6 +653,7 @@ export const HostResponseTypes = {
+   OffPeakSchedulerWakeRequest: "off-peak-scheduler-wake-request",
+   /** host → main：执行一条 browser-use 命令（main 用 WebContentsView+CDP 执行，按 requestId 关联） */
+   BrowserExecuteRequest: "browser-execute-request",
++  SubscriptionSystemProxyRequest: "subscription-system-proxy-request",
+   /** host → main：请求授权 Agent 已精确校验的本地视频路径 */
+   LocalMediaPreviewPathAuthorizeRequest: "local-media-preview-path-authorize-request",
+   /** host → main：RPC 网络遥测批次（channel.command 成功率/耗时） */
+diff --git a/packages/shared/src/validation.ts b/packages/shared/src/validation.ts
+index 7d89774..38479fd 100644
+--- a/packages/shared/src/validation.ts
++++ b/packages/shared/src/validation.ts
+@@ -417,6 +417,23 @@ export const hostOffPeakRunMessageSchema = z.object({
+ });
+ 
+ // main → host：browser-use 命令执行结果（按 requestId 关联到 host 的 pending）。
++export const hostSubscriptionSystemProxyResultMessageSchema = z
++  .object({
++    type: z.literal("subscription-system-proxy-result"),
++    requestId: nonEmptyStringSchema,
++    ok: z.boolean(),
++    proxy: z.string().optional(),
++    error: z.string().optional(),
++  })
++  .strict();
++export const hostSubscriptionSystemProxyRequestResponseSchema = z
++  .object({
++    type: z.literal("subscription-system-proxy-request"),
++    requestId: nonEmptyStringSchema,
++    url: z.string().url().max(8192),
++  })
++  .strict();
++
+ export const hostBrowserExecuteResultMessageSchema = z.object({
+   type: z.literal("browser-execute-result"),
+   requestId: nonEmptyStringSchema,
+@@ -498,6 +515,7 @@ export const hostIncomingMessageSchema = z.discriminatedUnion("type", [
+   hostCronRunMessageSchema,
+   hostOffPeakRunMessageSchema,
+   hostBrowserExecuteResultMessageSchema,
++  hostSubscriptionSystemProxyResultMessageSchema,
+   hostLocalMediaPreviewPathAuthorizeResultMessageSchema,
+   hostCuaPipFocusChangedMessageSchema,
+   hostProviderProvisioningExecuteMessageSchema,
+@@ -1024,6 +1042,7 @@ export const hostResponseMessageSchema = z.discriminatedUnion("type", [
+   hostSessionMessageDeliverResultResponseSchema,
+   hostFeedbackLogArchiveRequestResponseSchema,
+   hostBrowserExecuteRequestResponseSchema,
++  hostSubscriptionSystemProxyRequestResponseSchema,
+   hostLocalMediaPreviewPathAuthorizeRequestResponseSchema,
+   hostNetworkTelemetryBatchResponseSchema,
+   hostProviderProvisioningSourceChangedResponseSchema,
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 14a9167..9ea8c2c 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -2431,6 +2431,10 @@ export const zcodeProviderRuntimeHeadersResponseSchema = z.discriminatedUnion("h
+         .object({
+           baseUrl: z.string().url().optional(),
+           apiKey: nonEmptyString.optional(),
++          network: z
++            .object({ httpProxy: z.string(), noProxy: z.string(), caCertFile: z.string() })
++            .strict()
++            .optional(),
+           credentialSelection: z
+             .object({ accountId: nonEmptyString, revision: nonEmptyString })
+             .strict()

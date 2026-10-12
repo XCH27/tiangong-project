@@ -1,0 +1,863 @@
+diff --git a/apps/zcode-cli/packages/core/src/agent/loaded-skills.ts b/apps/zcode-cli/packages/core/src/agent/loaded-skills.ts
+index 8122ccde6c4fd0c188711c6c2e60a55e146509b7..22efc2f0d1f3b459c8eeed00d96995a05d3240a6 100644
+--- a/apps/zcode-cli/packages/core/src/agent/loaded-skills.ts
++++ b/apps/zcode-cli/packages/core/src/agent/loaded-skills.ts
+@@ -21,25 +21,37 @@ export function sessionHasLoadedSkill(
+   entries: readonly RuntimeMessageEntry[],
+   skillName: string,
+ ): boolean {
+-  const pendingCallIds = new Set<string>();
++  const pendingCalls = new Map<string, string | undefined>();
+   for (const entry of entries) {
+     if (entry.kind === "attachment") continue;
+     const message = entry.message;
+     if (message.role === "assistant") {
++      // 上游 call id 只在当前 assistant 的调用批次内定位；失败不能借用下一批
++      // 同名 id 的成功结果，否则恢复后也会把未加载的 Skill 当作已加载。
++      pendingCalls.clear();
+       for (const call of message.toolCalls ?? []) {
+-        if (call.name === SKILL_TOOL_NAME && skillInputNames(call.input) === skillName) {
+-          pendingCallIds.add(call.id);
+-        }
++        pendingCalls.set(
++          call.id,
++          pendingCalls.has(call.id)
++            ? undefined
++            : call.name === SKILL_TOOL_NAME
++              ? skillInputNames(call.input)
++              : undefined,
++        );
+       }
+       continue;
+     }
+-    if (
+-      message.role === "tool" &&
+-      message.toolCallId !== undefined &&
+-      pendingCallIds.has(message.toolCallId) &&
+-      message.isError !== true
+-    ) {
+-      return true;
++    if (message.role === "tool" && message.toolCallId !== undefined) {
++      const declaredSkill = pendingCalls.get(message.toolCallId);
++      pendingCalls.delete(message.toolCallId);
++      if (
++        declaredSkill === skillName &&
++        (message.toolName === undefined || message.toolName === SKILL_TOOL_NAME) &&
++        message.isError !== true
++      )
++        return true;
++    } else if (message.role === "user") {
++      pendingCalls.clear();
+     }
+   }
+   return false;
+diff --git a/apps/zcode-cli/packages/core/src/context/builder.ts b/apps/zcode-cli/packages/core/src/context/builder.ts
+index 2bad420eb9e2f7dc0e983578dbd492dfb9fe342d..d0d08e76810f960b45eed7945bf4aa265ab61192 100644
+--- a/apps/zcode-cli/packages/core/src/context/builder.ts
++++ b/apps/zcode-cli/packages/core/src/context/builder.ts
+@@ -79,7 +79,8 @@ export class ContextBuilder {
+   /**
+    * 构建 context，返回结构化结果
+    */
+-  build(): ContextBuildResult {
++  build(options: { guidanceToolNames?: readonly string[] } = {}): ContextBuildResult {
++    const guidanceToolNames = options.guidanceToolNames ?? this.config.guidanceToolNames;
+     const sections: ContextSection[] = [];
+     const activeOutputStyle = this.config.outputStyle?.prompt.trim()
+       ? this.config.outputStyle
+@@ -141,7 +142,7 @@ export class ContextBuilder {
+       const sessionGuidanceSection = isWorkflowActor
+         ? null
+         : buildSessionGuidanceSection(
+-            this.config.guidanceToolNames ?? [],
++            guidanceToolNames ?? [],
+             this.config.skills?.skills.some(
+               (skill) => skill.policy?.allowImplicitInvocation !== false,
+             ) ?? false,
+@@ -178,7 +179,7 @@ export class ContextBuilder {
+     // guidanceToolNames 是 runtime 当下的
+     // 工具表；一个 Skill 工具未注册的工作流子代理被告知「以下技能可经 Skill 工具使用」，
+     // 只会让它相信自己有一个没有的工具。表缺席（测试 / 旧调用方）时保持既有行为。
+-    if (this.config.skills && this.skillToolAvailable()) {
++    if (this.config.skills && this.skillToolAvailable(guidanceToolNames)) {
+       const skillsSection = buildSkillsSection({
+         outcome: this.config.skills,
+         metadataBudget: this.config.skillMetadataBudget,
+@@ -224,8 +225,7 @@ export class ContextBuilder {
+     };
+   }
+ 
+-  private skillToolAvailable(): boolean {
+-    const names = this.config.guidanceToolNames;
++  private skillToolAvailable(names: readonly string[] | undefined): boolean {
+     return names === undefined || names.includes(SKILL_TOOL_NAME);
+   }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
+index 591619e469c542125350313fae1491cc246b89f2..43733c3f5f22ed8095ce513276f019198e0b645a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
+@@ -4,6 +4,22 @@ import type { RuntimeMessageEntry } from "../../agent/message-history.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { buildContextHistoryEntries } from "./context-history-entries.js";
+ 
++export function projectContextPrefixForTools(
++  runtime: AgentRuntimeInternal,
++  turnRequestEntries: readonly RuntimeMessageEntry[],
++  toolNames: readonly string[],
++): readonly RuntimeMessageEntry[] {
++  if (!runtime.contextBuilder || !runtime.contextInitialized) return turnRequestEntries;
++  // 当次工具交集在 request preparation 才最终确定；仅从已构造的 Context
++  // 派生目录和指引，不重读文件、不改 canonical history，也不采样下一轮设置。
++  const contextResult = runtime.contextBuilder.build({ guidanceToolNames: toolNames });
++  runtime.latestContextBuildResult = contextResult;
++  return [
++    ...buildContextHistoryEntries(contextResult),
++    ...turnRequestEntries.slice(countContextPrefixMessages(turnRequestEntries)),
++  ];
++}
++
+ export function rebuildContextPrefix(
+   runtime: AgentRuntimeInternal,
+   options: { model?: Model; turnRequestEntries?: readonly RuntimeMessageEntry[] } = {},
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+index b46dde9e1a5218d50c0a65bca53d0b3e69059c0a..9b65b6c57b530bc8c52670637246ff861fe6cd69 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+@@ -285,6 +285,7 @@ async function executeDuringStream(
+   });
+ 
+   const execution = await runtime.executeTools([toolCall], schedule, {
++    allowedToolNames: state.modelStepToolNames,
+     subagentModelOverride: state.subagentModelOverride,
+     model: state.model,
+     automationTurn: isAutomationMutationRestrictedTurn(state),
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
+index e1b36d1324b5e51072b78ea274c7c1a80915c956..d103644d9813b8deb0dd0e76088c6234b9e9c1c1 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/tools.ts
+@@ -80,6 +80,7 @@ export async function executeTools(
+   });
+ 
+   const generator = this.executor.executeSchedule(executableCalls, schedule, {
++    allowedToolNames: options?.allowedToolNames,
+     automationTurn: options?.automationTurn,
+     offPeakTurn: options?.offPeakTurn,
+     signal: options?.signal,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+index 25cfc154ee4c165621e30fa34885e139e0988722..8b8d419e076ef7d2abf4f8344c256421ba04ee14 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+@@ -99,6 +99,8 @@ export interface RegularTurnLoopState {
+   /** Core Server 的前台 child Selection override；优先于 profile 与父模型继承。 */
+   subagentModelOverride?: SubagentRunOptions["modelOverride"];
+   modelStepCount: number;
++  /** 当前 model step 最终可见的 canonical 工具名；仅该请求的派生事实，不授予权限。 */
++  modelStepToolNames?: readonly string[];
+   /** 当前 query 已成功写入 provider 可见持久历史的 assistant/compact 产物数量。 */
+   historyRoundCount: number;
+   reactiveCompactAttemptedInCurrentModelStep: boolean;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+index 98a978d25c266c32513c42bdd850d5f750401661..b798a92e7bc03ca8eee280ee8f75dba3eac2b9a7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+@@ -34,6 +34,7 @@ import {
+   recordCompactSuccess,
+ } from "./turn-loop-state.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
++import { projectContextPrefixForTools } from "./context-refresh.js";
+ import {
+   appendTurnRequestEntries,
+   commitTurnRequestEntries,
+@@ -124,6 +125,12 @@ export async function prepareRegularModelStep(
+     : turnDisallowedTools
+       ? runtime.getTools(state.model).filter((tool) => !turnDisallowedTools.has(tool.name))
+       : runtime.getTools(state.model);
++  state.modelStepToolNames = Object.freeze(tools.map((tool) => tool.name));
++  state.turnRequestState.entries = projectContextPrefixForTools(
++    runtime,
++    state.turnRequestState.entries,
++    state.modelStepToolNames,
++  );
+   finishTools();
+   if (!outputTokenRecoveryActive && runtime.needsPlanModeExitReminder) {
+     runtime.needsPlanModeExitReminder = false;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+index 6d65c0ca2981cb7bfba1c802733622e08292364a..68d44cecdf080723cbf6bac7ce525cda60f5684f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+@@ -178,6 +178,7 @@ export async function executeToolCallsForModelStep(
+       tools: pendingToolCalls.map((tc) => tc.name),
+     });
+     const execution = await this.executeTools(pendingToolCalls, pendingSchedule, {
++      allowedToolNames: state.modelStepToolNames,
+       automationTurn: isAutomationMutationRestrictedTurn(state),
+       offPeakTurn: isOffPeakCreateRestrictedTurn(state),
+       signal: state.turnAbortSignal,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 8645ac158c9b05186df068a8fe31a484f2197e1f..adbeb7f03d49aab2e2a96671ee5413ad9f72cadb 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -740,6 +740,7 @@ export interface PermissionDecisionResult {
+ }
+ 
+ export interface ExecuteToolsOptions {
++  allowedToolNames?: readonly string[];
+   automationTurn?: boolean;
+   offPeakTurn?: boolean;
+   signal?: AbortSignal;
+diff --git a/apps/zcode-cli/packages/core/src/subagent/context-builder.ts b/apps/zcode-cli/packages/core/src/subagent/context-builder.ts
+index 1c13bc8227d0dbcd0defd87ee0c332f9ebc68e5e..33f5bcd8e8155e5b8eb6bc3a3133637cebfe0fa7 100644
+--- a/apps/zcode-cli/packages/core/src/subagent/context-builder.ts
++++ b/apps/zcode-cli/packages/core/src/subagent/context-builder.ts
+@@ -43,8 +43,8 @@ export class SubagentContextBuilder extends ContextBuilder {
+     return this;
+   }
+ 
+-  override build(): ContextBuildResult {
+-    const sections = buildSubagentContextSections(this.subagentConfig);
++  override build(options: { guidanceToolNames?: readonly string[] } = {}): ContextBuildResult {
++    const sections = buildSubagentContextSections(this.subagentConfig, options.guidanceToolNames);
+     const orderedSections = orderSubagentSections(sections);
+     const totalChars = orderedSections.reduce((sum, section) => sum + section.chars, 0);
+     const totalTokens = orderedSections.reduce((sum, section) => sum + section.tokens, 0);
+@@ -103,7 +103,10 @@ export function createSubagentContextBuilder(
+   return new SubagentContextBuilder(config);
+ }
+ 
+-function buildSubagentContextSections(config: SubagentContextBuilderConfig): ContextSection[] {
++function buildSubagentContextSections(
++  config: SubagentContextBuilderConfig,
++  guidanceToolNames?: readonly string[],
++): ContextSection[] {
+   const sections: ContextSection[] = [buildCliPrefixSection()];
+   const agentPrompt = config.agentPrompt.trimEnd();
+   if (agentPrompt) {
+@@ -149,7 +152,7 @@ function buildSubagentContextSections(config: SubagentContextBuilderConfig): Con
+   if (currentDateSection) {
+     sections.push(currentDateSection);
+   }
+-  if (config.skills) {
++  if (config.skills && (guidanceToolNames === undefined || guidanceToolNames.includes("Skill"))) {
+     const skillsSection = buildSkillsSection({
+       outcome: config.skills,
+       metadataBudget: config.skillMetadataBudget,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
+index 6701484db5e4e900e6329610793c4d2dd95c5e35..10a791c1ae5c2ae6ea9158a554392418a2844b0a 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/batch-runner.ts
+@@ -39,6 +39,7 @@ export async function executeToolBatch(
+     const batchResults = await Promise.all(
+       batch.map((tc) =>
+         executeOne(tc, {
++          allowedToolNames: options?.allowedToolNames,
+           automationTurn: options?.automationTurn,
+           offPeakTurn: options?.offPeakTurn,
+           signal: options?.signal,
+@@ -78,7 +79,9 @@ export async function* executeToolSchedule(
+     yield { type: "batch_start", parallelGroupIndex: groupIndex, toolCallIds: group };
+ 
+     const groupResults = await executeBatch(groupTools, {
++      allowedToolNames: options?.allowedToolNames,
+       automationTurn: options?.automationTurn,
++      offPeakTurn: options?.offPeakTurn,
+       signal: options?.signal,
+       traceContext: options?.traceContext,
+       subagentModelOverride: options?.subagentModelOverride,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 223afaf4ae8e3eb14b6a6d7c5341b5ef7359360f..f61e752157e6e3992ea2c3c2d8aa8ca18fedcacb 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -97,8 +97,14 @@ async function executeToolCallImpl(
+     createRootTraceContext({ sessionId: deps.sessionId, turnId: deps.turnId });
+   const emptyToolName = isEmptyToolName(toolCall.name);
+   const candidateEntry = emptyToolName ? undefined : deps.registry.get(toolCall.name);
++  const excludedByRequest =
++    candidateEntry !== undefined &&
++    options?.allowedToolNames !== undefined &&
++    !options.allowedToolNames.includes(candidateEntry.metadata.name);
+   const registeredEntry =
+-    candidateEntry && deps.isToolAllowed?.(candidateEntry.metadata.name) !== false
++    candidateEntry &&
++    !excludedByRequest &&
++    deps.isToolAllowed?.(candidateEntry.metadata.name) !== false
+       ? candidateEntry
+       : undefined;
+   const model = options?.model ?? deps.model;
+@@ -135,7 +141,9 @@ async function executeToolCallImpl(
+         CoreErrorType.ToolNotFound,
+         emptyToolName
+           ? "Model returned an invalid tool call: tool name is empty."
+-          : `Tool not found: ${toolCall.name}`,
++          : excludedByRequest
++            ? `Tool is not available in this admitted model request: ${toolCall.name}`
++            : `Tool not found: ${toolCall.name}`,
+         {
+           context: { toolCallId: toolCall.id, toolName: toolCall.name },
+           recoverable: false,
+@@ -162,6 +170,7 @@ async function executeToolCallImpl(
+     return result;
+   }
+ 
++  const admittedHandler = entry.handler;
+   const mode = deps.getMode();
+ 
+   if (options?.signal?.aborted) {
+@@ -462,8 +471,30 @@ async function executeToolCallImpl(
+       turnId,
+     };
+ 
++    // 入参、hook、审批和 started 事件均跨过 await；旧审批不能复活撤销的注册项，
++    // 也不能授权同名的新实现。比较原注册实体，不能拿 request 专属 schema clone 比较。
++    const currentRegistration = originalDeps.registry.get(canonicalToolCall.name);
++    if (
++      currentRegistration !== registeredEntry ||
++      currentRegistration?.metadata.name !== canonicalToolCall.name ||
++      currentRegistration?.handler !== admittedHandler ||
++      originalDeps.isToolAllowed?.(canonicalToolCall.name) === false
++    ) {
++      const result = appendPreToolAdditionalContextsToErrorResult(
++        createPermissionErrorResult(
++          canonicalToolCall,
++          `Tool ${canonicalToolCall.name} changed or became unavailable before execution. Rediscover the tool and request a fresh approval.`,
++          { decision: "deny", mode, source: "tool.dispatch.availability" },
++        ),
++        preToolHookResult.additionalContexts,
++      );
++      await emitToolCallError(deps, canonicalToolCall.id, traceContext, turnId, result.error);
++      telemetry?.setPermissionDecision("denied");
++      telemetry?.finishDenied("policy_denied");
++      return result;
++    }
+     const output = await executeWithTimeout(
+-      entry.handler,
++      admittedHandler,
+       executionInput,
+       context,
+       deadline,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/types.ts b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+index fce61ab5cce4081b2614cab11524c671be3f2357..228df7895d2b16f94ff4b39614c320af0069ce1e 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+@@ -169,6 +169,8 @@ export interface ToolExecutor {
+ }
+ 
+ export interface ToolExecuteOptions {
++  /** Omitted for non-model domain callers; supplied model names never override current policy. */
++  allowedToolNames?: readonly string[];
+   automationTurn?: boolean;
+   offPeakTurn?: boolean;
+   signal?: AbortSignal;
+diff --git a/apps/zcode-cli/packages/core/test/context-footprint.test.ts b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+index b0f98f6a8c3ca9f374a9bbab7cc95aa71a25176d..6432135f7f3d32bbd4d606dde0a99fdd0c3716a2 100644
+--- a/apps/zcode-cli/packages/core/test/context-footprint.test.ts
++++ b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+@@ -10,6 +10,8 @@ import {
+   buildSkillUsageDetails,
+ } from "../src/runtime/methods/context-usage.js";
+ import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++import { sessionHasLoadedSkill } from "../src/agent/loaded-skills.js";
++import { MessageHistoryImpl } from "../src/agent/message-history.js";
+ 
+ async function skills(plugin = false) {
+   const dir = await mkdtemp(join(tmpdir(), "fleet-context-skills-"));
+@@ -48,6 +50,458 @@ async function skills(plugin = false) {
+   return { dir, paths, port, close: () => rm(dir, { recursive: true, force: true }) };
+ }
+ 
++test(
++  "final turn tool visibility projects Skill discovery without losing loaded history or frozen settings",
++  { timeout: 10000 },
++  async () => {
++    const s = await skills();
++    try {
++      for (const child of [false, true]) {
++        const f = await fixture(undefined, false, {
++          config: {
++            toolAllowlist: ["Skill", "Probe"],
++            outputStyle: { name: "Original", prompt: "ORIGINAL_OUTPUT_STYLE" },
++            ...(child ? { subagentContext: { agentPrompt: "A child task" } } : {}),
++          },
++          deps: { skillPort: s.port },
++        });
++        try {
++          f.steps.push(
++            () => reply("load", [{ id: "loaded", name: "Skill", input: { skill: "automatic" } }]),
++            () => reply("loaded"),
++          );
++          await f.runtime.executeTurn("Use the automatic skill");
++          const builder = (f.runtime as any).contextBuilder;
++          const unchangedSections = (result: any) =>
++            result.sections.filter(
++              (section: any) =>
++                section.source !== "skills" && section.source !== "session_guidance",
++            );
++          assert.deepEqual(
++            unchangedSections(builder.build({ guidanceToolNames: ["Probe"] })),
++            unchangedSections(builder.build()),
++            "only discovery and guidance change; all other sections keep their bytes",
++          );
++          for (const cold of [false, true]) {
++            if (cold) await f.reopen();
++            let originalSystem: string;
++            f.steps.push(
++              (request) => {
++                assert.ok(!request.tools.some((tool: any) => tool.name === "Skill"));
++                const prompt = JSON.stringify(request.messages);
++                assert.ok(!prompt.includes("Instructions for automatic"), `${child}/${cold}`);
++                assert.ok(!prompt.includes("Only use skills listed"));
++                assert.ok(prompt.includes("BODY_automatic"), "a completed result remains history");
++                originalSystem = JSON.stringify(
++                  request.messages.filter((m: any) => m.role === "system"),
++                );
++                f.runtime.updateConfig({
++                  outputStyle: { name: "Later", prompt: "LATER_OUTPUT_STYLE" },
++                });
++                return reply("working", [{ id: "probe", name: "Probe", input: { value: "safe" } }]);
++              },
++              (request) => {
++                assert.ok(!request.tools.some((tool: any) => tool.name === "Skill"));
++                assert.ok(!JSON.stringify(request.messages).includes("Instructions for automatic"));
++                assert.equal(
++                  JSON.stringify(request.messages.filter((m: any) => m.role === "system")),
++                  originalSystem,
++                );
++                assert.ok(!originalSystem.includes("LATER_OUTPUT_STYLE"));
++                return reply("complete");
++              },
++            );
++            await f.runtime.executeTurn("Continue this task", undefined, {
++              toolDisallowlist: ["Skill"],
++            });
++            f.runtime.updateConfig({
++              outputStyle: { name: "Original", prompt: "ORIGINAL_OUTPUT_STYLE" },
++            });
++            f.steps.push((request) => {
++              assert.ok(request.tools.some((tool: any) => tool.name === "Skill"));
++              assert.ok(JSON.stringify(request.messages).includes("Instructions for automatic"));
++              return reply("available again");
++            });
++            await f.runtime.executeTurn("A new permitted task");
++          }
++        } finally {
++          await f.close();
++        }
++      }
++    } finally {
++      await s.close();
++    }
++  },
++);
++
++test(
++  "failed Skill calls cannot borrow a later tool result with the same upstream id, hot or cold",
++  { timeout: 10000 },
++  async () => {
++    for (const child of [false, true]) {
++      const f = await fixture(undefined, false, {
++        config: {
++          toolAllowlist: ["Skill", "Probe"],
++          ...(child ? { subagentContext: { agentPrompt: "A child task" } } : {}),
++        },
++        deps: {
++          skillPort: {
++            async discoverSkills() {
++              return { skills: [], diagnostics: [], totalDiscovered: 0 };
++            },
++            async loadSkill() {
++              throw new Error("Skill is unavailable in this fixture");
++            },
++          } as any,
++        },
++      });
++      const hasLoaded = () =>
++        sessionHasLoadedSkill(
++          (f.runtime as any).messageHistory.borrowReadOnlyRuntimeEntries(),
++          "dynamic-workflows",
++        );
++      try {
++        f.steps.push(
++          () =>
++            reply("try", [{ id: "reused", name: "Skill", input: { skill: "dynamic-workflows" } }]),
++          () => reply("unavailable"),
++        );
++        await f.runtime.executeTurn("Try loading the Skill");
++        assert.equal(hasLoaded(), false);
++        f.steps.push(
++          () => reply("write", [{ id: "reused", name: "Probe", input: { value: "saved" } }]),
++          () => reply("complete"),
++        );
++        await f.runtime.executeTurn("An unrelated task");
++        assert.equal(hasLoaded(), false);
++        await f.reopen();
++        assert.equal(hasLoaded(), false);
++      } finally {
++        await f.close();
++      }
++    }
++  },
++);
++
++test("Skill load recognition binds a complete result to its declaring assistant batch", () => {
++  const history = new MessageHistoryImpl();
++  history.init();
++  history.addAssistant("", [
++    { id: "first", name: "Skill", input: { skill: "failed" } },
++    { id: "second", name: "Skill", input: { skill: "loaded" } },
++  ]);
++  history.addToolResult("first", "Skill", "failed", false, true);
++  history.addToolResult("second", "Skill", "body", true);
++  assert.equal(sessionHasLoadedSkill(history.borrowReadOnlyRuntimeEntries(), "failed"), false);
++  assert.equal(sessionHasLoadedSkill(history.borrowReadOnlyRuntimeEntries(), "loaded"), true);
++  history.addUser("Next input");
++  history.addAssistant("", [{ id: "first", name: "Probe", input: { value: "safe" } }]);
++  history.addToolResult("first", "Probe", "safe", true);
++  assert.equal(sessionHasLoadedSkill(history.borrowReadOnlyRuntimeEntries(), "failed"), false);
++  assert.equal(sessionHasLoadedSkill(history.borrowReadOnlyRuntimeEntries(), "loaded"), true);
++
++  const unfinished = new MessageHistoryImpl();
++  unfinished.init();
++  unfinished.addAssistant("", [{ id: "unfinished", name: "Skill", input: { skill: "pending" } }]);
++  unfinished.addUser("New boundary");
++  unfinished.addToolResult("unfinished", "Skill", "out of batch", true);
++  assert.equal(sessionHasLoadedSkill(unfinished.borrowReadOnlyRuntimeEntries(), "pending"), false);
++
++  unfinished.addAssistant("", [
++    { id: "duplicate", name: "Skill", input: { skill: "ambiguous" } },
++    { id: "duplicate", name: "Probe", input: { value: "safe" } },
++  ]);
++  unfinished.addToolResult("duplicate", "Skill", "cannot identify the declaration", true);
++  assert.equal(
++    sessionHasLoadedSkill(unfinished.borrowReadOnlyRuntimeEntries(), "ambiguous"),
++    false,
++  );
++});
++
++test("explicit Skill exclusion holds for Pi stream/non-stream and a scripted native port", async () => {
++  const s = await skills();
++  try {
++    for (const route of ["pi", "pi-stream", "native-scripted"] as const) {
++      const receipts: any[] = [];
++      const f = await fixture(undefined, route !== "pi", {
++        config: { toolAllowlist: ["Skill"] },
++        ...(route === "native-scripted" ? { nativeExecutor: { kind: "claude" as const } } : {}),
++        deps: {
++          skillPort: s.port,
++          ...(route === "native-scripted"
++            ? {
++                nativeAgentPort: {
++                  createTurn(request: any) {
++                    return {
++                      model: request.model,
++                      admitNextStep() {},
++                      retainToolReceipts(values: any[]) {
++                        receipts.push(...values);
++                      },
++                      async close() {},
++                    };
++                  },
++                },
++              }
++            : {}),
++        },
++      });
++      try {
++        f.steps.push(
++          (request) => {
++            assert.ok(!request.tools.some((tool: any) => tool.name === "Skill"));
++            assert.ok(!JSON.stringify(request.messages).includes("Instructions for automatic"));
++            return reply("invented call", [
++              { id: "denied", name: "Skill", input: { skill: "manual" } },
++            ]);
++          },
++          (request) => {
++            const lastTool = request.messages
++              .filter((message: any) => message.role === "tool")
++              .at(-1);
++            assert.equal(lastTool?.isError, true);
++            assert.ok(!JSON.stringify(lastTool).includes("BODY_manual"));
++            return reply("excluded");
++          },
++        );
++        assert.equal(
++          (
++            await f.runtime.executeTurn("/manual requested", undefined, {
++              toolDisallowlist: ["Skill"],
++            })
++          ).response,
++          "excluded",
++        );
++        assert.equal(
++          f.permissionCalls,
++          0,
++          "exclusion precedes ordinary permission/hook/handler work",
++        );
++        assert.equal(f.effects, 0);
++        assert.equal(
++          f.requests.length,
++          2,
++          "the refused tool does not cause an extra physical request",
++        );
++        if (route === "native-scripted") {
++          assert.equal(receipts[0]?.isError, true);
++          assert.ok(!JSON.stringify(receipts).includes("BODY_manual"));
++        }
++      } finally {
++        await f.close();
++      }
++    }
++  } finally {
++    await s.close();
++  }
++});
++
++test("streaming cannot execute an excluded read-only tool before the response settles", async () => {
++  const f = await fixture(undefined, true);
++  try {
++    Object.assign(f.runtime.getToolRegistry().getMetadata("Probe")!, {
++      readOnly: true,
++      concurrentSafe: true,
++      needsApproval: false,
++      sideEffectScope: "none",
++    });
++    f.runtime.invalidateToolCache();
++    f.steps.push(
++      (request) => {
++        assert.ok(!request.tools.some((tool: any) => tool.name === "Probe"));
++        return reply("try", [
++          { id: "stream-denied", name: "Probe", input: { value: "must-not-run" } },
++        ]);
++      },
++      (request) => {
++        assert.equal(
++          request.messages.filter((message: any) => message.role === "tool").at(-1)?.isError,
++          true,
++        );
++        return reply("denied");
++      },
++    );
++    await f.runtime.executeTurn("Read only", undefined, { toolDisallowlist: ["Probe"] });
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("model tool admission resolves valid aliases and rechecks the registry at each step", async () => {
++  const f = await fixture();
++  const registry = f.runtime.getToolRegistry();
++  const original = registry.get("Probe")!;
++  let lateEffects = 0;
++  try {
++    registry.register(
++      {
++        ...original,
++        aliases: ["LegacyProbe"],
++        resolveModelContract: () => ({ description: "Request-specific projected contract" }),
++      },
++      { silentDuplicateWarning: true },
++    );
++    f.runtime.invalidateToolCache();
++    f.steps.push(
++      () => reply("alias", [{ id: "alias", name: "LegacyProbe", input: { value: "allowed" } }]),
++      (request) => {
++        assert.equal(
++          request.messages.filter((message: any) => message.role === "tool").at(-1)?.isError,
++          false,
++        );
++        registry.register({
++          ...original,
++          metadata: { ...original.metadata, name: "mcp__fixture__inspect" },
++          aliases: ["LegacyInspect"],
++          async handler() {
++            lateEffects++;
++            return "inspected";
++          },
++        });
++        f.runtime.invalidateToolCache();
++        return reply("early", [
++          { id: "not-yet-declared", name: "LegacyInspect", input: { value: "safe" } },
++        ]);
++      },
++      (request) => {
++        assert.equal(
++          lateEffects,
++          0,
++          "a newly registered tool cannot enter an already sent request",
++        );
++        assert.equal(
++          request.messages.filter((message: any) => message.role === "tool").at(-1)?.isError,
++          true,
++        );
++        assert.ok(request.tools.some((tool: any) => tool.name === "mcp__fixture__inspect"));
++        return reply("now available", [
++          { id: "new-step", name: "LegacyInspect", input: { value: "safe" } },
++        ]);
++      },
++      (request) => {
++        assert.equal(lateEffects, 1);
++        assert.equal(
++          request.messages.filter((message: any) => message.role === "tool").at(-1)?.isError,
++          false,
++        );
++        registry.unregister("mcp__fixture__inspect");
++        f.runtime.invalidateToolCache();
++        return reply("revoked", [
++          { id: "revoked", name: "mcp__fixture__inspect", input: { value: "must-not-run" } },
++        ]);
++      },
++      (request) => {
++        assert.equal(lateEffects, 1, "captured names never grant a revoked registry entry");
++        assert.equal(
++          request.messages.filter((message: any) => message.role === "tool").at(-1)?.isError,
++          true,
++        );
++        return reply("complete");
++      },
++    );
++    await f.runtime.executeTurn("Use only available tools");
++    assert.equal(f.effects, 1);
++    assert.equal(lateEffects, 1);
++    assert.equal(f.permissionCalls, 2);
++    const domainResult = await f.runtime
++      .getToolExecutor()
++      .execute({ id: "domain" as never, name: "LegacyProbe", input: { value: "domain action" } });
++    assert.equal(
++      domainResult.success,
++      true,
++      "a non-model caller does not inherit an earlier request's list",
++    );
++    assert.equal(f.effects, 2);
++  } finally {
++    await f.close();
++  }
++});
++
++test(
++  "permission approval cannot revive revoked, replaced or policy-excluded tools",
++  { timeout: 10000 },
++  async () => {
++    for (const streaming of [false, true]) {
++      for (const change of [
++        "unregister",
++        "replace",
++        "mutate-handler",
++        "policy",
++        "policy-callback",
++      ] as const) {
++        const f = await fixture(undefined, streaming);
++        const entered = Promise.withResolvers<void>();
++        const approve = Promise.withResolvers<any>();
++        let replacementEffects = 0;
++        let permitted = true;
++        let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++        try {
++          (f.runtime.getToolExecutor() as any).deps.isToolAllowed = () => permitted;
++          f.permissionWith(async () => {
++            entered.resolve();
++            return approve.promise;
++          });
++          const registry = f.runtime.getToolRegistry();
++          const original = registry.get("Probe")!;
++          registry.register(
++            { ...original, aliases: ["LegacyProbe"] },
++            { silentDuplicateWarning: true },
++          );
++          f.runtime.invalidateToolCache();
++          f.steps.push(
++            () =>
++              reply("request approval", [
++                { id: "pending", name: "LegacyProbe", input: { value: "must-not-run" } },
++              ]),
++            (request) => {
++              const last = request.messages
++                .filter((message: any) => message.role === "tool")
++                .at(-1);
++              assert.equal(last?.isError, true, `${streaming}/${change}`);
++              return reply("Tool became unavailable");
++            },
++          );
++          running = f.runtime.executeTurn("Use the approved tool");
++          await entered.promise;
++          if (change === "unregister") registry.unregister("Probe");
++          if (change === "replace")
++            registry.register(
++              {
++                ...original,
++                aliases: ["LegacyProbe"],
++                async handler() {
++                  replacementEffects++;
++                  return "replacement";
++                },
++              },
++              { silentDuplicateWarning: true },
++            );
++          if (change === "policy") permitted = false;
++          if (change === "policy-callback")
++            (f.runtime.getToolExecutor() as any).deps.isToolAllowed = () => false;
++          if (change === "mutate-handler")
++            registry.get("Probe")!.handler = async () => {
++              replacementEffects++;
++              return "mutated";
++            };
++          f.runtime.invalidateToolCache();
++          approve.resolve({ decision: "allow" });
++          await running;
++          assert.equal(f.effects, 0, "the formerly approved handler executed after revocation");
++          assert.equal(replacementEffects, 0, "an old approval authorized a new implementation");
++          assert.equal(f.permissionCalls, 1);
++        } finally {
++          approve.resolve({ decision: "deny" });
++          await running?.catch(() => {});
++          await f.close();
++        }
++      }
++    }
++  },
++);
++
+ test("manual-only skills stay installed and explicitly loadable without entering model discovery", async () => {
+   const s = await skills();
+   try {
+diff --git a/scripts/measure-context-projection.mts b/scripts/measure-context-projection.mts
+index 1c5c78e2968e21bc4c6aebdb55087fcbd9cdd205..1e3844722f689090742c2b9c7c3361d8f98331a4 100644
+--- a/scripts/measure-context-projection.mts
++++ b/scripts/measure-context-projection.mts
+@@ -20,10 +20,27 @@ for (const [name, toolAllowlist] of [
+       }));
+       const systems = r.messages.filter((m: any) => m.role === "system");
+       const text = (x: any) => (typeof x === "string" ? x : JSON.stringify(x));
++      const perTool = projected
++        .map((tool: any) => ({
++          name: tool.name,
++          descriptionChars: tool.description.length,
++          inputSchemaJsonChars: JSON.stringify(tool.inputSchema).length,
++          modelDefinitionJsonChars: JSON.stringify(tool).length,
++        }))
++        .sort((a: any, b: any) => b.modelDefinitionJsonChars - a.modelDefinitionJsonChars);
+       rows.push({
+         profile: name,
+         toolNames: projected.map((t: any) => t.name),
+         toolCount: projected.length,
++        perTool,
++        modelFacingToolDescriptionChars: perTool.reduce(
++          (sum: number, tool: any) => sum + tool.descriptionChars,
++          0,
++        ),
++        modelFacingToolInputSchemaJsonChars: perTool.reduce(
++          (sum: number, tool: any) => sum + tool.inputSchemaJsonChars,
++          0,
++        ),
+         systemContentChars: systems.reduce((s: number, m: any) => s + text(m.content).length, 0),
+         messageJsonChars: JSON.stringify(r.messages).length,
+         modelFacingToolArrayJsonChars: JSON.stringify(projected).length,
+@@ -34,7 +51,7 @@ for (const [name, toolAllowlist] of [
+         modelFacingEnvelopeJsonChars: JSON.stringify({ messages: r.messages, tools: projected })
+           .length,
+         allHostToolContractArrayJsonChars: JSON.stringify(r.tools).length,
+-        note: "scripted inference; Host projected messages/name-description-input-schema; includes synthetic Probe only in available-default-with-probe; not tokenizer or final provider wire",
++        note: "scripted inference; fixture defaults to terminal presentation with no Skill/MCP/project catalog; Host projected messages/name-description-input-schema; includes synthetic Probe only in available-default-with-probe; not production desktop defaults, tokenizer or final provider wire",
+       });
+       return reply("complete");
+     });

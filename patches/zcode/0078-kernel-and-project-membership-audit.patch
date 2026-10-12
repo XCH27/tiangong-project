@@ -1,0 +1,1097 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+deleted file mode 100644
+index 8cad52b..0000000
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ /dev/null
+@@ -1,694 +0,0 @@
+-# Provider subscriptions and discovery
+-
+-Fleet extends the existing Provider Settings / Registry / request-auth path. Subscription
+-connections are personal provider instances, never the global ZCode login. Each instance owns
+-its credentials in the existing CredentialService. No tokens enter provider JSON or renderer.
+-
+-ChatGPT/Codex and GitHub Copilot authorization use the corresponding pinned Pi OAuth drivers.
+-Codex's single settings entry uses browser PKCE; device flow is adapter recovery, not a second UI entry.
+-The browser callback and optional pasted localhost redirect use the same pending flow and state;
+-leaving, retrying, expiry and failure clear that flow without deleting already connected accounts.
+-Grok subscription authorization uses Pi's xAI OAuth driver, but its account, catalog and inference
+-requests target Grok Build's subscription proxy, never the xAI API-key endpoint. OAuth completion
+-alone does not prove model entitlement. Live account catalogs are read with renewed credentials;
+-stale replies after an account change are rejected. No external application's credentials are read.
+-Starting again cancels the old flow. The renderer sees only the verification URL/code and flow
+-ID; polling, cancellation, expiration and refresh belong to the host. Disconnect invalidates
+-in-flight work before deleting credentials. Refresh is coalesced per connection. Late replies
+-cannot restore a disconnected/deleted connection. No paid request is made by login.
+-
+-Codex account deduplication belongs to this same subscription owner. The official Codex
+-`login/src/token_data.rs` distinguishes a ChatGPT workspace (`chatgpt_account_id`) from its
+-member (`chatgpt_account_user_id`) and user (`chatgpt_user_id`, then `user_id`); AIUsage's
+-`AccountStore+Persistence.swift` likewise uses a workspace/user tuple. Compare these claims only
+-inside credentials returned by the existing OAuth exchange, with matching workspace scope; never
+-use a displayed email or label as identity. Pi 0.99.2 supplies the access token and workspace ID;
+-optional ID-token claims are usable only if retained by that same credential owner. Conflicting
+-claims or known workspace/member identities cannot merge, even with equal refresh material.
+-Workspace-only or legacy unknown identities stay separate unless their exact nonempty refresh
+-credential matches without an identity conflict. Copilot keeps opaque-refresh matching; Grok keeps
+-its provider-returned account identity. No extra identity request or credential migration is added.
+-A successful reauthorization replaces the matching row in place, retaining its internal ID, label,
+-order and current/default selection, with the existing explicit-reauthorization failure-reset policy.
+-Other rows are unchanged. Cancellation, exchange failure and superseded-flow replies preserve all
+-previous account credentials and selection; existing pending-flow bookkeeping remains the sole
+-cross-host cancellation guard. Sequence: existing flow/state admission → successful OAuth exchange →
+-kind-aware identity match under connection lock → replace in place or append once → existing save.
+-The completing flow returns `{accountId, added}` from that save. Its facade response adds optional
+-`authorizedAccountId` and `accountAdded` to the refreshed settings view; these are request-local
+-receipt fields, never persisted selection or shared last-authorized state. A different window's
+-later login cannot change which account this completion identifies.
+-
+-A subscription's endpoint/protocol is fixed to its adapter. Before each model request the
+-existing runtime-header RPC resolves that connection's credentials; missing credentials fail
+-closed. Background/title/compaction requests use the same hook. No vendor gateway rewrites.
+-API templates remain independently instantiable. One internal model contract dispatches to native
+-protocol adapters; it does not convert all traffic through Chat Completions. Presets supply their
+-declared protocol automatically. Custom endpoints retain explicit protocol configuration.
+-API discovery reads the selected connection's authenticated catalog, imports exact model IDs
+-through the existing model mutations and preserves manual overrides. Codex and Grok discovery read their native account catalogs; Copilot uses Pi's catalog filtered by account metadata refreshed by its OAuth driver. A list response alone
+-is not a successful inference test. Catalog availability is
+-not proof of successful inference or entitlement; a model's connection test is a separate action.
+-
+-UI retains upstream ZCode provider picker, inline editor, model list and feedback patterns.
+-Model discovery is part of the existing model list, with no fetch button or selection dialog.
+-Cindy's `UnifiedModelList` supplies the single searchable list and inline refresh; Cherry Studio's
+-`ModelListSyncContent` supplies the discovery comparison. The
+-existing ZCode model rows retain their edit, enable, test and reorder operations. Complete discovered
+-catalogs are registered automatically; manual model-ID addition is the footer action below the list.
+-API-key rows retain the original Enter/blur save with no confirmation button. Clearing a saved key
+-on blur removes only that value; Escape restores it or removes only the new row. The sole saved key
+-hides trash and switch controls until a second row is added. Manual model-ID rows use a compact
+-single-row confirmation; Enter confirms and Escape cancels, while blur and navigation do not add a
+-model. Empty or duplicate model IDs cannot be confirmed. Pending rows retain their input on
+-failure. Neither key save nor model confirmation submits another address/name draft. Key
+-deletion/default selection and automatic switching persist only their own change; only committed
+-keys count toward automatic switching. Address confirmation saves only the address; selecting a
+-format still saves its protocol/address pair immediately. Model IDs use addPersonalModel.
+-Saving configuration is not connectivity validation and never runs inference.
+-Each saved API-key row has an independent enable switch, distinct from default selection.
+-The existing API access config owns optional `apiKeyEnabledFlags`: up to ten boolean slots aligned
+-with `[apiKey, ...additionalApiKeys]`; missing/null entries mean enabled for legacy reads. No secret
+-is duplicated. Add defaults to enabled; replacement retains the row flag; deletion/default reorder
+-moves flags with their keys. Toggling duplicate legacy identities affects all matching slots.
+-Discovery, connectivity and newly bound inference use the first enabled nonempty key. Automatic
+-recovery considers enabled keys only; all disabled fails closed before network access. Flags persist
+-through the existing provider overlay, serialization and restart. Pausing retains credentials and
+-model choices. This change does not abort an already accepted/in-flight stream.
+-No connection, credential or Session storage owner changes. The address and API
+-format remain above credentials, as the owner requested.
+-
+-On entry and after a committed connection/account change, load the catalog read-only. Unsaved
+-connection changes and incomplete credentials block loading; empty added key rows are not changes; opening this list must never save a
+-draft or run inference. A connection edit, account change or navigation invalidates late replies.
+-Model additions/reordering do not trigger repeated discovery. Search and its trailing button filter
+-the single saved list; reordering is disabled while filtering to preserve hidden rows. Refresh/loading/error/retry
+-remain in the list. Discovery revalidates the connection/account snapshot and registers the result
+-in one existing repository transaction. API-key discovery merges IDs as before. A successful
+-subscription snapshot replaces that connection's discovered rules and exposed membership,
+-including an empty catalog; exact/manual corrections and disabled flags remain dormant for a
+-later switch back. Remaining IDs retain their relative order. An actual default-account change,
+-or successful reauthorization of that default account, clears the exposed subscription catalog
+-before acknowledging the operation. A failed discovery then leaves no previous-account catalog
+-exposed. Adding or reauthorizing a backup does not clear the default account's catalog. Revision
+-checks reject stale account results; no credential/model storage owner or schema is added.
+-Official catalog display names are shown alongside exact IDs; the existing model identity remains
+-the ID. Unknown capabilities stay unknown and use the existing metadata editor.
+-
+-Subscription login occupies the API-key section; no extra settings route or app login. The services and adapter packages pin `@earendil-works/pi-ai@0.99.2`; this adds only model transport
+-and OAuth drivers, not the Pi Agent execution loop, tools, Session or permission storage. Native Pi
+-stream events are converted at the existing model seam. Text, images, tools, reasoning replay and
+-cache usage have offline fixtures; unsupported native tools, structured output and raw file inputs
+-fail explicitly. Inference, OAuth login, refresh and account discovery use the existing Host network settings.
+-The selected account's Registry reasoning levels remain authoritative through subscription transport.
+-For Codex and Grok Responses, the adapter projects those native levels into Pi's thinking map for
+-both new IDs and IDs already in Pi's static catalog. `xhigh` and `max` must reach the final HTTP body
+-unchanged; a static same-name model may not silently lower the selected effort. A selected level
+-outside Registry support or without an exact adapter mapping fails before credential resolution or
+-transport. Copilot keeps its existing protocol-specific native mapping and rejects unsupported
+-selections instead of allowing Pi to clamp them. This changes no catalog, preference, credential or
+-Session owner, and does not change first-selection defaults. Synthetic transport fixtures cover
+-new Codex IDs, stale static metadata, unsupported selections with zero fetches and existing IDs.
+-A narrow pinned Pi patch binds OAuth fetch per async operation with AsyncLocalStorage,
+-without changing global fetch. Its packaging declaration lives in pnpm-workspace.yaml;
+-current pnpm ignores the former package.json patchedDependencies location.
+-Live paid inference, actual subscription authorization and owner acceptance remain separate checks.
+-
+-The host must register Pi's public static OAuth loaders before creating subscription connections.
+-Pi's default variable-relative imports are not discoverable by the desktop/remote bundler and must
+-not resolve against `out/host`. Bundle regression checks run real pinned drivers from an isolated
+-artifact, with synthetic device-code/refresh responses and no external network. Codex and
+-Copilot must reach authorization, cancel cleanly, refresh and resolve request credentials; Codex
+-also proves browser PKCE/manual callback state checks and Grok proves device login plus identity; source
+-tests with injected provider mocks alone do not prove this packaging boundary.
+-
+-## Account allowance
+-
+-The existing connection owner reads allowance for a requested saved account, or its configured
+-active account when the account ID is absent, using the existing host network transport and OAuth
+-refresh. Reading an inactive account never selects it, changes failure/recovery health, redeems
+-credits or starts inference. Quota inspection bypasses inference failover selection. Both paths
+-share the same credential-refresh function under the existing connection lock; no new refresh or
+-credential authority is introduced. Cindy/cc-switch's Codex WHAM reader and cc-switch's Copilot
+-user reader and Grok Build's `extensions/billing.rs` GET `/v1/billing?format=credits` are acquisition references; these vendor-private endpoints can change. Orca's native
+-Codex RPC is not present in Pi and does not justify adding another Agent runtime. Cockpit Tools
+-is comparison evidence only. Cache entries are independent per connection/account and keyed by
+-connection revision, provider kind and credential fingerprint, coalesce concurrent reads, and expire
+-after 60 seconds; a forced read bypasses freshness but joins a pending request. Transient allowance
+-or credential-refresh failure retains dated last-good data; allowance authentication failure clears
+-it. An opaque OAuth-driver exception is unavailable, not proof that authentication was revoked. Results carry the
+-internal account ID and connection revision; the optional fields preserve parser/legacy compatibility.
+-Manual refresh is available; requests are redirect-free and account-bound;
+-they never enable paid overage or change account/model selection. Account/revision changes while
+-fetching discard the response, including deletion, selection and reauthorization. Authentication,
+-rate limits, unsupported and unavailable stay distinct. No account failure rotates a quota read to
+-another account. The sequence is: capture requested identity → account-scoped freshness/coalescing →
+-refresh credentials under the existing lock when a read is needed → acquire allowance → revalidate
+-identity/revision/token → publish the dated result.
+-The settings account section reuses ZCode's status-card and Progress primitives. It shows valid
+-native windows, remaining percentage, reset and observation time; missing values never become 0% or
+-unlimited. Subscription allowance does not feed the Session context ring. No foreign app login
+-files are read. A pinned adapter model catalog remains labelled as such, not account entitlement.
+-
+-Codex membership metadata uses the same saved OAuth account and network policy. Read the exact
+-workspace entitlement from account-check, then query `/subscriptions?account_id=…` when needed;
+-never select an unrelated default/first paid workspace. Both calls share an eight-second deadline.
+-The explicit account parameter and Cockpit's browser/route headers are required by the verified live path; these two metadata calls omit ChatGPT-Account-Id and bind identity by query/response instead. OAuth, quota and inference headers stay unchanged; no browser cookies are imported. Membership
+-metadata caches for fifteen minutes inside the same account/revision-scoped usage owner; explicit
+-refresh also rereads it. Validity and renewal are separate: `expires_at` is an entitlement term,
+-`active_until` plus `will_renew` describes the current billing term. Preserve dated last-good metadata
+-on failure. Do not infer Pro multipliers or dates from token expiry, quota resets or another app's
+-files. This is an independent adapter informed by Cockpit's acquisition behavior, not imported code.
+-
+-Kimi Code membership uses its official third-party API-key endpoint, not a copied official-client OAuth identity.
+-
+-The provider picker presents one entry per explicitly declared vendor, with search and a custom
+-provider action. Cindy supplies vendor-first selection; the owner's follow-up requires no dialog
+-or dropdown for choosing a connection. NewMax's installed model setup keeps selection and the
+-connection form in one content slot. Fleet therefore replaces the gallery in place with a local
+-setup draft: visible service/plan choices, regional choices only when multiple regions exist,
+-then address and credentials. Declared formats use directly visible segments and save immediately
+-through the existing Provider owner. Custom endpoints expose the supported segmented formats
+-directly. There is no protocol probing or failure-driven protocol switch. The visual
+-values/primitives remain ZCode's. Subscription choices show account connection instead of API fields.
+-Selecting a vendor or switching a route never writes a Provider. Back discards only the local
+-setup draft. Existing providers and their credentials are not changed. An explicit Add persists
+-API credentials through the existing initialConfig facade; explicit Connect continues through
+-the existing subscription control. No automatic model inference or paid validation is introduced.
+-
+-Optional template catalog metadata declares vendor identity/name, service identity/name and
+-region. The existing schema, template and facade carry it; grouping is only a UI projection.
+-Legacy category remains readable but no longer determines presentation. Templates without
+-metadata remain independent. Search matches vendor and variant names in both locales.
+-Service/region changes select only declared routes and keep drafts isolated by template ID, so
+-keys do not silently cross regions or API/subscription boundaries. Protocol switching among
+-explicit route variants selects the actual matching template; custom API configuration remains
+-available. Creation has an immediate local lock, preserves the draft/error on failure and retries
+-only the selected route. Invalid or removed selections cannot create a different provider.
+-Regression checks cover route reachability, locale search, domain roundtrip, draft validation and
+-credential isolation. Native desktop inspection checks the in-place choices and existing editor.
+-
+-## Protocol configuration contract
+-
+-Reference mechanisms: Cherry Studio hides dialect settings for system providers; Pi binds native
+-API implementations to providers; OpenCode supplies provider-specific SDK loaders; Cindy and
+-OpenClaw retain explicit per-route capability metadata. CC Switch presets bind protocol, endpoint
+-and model compatibility together. Reuse these boundaries, not their account stores or Agent loops.
+-
+-The existing Provider template is the only default owner. Unchanged preset endpoint/protocol values
+-are inherited rather than copied into a new personal overlay. A pure provider-domain policy is
+-shared by setup, the existing editor and host-side config validation. The host rejects a newly
+-introduced mismatched protocol at a preset's declared endpoint; editing a custom endpoint or
+-creating an untemplated connection keeps all supported adapters available. Declared alternate
+-templates are selected atomically before creation, including their model rules. No model-name or
+-URL-substring guessing, fabricated support, endpoint rewrite on failure, or subscription-to-API fallthrough.
+-
+-Existing explicit overrides remain visible and unchanged; unrelated name/key edits must still save.
+-Subscription endpoint/protocol/auth kind stay adapter-owned. No storage migration or new authority.
+-Event order: local draft → existing config service validates against the current template → one
+-repository update → existing Registry/model binding refresh. Discovery starts from committed configuration and rejects
+-stale responses. Desktop and remote clients share this host boundary. Neither mounting nor opening
+-advanced settings writes configuration. Tests cover host rejection without writes, custom endpoints,
+-legacy overrides, subscription isolation, inheritance and actual adapter dispatch.
+-
+-Plan templates retain regional
+-endpoints and explicit API-key authentication: GLM, Kimi Code, MiniMax Token Plan, Alibaba Coding
+-Plan / Token Plan, MiMo Token Plan and OpenCode Go. China/global keys are not interchangeable;
+-existing saved instances are never rewritten by template updates. Empty catalogs remain manual
+-discovery, not fabricated entitlements. All three API formats and same-model key recovery use
+-the existing runtime. Adding templates does not certify subscription allowance or live inference.
+-
+-## Multiple credentials — implementation contract
+-
+-The owner confirmed automatic switching only within the same service and exact model. Keep the
+-address/protocol first, with multiple key or subscription-account rows below. Following NewMax's
+-account-rotation panel, a separate full-width surface below the Add action holds the title and
+-eligibility hint on the left and the opt-in switch on the right (default off, requires two distinct
+-nonempty keys or connected accounts). Empty/duplicate key rows do not enable it. Connection and
+-model-list sections have distinct React identities, including after changing provider or refreshing.
+-NewMax 1.1.18 supplies the account-list and
+-failure-recovery comparison; its separate model-priority fallback is not part of this request.
+-
+-Extend the existing Provider facade, SubscriptionConnection owner, CredentialService and runtime
+-request-auth seam. API access retains its existing primary key and adds optional backup keys and
+-an opt-in flag in the same provider config. Subscription records add accounts under the same
+-encrypted credential entry; legacy single credentials are read as one account without a bulk
+-migration. Account selection/removal/login mutations use the existing connection file lock and
+-invalidate pending flows. UI receives account metadata, never OAuth refresh/access tokens.
+-
+-Every Codex/Grok model-bound credential resolution verifies that exact model in the resolved
+-account's native catalog before releasing request credentials, including the configured default
+-and recovery accounts. Configured rows and Pi's static list are not account entitlement evidence.
+-A private derived catalog cache in this owner is keyed by connection, provider kind, internal
+-account, connection revision, pending-flow identity and credential fingerprint, with a 60-second
+-TTL and coalesced reads. Selection, removal and reauthorization invalidate pending/cached entries;
+-publication rechecks the saved identity. Catalog failure or a missing model fails closed, without
+-trying another account/provider or returning an expired success. Explicit model discovery reads
+-and refreshes the configured active account under the existing credential lock, never inference
+-failover selection, then refreshes the shared catalog cache without changing failure health.
+-The refresh lock also preserves a successfully rotated credential before honoring local request
+-cancellation: queued account mutations still win after the lock is released, but cancellation
+-cannot discard the only valid rotated refresh token. A persisted identity/revision change prevents
+-saving stale refresh material. No new credential store, schema or public service is introduced.
+-Every admitted attempt must retain provider, endpoint, protocol and model; only its eligible
+-credential can change. Distinguish authentication failure from model entitlement, rate limiting,
+-policy rejection and transport uncertainty. Never turn a generic 403 into unconditional rotation.
+-The transport may change credentials only after a rejected HTTP 401 or account-specific 429,
+-before returning a success stream. Each identity is visited once, with at most ten attempts and
+-a two-minute admission deadline; cancellation closes the current attempt. 403/policy errors,
+-shared organization/project rate limits, network uncertainty and streams never rotate. Exhaustion
+-is terminal for outer SDK/workflow retries, including an unbounded workflow budget.
+-
+-Failure metadata lives with its existing owner: API transport health is scoped to the model
+-execution instance (hashed credential identifiers, no second secret store; reset at process restart); subscription health is
+-saved under each account in the existing encrypted connection entry, under its existing lock.
+-401/policy failures require explicit reconnect/reconfiguration. Quota failures respect provider
+-reset times, or remain unavailable until explicit account repair if no reset is known. Temporary
+-throttling respects Retry-After and uses bounded exponential cooldown if absent. Shared limits
+-block the pool; they are not bypassed by changing keys. Only one expired API cooldown probe is
+-admitted at once; no timer sends background model requests. A late success cannot erase a newer
+-failure. Explicit account selection can retry a repaired account; ordinary page changes cannot.
+-Unknown transport outcomes are not replayed. Health isolation never changes endpoint, protocol,
+-model, subscription/API billing mode or the owner's selected primary account.
+-
+-```mermaid
+-sequenceDiagram
+-  participant Run as Existing model request
+-  participant Owner as Existing credential / transport owner
+-  participant Vendor as Selected provider
+-  Run->>Owner: Select eligible identity, retain exact model and route
+-  Owner->>Vendor: One attempt
+-  Vendor-->>Owner: Rejected request + reset / failure facts
+-  Owner->>Owner: Record failure, exclude visited / unavailable identities
+-  alt Eligible backup within total budget
+-    Owner->>Vendor: One attempt using backup
+-  else Exhausted, shared limit, policy rejection or uncertainty
+-    Owner-->>Run: Terminal failure, no outer retry loop
+-  end
+-```
+-
+-Research anchors: CC Switch `proxy/circuit_breaker.rs` single half-open permit; OpenClaw
+-`auth-profiles/usage-failure-state.ts` separates cooldown from disabled state; Cockpit Tools
+-`codex_local_access_quota_cooldown.rs` retains known exhausted readings when refresh fails.
+-OpenAI's rate-limit guide requires bounded attempts/time and accounting for SDK retries; account
+-rotation is not proof of permission or protection from suspension. Preserve subscription/provider
+-restrictions, no identity disguising or circumvention of a shared limit.
+-
+-NewMax's Antigravity path has its own OAuth/account/catalog and request-conversion adapter. Its
+-presence is not evidence of supported third-party consumer access: Google's current Antigravity
+-terms explicitly restrict that OAuth usage. The documented API-key/enterprise SDK is a distinct
+-Agent harness. Neither an Antigravity subscription preset nor an additional executor is added here.
+-
+-
+-## Official CLI integration decision
+-
+-Device-code OAuth inside Pi and actual execution by an official CLI are different paths.
+-The candidate currently implements the former; it does not execute an official CLI as an Agent.
+-Cindy's `claude-native-cli.ts` delegates sign-in and status to the unmodified Claude Code binary,
+-then executes it through its SDK. Its former independent Claude OAuth account path is retired.
+-Anthropic's current authentication policy allows users to sign into the unmodified CLI and excludes
+-third-party token handling; copying Craft's old OAuth form into Pi is not the selected solution.
+-Gemini CLI exposes Google AI Pro/Ultra sign-in and ACP. Antigravity's consumer OAuth is restricted;
+-its documented enterprise/API SDK is a separate route, not that consumer subscription.
+-
+-The owner delegated source-backed selection and expanded it to the whole Agent kernel (OV-036).
+-The engineering recommendation keeps the current direct-model adapter during comparison and
+-evaluates complete native executors, first Claude Code, then Gemini ACP. Fleet would retain one UI Session
+-and permission presentation, with each external run attached by identity; no concurrent second
+-executor for the same turn, credential scraping or hidden runtime/model switch. Completion requires
+-stream, tool permission denial, cancellation, restart/resume, model discovery and native error
+-fixtures before the option becomes connectable. Native authentication/multi-account support must
+-follow each CLI's documented mechanisms; the current encrypted API/OAuth account pool must not
+-pretend to rotate a CLI login. No native executor or kernel migration is implemented by this slice.
+-The root Agent-core contract owns promotion criteria; do not add a disconnected login-only entry.
+-
+-## Provider setup and model preferences
+-
+-The add-provider surface first selects Subscription or API, then a vendor within that category. A plan authenticated with an API key is still a subscription plan; protocol variants are not vendor identities. Custom API creation stays in this page and uses the same provider card, key rows, and format controls. Default conversation selection reuses the existing personal provider repository; preferences must not create another credential or Session owner. Media defaults must be tied to an executable capability, not inferred from image input or a chat model name. CC Switch import reads its database without mutation, previews no raw secrets, imports only selected API connections through the current provider settings owner, and does not change the default model or invoke a billable test.
+-
+-The extra Default models page and favorite picker group are retired under OV-045. Existing stored preference fields remain compatible leaves of the personal provider envelope; model enablement and the original conversation picker own the active UI. Async preference reads retain their revision; a configuration event invalidates older reads before publication. Saving another favorite must preserve existing unavailable favorites without letting them block unrelated edits; newly added invalid models/effort still fail validation. Provider overlay saves are replacements, so callers preserve untouched provider fields. Preference writes await the existing Registry refresh before a subsequent provider mutation.
+-
+-## Connection explanations
+-
+-Model Settings retains its original introductory line beside header actions. The existing
+-`ModelConfigHelp` is the single protocol explanation entry, reachable by pointer, keyboard and
+-touch; request-address, API-key, automatic-switching and subscription-authorization rows do not
+-add competing question icons. Setup and saved connections share the protocol explanation and
+-show only formats offered by that connection. The interface format is not the model's brand:
+-choose the format named in the provider's documentation, use Responses only with explicit endpoint
+-support, and retain a working preset. Selecting an offered format saves immediately. Responses
+-remains a chat/tool streaming adapter, not a grant of every upstream native tool or modality;
+-help makes no quality or cost guarantee and never starts requests or changes settings.
+-
+-Subscription cards retain the login action and subscription/billing prerequisite within the
+-original `PlanStatusCardSurface` layout, stacked on narrow screens. Essential eligibility,
+-failure/cost feedback and Copilot model-policy permission copy remain visible. Public subscription
+-links use provider documentation; authorization URLs still come from the existing OAuth owner.
+-Cancellation, account state and persistence ownership are unchanged.
+-
+-Credential rows reserve action columns only when a sibling needs default/removal or switching.
+-Idle single-key and new-provider forms have no empty control columns. API keys save on Enter/blur;
+-manual model rows retain their own confirmation. Neither action saves neighbouring drafts.
+-
+-
+-## Automatic reasoning selection (OV-045)
+-
+-Model selection supplies the source-declared valid default effort. If no default is declared and
+-there is more than one supported level, the client uses `auto`: this is a client option meaning
+-omit the effort patch and let the native provider choose. It is not a wire effort string or a claim
+-that maximum effort is always best. A sole supported level remains the only choice. Preserve valid
+-explicit preferences; missing/obsolete draft effort is normalized at the existing selection owner.
+-Current/frozen requests remain strict about invalid explicit values. Composer, Agent model catalog,
+-submission, runtime validation, AI SDK JSON mapping and Pi subscription omission must agree.
+-
+-
+-## In-turn subscription affinity (OV-044)
+-
+-The active AgentRuntime turn owns its resolved saved-account reference, per provider, until the
+-turn ends or a new user Guide is admitted at the existing model-step boundary. The existing subscription owner still owns all credentials, health and refresh. A
+-settings default change affects the next turn, not later model/tool steps of an admitted turn.
+-The first successful auth resolution binds the account; same-account refresh remains allowed.
+-A removed account fails before another model request rather than silently following a new default.
+-Explicitly enabled bounded rejection recovery remains the only exception and updates that turn's
+-binding after success. Ending/stopping the active turn discards the derived references. A late auth
+-reply cannot bind or execute in a different active turn or a newly admitted Guide. API keys retain their existing physical
+-request enablement checks. No new Host business-state cache, credential store or Session authority.
+-Signed/encrypted reasoning carries the generating connection, model and saved-account reference in
+-its existing provider metadata. Same-scope replay preserves it; changed scope keeps visible text and
+-tool call/result links without reusing opaque state. Rejected-request recovery rebuilds portable
+-input before changing account; incomplete server-only continuations stop. Cache keys are account-scoped.
+-
+-Active turn → resolve through subscription owner → capture account reference → later model calls
+-            → same account / exact-model catalog validation → turn ends and reference expires.
+-
+-## Fast mode (OV-044)
+-
+-Fast is a per-submission option, separate from effort. The existing model option spec declares an
+-optional wire mapping: OpenAI priority tier or Anthropic fast speed. Missing support is unknown;
+-null is explicitly unavailable. Selection defaults to standard, and choosing another model does
+-not carry a paid fast preference implicitly. Catalog metadata and verified official route/model
+-facts may declare support; a model name or OpenAI-compatible URL alone cannot.
+-
+-The existing ModelOptionMap request owner applies the speed field and required protocol header.
+-Standard explicitly requests OpenAI's default tier; Anthropic standard omits its opt-in speed/header.
+-Native Codex uses its advertised service tiers and the same frozen choice. Account recovery must
+-also support the requested mode; it cannot silently substitute lower effort or standard service.
+-The owner rejected the standalone Fast control. The existing effort menu now has separate reasoning
+-and speed radio groups; the selected model label contains no provider prefix. The speed group shows
+-the sourced allowance/rate increase. It never automatically enables fast mode. Verification uses injected transports, not
+-live premium requests. Actual served tier and requested tier are distinct when the provider reports
+-a downgrade; do not label a request accelerated merely because the switch was on.
+-
+-## Usage costs and subscription payments (OV-047)
+-
+-Extend the existing model_usage ledger with one accounting_json snapshot per recorded request.
+-The existing migration preserves valid raw historical counters without guessing old account,
+-speed or price metadata. The request owner records the resolved account and requested speed;
+-pricing uses a reported served tier when recognized. Unknown served tiers are not standard by
+-default. Cache read/write and reasoning counters remain subsets, never additional total tokens.
+-Freeze verified official price version and estimated API value/native credits with the request;
+-the supported exact OpenAI and DeepSeek models do not imply other providers have verified prices.
+-Automatic thirty-day pruning of lightweight usage facts stops; explicit deletion semantics remain.
+-
+-The existing usage query provides account/model/speed aggregates and requested date ranges.
+-Usage Settings shows per-model cache hit rate, priced/reporting coverage and API-equivalent cost.
+-The Token popup retains original capacity/composition/allowance presentation without the rejected
+-request-detail disclosure. Actual payments belong to AppSettings.subscriptionPayments, keyed by
+-record ID and merged through its serialized writer. Each record binds one saved account (or an
+-explicit membership-key connection total), currency and absolute half-open billing period.
+-Only providers in Model Settings's added-service scope may supply new payment choices; disabled
+-saved plans remain eligible for recording their already-paid bill. Retired built-in offers do not.
+-
+-Within that period, use native-credit weights only with complete coverage, otherwise complete
+-official API-value weights; missing legacy identity/price leaves the amount unallocated. Do not
+-sum currencies, guess other-app usage, or claim an unfinished billing period is final. Edits that
+-change only the amount preserve original absolute date boundaries after timezone changes.
+-Overlap is rejected by both form and settings validation; deleting a payment uses a keyed
+-tombstone without modifying the request ledger. Closing an unfinished form writes nothing.
+-
+-### Original-style statistics and model controls (OV-049)
+-
+-Use the original AppUsagePanel sequence (summary, heatmap, trend, model chart). The model chart
+-owns Token/cache/cost metric tabs; remove the separate accounting table. Reuse its donut, palette,
+-legend layout and chart tooltip, with per-model cache bars and unknown/partial coverage in focused
+-hints. Keep only the selected metric and actionable state visible, not report-style prose or a
+-source-link footer. Pricing source links move to the existing popover pattern. Payment records
+-select one account-period, graph its allocation in the same chart pattern, and keep edits in the
+-existing form. Currency and exact period remain visible; unavailable allocations never get a pie.
+-These are projections of the existing ledger and settings writer, not new accounting state.
+-
+-The model list uses enable/disable to control availability; remove row deletion controls without
+-deleting data or the existing management API. Editing remains the correction path for a mistyped
+-manual ID. A native subscription's authenticated catalog owns its models, so hide manual Add there;
+-its refresh action reads the account catalog. API connections retain inline manual-ID entry below
+-the list, labelled explicitly. Enter confirms only that draft, Escape cancels it, duplicate IDs
+-point to the existing list, and failed saves retain input. Adding never invokes paid inference.
+-
+-### Public price catalog coverage (OV-050)
+-
+-The existing pure usage-price calculator owns all estimates. A generated, bundled models.dev
+-price snapshot expands provider/model coverage; its maintainer sync command validates and replaces
+-the snapshot atomically, preserving source URL, retrieval time, hash and MIT notice. No new runtime
+-network service, credential store or price database is introduced. Existing officially verified
+-OpenAI/DeepSeek schedules take precedence; official Anthropic/Z.AI corrections retain their source.
+-Match the recorded provider and exact model ID (unambiguous case normalization is allowed), never
+-strip arbitrary suffixes or select the cheapest of several providers. Preserve context thresholds,
+-cache categories and missing versus free values; an unpriced field is not zero.
+-
+-Record the resolved endpoint's catalog provider through the existing accounting metadata. Query
+-may derive a current-rate estimate for previously unpriced rows only from recorded facts and known
+-builtin provider identities; previously frozen prices remain unchanged. Never fill old account,
+-speed or counters from current settings. Catalog availability and incomplete historical usage are
+-different failure reasons. Published Z.AI schedules distinguish Flash/FlashX by model ID, so a missing irrelevant speed field does not block their current-rate quote; it remains unknown in usage statistics. The statistics hint identifies current/reference rate coverage without
+-adding another visible report or settings page. Existing actual-payment isolation stays unchanged.
+-
+-### Unified cost analysis and project attribution (OV-051)
+-
+-One cost-analysis section replaces the unrelated model-estimate tab and subscription-payment card.
+-Select either the current global usage range or one saved account/billing period. The same scoped
+-request aggregates produce the API-equivalent amount, paid-fee allocation and blended per-million
+-input-plus-output token rates. Fee edits update that same projection immediately; API estimates
+-remain unchanged. Reuse original summary-strip and comparison-chart primitives. Published prices,
+-cache discounts and recorded served speed already enter the existing ledger; do not build another
+-pricing store. Show missing coverage in focused help, never invent a cost or account to fill a chart.
+-Native credits remain the first allocation basis, then complete API-value weights as approved.
+-Compare monetary differences only for USD payments against USD API estimates; do not invent FX.
+-
+-Capture workspacePath from the existing runtime workspace root in the same accounting_json fact.
+-Historical missing project attribution remains a null/unassigned bucket. Compute the complete
+-account-period denominator once, then project by model or workspace: the sum of project allocations,
+-including unassigned work, must equal the allocated payment. Project panels later consume this same
+-projection with their existing folder identity, not a separate ledger or a full monthly bill per
+-project. A workspace filter applies after account-period allocation.
+-
+-The original context ring continues to mean conversation context pressure. Its subscription area
+-must distinguish read-only quota inspection, configured default account and last actual execution
+-account. Auto recovery must not relabel the default account as the account that served the request.
+-Carry the existing local account ID through ModelComplete, V4 lastRequest and retained usage reads;
+-never expose tokens. Keep the original popup structure and separate incomparable account windows.
+-No inference-account switch or reset redemption happens from the quota-view selector.
+-
+-Historical usage reads do not require a configured model or active conversation. Reuse the existing
+-local control-plane carrier (also used by global workflows) when no reusable local workspace client
+-exists. Read the same Session SQLite ledger over v4/usage/stats; do not select an arbitrary remote
+-workspace, create a conversation, start inference or add another storage owner.
+-
+-### CC Switch import correction
+-
+-Read the external database in one read-only transaction. Translate the source client's actual wire
+-URL semantics, not just its displayed base URL: Claude's Chat/Responses proxy adds /v1, while Codex
+-adds it only to a bare origin. Strip Claude's local [1M] marker before deduplicating upstream model
+-IDs; the marker alone does not prove a context limit. Include explicit catalog and subagent models.
+-Import API-key configurations whose declared protocol is supported, including compatible Claude
+-Desktop/OpenCode/Pi/OpenClaw shapes; reject OAuth, scripts and unrepresentable per-model routes.
+-
+-Match existing connections by protocol, credential and canonical/source URL in ProviderSettings,
+-not a process-local imported-ID map. Reimport completes the same connection, preserves disabled
+-models/manual corrections/defaults and retries missing model writes. Exact known endpoint templates
+-supply brand/key-management metadata and plan categorization without inheriting template model lists;
+-arbitrary names/hosts do not. Same-key connections across catalog-proven equivalent service routes
+-are already bound: retain their current protocol rather than creating or switching a route.
+-Selected repair disables erroneous local-marker aliases after their canonical model exists, without
+-deleting historical model data. No source changes, inference or default-account/model changes.
+-
+-Preview → existing ProviderSettings owner → connection/model writes → refreshed settings/picker.
+-The preview shows converted protocol/models and whether the selected existing connection is completed.
+-A missing upstream model-list endpoint is a localized informational state, not a broken saved key.
+-
+-
+-### Billing and projectless usage correction (OV-052)
+-
+-Provider-reported billing periods/currency reuse the existing subscription metadata cache and
+-account/revision check. A one-period active_start/active_until can prefill the existing fee form;
+-long-running subscription start dates cannot stand in for a current billing cycle. Preserve exact
+-absolute boundaries unless the user edits dates, and reject late metadata after account or field
+-changes. Discounts and list prices never become actual payments without an invoice fact.
+-Current live ChatGPT responses expose dates/currency/discounts but no amount paid. No payment is
+-automatically fabricated or saved. Amount acquisition remains incomplete for these responses.
+-
+-Project cost projection uses the existing registered local project list. Conversation backing roots,
+-unregistered paths and null history group under Other without rewriting immutable usage facts or
+-removing them from account-period allocation. Agent-editable statistics must reuse the existing
+-Session/permission and Settings owners; that contextual bridge is not implemented by this change.
+-
+-### Activity evidence and source-backed charts
+-
+-Reuse the existing model_usage, turn_usage and tool_usage records and the same usage/stats query.
+-The original tool_usage table already owns identity, scope, outcomes, latency, output size, retries
+-and permissions. Expose its existing tool aggregate before adding counters. Skill result/error events
+-already carry qualified name, plugin ID and source, but those fields are not retained in tool_usage;
+-extend that row with nullable metadata, not another event stream or telemetry service. Repeated
+-events upsert the same session/tool-call identity. Never infer historical skills from installed lists.
+-
+-The initial activity view reports tool calls and explicit Skill invocations with outcome/latency.
+-Installed/enabled/loaded/executed are distinct; a loaded skill does not prove task success. Actual
+-API billing remains per request. Session/turn links permit later associated-cost analysis but do not
+-justify billing every tool or skill for a whole model request. Version provenance, accepted outcome,
+-before/after configuration cohorts and an Agent read/write bridge still need their own real facts.
+-Keep structured facts, not additional copies of prompts, credentials or complete tool output.
+-
+-Cost presentation follows EvilCharts' grouped horizontal bar pattern over the existing ZCode
+-Recharts/ChartContainer. Model/project grouping is separate from total/per-million units. API
+-estimates and allocated payments are alternative valuations, not stackable components. Unknowns
+-remain gaps; different currencies use separate charts. Reuse original page order, tokens and controls.
+-
+-
+-ReadUsageStats is a read-only tool over the same injected SessionStore usage query, bounded to 7/30
+-days. It returns aggregate models/tools/identified skills and price coverage with local-host scope,
+-never raw messages, credentials or configuration commands. It remains available independently of
+-dynamic workflow gating. Normal tool deny/permission rules apply. It does not claim Agent settings
+-editing, automatically disable plugins, change models or allocate per-tool bills. Missing port/data
+-returns explicit unavailable/null instead of a fabricated empty account. Human and Agent statistics
+-share the same query owner and scope semantics.
+-
+-### Verified connection status and targeted failure feedback
+-
+-Registry executable means configuration can be submitted, not that authentication or inference has
+-succeeded. Imported/saved connections start unverified. Only an actual completed probe may mark the
+-specific tested model successful; failed/late checks cannot leave a green ready signal. UI probe
+-observations include the tested model/time and expire when their host, committed configuration revision or settings mount changes. They are not durable account health facts.
+-
+-Retain the existing model network failure's status/reason/business code through the connectivity
+-RPC as a bounded typed result, not a string-only exception. Classify authentication, explicit expired
+-subscription/quota, unsupported client, absent model/endpoint, request format/parameters, timeout,
+-network and provider failures without guessing expiry from 401/403. Localize summaries and next steps.
+-Test failures use the original inline feedback owner; model metadata opens only on explicit edit.
+-
+-Acceptance: a loopback-only fixture replays the recorded Kimi `access_terminated_error` through the
+-built desktop, Host, CLI and actual AI SDK stream path. The Chinese/English message identifies
+-missing subscription service access, retains HTTP 403, marks the probe failed and leaves metadata
+-closed. A complete synthetic successful stream marks only its tested model successful. Original
+-review-profile credentials, default and model parameters are preserved; no paid probe was sent.
+-
+-### Product identity and subscription tiers
+-
+-Keep the existing vendor/service/region catalog and credential owner. Within an intake section,
+-a vendor group containing one named service uses that product's public service name; multi-service
+-groups retain the vendor heading and existing service selector. Generic API groups keep vendor
+-identity. Grok subscription uses its own Grok asset and label, while xAI API retains xAI. Membership
+-tiers belong to each authenticated account; do not create duplicate login routes per tier or infer
+-entitlement from the tier label. Preserve user-authored connection aliases and stable route IDs.
+-
+-The official Grok Build billing extension enriches credits with RemoteSettings.subscription_tier_display
+-(or subscription_tier). Read /settings and /billing?format=credits concurrently with the same saved
+-account headers and bounded transport, through the existing subscription usage/cache owner. Only the
+-whitelisted tier string is projected; remote settings cannot change Fleet behavior. Missing quota
+-with a known tier remains unknown quota, never full/zero. A usage period end is not a membership
+-expiry or paid billing period. Keep unknown future tier names rather than mapping them to Free.
+-Reuse the existing account badge and original plan-status card; known tiers receive established
+-semantic color tokens. Original ProviderDetailFeedback and SectionLayout remain byte-identical to
+-the pin; only failure copy/classification/manual dismissal differs from upstream.
+-
+-### Source-backed protocol and minimal credential controls
+-
+-Each preset service/region/auth route exposes only explicitly declared wire formats. A custom
+-address can offer adapter formats as user choices, but none is a claim the upstream host supports
+-it. Imported routes retain their source protocol and never borrow another vendor's endpoint.
+-The official provider documents, source-client transformation, and candidate adapter must agree
+-before adding a preset route. Unsupported/unknown formats remain absent from that preset. A model
+-catalog GET is not proof of Responses streaming/tool semantics. Claude subscription is distinct
+-from Anthropic API and CC Switch's Claude API-key row; no native Claude account login/runtime is
+-registered until the unmodified official client path and Fleet Session/permission/usage bridges are
+-implemented and verified.
+-
+-The existing ProviderSettings owner still commits one credential row at a time. For a saved or new
+-API key, Enter or input blur commits only that row; Escape restores its saved value. A blank new
+-row stays local. Clearing the only saved key removes it on blur without a trash icon. A second
+-visible row reveals removal; a second saved identity reveals per-key enable/default controls and
+-the automatic-switch section. A single subscription account hides the trash/switch controls but
+-retains an explicit disconnect action in its opened account details. None of these actions writes
+-other pending address/name/model drafts. Late Host responses cannot overwrite newer edits.
+-
+-Preset format changes on a saved connection additionally require identical built-in model IDs.
+-OpenCode Go/Zen publish model-specific Chat, Messages and Responses endpoints; choosing a
+-different format while creating a connection selects the matching sibling template and its model
+-list. A saved connection cannot swap its protocol while keeping models from another route.
+-Alibaba Coding Plan explicitly excludes Responses; its Chat and Messages endpoints and keys
+-are plan/region-specific. DeepSeek and xAI do document Responses, but catalog GET alone never
+-certifies streaming/tool semantics. Custom addresses remain user-declared protocol choices.
+-
+-Acceptance from an isolated desktop profile: the one saved synthetic key showed no confirm,
+-trash, per-key toggle or automatic switch; changing it and blurring saved through ProviderSettings.
+-A second unsaved row showed removal but no automatic switch; blurring a distinct second synthetic
+-key saved it and enabled the controls. Removing that key collapsed back to the single-row layout.
+-Clearing the final key on blur removed its persisted value and disabled discovery. No real key or
+-provider request was used. The current Claude subscription lane is still absent, not an API alias.
+-
+-### Preset route audit
+-
+-This is the 19-vendor/41-template registry projection, not a list of verified paid accounts.
+-“Chat” means OpenAI Chat Completions, “Messages” Anthropic Messages, and “Responses”
+-OpenAI Responses. A dash means no registered route, not that the company sells no such plan.
+-Every route still needs that account's model catalog and a real request before it is called ready.
+-
+-| Vendor/product | API preset | Subscription or plan-key preset | Boundary checked |
+-|---|---|---|---|
+-| Z.ai / BigModel | Chat | Coding Plan Messages | Coding key and general API endpoint are separate ([ZCode source](https://zcode.z.ai/en/docs/configuration)). |
+-| Kimi / Moonshot | Messages | Kimi Code Messages | Kimi Code also documents Chat, but no Responses ([model guide](https://www.kimi.com/code/docs/en/kimi-code/models.html)). |
+-| MiniMax | Messages | Token Plan Messages | Plan key and paid API balance differ ([Token Plan](https://platform.minimax.io/subscribe/token-plan)). |
+-| DeepSeek | Chat, Messages | — | Responses is documented separately; current preset remains the two tested routes ([official guide](https://api-docs.deepseek.com/guides/responses_api/)). |
+-| Alibaba Model Studio | Chat, Messages, by region | Coding Plan and Token Plan Chat | Plan-specific keys and endpoints; Coding Plan explicitly excludes Responses ([FAQ](https://help.aliyun.com/en/model-studio/coding-plan-faq)). |
+-| Xiaomi MiMo | Messages | Token Plan Chat | Model/format coverage varies; no inferred Responses plan route ([MiMo docs](https://platform.xiaomimimo.com/docs/en-US/usage-guide/passing-back-reasoning_content)). |
+-| OpenAI | Responses | ChatGPT native account | API balance and ChatGPT subscription use different credentials. |
+-| Anthropic | Messages | — | Claude subscription needs the unmodified native Claude Code executor ([policy](https://code.claude.com/docs/en/legal-and-compliance)). |
+-| xAI | Responses | Grok native account | API key and Grok account differ ([API reference](https://docs.x.ai/developers/rest-api-reference/inference/responses)). |
+-| OpenRouter | Messages | — | Gateway route is user account dependent ([Messages reference](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-messages)). |
+-| OpenCode | Zen: mixed per-model routes | Go: mixed per-model routes | Chat/Messages/Responses models are not interchangeable ([Go](https://opencode.ai/docs/go/), [Zen](https://opencode.ai/docs/zen)). |
+-| GitHub | — | Copilot native account | Account catalog, not a general GitHub API key. |
+-| Groq | Chat | — | Responses exists but is a separate model/endpoint contract ([compatibility](https://console.groq.com/docs/openai)). |
+-| Cerebras | Chat | — | [Chat reference](https://inference-docs.cerebras.ai/api-reference/chat-completions). |
+-| Mistral | Chat | — | [Chat reference](https://docs.mistral.ai/api). |
+-| NVIDIA | Chat | — | [NIM LLM endpoints](https://docs.api.nvidia.com/nim/reference/llm-apis). |
+-| Together AI | Chat | — | Current catalog route only; live execution is unverified. |
+-| Google | Chat compatibility | — | Native Gemini consumer login is absent ([compatibility](https://ai.google.dev/gemini-api/docs/openai)). |
+-| SiliconFlow | Chat | — | [Chat reference](https://docs.siliconflow.cn/docs/api/chat-completions-post). |
+-
+-### Effective model facts versus safety defaults
+-
+-The global `modelMatch: ".*"` rule exists to complete the current runtime contract, but its
+-200K context, 32K output, tool support and enabled/disabled effort choices are not provider
+-metadata. Keep that runtime fallback until the transport contract can represent unknowns. Add a
+-read-only sparse evidence projection from the existing ordered model-rule owner: exact provider
+-observations, explicit personal corrections and model-specific built-in recommendations count;
+-unqualified wildcard rules do not. Settings must show a value only when that field has evidence,
+-and mark built-in recommendations separately from provider-reported data. Unknown remains unknown
+-in the model row/editor and must not be advertised as an actual context capacity. The runtime
+-fallback remains traceable and is never written into personal corrections by viewing/editing a
+-model. No new model store, inferred entitlement or paid test is introduced.
+-
+-The same evidence projection must reach the selectable model view and the Agent's ListModels
+-port. An unknown context must not become a reported 200K capacity in the conversation ring:
+-ModelSelected explicitly clears the denominator and ModelComplete omits it; a resume cannot
+-resurrect a runtime-only fallback as a measured quota. The runtime may still use its old internal
+-completion value for safety until the request budget contract accepts unknowns. An unknown
+-reasoning list is omitted from display and Agent choices, while automatic execution remains.
+-Changing account/model invalidates the old measured occupancy as before. This projection must
+-not change which model, credential or tool executor receives the turn.
+-
+-For an ordinary API-key OpenAI Chat or Responses route, an output limit sourced only from the
+-universal runtime fallback remains an internal turn budget: the request map removes the SDK's
+-output-limit field and lets the provider apply its default. A model-specific observed, recommended
+-or user-corrected limit/map still goes on the wire. Anthropic Messages requires `max_tokens`, and
+-subscription/plan adapters retain their native request contract. This is not a claim that an
+-unknown model supports the whole fallback window or output size; provider-specific validation
+-and other route budgets remain open.
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index 9bdd6a9..f3f21c2 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -262,13 +262,6 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+         workingDirectory,
+         workspaceIdentity: options.runtimeConfig?.memory?.workspaceIdentity,
+       });
+-    const executor =
+-      options.runtimeConfig?.agentExecutor ??
+-      (options.env ?? process.env).FLEET_AGENT_EXECUTOR ??
+-      "pi";
+-    if (executor !== "pi" && executor !== "zcode")
+-      throw new Error("Unsupported Fleet Agent executor");
+-    runtimeConfig.agentExecutor = executor;
+     const browserControlPort = options.browserControlPort;
+     if (
+       browserControlPort &&
+diff --git a/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts b/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
+index c0e7d94..ca69fc0 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
+@@ -176,6 +176,7 @@ export class AgentRuntime {
+   private subagentPort?: SubagentPort;
+   private dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
+   private modelCatalogPort?: ModelCatalogPort;
++  private mediaGenerationPort?: AgentRuntimeDeps["mediaGenerationPort"];
+   private runtimeTaskRegistry: RuntimeTaskRegistry;
+   private branchGeneration = 0;
+   private artifactStore?: ToolArtifactStorePort;
+@@ -233,7 +234,6 @@ export class AgentRuntime {
+     // 3.12.2：兼容旧 Host/内部调用传入 legacy，但本版本 Runtime、日志和子 Agent 只使用 preflight。
+     this.config = projectPersistentAgentMemoryTools({
+       ...config,
+-      agentExecutor: config.agentExecutor ?? "pi",
+       modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
+     });
+     Object.assign(this.config, resolveExecutionState(config));
+@@ -295,6 +295,7 @@ export class AgentRuntime {
+     this.dynamicWorkflowRunPort = deps.dynamicWorkflowRunPort;
+     // GUI「配置」解析子代理模型用的目录（与工具上下文拿的是同一个端口）。
+     this.modelCatalogPort = deps.modelCatalogPort;
++    this.mediaGenerationPort = deps.mediaGenerationPort;
+     this.registry = deps.toolRegistry ?? createToolRegistry();
+     this.workspaceRoot = this.workingDirectory;
+     const tooling = initializeRuntimeTooling(runtime, deps, sessionId);
+diff --git a/apps/zcode-cli/packages/core/src/runtime/internal.ts b/apps/zcode-cli/packages/core/src/runtime/internal.ts
+index 84fc469..1224f4b 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/internal.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/internal.ts
+@@ -104,6 +104,7 @@ export interface AgentRuntimeInternal
+   subagentPort?: SubagentPort;
+   dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
+   modelCatalogPort?: ModelCatalogPort;
++  mediaGenerationPort?: AgentRuntimeDeps["mediaGenerationPort"];
+   runtimeTaskRegistry: RuntimeTaskRegistry;
+   branchGeneration: number;
+   artifactStore?: ToolArtifactStorePort;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+index 4e0bccc..c59270a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+@@ -139,6 +139,8 @@ export function getTools(this: AgentRuntimeInternal, model?: Model): ModelToolCo
+   }
+   return this.cachedTools
+     .filter((tool) => tool.name !== "WebSearch" || shouldExposeWebSearch.call(this, model))
++    .filter((tool) => tool.name !== "GenerateImage" || this.mediaGenerationPort?.listModels().some(
++      (candidate) => candidate.kind === "image" && candidate.status === "requires-check"))
+     .map((tool) =>
+       projectToolModelContract(tool, this.registry.get(tool.name), {
+         model,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
+index 017af5b..9eb1add 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
+@@ -1,7 +1,5 @@
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+-import { prepareRegularModelStep } from "./turn-step-prepare.js";
+-import { runModelBackedTurnStep } from "./turn-model-step.js";
+ 
+ export async function runRegularTurnLoop(
+   this: AgentRuntimeInternal,
+@@ -12,14 +10,6 @@ export async function runRegularTurnLoop(
+     await runNativeAgentTurn(this, state);
+     return;
+   }
+-  if (this.config.agentExecutor === "pi") {
+-    const { runPiTurn } = await import("./pi-turn.js");
+-    await runPiTurn(this, state);
+-    return;
+-  }
+-  while (true) {
+-    const options = await prepareRegularModelStep(this, state);
+-    const result = await runModelBackedTurnStep.call(this, state, options);
+-    if (result === "break") return;
+-  }
++  const { runPiTurn } = await import("./pi-turn.js");
++  await runPiTurn(this, state);
+ }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index ee48d35..9292dbd 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -123,7 +123,7 @@ export async function recordModelUsageFact(
+             | undefined),
+           workspacePath: runtime.workspaceRoot,
+           requestedSpeedMode: input.model.options.speedMode ?? "standard",
+-          executor: input.model.nativeExecutor?.kind ?? runtime.config.agentExecutor ?? "zcode",
++          executor: input.model.nativeExecutor?.kind ?? "pi",
+           // Link aggregate tool activity to this actual request, including mixed-model Guide turns.
+           toolUsageIds: input.result?.toolCalls?.map((call) =>
+             toolUsageId(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index b5f2410..d29c08e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -117,8 +117,6 @@ import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-
+ // -----------------------------------------------
+ 
+ export interface AgentRuntimeConfig {
+-  /** Complete turn executor; Session, permission, context and persistence stay Host-owned. */
+-  agentExecutor?: "zcode" | "pi";
+   /** shared-host CUA request routing metadata; desktop is the safe default. */
+   clientMode?: "desktop-continuous" | "web-remote-replayable";
+   deliveryKind?: "desktop-continuous" | "web-remote-replayable";
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+index 7df8b75..c282aa3 100644
+--- a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -34,7 +34,7 @@ export const reply = (text: string, toolCalls?: any[]) => ({
+ export const call = (id: string, value: string) => ({ id, name: "Probe", input: { value } });
+ 
+ export async function fixture(
+-  executor?: "pi" | "zcode",
++  _executor?: "pi",
+   streaming = false,
+   overrides: { config?: Partial<AgentRuntimeConfig>; deps?: Partial<AgentRuntimeDeps>; nativeExecutor?: import("@zcode/contracts").Model["nativeExecutor"]; supportsPdf?: boolean } = {},
+ ) {
+@@ -116,7 +116,6 @@ export async function fixture(
+     runtime = new AgentRuntime(
+       "session" as never,
+       {
+-        agentExecutor: executor,
+         workingDirectory: dir,
+         modelSelection: selection(),
+         mode: "build",
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index 9a45594..106716b 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -12,6 +12,28 @@ import { registerBuiltInTools } from "../src/tool/handlers/index.js";
+ import { createToolRegistry } from "../src/tool/registry.js";
+ import { persistToolResultMediaAttachments } from "../src/runtime/helpers/tool-result-media-persistence.js";
+ import { executeWithTimeout, ToolDeadline } from "../src/tool/executor/timeout.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++test("unavailable generation does not tax model context; live capability changes use the same tool owner", async () => {
++  let models: ReturnType<MediaGenerationPort["listModels"]> = [];
++  const f = await fixture(undefined, false, { config: { toolAllowlist: ["Probe", "ListMediaModels", "GenerateImage"] }, deps: { mediaGenerationPort: {
++    listModels: () => models,
++    prepareImage: async () => { throw new Error("No request expected"); },
++    generateImage: async () => { throw new Error("No request expected"); },
++  } } });
++  try {
++    const names = () => f.runtime.getTools().map((tool) => tool.name);
++    assert.ok(names().includes("ListMediaModels"));
++    assert.equal(names().includes("GenerateImage"), false);
++    models = [{ providerId: "p", providerLabel: "Fixture", modelId: "video", kind: "video", status: "catalog-only" }];
++    assert.equal(names().includes("GenerateImage"), false);
++    models = [{ providerId: "p", providerLabel: "Fixture", modelId: "image", kind: "image", status: "requires-check" }];
++    assert.ok(names().includes("GenerateImage"));
++    models = [];
++    assert.equal(names().includes("GenerateImage"), false);
++    assert.equal(f.requests.length, 0);
++  } finally { await f.close(); }
++});
+ 
+ test("repeated upstream image call IDs retain every charged request and artifact after restart", async () => {
+   const root = await mkdtemp(join(tmpdir(), "fleet-image-accounting-"));
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index 19334ba..1b5233f 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -86,10 +86,10 @@ test(
+ );
+ 
+ test(
+-  "the new runtime default executes through Pi while the legacy control remains selectable",
++  "the production runtime executes through the single Pi lane",
+   { timeout: 10000 },
+   async () => {
+-    for (const executor of [undefined, "zcode"] as const) {
++    for (const executor of [undefined, "pi"] as const) {
+       const f = await fixture(executor);
+       try {
+         f.steps.push(() => reply("complete"));
+diff --git a/package.json b/package.json
+index fb8cab7..fbea2a6 100644
+--- a/package.json
++++ b/package.json
+@@ -52,7 +52,7 @@
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 3fa6d53..ce37985 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -12,7 +12,7 @@ import {
+   NodeModelSelectionConfigRepository,
+   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
+ } from "@zcode/provider-node";
+-import { getAppConfigDir as resolveAppConfigDir } from "./paths.js";
++import { getAppConfigDir as resolveAppConfigDir, getConversationWorkspaceDir } from "./paths.js";
+ import {
+   buildLocalMediaPreviewUrl,
+   isProviderProvisioningAccountCredentialKey,
+@@ -2465,6 +2465,7 @@ export function createLocalServices(options: {
+         accountRequestAuthService,
+         credentialService,
+         zcodeAgentService,
++        readLocalProjectPaths: () => taskIndexRepo.listLocalProjectPaths(getConversationWorkspaceDir()),
+         officialMcpCredentialSource,
+       }),
+     )
+diff --git a/packages/services/src/session/taskIndexRepo.ts b/packages/services/src/session/taskIndexRepo.ts
+index 4bfc84e..4d60ae3 100644
+--- a/packages/services/src/session/taskIndexRepo.ts
++++ b/packages/services/src/session/taskIndexRepo.ts
+@@ -1726,6 +1726,19 @@ export class TaskIndexRepo {
+     return rows.map(rowToMeta);
+   }
+ 
++  /** Read existing project membership, including archived/deleted tasks with retained usage. */
++  async listLocalProjectPaths(conversationDirectory: string): Promise<string[]> {
++    await this.ensureReady();
++    const rows = this.getDatabase().prepare(`
++      SELECT DISTINCT workspace_path FROM tasks
++      WHERE workspace_identity IS NULL AND workspace_path != ?
++        AND provider = ? AND json_valid(meta_json)
++        AND COALESCE(json_extract(meta_json, '$.workspacePurpose'), 'project') = 'project'
++      ORDER BY workspace_path
++    `).all(conversationDirectory, ZCODE_AGENT_PROVIDER) as Array<{ workspace_path: string }>;
++    return rows.map((row) => row.workspace_path);
++  }
++
+   /**
+    * 读取 workspace 下的删除 tombstone。
+    *
+diff --git a/packages/services/src/usage-stats/usageStatsService.ts b/packages/services/src/usage-stats/usageStatsService.ts
+index 4d72f16..6426df6 100644
+--- a/packages/services/src/usage-stats/usageStatsService.ts
++++ b/packages/services/src/usage-stats/usageStatsService.ts
+@@ -40,6 +40,8 @@ interface UsageStatsServiceDependencies {
+   env?: NodeJS.ProcessEnv;
+   /** App Usage 经 ZCode Protocol 读取 agent 数据库真实统计。 */
+   zcodeAgentService: Pick<IZCodeAgentService, "getAppUsageStats">;
++  /** Existing task/project index; neither recent navigation nor open tabs define membership. */
++  readLocalProjectPaths?: () => Promise<string[]>;
+   /**
+    * 官方 Server MCP 额度的凭证来源（与 server MCP 调用同一套 5 个身份头）。
+    * 缺省时 entitlement 快照不含 MCP 额度。
+@@ -69,12 +71,14 @@ export function createUsageStatsService(
+     async getAppUsageSnapshot(request: AppUsageRequest): Promise<AppUsageSnapshot> {
+       // App Usage 现读取 agent 数据库真实统计（model_usage/turn_usage/tool_usage），
+       // 经 ZCode Protocol usage/stats 取回。不再读本地 session JSON 估算。
+-      return dependencies.zcodeAgentService.getAppUsageStats({
++      const snapshot = await dependencies.zcodeAgentService.getAppUsageStats({
+         range: request.range,
+         since: request.since,
+         until: request.until,
+         timeZone: request.timeZone,
+       });
++      return { ...snapshot, ...(dependencies.readLocalProjectPaths
++        ? { projectPaths: await dependencies.readLocalProjectPaths() } : {}) };
+     },
+     async getCodingPlanUsageSnapshot(
+       request: CodingPlanUsageRequest,
+diff --git a/packages/services/test/usage-project-membership.test.ts b/packages/services/test/usage-project-membership.test.ts
+new file mode 100644
+index 0000000..5c63e61
+--- /dev/null
++++ b/packages/services/test/usage-project-membership.test.ts
+@@ -0,0 +1,38 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { TaskIndexRepo } from "../src/session/taskIndexRepo.js";
++import { createUsageStatsService } from "../src/usage-stats/usageStatsService.js";
++import { buildUsageCostReport, type UsageAccountingRow } from "@zcode/shared";
++
++test("project cost membership comes from the full existing index, independent of recent-ten navigation", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-usage-projects-"));
++  const repo = new TaskIndexRepo(join(directory, "tasks.sqlite"));
++  const paths = Array.from({ length: 13 }, (_, index) => `/registered/project-${index}`);
++  const base = { traceId: "local", title: "fixture", mode: "build" as const, provider: "glm" as const, createdAt: 1, updatedAt: 1 };
++  try {
++    for (const [index, workspacePath] of paths.entries())
++      await repo.syncTaskMeta({ meta: { ...base, taskId: `local-${index}`, workspacePath } });
++    await repo.syncTaskMeta({ meta: { ...base, taskId: "folderless", workspacePath: "/backing/default" } });
++    await repo.syncTaskMeta({ meta: { ...base, taskId: "explicit-conversation", workspacePath: "/backing/another", workspacePurpose: "conversation" } });
++    await repo.syncTaskMeta({ meta: { ...base, taskId: "remote", workspacePath: paths[0]!, workspaceIdentity: "ssh:another-host" } });
++    const projectPaths = await repo.listLocalProjectPaths("/backing/default");
++    assert.equal(projectPaths.length, 13);
++    assert.deepEqual(new Set(projectPaths), new Set(paths));
++    const usage = (workspacePath: string) => ({ providerId: "p", accountId: null, workspacePath, modelId: "m",
++      requestCount: 1, reportedCount: 1, pricedCount: 1, inputTokens: 1, outputTokens: 0, estimatedUsd: 1 }) as UsageAccountingRow;
++    const rows = [usage(paths[0]!), usage("/backing/default"), usage("/unregistered/path")];
++    const service = createUsageStatsService({ apiClient: {} as never, accountRequestAuthService: {} as never,
++      zcodeAgentService: { getAppUsageStats: async () => ({ accounting: rows }) as never },
++      readLocalProjectPaths: () => repo.listLocalProjectPaths("/backing/default"),
++    });
++    const snapshot = await service.getAppUsageSnapshot({ range: "all" });
++    const report = buildUsageCostReport(snapshot.accounting!, { projectPaths: snapshot.projectPaths });
++    assert.equal(report.projects.find((project) => project.workspacePath === paths[0])?.apiUsd, 1);
++    assert.equal(report.projects.find((project) => project.workspacePath === null)?.apiUsd, 2);
++    repo.close();
++    assert.deepEqual(await repo.listLocalProjectPaths("/backing/default"), projectPaths);
++  } finally { repo.close(); await rm(directory, { recursive: true, force: true }); }
++});
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index fe334ce..3e2947c 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -264,6 +264,7 @@ export const appUsageModelActivitySchema = z.object({
+ });
+ 
+ export const appUsageSnapshotSchema = z.object({
++  projectPaths: z.array(z.string().min(1)).optional(),
+   modelActivities: z.array(appUsageModelActivitySchema).optional(),
+   skills: z
+     .array(
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 2591a52..29ba60c 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -1,13 +1,9 @@
+ import { useMemo, useState } from "react";
+ import {
+   buildUsageCostReport,
+-  isRemoteWorkspaceIdentity,
+   type AppUsageSnapshot,
+ } from "@zcode/shared";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { isWorkspaceTab } from "@/store/tabStore.js";
+-import { useTabStore } from "@/store/TabStoreProvider.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ import { AppUsageActivity } from "./AppUsageActivity.js";
+ import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+@@ -25,25 +21,7 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+     intl.formatMessage({ id: `settings.usage.apiEstimate.${key}` }, values);
+   const [group, setGroup] = useState<"models" | "projects">("models");
+   const [focusedModel, setFocusedModel] = useState<string>();
+-  const tabs = useTabStore((state) => state.tabs);
+-  const { settings } = useSettings();
+-  const projectPaths = useMemo(
+-    () => [
+-      ...new Set([
+-        ...(settings?.recentProjects ?? []),
+-        ...tabs
+-          .filter(isWorkspaceTab)
+-          .filter(
+-            (tab) =>
+-              tab.workspacePurpose !== "conversation" &&
+-              !tab.remoteSessionId &&
+-              (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
+-          )
+-          .map((tab) => tab.workspacePath),
+-      ]),
+-    ],
+-    [settings?.recentProjects, tabs],
+-  );
++  const projectPaths = snapshot.projectPaths ?? [];
+   const accounting = (snapshot.accounting ?? []).filter((row) => row.requestCount > 0);
+   const report = useMemo(
+     () => buildUsageCostReport(accounting, { projectPaths }),
+diff --git a/scripts/test-pi-bundle.mjs b/scripts/test-pi-bundle.mjs
+index e65c083..c3db0b2 100644
+--- a/scripts/test-pi-bundle.mjs
++++ b/scripts/test-pi-bundle.mjs
+@@ -289,7 +289,6 @@ try {
+     PATH: process.env.PATH,
+     LANG: "en_US.UTF-8",
+     ZCODE_RUNTIME_ENV: "production",
+-    FLEET_AGENT_EXECUTOR: "pi",
+     ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: builtin,
+     ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: personal,
+   };

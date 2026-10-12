@@ -1,0 +1,1880 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 207e593..321dd49 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -310,17 +310,36 @@ moves to Default models → Auxiliary decisions, without credential migration or
+ Only System One source forms expose these fields; generic wire-format switching is excluded.
+ Existing connection/model reuse remains available under OV-097. Current TypeSafe models/score
+ contracts document `jev-1.13.0` and finite rubric scores including fractions. New source defaults
+-use the pin while all previous alias records survive. Connection and model writes settle before
+-preference binding; an acknowledgement/preference failure retains the committed connection for
+-retry, with explicit inference still off. Navigation/unmount/service changes fence delayed binding.
++use the pin while all previous alias records survive. Connection, model membership and purpose
++binding share the atomic save below, without implicitly enabling inference. Navigation/unmount
++or service changes discard presentation callbacks without cancelling backend ownership.
+ 
+ ## Draft, accepted configuration and execution
+ 
+ Source setup inspection is a Renderer draft; it must not remove an accepted selection or disable
+-its purpose. Explicit save/clear commands retain their established meanings. The current editor's
+-acknowledged create/save/model/bind steps are transitional, not an atomic source-save operation.
+-The target compound command belongs on the existing Provider facade and Personal transaction,
+-with exact revision, connection identity, stale-result handling and retained acknowledgement proof.
++its purpose. Explicit save/clear commands retain their established meanings. The compound command
++below belongs on the existing Provider facade and Personal transaction, with exact revision,
++connection identity, stale-result handling and retained acknowledgement proof.
+ The authoritative frontend/backend design is
+ [the model decision contract](../../../../../docs/modules/model-decisions.md#frontend-and-backend-design).
+ Do not create another settings/credential authority or treat a mounted UI callback as commit proof.
++
++## Atomic dedicated source save
++
++The existing Provider settings facade accepts one strict source command: create with a stable
++`decision-source-<uuid>` connection identity, or edit an existing ID; observed Personal/builtin revisions;
++API/access sparse edits; exact model. Only dedicated System One sources enter this command.
++Provider/model membership and purpose selection commit in one existing Personal update. Preserve
++current enablement, tiers, defaults, provider order and all unrelated leaves; no network inference,
++new credential store, schema migration or second journal. Reconciliation reads the same record:
++matching route/access/model and current purpose binding proves the requested effect is present;
++a changed or deleted target/selection conflicts, never rebinds or recreates it. Retrying the same
++creation identity cannot produce a second connection. A failed post-commit projection reports
++publicationPending with the committed identity; the UI reloads instead of replaying mutation.
++Unsaved drafts and cancelled presentation callbacks are separate from admitted backend completion.
++
++Native account/catalog replacement fences the exact connection at the Personal transaction, not
++an unrelated setting's file revision. The facade still fences builtin and selected account-source
++changes; the transaction compares current template/API/access against its captured connection.
++Changes to that connection or its deletion reject the late catalog, while unrelated defaults and
++other connections survive. Other model membership/edit operations retain their existing fence.
+diff --git a/package.json b/package.json
+index 76a46c5..17bdd01 100644
+--- a/package.json
++++ b/package.json
+@@ -49,7 +49,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/pluginManagementGrants.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/model-knowledge.test.ts packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/model-knowledge.test.ts packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/decision-source-save.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 4832818..cc57ed1 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -1,3 +1,9 @@
++import {
++  decisionSourceSaveSchema,
++  buildDecisionSourceUpdate,
++  type DecisionSourceSaveInput,
++  type DecisionSourceCommit,
++} from "./decision-source-save.js";
+ import type { DecisionModelSettings } from "@zcode/shared";
+ /* oxlint-disable eslint(max-lines) -- Provider/Model 的原子配置生命周期共享一次 Repository 更新边界，拆开会重复顺序与规范化逻辑。 */
+ import type {
+@@ -82,6 +88,10 @@ export interface ProviderModelMembership {
+   readonly providerId: ProviderId;
+   readonly inheritedModelIds: readonly ModelId[];
+   readonly personalRevision: string;
++  /** Native account/catalog replacement checks this connection inside the same locked write. */
++  readonly nativeConnection?: Pick<import("./config/index.js").ProviderConfigRule, "templateId"> & {
++    readonly config: ProviderConfig;
++  };
+   /** 在 Personal 事务内检查发布快照未过期，不触发网络请求。 */
+   readonly assertCurrent: () => void;
+ }
+@@ -317,6 +327,41 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+     return Object.freeze({ providerId: createdProviderId });
+   }
+ 
++  async saveDecisionSource(
++    input: DecisionSourceSaveInput,
++    assertCurrent?: () => void,
++  ): Promise<DecisionSourceCommit> {
++    const submitted = decisionSourceSaveSchema.parse(structuredClone(input));
++    const builtin = await this.#zcodeBuiltinSource.read();
++    let reconciled = false;
++    const saved = await this.#updatePersonal((current) => {
++      const template = submitted.templateId
++        ? builtin.providerTemplates?.get(submitted.templateId)
++        : undefined;
++      const label = nextPersonalProviderLabel(
++        submitted.providerName ??
++          (template
++            ? resolveProviderTemplateName(
++                submitted.templateId!,
++                template,
++                submitted.locale ?? "en-US",
++              )
++            : "Decision source"),
++        resolvePersonalProviderBaselines(builtin, current.providers),
++      );
++      const change = buildDecisionSourceUpdate(submitted, builtin, current, label);
++      reconciled = change.reconciled;
++      if (!reconciled) assertCurrent?.();
++      return change.update;
++    });
++    return {
++      providerId: submitted.target.providerId,
++      selection: { providerId: submitted.target.providerId, modelId: submitted.modelId },
++      personalRevision: saved.revision,
++      reconciled,
++    };
++  }
++
+   deletePersonalProvider(providerId: ProviderId): Promise<ProviderConfigLayerSnapshot> {
+     assertNonEmptyId("providerId", providerId);
+     return this.#updatePersonal((current) => ({
+@@ -427,7 +472,23 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+     const builtin = await this.#zcodeBuiltinSource.read();
+     // 自动发现必须一次写入；逐行调用添加会留下半份目录，并覆盖用户修改。
+     return this.#updatePersonal((current) => {
+-      assertMembershipCurrent(membership, id, current);
++      if (nativeAccess && replace && membership?.nativeConnection) {
++        membership.assertCurrent();
++        const observed = membership.nativeConnection;
++        const locked = resolvePersonalProviderBaselines(builtin, current.providers);
++        const actual = locked.get(id);
++        // 账号/目录只依赖自己的连接；无关设置写入不能使重连失败，但连接变更必须在文件锁内拦截。
++        if (
++          membership.providerId !== id ||
++          !actual ||
++          locked.getRule(id)?.templateId !== observed.templateId ||
++          JSON.stringify([actual.api?.toJSON(), actual.access?.toJSON()]) !==
++            JSON.stringify([observed.config.api?.toJSON(), observed.config.access?.toJSON()])
++        )
++          throw new Error("Connection changed; reload its model list");
++      } else {
++        assertMembershipCurrent(membership, id, current);
++      }
+       let provider = writableProviderOverlay(builtin, current, id);
+       const effective = resolvePersonalProviderBaselines(builtin, current.providers).get(id);
+       const access = effective?.access;
+diff --git a/packages/provider/src/decision-source-save.ts b/packages/provider/src/decision-source-save.ts
+new file mode 100644
+index 0000000..27939d3
+--- /dev/null
++++ b/packages/provider/src/decision-source-save.ts
+@@ -0,0 +1,178 @@
++import { z } from "zod";
++import {
++  ProviderConfig,
++  ModelConfig,
++  ModelConfigRules,
++  parseProviderConfig,
++} from "./config/index.js";
++import type { ProviderConfigLayerSnapshot, ProviderConfigLayerUpdate } from "./config-service.js";
++import { getEnabledApiKeys } from "./api-key-credentials.js";
++import { isLocalClassifierEndpoint } from "./classifier-models.js";
++
++export const decisionSourceSaveSchema = z
++  .object({
++    target: z.discriminatedUnion("kind", [
++      z
++        .object({
++          kind: z.literal("create"),
++          providerId: z
++            .string()
++            .regex(
++              /^decision-source-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
++            ),
++        })
++        .strict(),
++      z
++        .object({ kind: z.literal("existing"), providerId: z.string().trim().min(1).max(256) })
++        .strict(),
++    ]),
++    expectedPersonalRevision: z.string().min(1).max(256),
++    expectedBuiltinRevision: z.string().min(1).max(256),
++    templateId: z.string().trim().min(1).max(256).optional(),
++    providerName: z.string().trim().min(1).max(200).optional(),
++    locale: z.enum(["en-US", "zh-CN"]).optional(),
++    config: z.object({ api: z.unknown().optional(), access: z.unknown().optional() }).strict(),
++    modelId: z.string().trim().min(1).max(256),
++  })
++  .strict();
++export type DecisionSourceSaveInput = z.infer<typeof decisionSourceSaveSchema>;
++export interface DecisionSourceCommit {
++  providerId: string;
++  personalRevision: string;
++  selection: { providerId: string; modelId: string };
++  reconciled: boolean;
++}
++export function sourceSaveConflict(message = "The source changed; reload before saving"): Error {
++  return Object.assign(new Error(message), { code: "decision_source_conflict" });
++}
++const equivalent = (left: unknown, right: unknown): boolean => {
++  const canonical = (value: any): any =>
++    Array.isArray(value)
++      ? value.map(canonical)
++      : value && typeof value === "object"
++        ? Object.fromEntries(
++            Object.keys(value)
++              .sort()
++              .filter((key) => value[key] !== undefined)
++              .map((key) => [key, canonical(value[key])]),
++          )
++        : value;
++  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
++};
++const matchesRequestedLabel = (saved: string | null | undefined, requested: string): boolean => {
++  if (saved === requested) return true;
++  // 原 Provider 命名器会为同名连接添加数字后缀；确认丢失后的重试必须识别该已提交名称。
++  if (!saved?.startsWith(`${requested} `)) return false;
++  return /^[2-9]$|^[1-9][0-9]+$/.test(saved.slice(requested.length + 1));
++};
++/** Pure transaction transform. The existing Personal repository owns lock/write/publication. */
++export function buildDecisionSourceUpdate(
++  input: DecisionSourceSaveInput,
++  builtin: ProviderConfigLayerSnapshot,
++  current: ProviderConfigLayerSnapshot,
++  label: string,
++): { update: ProviderConfigLayerUpdate; reconciled: boolean } {
++  const { providerId } = input.target;
++  const create = input.target.kind === "create";
++  const rule = current.providers.getRule(providerId);
++  if (!create && !rule)
++    throw sourceSaveConflict("The source was removed; it cannot be recreated by a late save");
++  if (!create && (input.templateId !== undefined || input.providerName !== undefined))
++    throw new Error("An existing source keeps its identity and label");
++  if (create && builtin.providers.has(providerId)) throw sourceSaveConflict();
++  const templateId = create ? input.templateId : rule?.templateId;
++  const template = templateId ? builtin.providerTemplates?.get(templateId) : undefined;
++  if (templateId && !template) throw new Error("Decision source template is unavailable");
++  const submitted = parseProviderConfig(input.config);
++  const baseline = template?.config ?? new ProviderConfig();
++  const existing =
++    rule?.config ??
++    new ProviderConfig({ group: "standard-personal", personalModelIds: [], modelOrder: [] });
++  const proposed = create
++    ? new ProviderConfig({
++        group: "standard-personal",
++        personalModelIds: [],
++        modelOrder: [],
++      }).overlay(submitted)
++    : existing.overlay(submitted);
++  const effective = baseline.overlay(proposed);
++  if (effective.api?.type !== "typesafe-system-one" || effective.access?.type !== "api-key")
++    throw new Error("Only dedicated System One sources can use this operation");
++  const url = new URL(effective.api.baseUrl ?? "");
++  if (
++    !["http:", "https:"].includes(url.protocol) ||
++    url.username ||
++    url.password ||
++    url.search ||
++    url.hash
++  )
++    throw new Error("Invalid decision service address");
++  if (!getEnabledApiKeys(effective.access).length && !isLocalClassifierEndpoint(url.href))
++    throw new Error("A remote decision source requires an enabled API key");
++  if (rule?.enabled === false) throw new Error("The source is disabled");
++  const model = ModelConfigRules.composeEffective(builtin.models, current.models).resolve({
++    providerId,
++    templateId,
++    modelId: input.modelId,
++    apiType: effective.api.type,
++    baseUrl: effective.api.baseUrl,
++  });
++  if (model.enabled === false) throw new Error("The selected decision model is disabled");
++  const member =
++    (template?.config.builtinModelIds ?? []).includes(input.modelId) ||
++    existing.personalModelIds?.includes(input.modelId);
++  const currentEffective = baseline.overlay(existing);
++  const selection = current.decisionModelSettings?.selection;
++  if (
++    rule &&
++    member &&
++    selection?.providerId === providerId &&
++    selection.modelId === input.modelId &&
++    (!create || (rule.templateId ?? undefined) === input.templateId) &&
++    (!input.providerName || matchesRequestedLabel(rule.providerName, input.providerName)) &&
++    equivalent(
++      { api: currentEffective.api?.toJSON(), access: currentEffective.access?.toJSON() },
++      { api: effective.api?.toJSON(), access: effective.access?.toJSON() },
++    )
++  ) {
++    return { update: current, reconciled: true };
++  }
++  // A repeated create with changed facts must not overwrite the record or a later binding.
++  if (create && rule) throw sourceSaveConflict();
++  if (
++    current.revision !== input.expectedPersonalRevision ||
++    builtin.revision !== input.expectedBuiltinRevision
++  )
++    throw sourceSaveConflict();
++  let personal = proposed;
++  let models = current.models;
++  if (!member) {
++    personal = personal
++      .withPersonalModelIds([...(personal.personalModelIds ?? []), input.modelId])
++      .withManualModelIds([...new Set([...(personal.manualModelIds ?? []), input.modelId])])
++      .withModelOrder([...new Set([...(personal.modelOrder ?? []), input.modelId])]);
++    if (!models.getExact(providerId, input.modelId))
++      models = models.setExact(providerId, input.modelId, new ModelConfig({ enabled: true }), true);
++  }
++  const providers = current.providers.setRule(
++    create
++      ? { providerId, ...(templateId ? { templateId } : {}), providerName: label, config: personal }
++      : { ...rule!, config: personal },
++  );
++  return {
++    reconciled: false,
++    update: {
++      ...current,
++      providers,
++      models,
++      providerOrder: create
++        ? [...(current.providerOrder ?? []), providerId]
++        : current.providerOrder,
++      decisionModelSettings: {
++        ...current.decisionModelSettings,
++        enabled: current.decisionModelSettings?.enabled === true,
++        selection: { providerId, modelId: input.modelId },
++      },
++    },
++  };
++}
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 3327bb2..424903b 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -1,3 +1,9 @@
++import {
++  decisionSourceSaveSchema,
++  sourceSaveConflict,
++  type DecisionSourceSaveInput,
++  type DecisionSourceCommit,
++} from "./decision-source-save.js";
+ import { decisionModelCandidates } from "./classifier-models.js";
+ import type { DecisionModelCandidate, DecisionModelSettings } from "@zcode/shared";
+ /* oxlint-disable eslint(max-lines) -- Settings/Selection Facade 共享同一套 Registry 投影与写入边界。 */
+@@ -59,6 +65,10 @@ export interface ProviderRegistryFacadeSource {
+ }
+ 
+ export interface ProviderSettingsMutationTarget {
++  saveDecisionSource?(
++    input: DecisionSourceSaveInput,
++    assertCurrent?: () => void,
++  ): Promise<DecisionSourceCommit>;
+   mergeDiscoveredModels(
+     providerId: ProviderId,
+     models: readonly { modelId: ModelId; config: ModelConfig }[],
+@@ -129,7 +139,13 @@ export interface ProviderSettingsModelCandidateView {
+   readonly builtin: boolean;
+   readonly effectiveBuiltinConfig: ModelConfigObject;
+   readonly evidenceConfig?: ModelConfigObject;
+-  readonly contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "catalog" | "unknown";
++  readonly contextEvidenceSource?:
++    | "provider"
++    | "manual"
++    | "saved"
++    | "builtin"
++    | "catalog"
++    | "unknown";
+   readonly personalExactConfig?: ModelConfigObject;
+   readonly useRecommendedConfig?: boolean;
+   readonly effectiveConfig: RegistryModelConfigObject | ModelConfigObject;
+@@ -199,12 +215,19 @@ export interface ProviderSettingsTemplateView {
+ }
+ 
+ export interface ProviderSettingsView {
++  readonly personalRevision?: string;
++  readonly builtinRevision?: string;
+   readonly revision: number;
+   readonly providerTemplates: readonly ProviderSettingsTemplateView[];
+   readonly providerOrder: readonly ProviderId[];
+   readonly providers: readonly ProviderSettingsProviderView[];
+ }
+ 
++export interface DecisionSourceSaveResult extends DecisionSourceCommit {
++  publicationPending: boolean;
++  view?: ProviderSettingsView;
++}
++
+ export interface ProviderSettingsCreationResult {
+   readonly providerId: ProviderId;
+   readonly view: ProviderSettingsView;
+@@ -256,15 +279,23 @@ export class ProviderSettingsFacade {
+ 
+   getView(): ProviderSettingsView {
+     const snapshot = requireSnapshot(this.#source);
+-    return createProviderSettingsView({
+-      revision: snapshot.registry.revision,
+-      zcodeBuiltinProviders: snapshot.config.zcodeBuiltinProviders,
+-      zcodeBuiltinProviderTemplates: snapshot.config.zcodeBuiltinProviderTemplates,
+-      personalProviders: snapshot.config.personalProviders,
+-      personalModels: snapshot.config.personalModels,
+-      resolution: snapshot.resolution,
+-      accountStates: snapshot.account.states,
+-    });
++    return {
++      ...(snapshot.config.zcodeBuiltinRevision
++        ? { builtinRevision: snapshot.config.zcodeBuiltinRevision }
++        : {}),
++      ...(snapshot.config.personalRevision
++        ? { personalRevision: snapshot.config.personalRevision }
++        : {}),
++      ...createProviderSettingsView({
++        revision: snapshot.registry.revision,
++        zcodeBuiltinProviders: snapshot.config.zcodeBuiltinProviders,
++        zcodeBuiltinProviderTemplates: snapshot.config.zcodeBuiltinProviderTemplates,
++        personalProviders: snapshot.config.personalProviders,
++        personalModels: snapshot.config.personalModels,
++        resolution: snapshot.resolution,
++        accountStates: snapshot.account.states,
++      }),
++    };
+   }
+ 
+   async refresh(reason: string): Promise<ProviderSettingsView> {
+@@ -348,6 +379,25 @@ export class ProviderSettingsFacade {
+     ).then(({ result, view }) => ({ providerId: result.providerId, view }));
+   }
+ 
++  async saveDecisionSource(input: DecisionSourceSaveInput): Promise<DecisionSourceSaveResult> {
++    const submitted = decisionSourceSaveSchema.parse(structuredClone(input));
++    if (!this.#mutations?.saveDecisionSource)
++      throw new Error("Atomic source saving is unavailable on this host");
++    const committed = await this.#mutations.saveDecisionSource(submitted, () => {
++      if (
++        requireSnapshot(this.#source).config.zcodeBuiltinRevision !==
++        submitted.expectedBuiltinRevision
++      )
++        throw sourceSaveConflict();
++    });
++    try {
++      await this.#mutations.refresh("settings:save-decision-source");
++      return { ...committed, publicationPending: false, view: this.getView() };
++    } catch {
++      return { ...committed, publicationPending: true };
++    }
++  }
++
+   async savePersonalProviderOverlay(
+     providerId: ProviderId,
+     config: ProviderConfigObject,
+@@ -441,7 +491,11 @@ export class ProviderSettingsFacade {
+       await target.mergeDiscoveredModels(
+         providerId,
+         models.map((model) => ({ modelId: model.id, config: parseModelConfig(model.config) })),
+-        this.#modelMembership(providerId),
++        this.#modelMembership(
++          providerId,
++          requireSnapshot(this.#source),
++          nativeConnection !== undefined && nativeConnection.basedOnRevision === undefined,
++        ),
+         replace,
+         nativeConnection
+           ? (parseProviderConfig({ access: nativeConnection.access })
+@@ -565,6 +619,7 @@ export class ProviderSettingsFacade {
+   #modelMembership(
+     providerId: ProviderId,
+     snapshot = requireSnapshot(this.#source),
++    nativeConnection = false,
+   ): ProviderModelMembership {
+     const provider = snapshot.resolution.resolvedProviders.find(
+       (item) => item.providerId === providerId,
+@@ -578,8 +633,27 @@ export class ProviderSettingsFacade {
+         provider.models.filter((model) => model.source === "builtin").map((model) => model.modelId),
+       ),
+       personalRevision: snapshot.config.personalRevision,
++      ...(nativeConnection
++        ? { nativeConnection: { templateId: provider.templateId, config: provider.config } }
++        : {}),
+       assertCurrent: () => {
+-        if (this.#source.getSnapshot() !== snapshot)
++        const latest = this.#source.getSnapshot();
++        if (latest === snapshot) return;
++        const current = latest?.resolution.resolvedProviders.find(
++          (item) => item.providerId === providerId,
++        );
++        if (
++          !nativeConnection ||
++          !current ||
++          latest?.config.zcodeBuiltinRevision !== snapshot.config.zcodeBuiltinRevision ||
++          JSON.stringify(latest?.account.providers.get(providerId)?.toJSON()) !==
++            JSON.stringify(snapshot.account.providers.get(providerId)?.toJSON()) ||
++          JSON.stringify(latest?.account.states?.[providerId]) !==
++            JSON.stringify(snapshot.account.states?.[providerId]) ||
++          current.templateId !== provider.templateId ||
++          JSON.stringify([current.config.api?.toJSON(), current.config.access?.toJSON()]) !==
++            JSON.stringify([provider.config.api?.toJSON(), provider.config.access?.toJSON()])
++        )
+           throw new Error("Provider Settings snapshot revision conflict");
+       },
+     });
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index febcc9f..f009e03 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -22,3 +22,5 @@ export * from "./classifier-models.js";
+ export { connectionRouteRestriction, connectionRouteRisk, RESTRICTED_ROUTE_ALTERNATIVE, type ConnectionRouteRestriction } from "./route-policy.js";
+ export { lookupModelKnowledge, modelKnowledgeConfig, setModelKnowledgeOverlay, type ModelKnowledge } from "./model-knowledge.js";
+ export { buildModelKnowledge, type ModelKnowledgeData } from "./model-knowledge-build.js";
++
++export * from "./decision-source-save.js";
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index af53ac0..193b6c3 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -80,7 +80,9 @@ export function createProviderSettingsService(
+       const provider = facade.getView().providers.find((entry) => entry.providerId === id);
+       if (!provider) throw new Error("Connection no longer exists");
+       if (provider.routeRestriction)
+-        throw new Error("This connection route is not permitted by its vendor; use its official CLI or an API key");
++        throw new Error(
++          "This connection route is not permitted by its vendor; use its official CLI or an API key",
++        );
+       const subscription =
+         provider.effectiveConfig.access?.type === "subscription" ? subscriptions : undefined;
+       const accountRevision = (await subscription?.accounts(id))?.revision;
+@@ -112,7 +114,13 @@ export function createProviderSettingsService(
+             (await nativeOperations.adoptNativeCliAccount(id))
+           ) {
+             const adopted = facade.getView().providers.find((entry) => entry.providerId === id)!;
+-            return discoverConnectionModels(adopted, fetch, subscriptions, facade.getView().providerTemplates, nativeCli);
++            return discoverConnectionModels(
++              adopted,
++              fetch,
++              subscriptions,
++              facade.getView().providerTemplates,
++              nativeCli,
++            );
+           }
+           throw error;
+         }
+@@ -213,6 +221,11 @@ export function createProviderSettingsService(
+       await ensureReady();
+       return facade.refresh(reason);
+     },
++    saveDecisionSource: async (input) => {
++      const submitted = structuredClone(input);
++      await ensureReady();
++      return facade.saveDecisionSource(submitted);
++    },
+     createPersonalProvider: async (input) => {
+       await ensureReady();
+       return facade.createPersonalProvider(input);
+diff --git a/packages/services/src/model-provider/providerRuntime.ts b/packages/services/src/model-provider/providerRuntime.ts
+index 58b3ab3..853e0f9 100644
+--- a/packages/services/src/model-provider/providerRuntime.ts
++++ b/packages/services/src/model-provider/providerRuntime.ts
+@@ -170,6 +170,7 @@ function createSettingsMutationTarget(
+ ): ProviderSettingsMutationTarget {
+   const configService = configRuntime.configService;
+   return {
++    saveDecisionSource: configService.saveDecisionSource.bind(configService),
+     createPersonalProvider: (input) => configService.createPersonalProvider(input),
+     savePersonalProviderOverlay: (providerId, config, membership, metadata) =>
+       configService.savePersonalProviderOverlay(providerId, config, membership, metadata),
+diff --git a/packages/services/src/model-provider/providerSettings.ts b/packages/services/src/model-provider/providerSettings.ts
+index c869aee..b777496 100644
+--- a/packages/services/src/model-provider/providerSettings.ts
++++ b/packages/services/src/model-provider/providerSettings.ts
+@@ -80,6 +80,9 @@ export interface IProviderSettingsService
+   cancelSubscriptionLogin(providerId: string, flowId: string): Promise<void>;
+   disconnectSubscription(providerId: string): Promise<ProviderSettingsView>;
+   refresh(reason: string): Promise<ProviderSettingsView>;
++  saveDecisionSource(
++    input: import("@zcode/provider").DecisionSourceSaveInput,
++  ): Promise<import("@zcode/provider").DecisionSourceSaveResult>;
+   createPersonalProvider(
+     input?: Parameters<ProviderSettingsFacade["createPersonalProvider"]>[0],
+   ): Promise<ProviderSettingsCreationResult>;
+diff --git a/packages/services/test/decision-source-save.test.ts b/packages/services/test/decision-source-save.test.ts
+new file mode 100644
+index 0000000..1aeb783
+--- /dev/null
++++ b/packages/services/test/decision-source-save.test.ts
+@@ -0,0 +1,401 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { randomUUID } from "node:crypto";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { ProviderSettingsFacade, ModelConfig, type DecisionSourceSaveInput } from "@zcode/provider";
++import { NodeProviderRegistryRuntime } from "@zcode/provider-node";
++
++async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-atomic-source-"));
++  const path = join(root, "personal.json");
++  const options = {
++    personalFilePath: path,
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  let runtime = new NodeProviderRegistryRuntime(options);
++  await runtime.start();
++  let failProjection = false;
++  const facade = () =>
++    new ProviderSettingsFacade(runtime.registryService, {
++      saveDecisionSource: (input, assertCurrent) =>
++        runtime.configService.saveDecisionSource(input, assertCurrent),
++      refresh: async (reason) => {
++        if (failProjection) {
++          failProjection = false;
++          throw new Error("projection unavailable");
++        }
++        return runtime.registryService.refresh(reason);
++      },
++    } as never);
++  return {
++    get runtime() {
++      return runtime;
++    },
++    facade,
++    path,
++    input: async (
++      overrides: Partial<DecisionSourceSaveInput> = {},
++    ): Promise<DecisionSourceSaveInput> => ({
++      target: { kind: "create", providerId: `decision-source-${randomUUID()}` },
++      expectedPersonalRevision: (await runtime.personalRepository.read()).revision,
++      expectedBuiltinRevision: runtime.registryService.getSnapshot()!.config.zcodeBuiltinRevision,
++      templateId: "fleet-laya-local",
++      config: { access: { type: "api-key", apiKey: "" } },
++      modelId: "auto",
++      ...overrides,
++    }),
++    failProjection() {
++      failProjection = true;
++    },
++    async reopen() {
++      runtime.dispose();
++      runtime = new NodeProviderRegistryRuntime(options);
++      await runtime.start();
++    },
++    async close() {
++      runtime.dispose();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++test("source, model membership and purpose binding commit in one Personal write and survive reopen", async () => {
++  const f = await fixture();
++  try {
++    const before = await f.runtime.personalRepository.read();
++    await f.runtime.personalRepository.update((current) => ({
++      ...current,
++      newConversationModelPolicy: "recent",
++      decisionModelSettings: {
++        enabled: false,
++        automaticTiers: { standard: { providerId: "unchanged", modelId: "main" } },
++      },
++    }));
++    let writes = 0;
++    const original = f.runtime.personalRepository.update.bind(f.runtime.personalRepository);
++    f.runtime.personalRepository.update = async (transform) => {
++      writes++;
++      return original(transform);
++    };
++    const input = await f.input({ modelId: "private-classifier" });
++    const receipt = await f.facade().saveDecisionSource(input);
++    assert.equal(writes, 1);
++    assert.equal(receipt.publicationPending, false);
++    assert.equal(receipt.view?.personalRevision, receipt.personalRevision);
++    const saved = await f.runtime.personalRepository.read();
++    assert.deepEqual(saved.decisionModelSettings, {
++      enabled: false,
++      selection: receipt.selection,
++      automaticTiers: { standard: { providerId: "unchanged", modelId: "main" } },
++    });
++    assert.ok(
++      saved.providers
++        .get(input.target.providerId)
++        ?.personalModelIds?.includes("private-classifier"),
++    );
++    assert.ok(saved.models.getExact(input.target.providerId, "private-classifier"));
++    assert.equal(saved.newConversationModelPolicy, "recent");
++    assert.deepEqual(saved.defaultModelSelection, before.defaultModelSelection);
++    await f.reopen();
++    assert.deepEqual(
++      (await f.runtime.personalRepository.read()).decisionModelSettings,
++      saved.decisionModelSettings,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("pre-commit write failure leaves no provider, model or binding; the same identity can retry", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input({ modelId: "private-classifier" });
++    const before = await f.runtime.personalRepository.read();
++    const update = f.runtime.personalRepository.update.bind(f.runtime.personalRepository);
++    f.runtime.personalRepository.update = async (transform) => {
++      return update((current) => {
++        transform(current);
++        throw new Error("write unavailable");
++      });
++    };
++    await assert.rejects(f.facade().saveDecisionSource(input), /write unavailable/);
++    assert.equal((await f.runtime.personalRepository.read()).revision, before.revision);
++    f.runtime.personalRepository.update = update;
++    await f.facade().saveDecisionSource(input);
++    assert.equal(
++      (await f.runtime.personalRepository.read()).providers
++        .rules()
++        .filter((row) => row.providerId === input.target.providerId).length,
++      1,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("committed acknowledgement loss reconciles from the same source after cold reopen without another connection", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input();
++    const update = f.runtime.personalRepository.update.bind(f.runtime.personalRepository);
++    f.runtime.personalRepository.update = async (transform) => {
++      await update(transform);
++      throw new Error("acknowledgement lost");
++    };
++    await assert.rejects(f.facade().saveDecisionSource(input), /acknowledgement lost/);
++    await f.reopen();
++    const receipt = await f.facade().saveDecisionSource(input);
++    assert.equal(receipt.reconciled, true);
++    assert.equal(receipt.providerId, input.target.providerId);
++    assert.equal(
++      (await f.runtime.personalRepository.read()).providers
++        .rules()
++        .filter((row) => row.providerId === input.target.providerId).length,
++      1,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("a later human binding, changed payload, deletion and stale revision cannot be overwritten by retry", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input();
++    await f.facade().saveDecisionSource(input);
++    await assert.rejects(
++      f.facade().saveDecisionSource({
++        ...input,
++        config: { access: { type: "api-key", apiKey: "different-fixture" } },
++      }),
++      /source changed/i,
++    );
++    await f.runtime.personalRepository.update((current) => ({
++      ...current,
++      decisionModelSettings: { enabled: false },
++    }));
++    const afterHuman = await readFile(f.path, "utf8");
++    await assert.rejects(f.facade().saveDecisionSource(input), /source changed/i);
++    assert.equal(await readFile(f.path, "utf8"), afterHuman);
++    await f.runtime.configService.deletePersonalProvider(input.target.providerId);
++    const removed = await readFile(f.path, "utf8");
++    await assert.rejects(f.facade().saveDecisionSource(input), /source changed/i);
++    await assert.rejects(
++      f.facade().saveDecisionSource({
++        ...input,
++        target: { kind: "existing", providerId: input.target.providerId },
++        templateId: undefined,
++      }),
++      /removed/,
++    );
++    assert.equal(await readFile(f.path, "utf8"), removed);
++  } finally {
++    await f.close();
++  }
++});
++
++test("projection failure returns the committed identity and publicationPending without replacing saved facts", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input();
++    f.failProjection();
++    const receipt = await f.facade().saveDecisionSource(input);
++    assert.equal(receipt.publicationPending, true);
++    assert.equal(receipt.view, undefined);
++    assert.equal(receipt.providerId, input.target.providerId);
++    await f.runtime.registryService.refresh("read-committed");
++    assert.ok(
++      f
++        .facade()
++        .getView()
++        .providers.some((row) => row.providerId === receipt.providerId),
++    );
++    assert.equal(
++      (await f.runtime.personalRepository.read()).decisionModelSettings?.selection?.providerId,
++      receipt.providerId,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++for (const config of [
++  {
++    api: { type: "openai-chat-completions", baseUrl: "http://localhost:8000/v1" },
++    access: { type: "api-key", apiKey: "" },
++  },
++  {
++    api: { type: "typesafe-system-one", baseUrl: "https://remote.invalid/v1" },
++    access: { type: "api-key", apiKey: "" },
++  },
++  {
++    api: { type: "typesafe-system-one", baseUrl: "http://user:pass@localhost:8000/v1" },
++    access: { type: "api-key", apiKey: "" },
++  },
++]) {
++  test("backend rejects invalid source configuration without any partial write", async () => {
++    const f = await fixture();
++    try {
++      const input = await f.input({ config });
++      const before = (await f.runtime.personalRepository.read()).revision;
++      await assert.rejects(f.facade().saveDecisionSource(input));
++      assert.equal((await f.runtime.personalRepository.read()).revision, before);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("existing edits keep unknown headers, sibling keys, manual corrections and current enablement", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input({
++      config: {
++        api: { headers: { "X-Keep": "fixture" } },
++        access: {
++          type: "api-key",
++          apiKey: "synthetic-main",
++          additionalApiKeys: ["synthetic-backup"],
++        },
++      },
++    });
++    await f.facade().saveDecisionSource(input);
++    await f.runtime.personalRepository.update((current) => ({
++      ...current,
++      models: current.models.setExact(
++        input.target.providerId,
++        "multilingual",
++        ModelConfig.fromData({ enabled: true, properties: { contextWindow: 12345 } }),
++      ),
++      decisionModelSettings: { ...current.decisionModelSettings!, enabled: true },
++    }));
++    const edit = await f.input({
++      target: { kind: "existing", providerId: input.target.providerId },
++      templateId: undefined,
++      config: { api: { baseUrl: "http://localhost:8001/v1" } },
++      modelId: "multilingual",
++    });
++    await f.facade().saveDecisionSource(edit);
++    const provider = (await f.runtime.personalRepository.read()).providers.get(
++      input.target.providerId,
++    )!;
++    assert.deepEqual(provider.api?.headers, { "X-Keep": "fixture" });
++    assert.ok(provider.access);
++    assert.deepEqual(provider.access.toJSON().additionalApiKeys, ["synthetic-backup"]);
++    assert.equal((await f.runtime.personalRepository.read()).decisionModelSettings?.enabled, true);
++    assert.equal(
++      (await f.runtime.personalRepository.read()).models.getExact(
++        input.target.providerId,
++        "multilingual",
++      )?.properties?.contextWindow,
++      12345,
++    );
++    await assert.rejects(
++      f
++        .facade()
++        .saveDecisionSource({ ...edit, config: { api: { baseUrl: "http://localhost:8002/v1" } } }),
++      /source changed/i,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("duplicate same-identity submissions reconcile and generated duplicate labels survive acknowledgement loss", async () => {
++  const f = await fixture();
++  try {
++    const first = await f.input({ providerName: "Custom decision source" });
++    await f.facade().saveDecisionSource(first);
++    const second = await f.input({ providerName: "Custom decision source" });
++    const receipts = await Promise.all([
++      f.facade().saveDecisionSource(second),
++      f.facade().saveDecisionSource(second),
++    ]);
++    assert.deepEqual(receipts.map((receipt) => receipt.reconciled).sort(), [false, true]);
++    assert.equal(
++      (await f.runtime.personalRepository.read()).providers.getRule(second.target.providerId)
++        ?.providerName,
++      "Custom decision source 2",
++    );
++    await f.reopen();
++    assert.equal((await f.facade().saveDecisionSource(second)).reconciled, true);
++    await assert.rejects(
++      f.facade().saveDecisionSource({ ...second, providerName: "Changed label" }),
++      /source changed/i,
++    );
++    assert.equal((await f.runtime.personalRepository.read()).providers.rules().length, 2);
++  } finally {
++    await f.close();
++  }
++});
++
++test("stale builtin revision and disabled model cannot create or re-enable a source", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input();
++    const before = (await f.runtime.personalRepository.read()).revision;
++    await assert.rejects(
++      f.facade().saveDecisionSource({ ...input, expectedBuiltinRevision: "old-directory" }),
++      /source changed/i,
++    );
++    assert.equal((await f.runtime.personalRepository.read()).revision, before);
++    await f.facade().saveDecisionSource(input);
++    await f.runtime.personalRepository.update((current) => ({
++      ...current,
++      models: current.models.setExact(
++        input.target.providerId,
++        "auto",
++        new ModelConfig({ enabled: false }),
++      ),
++    }));
++    const edit = await f.input({
++      target: { kind: "existing", providerId: input.target.providerId },
++      templateId: undefined,
++    });
++    const disabled = await readFile(f.path, "utf8");
++    await assert.rejects(f.facade().saveDecisionSource(edit), /disabled/);
++    assert.equal(await readFile(f.path, "utf8"), disabled);
++  } finally {
++    await f.close();
++  }
++});
++
++test("adding a dormant corrected model retains its exact correction when restoring membership", async () => {
++  const f = await fixture();
++  try {
++    const input = await f.input();
++    await f.facade().saveDecisionSource(input);
++    await f.runtime.personalRepository.update((current) => ({
++      ...current,
++      models: current.models.setExact(
++        input.target.providerId,
++        "private-old",
++        ModelConfig.fromData({ properties: { contextWindow: 12345 } }),
++      ),
++    }));
++    await f.facade().saveDecisionSource(
++      await f.input({
++        target: { kind: "existing", providerId: input.target.providerId },
++        templateId: undefined,
++        modelId: "private-old",
++      }),
++    );
++    const saved = await f.runtime.personalRepository.read();
++    assert.equal(
++      saved.models.getExact(input.target.providerId, "private-old")?.properties?.contextWindow,
++      12345,
++    );
++    assert.ok(
++      saved.providers.get(input.target.providerId)?.personalModelIds?.includes("private-old"),
++    );
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/services/test/provider-overlay-revision.test.ts b/packages/services/test/provider-overlay-revision.test.ts
+index e8b5467..2e696bb 100644
+--- a/packages/services/test/provider-overlay-revision.test.ts
++++ b/packages/services/test/provider-overlay-revision.test.ts
+@@ -274,6 +274,86 @@ test("native account and model catalog commit together through the actual Provid
+   }
+ });
+ 
++for (const race of [
++  "unpublished-unrelated",
++  "published-unrelated",
++  "changed-connection",
++  "deleted-connection",
++]) {
++  test(`native catalog transaction handles ${race} after membership capture`, async () => {
++    const f = await fixture();
++    try {
++      const { providerId } = await f.runtime.configService.createPersonalProvider({
++        templateId: "fleet-chatgpt-native",
++      });
++      await f.runtime.registryService.refresh("native-created");
++      const merge = f.runtime.configService.mergeDiscoveredModels.bind(f.runtime.configService);
++      f.runtime.configService.mergeDiscoveredModels = async (...args) => {
++        if (race === "deleted-connection") {
++          await f.runtime.configService.deletePersonalProvider(providerId);
++        } else if (race === "changed-connection") {
++          await f.runtime.configService.savePersonalProviderOverlay(
++            providerId,
++            parseProviderConfig({
++              access: { type: "native-cli", provider: "codex", configDir: "/synthetic/other-home" },
++            }),
++          );
++        } else {
++          await f.runtime.personalRepository.update((current) => ({
++            ...current,
++            newConversationModelPolicy: "recent",
++            models: current.models.setExact(
++              providerId,
++              "observed",
++              parseModelConfig({ properties: { contextWindow: 12345 } }),
++            ),
++          }));
++          if (race === "published-unrelated")
++            await f.runtime.registryService.refresh("unrelated-edit");
++        }
++        return merge(...args);
++      };
++      const operations = createNativeCliConnectionOperations(f.facade, async () => {}, {
++        inspect: async () => ({
++          accountId: "fixture-account",
++          accountName: "fixture-account",
++          catalog: {
++            source: "provider",
++            models: [{ id: "observed", name: "Observed", config: {} }],
++          },
++        }),
++        login: () => {
++          throw new Error("No login or inference in this fixture");
++        },
++      });
++      if (race.endsWith("unrelated")) {
++        await operations.connectNativeCli(providerId);
++        const saved = await f.runtime.personalRepository.read();
++        assert.equal(saved.newConversationModelPolicy, "recent");
++        assert.equal(
++          saved.models.getExact(providerId, "observed")?.properties?.contextWindow,
++          12345,
++        );
++        const access = saved.providers.get(providerId)?.access;
++        assert.equal(access?.type === "native-cli" && access.accountId, "fixture-account");
++      } else {
++        await assert.rejects(
++          operations.connectNativeCli(providerId),
++          /Connection changed|no longer exists|不存在|snapshot revision conflict/,
++        );
++        const saved = await f.runtime.personalRepository.read();
++        if (race === "deleted-connection") assert.equal(saved.providers.get(providerId), undefined);
++        else {
++          const access = saved.providers.get(providerId)?.access;
++          assert.equal(access?.type === "native-cli" && access.configDir, "/synthetic/other-home");
++        }
++      }
++    } finally {
++      await f.close();
++    }
++  });
++}
++
+ test("service readiness cannot change the submitted address, nested credentials or name", async () => {
+   const f = await fixture();
+   try {
+@@ -843,10 +923,12 @@ test("human and Agent capacity writes share window membership and internal reser
+ });
+ 
+ test("an unselected small context option does not block an otherwise usable output correction", async () => {
+-  const f = await capacityFixture(parseModelConfig({
+-    properties: { contextWindow: 65_536, contextWindows: [8_192, 65_536] },
+-    optionSpecs: { maxOutputTokens: { max: 4_096, map: "{}" } },
+-  }));
++  const f = await capacityFixture(
++    parseModelConfig({
++      properties: { contextWindow: 65_536, contextWindows: [8_192, 65_536] },
++      optionSpecs: { maxOutputTokens: { max: 4_096, map: "{}" } },
++    }),
++  );
+   try {
+     const saved = await f.change({ maxOutputTokens: 9_000 });
+     assert.equal(saved.models[0]!.contextWindow, 65_536);
+@@ -855,7 +937,9 @@ test("an unselected small context option does not block an otherwise usable outp
+     const before = await f.read();
+     await assert.rejects(f.change({ contextWindow: 8_192 }), /Host input budget conflict/);
+     assert.equal(await f.read(), before, "An unusable active-window correction was committed");
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("a failed owner save and a second runtime commit cannot publish or overwrite a capacity correction", async () => {
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index ca202d2..f15e744 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -165,6 +165,15 @@ export function useModelProviders(target: {
+     [commitProviderSettingsView, providerSettingsService, providerSettingsView?.revision],
+   );
+ 
++  const saveDecisionSource = useCallback(
++    async (input: Parameters<typeof providerSettingsService.saveDecisionSource>[0]) => {
++      const result = await providerSettingsService.saveDecisionSource(input);
++      if (result.view) commitProviderSettingsView(result.view);
++      return result;
++    },
++    [commitProviderSettingsView, providerSettingsService],
++  );
++
+   const createPersonalProvider = useCallback(
+     async (input?: Parameters<typeof providerSettingsService.createPersonalProvider>[0]) => {
+       const created = await providerSettingsService.createPersonalProvider(input);
+@@ -338,6 +347,7 @@ export function useModelProviders(target: {
+     refresh,
+     saveProvider,
+     createPersonalProvider,
++    saveDecisionSource,
+     addPersonalModel,
+     savePersonalModelDraft,
+     setPersonalModelEnabled,
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index a67ae00..5651178 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7583,6 +7583,8 @@ const enUS: Record<string, string> = {
+   "settings.modelDefaults.decision.addressHelp": "Enter the service base URL ending in /v1. This configures the System One classifier interface; saving does not install, start or test the service.",
+   "settings.modelDefaults.decision.address": "Service address",
+   "settings.modelDefaults.decision.configureSource": "Save source",
++  "settings.modelDefaults.decision.sourcePublicationPending": "Saved. The view has not refreshed; reload sources.",
++  "settings.modelDefaults.decision.editDraft": "Edit draft",
+   "settings.modelDefaults.decision.sourceSaveFailed": "Saving or binding failed. Your input is retained; retry the saved source.",
+   "settings.modelDefaults.decision.sourceSaveUncertain": "The source may be saved. Reload and select the saved connection.",
+   "settings.modelDefaults.decision.reloadSources": "Reload sources",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index d23d281..93ffb4c 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -7176,6 +7176,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelDefaults.decision.addressHelp": "填写服务的基地址，以 /v1 结尾。这里只配置 System One 分类接口；保存不会安装、启动或测试服务。",
+   "settings.modelDefaults.decision.address": "服务地址",
+   "settings.modelDefaults.decision.configureSource": "保存来源",
++  "settings.modelDefaults.decision.sourcePublicationPending": "已保存，页面暂未同步，请重新读取来源。",
++  "settings.modelDefaults.decision.editDraft": "继续编辑",
+   "settings.modelDefaults.decision.sourceSaveFailed": "保存或绑定失败，输入已保留，请重试。",
+   "settings.modelDefaults.decision.sourceSaveUncertain": "来源可能已保存，请重新读取并选择已保存的连接。",
+   "settings.modelDefaults.decision.reloadSources": "重新读取来源",
+diff --git a/packages/ui/src/settings/DecisionModelDefaults.tsx b/packages/ui/src/settings/DecisionModelDefaults.tsx
+index 5da5ed9..ff0e057 100644
+--- a/packages/ui/src/settings/DecisionModelDefaults.tsx
++++ b/packages/ui/src/settings/DecisionModelDefaults.tsx
+@@ -37,7 +37,7 @@ export function DecisionModelDefaults({
+   onChange(settings: DecisionModelSettings): void | boolean | Promise<void | boolean>;
+   onManageConnection?(providerId?: string): void;
+   sourceControls?: DecisionSourceControls;
+-  onSourceSaved?(selection: DecisionModelRef, current: () => boolean): Promise<boolean>;
++  onSourceSaved?(): void;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+   const t = (key: string) => intl.formatMessage({ id: `settings.modelDefaults.decision.${key}` });
+@@ -189,18 +189,13 @@ export function DecisionModelDefaults({
+               decision.selection?.providerId === source ? decision.selection.modelId : undefined
+             }
+             onBusy={setSourceBusy}
+-            onSaved={async (selection, mounted) => {
+-              const epoch = sourceEpoch.current;
+-              const accepted = await onSourceSaved(
+-                selection,
+-                () => mounted() && sourceEpoch.current === epoch,
+-              );
+-              if (accepted && mounted() && sourceEpoch.current === epoch) {
+-                setSourceBusy(false);
++            onSaved={(result) => {
++              onSourceSaved?.();
++              setSourceBusy(false);
++              if (!result.publicationPending) {
+                 sourceEpoch.current++;
+                 setDraftSource(undefined);
+               }
+-              return accepted;
+             }}
+           />
+         ) : source !== "none" && !template ? (
+diff --git a/packages/ui/src/settings/DecisionSourceEditor.tsx b/packages/ui/src/settings/DecisionSourceEditor.tsx
+index c987261..c38a59f 100644
+--- a/packages/ui/src/settings/DecisionSourceEditor.tsx
++++ b/packages/ui/src/settings/DecisionSourceEditor.tsx
+@@ -1,15 +1,11 @@
+ import { useEffect, useRef, useState } from "react";
+ import {
+   isLocalClassifierEndpoint,
+-  type ProviderConfigObject,
++  type DecisionSourceSaveInput,
++  type DecisionSourceSaveResult,
+   type ProviderSettingsTemplateView,
+ } from "@zcode/provider";
+-import type { DecisionModelRef } from "@zcode/shared";
+-import type {
+-  ProviderSettingsFormProvider,
+-  ProviderSettingsSaveHandler,
+-  ProviderSettingsSaveReceipt,
+-} from "@/lib/providerSettingsFormTypes.js";
++import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+ import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ import { Input } from "@/components/ui/input.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -22,6 +18,7 @@ import {
+   newProviderSetupDraft,
+   providerSetupConfig,
+ } from "./model-provider-section/providerSetupDraft.js";
++import { DECISION_CUSTOM_TEMPLATE_ID } from "./model-provider-section/providerTemplateCatalog.js";
+ import {
+   readProviderDraftValues,
+   resolvePendingProviderDraftSave,
+@@ -31,12 +28,11 @@ import {
+ export interface DecisionSourceControls {
+   templates: readonly ProviderSettingsTemplateView[];
+   providers: readonly ProviderSettingsFormProvider[];
+-  revision?: number;
++  personalRevision?: string;
++  builtinRevision?: string;
+   reload(): void | Promise<unknown>;
+   openExternal?(url: string): void | Promise<unknown>;
+-  create(templateId: string, config: ProviderConfigObject): Promise<ProviderSettingsSaveReceipt>;
+-  save: ProviderSettingsSaveHandler;
+-  addModel(providerId: string, modelId: string): Promise<ProviderSettingsSaveReceipt>;
++  saveSource(input: DecisionSourceSaveInput): Promise<DecisionSourceSaveResult>;
+ }
+ 
+ export function DecisionSourceEditor({
+@@ -53,10 +49,10 @@ export function DecisionSourceEditor({
+   template: ProviderSettingsTemplateView;
+   controls: DecisionSourceControls;
+   selectedModelId?: string;
+-  onSaved(selection: DecisionModelRef, current: () => boolean): Promise<boolean>;
++  onSaved(result: DecisionSourceSaveResult): void;
+   onBusy(busy: boolean): void;
+ }) {
+-  const { intl } = useZCodeIntl();
++  const { intl, locale } = useZCodeIntl();
+   const t = (key: string) => intl.formatMessage({ id: `settings.modelDefaults.decision.${key}` });
+   const seed = provider ? readProviderDraftValues(provider) : undefined;
+   const [url, setUrl] = useState(seed?.baseUrlValue ?? template.config.api?.baseUrl ?? "");
+@@ -67,13 +63,10 @@ export function DecisionSourceEditor({
+   const [visible, setVisible] = useState(false);
+   const [busy, setBusy] = useState(false);
+   const [error, setError] = useState(false);
+-  const [uncertainCreation, setUncertainCreation] = useState(false);
++  const [publicationPending, setPublicationPending] = useState(false);
+   const saveLock = useRef(false);
+-  const receipt = useRef<ProviderSettingsSaveReceipt | undefined>(
+-    provider && controls.revision !== undefined
+-      ? { provider, revision: controls.revision }
+-      : undefined,
+-  );
++  const creationId = useRef(`decision-source-${crypto.randomUUID()}`);
++  const request = useRef<DecisionSourceSaveInput | undefined>(undefined);
+   const mounted = useRef(true);
+   useEffect(() => {
+     mounted.current = true;
+@@ -90,48 +83,64 @@ export function DecisionSourceEditor({
+     { ...newProviderSetupDraft(template), baseUrl: url, primary: key },
+     ["typesafe-system-one"],
+   );
+-  const valid = Boolean(newConfig && model.trim());
++  const valid = Boolean(
++    newConfig && model.trim() && controls.personalRevision && controls.builtinRevision,
++  );
+   const save = async () => {
+-    if (saveLock.current || uncertainCreation || !valid || !newConfig) return;
++    if (
++      saveLock.current ||
++      publicationPending ||
++      !valid ||
++      !newConfig ||
++      !controls.personalRevision ||
++      !controls.builtinRevision
++    )
++      return;
+     saveLock.current = true;
+-    let creating = false;
+     setBusy(true);
+     onBusy(true);
+     setError(false);
+     try {
+-      let saved = receipt.current;
+-      if (!saved) {
+-        creating = true;
+-        saved = await controls.create(template.templateId, newConfig);
+-        creating = false;
+-        receipt.current = saved; // A failed later preference write must not create a duplicate.
+-      } else {
+-        const draft = readProviderDraftValues(saved.provider);
+-        const pending = resolvePendingProviderDraftSave({
+-          provider: saved.provider,
+-          draft: { ...draft, baseUrlValue: url, apiKeyValue: key },
+-          now: Date.now,
+-        });
+-        if (pending) {
+-          saved = await controls.save(pending, saved.revision);
+-          receipt.current = saved;
+-        }
+-      }
+-      const modelId = model.trim();
+-      if (!saved.provider.models.some((entry) => entry.modelId === modelId)) {
+-        saved = await controls.addModel(saved.provider.providerId, modelId);
+-        receipt.current = saved;
++      if (!request.current) {
++        const draft = provider ? readProviderDraftValues(provider) : undefined;
++        const pending =
++          provider && draft
++            ? resolvePendingProviderDraftSave({
++                provider,
++                draft: { ...draft, baseUrlValue: url, apiKeyValue: key },
++                now: Date.now,
++              })
++            : undefined;
++        const overlay = pending?.personalConfig ?? {};
++        request.current = {
++          target: {
++            kind: provider ? "existing" : "create",
++            providerId: provider?.providerId ?? creationId.current,
++          },
++          expectedPersonalRevision: controls.personalRevision,
++          expectedBuiltinRevision: controls.builtinRevision!,
++          ...(!provider && template.templateId !== DECISION_CUSTOM_TEMPLATE_ID
++            ? { templateId: template.templateId }
++            : {}),
++          ...(!provider && template.templateId === DECISION_CUSTOM_TEMPLATE_ID
++            ? { providerName: t("customSource") }
++            : {}),
++          locale,
++          config: provider
++            ? {
++                ...(overlay.api ? { api: overlay.api } : {}),
++                ...(overlay.access ? { access: overlay.access } : {}),
++              }
++            : newConfig,
++          modelId: model.trim(),
++        };
+       }
++      const result = await controls.saveSource(request.current);
+       if (!mounted.current) return;
+-      if (
+-        !(await onSaved({ providerId: saved.provider.providerId, modelId }, () => mounted.current))
+-      )
+-        setError(true);
++      setPublicationPending(result.publicationPending);
++      onSaved(result); // Backend has already committed all fields; this callback only refreshes presentation.
+     } catch {
+-      if (mounted.current) {
+-        setError(true);
+-        if (creating) setUncertainCreation(true);
+-      }
++      if (mounted.current) setError(true);
+     } finally {
+       saveLock.current = false;
+       if (mounted.current) {
+@@ -140,13 +149,14 @@ export function DecisionSourceEditor({
+       }
+     }
+   };
++
+   return (
+     <div
+       data-decision-source-editor={source}
+-      {...(receipt.current
++      {...(provider
+         ? pageAssistantScope(
+-            { feature: "model-settings", providerId: receipt.current.provider.providerId },
+-            receipt.current.provider.providerName ?? receipt.current.provider.providerId,
++            { feature: "model-settings", providerId: provider.providerId },
++            provider.providerName ?? provider.providerId,
+           )
+         : {})}
+     >
+@@ -162,7 +172,7 @@ export function DecisionSourceEditor({
+           <Input
+             aria-label={t("address")}
+             value={url}
+-            disabled={busy}
++            disabled={busy || Boolean(request.current)}
+             onChange={(event) => {
+               setUrl(event.target.value);
+               setError(false);
+@@ -179,7 +189,7 @@ export function DecisionSourceEditor({
+           <ApiKeyInput
+             value={key}
+             visible={visible}
+-            readOnly={busy}
++            readOnly={busy || Boolean(request.current)}
+             onChange={(value) => {
+               setKey(value);
+               setError(false);
+@@ -201,7 +211,7 @@ export function DecisionSourceEditor({
+           <Input
+             aria-label={t("model")}
+             value={model}
+-            disabled={busy}
++            disabled={busy || Boolean(request.current)}
+             onChange={(event) => {
+               setModel(event.target.value);
+               setError(false);
+@@ -215,18 +225,30 @@ export function DecisionSourceEditor({
+         control={
+           <Button
+             type="button"
+-            disabled={busy || uncertainCreation || !valid}
++            disabled={busy || publicationPending || !valid}
+             onClick={() => void save()}
+           >
+             {intl.formatMessage({ id: busy ? "common.saving" : "settings.modelProvider.save" })}
+           </Button>
+         }
+       />
+-      {error ? (
++      {error || publicationPending ? (
+         <div className="px-4 pb-3">
+           <p role="alert" className="text-ui-base text-destructive">
+-            {t(uncertainCreation ? "sourceSaveUncertain" : "sourceSaveFailed")}
++            {t(publicationPending ? "sourcePublicationPending" : "sourceSaveFailed")}
+           </p>
++          {error && !publicationPending ? (
++            <Button
++              type="button"
++              variant="outline"
++              onClick={() => {
++                request.current = undefined;
++                setError(false);
++              }}
++            >
++              {t("editDraft")}
++            </Button>
++          ) : null}
+           <Button type="button" variant="outline" onClick={() => void controls.reload()}>
+             {t("reloadSources")}
+           </Button>
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index ae24a62..dd93d12 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -1,8 +1,4 @@
+-import { projectProviderSettingsSaveReceipt } from "@/lib/providerSettingsFormProjection.js";
+-import {
+-  isDedicatedDecisionSource,
+-  DECISION_CUSTOM_TEMPLATE_ID,
+-} from "./model-provider-section/providerTemplateCatalog.js";
++import { isDedicatedDecisionSource } from "./model-provider-section/providerTemplateCatalog.js";
+ import { SlidersHorizontal } from "lucide-react";
+ import { ModelPurposeDefaults } from "./ModelPurposeDefaults.js";
+ import type { ProviderConfigObject } from "@zcode/provider";
+@@ -60,6 +56,7 @@ export function ModelProviderSection({
+     refreshError,
+     refresh,
+     saveProvider,
++    saveDecisionSource,
+     createPersonalProvider,
+     addPersonalModel,
+     savePersonalModelDraft,
+@@ -275,23 +272,11 @@ export function ModelProviderSection({
+           sourceControls={{
+             templates: providerTemplates,
+             providers: modelProviders,
+-            revision: providerSettingsView?.revision,
++            personalRevision: providerSettingsView?.personalRevision,
++            builtinRevision: providerSettingsView?.builtinRevision,
+             reload,
+             openExternal: (url) => platform.openExternal(url),
+-            create: async (templateId, initialConfig) => {
+-              const created = await createPersonalProvider({
+-                templateId: templateId === DECISION_CUSTOM_TEMPLATE_ID ? undefined : templateId,
+-                providerName:
+-                  templateId === DECISION_CUSTOM_TEMPLATE_ID
+-                    ? intl.formatMessage({ id: "settings.modelDefaults.decision.customSource" })
+-                    : undefined,
+-                initialConfig,
+-                locale,
+-              });
+-              return projectProviderSettingsSaveReceipt(created.view, created.providerId);
+-            },
+-            save: handleSave,
+-            addModel: (providerId, modelId) => addPersonalModel(providerId, modelId, {}, true),
++            saveSource: saveDecisionSource,
+           }}
+           onManageConnection={(providerId) => {
+             if (
+diff --git a/packages/ui/src/settings/ModelPurposeDefaults.tsx b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+index 492fbc2..1f7dd4d 100644
+--- a/packages/ui/src/settings/ModelPurposeDefaults.tsx
++++ b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+@@ -1,5 +1,5 @@
+-import { useEffect, useRef, useState } from "react";
+-import { ZCODE_AGENT_PROVIDER, type ModelSelection, type DecisionModelRef } from "@zcode/shared";
++import { useRef, useState } from "react";
++import { ZCODE_AGENT_PROVIDER, type ModelSelection } from "@zcode/shared";
+ import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -37,13 +37,6 @@ export function ModelPurposeDefaults({
+   const { modelSelectionService } = useBaseWorkspaceServices();
+   const read = useModelSelectionServiceView(modelSelectionService);
+   const { intl } = useZCodeIntl();
+-  const mounted = useRef(true);
+-  useEffect(() => {
+-    mounted.current = true;
+-    return () => {
+-      mounted.current = false;
+-    };
+-  }, []);
+   const owner = useRef({ service: modelSelectionService, generation: 0 });
+   if (owner.current.service !== modelSelectionService)
+     owner.current = { service: modelSelectionService, generation: owner.current.generation + 1 };
+@@ -99,44 +92,6 @@ export function ModelPurposeDefaults({
+       }
+     }
+   };
+-  const bindSource = async (
+-    selection: DecisionModelRef,
+-    current: () => boolean,
+-  ): Promise<boolean> => {
+-    const generation = owner.current.generation;
+-    if (saveLock.current === generation) return false;
+-    saveLock.current = generation;
+-    setSaveState({ generation, pending: true });
+-    try {
+-      const fresh = await modelSelectionService.getView();
+-      if (
+-        !mounted.current ||
+-        generation !== owner.current.generation ||
+-        !current() ||
+-        !fresh.preferencesRevision
+-      )
+-        return false;
+-      await modelSelectionService.savePreferences({
+-        expectedRevision: fresh.preferencesRevision,
+-        decisionModelSettings: {
+-          ...fresh.decisionModelSettings,
+-          enabled: fresh.decisionModelSettings?.enabled === true,
+-          selection,
+-        },
+-      });
+-      return true;
+-    } catch {
+-      if (mounted.current && generation === owner.current.generation)
+-        setSaveState({ generation, pending: true, errorKey: "settings.modelDefaults.failed" });
+-      return false;
+-    } finally {
+-      if (saveLock.current === generation) saveLock.current = undefined;
+-      if (mounted.current && generation === owner.current.generation) {
+-        setSaveState((state) => ({ ...state, pending: false }));
+-        read.reload();
+-      }
+-    }
+-  };
+   const change = (purpose: (typeof PURPOSES)[number], selection: ModelSelection | null) =>
+     save(
+       purpose === "conversation"
+@@ -360,7 +315,7 @@ export function ModelPurposeDefaults({
+         onChange={(settings) => save({ decisionModelSettings: settings })}
+         onManageConnection={onManageConnection}
+         sourceControls={sourceControls}
+-        onSourceSaved={bindSource}
++        onSourceSaved={() => read.reload()}
+       />
+       {read.state.status === "loading" ? (
+         <p className="text-ui-sm text-foreground-subtle">
+diff --git a/packages/ui/test/decisionSourceSettings.browser.test.tsx b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+index bba636f..4cf90ed 100644
+--- a/packages/ui/test/decisionSourceSettings.browser.test.tsx
++++ b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+@@ -2,10 +2,7 @@ import { act } from "react";
+ import { createRoot } from "react-dom/client";
+ import { ProviderSettingsFacade, parseProviderTemplateMap } from "@zcode/provider";
+ import builtin from "../../../config/provider/zcode-builtin.json";
+-import {
+-  customDecisionSourceTemplate,
+-  DECISION_CUSTOM_TEMPLATE_ID,
+-} from "../src/settings/model-provider-section/providerTemplateCatalog.js";
++import { customDecisionSourceTemplate } from "../src/settings/model-provider-section/providerTemplateCatalog.js";
+ import { ModelPurposeDefaults } from "../src/settings/ModelPurposeDefaults.js";
+ import { ServiceProvider } from "../src/hooks/useServices.js";
+ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+@@ -55,6 +52,7 @@ async function fixture(locale = "en-US") {
+   const events: any[] = [];
+   let failBinding = false;
+   let loseCreationAck = false;
++  let failPublication = false;
+   let delayCreation: Promise<unknown> | undefined;
+   let closed = false;
+   const view = () => ({
+@@ -104,67 +102,77 @@ async function fixture(locale = "en-US") {
+   const controls = {
+     templates,
+     providers,
+-    get revision() {
+-      return revision;
++    get personalRevision() {
++      return `personal-${revision}`;
+     },
++    builtinRevision: "builtin-fixture",
+     reload: async () => publish(),
+-    create: async (templateId: string, config: any) => {
+-      events.push({ kind: "create", templateId, config });
++    saveSource: async (input: any) => {
++      events.push({ kind: "source-save", input: structuredClone(input) });
+       await delayCreation;
+-      const template =
+-        templates.find((entry) => entry.templateId === templateId) ?? customDecisionSourceTemplate;
+-      const provider = {
+-        providerId: "local-source",
+-        providerName: "Saved local source",
+-        templateId: templateId === DECISION_CUSTOM_TEMPLATE_ID ? undefined : templateId,
+-        config: {
+-          ...template.config,
+-          ...config,
+-          api: { ...template.config.api, ...config.api },
+-          access: { ...template.config.access, ...config.access },
+-        },
+-        personalConfig: config,
+-        enabled: true,
+-        hasPersonalConfig: true,
+-        models: (templateId === DECISION_CUSTOM_TEMPLATE_ID
+-          ? []
+-          : (template.config.builtinModelIds ?? [])
+-        ).map((modelId) => ({
+-          modelId,
+-          config: { enabled: true },
+-          personalConfig: {},
+-          executable: false,
+-        })),
+-      };
+-      providers.push(provider);
+-      revision++;
+-      publish();
+-      if (loseCreationAck) {
+-        loseCreationAck = false;
+-        throw new Error("creation acknowledgement lost");
++      let provider = providers.find((entry) => entry.providerId === input.target.providerId);
++      if (!provider) {
++        check(
++          input.expectedPersonalRevision === `personal-${revision}`,
++          "Atomic source used a stale revision",
++        );
++        if (failBinding) {
++          failBinding = false;
++          throw new Error("atomic commit failed");
++        }
++        const template =
++          templates.find((entry) => entry.templateId === input.templateId) ??
++          customDecisionSourceTemplate;
++        provider = {
++          providerId: input.target.providerId,
++          providerName: "Saved local source",
++          templateId: input.templateId,
++          config: {
++            ...template.config,
++            ...input.config,
++            api: { ...template.config.api, ...input.config.api },
++            access: { ...template.config.access, ...input.config.access },
++          },
++          personalConfig: input.config,
++          enabled: true,
++          hasPersonalConfig: true,
++          models: [
++            ...new Set([
++              ...(input.templateId ? (template.config.builtinModelIds ?? []) : []),
++              input.modelId,
++            ]),
++          ].map((modelId) => ({
++            modelId,
++            config: { enabled: true },
++            personalConfig: {},
++            executable: false,
++          })),
++        };
++        providers.push(provider);
++        settings = {
++          ...settings,
++          selection: { providerId: provider.providerId, modelId: input.modelId },
++        };
++        revision++;
++        if (!failPublication) publish();
++        if (loseCreationAck) {
++          loseCreationAck = false;
++          throw new Error("commit acknowledgement lost");
++        }
++      } else {
++        check(
++          settings.selection?.providerId === provider.providerId &&
++            settings.selection?.modelId === input.modelId,
++          "Retry rebound a newer choice",
++        );
+       }
+-      return { provider, revision };
+-    },
+-    save: async (provider: any, basedOnRevision: number) => {
+-      events.push({ kind: "save", provider, basedOnRevision });
+-      check(basedOnRevision === revision, "Provider draft lost its write revision");
+-      providers.splice(0, providers.length, provider);
+-      revision++;
+-      publish();
+-      return { provider, revision };
+-    },
+-    addModel: async (providerId: string, modelId: string) => {
+-      events.push({ kind: "add-model", providerId, modelId });
+-      const provider = providers.find((entry) => entry.providerId === providerId)!;
+-      provider.models.push({
+-        modelId,
+-        config: { enabled: true },
+-        personalConfig: {},
+-        executable: false,
+-      });
+-      revision++;
+-      publish();
+-      return { provider, revision };
++      return {
++        providerId: provider.providerId,
++        personalRevision: `personal-${revision}`,
++        selection: settings.selection,
++        reconciled: true,
++        publicationPending: failPublication,
++      };
+     },
+   };
+   await act(async () =>
+@@ -225,6 +233,9 @@ async function fixture(locale = "en-US") {
+     loseAck() {
+       loseCreationAck = true;
+     },
++    failPublication() {
++      failPublication = true;
++    },
+     delay(value: Promise<unknown>) {
+       delayCreation = value;
+     },
+@@ -264,11 +275,11 @@ async function fixture(locale = "en-US") {
+           await f.enter(zh ? "服务地址" : "Service address", "http://127.0.0.1:8000/v1");
+           await f.save();
+           check(
+-            f.events.filter((entry) => entry.kind === "create").length === 1,
++            f.events.filter((entry) => entry.kind === "source-save").length === 1,
+             "Creation duplicated",
+           );
+           check(
+-            f.view().decisionModelSettings.selection?.providerId === "local-source" &&
++            f.view().decisionModelSettings.selection?.providerId === f.providers[0]?.providerId &&
+               f.view().decisionModelSettings.selection.modelId === "auto",
+             "Saved source was not bound: " + JSON.stringify(f.view().decisionModelSettings),
+           );
+@@ -392,60 +403,97 @@ async function fixture(locale = "en-US") {
+         "Saved custom source lost its inline configuration",
+       );
+       check(
+-        f.events.filter((entry) => entry.kind === "create").length === 1 &&
+-          f.events.filter((entry) => entry.kind === "add-model").length === 1,
+-        "Custom source duplicated creation or model registration",
++        f.events.filter((entry) => entry.kind === "source-save").length === 1 &&
++          !f.events.some(
++            (entry) =>
++              entry.kind === "add-model" ||
++              entry.kind === "create" ||
++              (entry.kind === "preference" && entry.patch.decisionModelSettings?.selection),
++          ),
++        "UI performed independent member or binding writes",
+       );
+     } finally {
+       await f.close();
+     }
+   });
+-  await test("failed preference binding retries the committed source without another creation", async () => {
++  await test("failed atomic save leaves no partial state and retries the same identity", async () => {
+     const f = await fixture();
+     try {
+       await f.laya();
+       f.failBinding();
+       await f.save();
+       check(
+-        f.providers.length === 1 && f.node.querySelector('[role="alert"]'),
+-        "Committed source or failure diagnosis was lost",
++        f.providers.length === 0 && f.node.querySelector('[role="alert"]'),
++        "Atomic rollback or failure diagnosis was lost",
+       );
+       await f.save();
+       check(
+-        f.events.filter((entry) => entry.kind === "create").length === 1,
+-        "Retry created a replacement",
++        f.events.filter((entry) => entry.kind === "source-save").length === 2 &&
++          f.providers.length === 1 &&
++          f.events.filter((entry) => entry.kind === "source-save")[0].input.target.providerId ===
++            f.events.filter((entry) => entry.kind === "source-save")[1].input.target.providerId,
++        "Retry used another identity",
+       );
+       check(
+-        f.view().decisionModelSettings.selection?.providerId === "local-source",
++        f.view().decisionModelSettings.selection?.providerId === f.providers[0]?.providerId,
+         "Retry did not bind retained source",
+       );
+     } finally {
+       await f.close();
+     }
+   });
+-  await test("unknown creation acknowledgement fences replay and the saved source can be selected explicitly", async () => {
++  await test("lost save acknowledgement retries the same identity without creating another source", async () => {
+     const f = await fixture();
+     try {
+       await f.laya();
+       f.loseAck();
+       await f.save();
+       check(
+-        f.saveButton().disabled && f.providers.length === 1,
+-        "Unknown creation was left replayable",
++        !f.saveButton().disabled && f.providers.length === 1,
++        "Same-identity reconciliation was unavailable",
+       );
+-      await f.choose("Saved local source");
++      await f.save();
+       check(
+-        f.events.filter((entry) => entry.kind === "create").length === 1,
+-        "Selecting the saved source created another",
++        f.providers.length === 1 &&
++          f.events.filter((entry) => entry.kind === "source-save").length === 2,
++        "Retry after acknowledgement loss created another",
+       );
+       check(
+-        f.view().decisionModelSettings.selection?.providerId === "local-source",
++        f.view().decisionModelSettings.selection?.providerId === f.providers[0]?.providerId,
+         "Saved source is unreachable after acknowledgement failure",
+       );
+     } finally {
+       await f.close();
+     }
+   });
++  await test("committed save with unavailable publication reloads and cannot replay mutation", async () => {
++    const f = await fixture();
++    try {
++      await f.laya();
++      f.failPublication();
++      await f.save();
++      check(
++        f.providers.length === 1 && f.node.querySelector('[role="alert"]'),
++        "Committed publication failure lacked diagnosis",
++      );
++      check(f.saveButton()?.disabled, "Known committed save remained replayable");
++      const reload = [...f.node.querySelectorAll<HTMLButtonElement>("button")].find(
++        (entry) => entry.textContent?.trim() === "Reload sources",
++      );
++      check(reload, "Committed source recovery had no reload path");
++      await act(async () => reload!.click());
++      check(
++        f.view().decisionModelSettings.selection?.providerId === f.providers[0].providerId,
++        "Reload lost the committed source",
++      );
++      check(
++        f.events.filter((entry) => entry.kind === "source-save").length === 1,
++        "Reload replayed a configuration mutation",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("leaving the page during creation cannot bind a delayed source into a newer settings view", async () => {
+     const f = await fixture();
+     let complete!: () => void;

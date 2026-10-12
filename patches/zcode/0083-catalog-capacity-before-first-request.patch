@@ -1,0 +1,318 @@
+diff --git a/package.json b/package.json
+index 82d592c..782bb05 100644
+--- a/package.json
++++ b/package.json
+@@ -63,6 +63,7 @@
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
++    "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+     "test:combined-model-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/combinedModelControl.browser.test.tsx __combinedModelTests --desktop-styles",
+     "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles"
+   },
+diff --git a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+index cb76fab..adc4663 100644
+--- a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+@@ -5,7 +5,6 @@ import { TID_CHAT_THOUGHT_LEVEL_SELECT_ITEM, testId } from "@zcode/shared";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import {
+-  DropdownMenuItem,
+   DropdownMenuCheckboxItem,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
+@@ -14,7 +13,6 @@ import {
+   DropdownMenuSubTrigger,
+ } from "@/components/ui/dropdown-menu.js";
+ import { Switch } from "@/components/ui/switch.js";
+-import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
+ import { getThoughtLevelLabel } from "./thoughtLevelOptions.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ 
+@@ -25,14 +23,12 @@ export function ComposerModelControl({
+   provider,
+   onThoughtChange,
+   speed,
+-  contextTokens,
+ }: {
+   model: ComponentProps<typeof ModelConfigSelect>;
+   thought?: ZCodeConfigOption | null;
+   provider?: ZCodeProvider;
+   onThoughtChange(value: string): void;
+   speed?: { value: "standard" | "fast"; note: string; onChange(value: "standard" | "fast"): void };
+-  contextTokens?: number | null;
+ }) {
+   const { intl } = useZCodeIntl();
+   const entries = thought?.type === "select" ? (thought.options ?? []) : [];
+@@ -83,23 +79,6 @@ export function ComposerModelControl({
+           </DropdownMenuCheckboxItem>
+         </ControlHintTooltip>
+       ) : null}
+-      <ControlHintTooltip
+-        title={intl.formatMessage({ id: "chat.toolbar.modelOptions.context" })}
+-        description={intl.formatMessage({ id: "chat.toolbar.modelOptions.contextDescription" })}
+-        side="left"
+-      >
+-        <DropdownMenuItem
+-          className="min-h-9 justify-between"
+-          onSelect={(event) => event.preventDefault()}
+-        >
+-          <span>{intl.formatMessage({ id: "chat.toolbar.modelOptions.context" })}</span>
+-          <span className="text-foreground-subtle">
+-            {typeof contextTokens === "number" && contextTokens > 0
+-              ? formatModelContextWindowLabel(contextTokens)
+-              : "—"}
+-          </span>
+-        </DropdownMenuItem>
+-      </ControlHintTooltip>
+       {entries.length ? (
+         <DropdownMenuSub>
+           <DropdownMenuSubTrigger
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 01e8c3c..5780029 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -222,6 +222,7 @@ export function ChatContextUsage({
+   codingPlanUsageRemaining,
+   startPlanBalance,
+   taskUsage,
++  modelContextCapacity,
+   subscription,
+   selectedProvider: _selectedProvider,
+   intl,
+@@ -236,6 +237,8 @@ export function ChatContextUsage({
+     breakdown?: ZCodeContextUsageBreakdownItem[];
+     measurement?: ContextWindowMeasurement;
+   } | null;
++  /** Confirmed model-directory capacity is independent of measured occupancy. */
++  modelContextCapacity?: number;
+   subscription?: ConversationSubscriptionConnection;
+   selectedProvider: ZCodeProvider;
+   intl: ReturnType<typeof useZCodeIntl>["intl"];
+@@ -303,6 +306,12 @@ export function ChatContextUsage({
+   }, []);
+   const staleMeasurement = taskUsage?.measurement?.state === "stale";
+   const renderableTaskUsage = getRenderableTaskUsage(taskUsage);
++  const knownCapacity =
++    typeof modelContextCapacity === "number" &&
++    Number.isFinite(modelContextCapacity) &&
++    modelContextCapacity > 0
++      ? modelContextCapacity
++      : undefined;
+   useEffect(() => {
+     pinnedRef.current = false;
+     setContextOpen(false);
+@@ -845,14 +854,15 @@ export function ChatContextUsage({
+   if (
+     !renderableTaskUsage &&
+     !staleMeasurement &&
++    !knownCapacity &&
+     !subscription &&
+     !hasCodingPlanUsageRemaining &&
+     !hasStartPlanBalance
+   )
+     return null;
+-  const hasContextInformation = Boolean(renderableTaskUsage || staleMeasurement);
++  const hasContextInformation = Boolean(renderableTaskUsage || staleMeasurement || knownCapacity);
+   const contextUsedTokens = renderableTaskUsage?.used ?? 0;
+-  const contextMaxTokens = renderableTaskUsage?.size ?? 1;
++  const contextMaxTokens = renderableTaskUsage?.size ?? knownCapacity ?? 1;
+ 
+   return (
+     <Context
+@@ -942,6 +952,21 @@ export function ChatContextUsage({
+         sideOffset={2}
+       >
+         <ContextContentBody className="space-y-3">
++          {!renderableTaskUsage && !staleMeasurement && knownCapacity ? (
++            <div className="space-y-2">
++              <div className="flex items-center justify-between gap-3 text-ui-base">
++                <span className="font-medium">
++                  {intl.formatMessage({ id: "chat.contextUsage.title" })}
++                </span>
++                <span className="font-mono text-ui-sm text-foreground-subtle">
++                  {formatCompactTokenNumber("en-US", knownCapacity)}
++                </span>
++              </div>
++              <p className="text-ui-sm text-foreground-subtle">
++                {intl.formatMessage({ id: "chat.contextUsage.unmeasured" })}
++              </p>
++            </div>
++          ) : null}
+           {!renderableTaskUsage && staleMeasurement ? (
+             <div className="space-y-2">
+               <div className="text-ui-base font-medium">
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 2b7231a..9d6e650 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7295,8 +7295,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.assistant.conflict": "The settings changed after this request. Review the current page before asking for another change.",
+   "settings.modelProvider.assistant.targetLost": "The selected provider or model is no longer available. No replacement target was chosen.",
+   "settings.modelProvider.assistant.operationFailed": "This operation did not complete. Check the current page before retrying.",
+-  "chat.toolbar.modelOptions.context": "Context",
+-  "chat.toolbar.modelOptions.contextDescription": "The selected model’s confirmed context capacity. Detailed occupancy stays in the Token ring; an unknown capacity is shown as —.",
+   "chat.toolbar.modelOptions.model": "Model",
+ };
+ 
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 37844b0..73e138e 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6908,8 +6908,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.assistant.conflict": "配置在请求之后发生了变化。请先查看当前页面，再提出修改要求。",
+   "settings.modelProvider.assistant.targetLost": "选中的供应商或模型已不可用，没有切换到其他目标。",
+   "settings.modelProvider.assistant.operationFailed": "本次操作未完成，请先查看当前页面，再决定是否重试。",
+-  "chat.toolbar.modelOptions.context": "上下文",
+-  "chat.toolbar.modelOptions.contextDescription": "当前模型已确认的上下文容量。详细占用仍在 Token 环中查看；未确认时显示 —。",
+   "chat.toolbar.modelOptions.model": "模型",
+ };
+ 
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 69427fe..300aec9 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -1023,6 +1023,11 @@ function V4ComposerModelControlsImpl({
+         className="hidden"
+       />
+       <ChatContextUsage
++        modelContextCapacity={
++          selectedSubscriptionProvider?.models.find(
++            (model) => model.modelId === effectiveConfig?.model,
++          )?.evidenceConfig?.properties?.contextWindow ?? undefined
++        }
+         codingPlanUsageRemaining={codingPlanUsageRemaining}
+         taskUsage={taskUsage}
+         subscription={subscriptionConnection}
+@@ -1055,11 +1060,6 @@ function V4ComposerModelControlsImpl({
+       ) : modelMenuVisible ? (
+         <ComposerModelControl
+           thought={thoughtOption}
+-          contextTokens={
+-            selectedSubscriptionProvider?.models.find(
+-              (model) => model.modelId === effectiveConfig?.model,
+-            )?.evidenceConfig?.properties?.contextWindow
+-          }
+           provider={displayProvider}
+           onThoughtChange={handleThoughtValueChange}
+           speed={
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 7c87079..bf4a2f9 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -27,7 +27,6 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+           <button style={{ width: 28 }}>+</button>
+           <ComposerModelControl
+             provider="zcode"
+-            contextTokens={256000}
+             thought={
+               {
+                 type: "select",
+@@ -163,7 +162,10 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+             "The retired settings shortcut survived",
+           );
+           const menu = document.querySelector('[data-slot="dropdown-menu-content"]')!;
+-          check(menu.textContent?.includes("256K"), "Confirmed context capacity is missing");
++          check(
++            !menu.textContent?.includes(locale === "zh-CN" ? "上下文" : "Context"),
++            "A fixed-capacity model exposed a context selector",
++          );
+           check(
+             !menu.querySelector('[role="menuitemradio"]'),
+             "Effort/model lists still expand the root menu",
+diff --git a/packages/ui/test/contextCapacity.browser.test.tsx b/packages/ui/test/contextCapacity.browser.test.tsx
+new file mode 100644
+index 0000000..74fd4dd
+--- /dev/null
++++ b/packages/ui/test/contextCapacity.browser.test.tsx
+@@ -0,0 +1,76 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ChatContextUsage } from "../src/chat-input-toolbar/contextUsage.js";
++import { ZCodeIntlProvider, useZCodeIntl } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++function Capacity({ capacity }: { capacity?: number }) {
++  const { intl, locale } = useZCodeIntl();
++  return (
++    <ChatContextUsage
++      taskUsage={null}
++      modelContextCapacity={capacity}
++      selectedProvider="zcode"
++      intl={intl}
++      locale={locale}
++    />
++  );
++}
++(window as unknown as Record<string, unknown>).__contextCapacityTests = (async () => {
++  const results: { name: string; error?: string }[] = [];
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true]) {
++      const name = `${locale}, ${dark ? "dark" : "light"}: model capacity before first request, occupancy unknown`;
++      document.documentElement.classList.toggle("dark", dark);
++      const node = document.createElement("div");
++      document.body.append(node);
++      const root = createRoot(node);
++      const render = (capacity?: number) =>
++        root.render(
++          <ZCodeIntlProvider initialLocale={locale}>
++            <TooltipProvider>
++              <Capacity capacity={capacity} />
++            </TooltipProvider>
++          </ZCodeIntlProvider>,
++        );
++      try {
++        await act(async () => render());
++        check(!node.querySelector("button"), "Unknown capacity created a fabricated meter");
++        await act(async () => render(256000));
++        const trigger = node.querySelector<HTMLButtonElement>("button")!;
++        check(trigger, "Known capacity remained hidden until first inference");
++        await act(async () => trigger.click());
++        check(
++          document.body.textContent?.includes("256K"),
++          "Capacity did not come from the selected catalog model",
++        );
++        check(
++          document.body.textContent?.includes(
++            locale === "zh-CN" ? "尚无实测用量" : "No measured usage",
++          ),
++          "Unknown occupancy was not labelled",
++        );
++        check(!document.body.textContent?.includes("0%"), "Unknown occupancy became zero percent");
++        await act(async () => render(128000));
++        check(
++          document.body.textContent?.includes("128K"),
++          "A next-model capacity retained the previous model limit",
++        );
++        check(
++          !document.body.textContent?.includes("256K"),
++          "Old capacity leaked after selection changed",
++        );
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
++  return results;
++})();
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 1db4821..2d0596f 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -23,7 +23,7 @@ try {
+     format: "esm",
+     tsconfig: join(root, "packages/ui/tsconfig.json"),
+     loader: { ".svg": "dataurl", ".png": "dataurl" },
+-    define: { "process.env.NODE_ENV": '"development"' },
++    define: { "process.env.NODE_ENV": '"development"', "import.meta.env.DEV": "false", "import.meta.env.PROD": "true" },
+   });
+   let stylesheet = process.argv[4];
+   if (stylesheet === "--desktop-styles") {

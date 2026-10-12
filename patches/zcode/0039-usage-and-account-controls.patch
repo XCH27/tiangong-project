@@ -1,0 +1,1862 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index 8c5f79f..8ad5aaf 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -94,10 +94,10 @@ export function queryAccounting(
+   });
+   return db
+     .prepare(`with repriced as materialized (
+-    select provider_id,model_id,started_at,fleet_usage_price(accounting_json,provider_id,model_id,started_at) as accounting_json
++    select provider_id,model_id,query_source,started_at,fleet_usage_price(accounting_json,provider_id,model_id,started_at) as accounting_json
+     from model_usage where started_at >= ? and started_at < ?
+   ), facts as (
+-    select provider_id as providerId, model_id as modelId, started_at,
++    select provider_id as providerId, model_id as modelId, query_source as querySource, started_at,
+       json_extract(accounting_json,'$.accountId') as accountId,
+       json_extract(accounting_json,'$.workspacePath') as workspacePath,
+       json_extract(accounting_json,'$.requestedSpeedMode') as speedMode,
+@@ -109,7 +109,7 @@ export function queryAccounting(
+       json_extract(accounting_json,'$.priceVersion') as priceVersion,
+       json_extract(accounting_json,'$.sourceUrl') as sourceUrl
+     from repriced
+-  ) select providerId,accountId,workspacePath,modelId,speedMode,count(*) as requestCount,
++  ) select providerId,accountId,workspacePath,modelId,querySource,speedMode,count(*) as requestCount,
+     sum(case when inputTokens is not null and outputTokens is not null then 1 else 0 end) as reportedCount,
+     coalesce(sum(inputTokens),0) as inputTokens,coalesce(sum(outputTokens),0) as outputTokens,
+     coalesce(sum(case when cacheReadTokens between 0 and inputTokens then cacheReadTokens end),0) as cacheReadTokens,
+@@ -119,7 +119,7 @@ export function queryAccounting(
+     coalesce(sum(estimatedCredits),0) as estimatedCredits,count(estimatedCredits) as creditCount,
+     min(started_at) as firstAt,max(started_at) as lastAt,group_concat(distinct priceVersion) as priceVersions,
+     group_concat(distinct sourceUrl) as priceSources
+-    from facts group by providerId,accountId,workspacePath,modelId,speedMode order by inputTokens+outputTokens desc
++    from facts group by providerId,accountId,workspacePath,modelId,querySource,speedMode order by inputTokens+outputTokens desc
+   `)
+     .all(since, until) as unknown as UsageAccountingRow[];
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+new file mode 100644
+index 0000000..4d9fbb4
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+@@ -0,0 +1,72 @@
++import type { DatabaseSync } from "node:sqlite";
++import type { AppUsageModelActivityRow } from "@zcode/contracts";
++
++const uniqueTurnModels = `with relevant_turns as (
++    select distinct session_id, turn_id from tool_usage
++    where started_at >= ? and started_at <= ? and turn_id is not null
++  ), unique_turn_models as (
++    select usage.session_id, usage.turn_id, min(usage.model_id) as modelId
++    from model_usage usage join relevant_turns turn
++      on usage.session_id = turn.session_id and usage.turn_id = turn.turn_id
++    where usage.query_source in ('main_turn','subagent','workflow_child')
++    group by usage.session_id, usage.turn_id having count(distinct usage.model_id) = 1
++)`;
++
++/** Attribute tools only when one model served that turn; mixed-model turns stay in global totals. */
++export function queryModelActivity(db: DatabaseSync, since: number, until: number): AppUsageModelActivityRow[] {
++  const sessions = db.prepare(`select model_id as modelId, count(distinct session_id) as sessionCount
++    from model_usage where started_at >= ? and started_at <= ? and query_source = 'main_turn'
++    group by model_id`).all(since, until) as unknown as { modelId: string; sessionCount: number }[];
++  const tools = db.prepare(`${uniqueTurnModels} select m.modelId, t.tool_name as toolName,
++      count(*) as callCount,
++      sum(case when t.status = 'error' then 1 else 0 end) as errorCount,
++      avg(t.duration_ms) as avgDurationMs
++    from tool_usage t join unique_turn_models m
++      on t.session_id = m.session_id and t.turn_id = m.turn_id
++    where t.started_at >= ? and t.started_at <= ?
++    group by m.modelId, t.tool_name
++    order by m.modelId, callCount desc, t.tool_name`).all(since, until, since, until) as unknown as {
++    modelId: string; toolName: string; callCount: number; errorCount: number; avgDurationMs: number | null;
++  }[];
++  const skills = db.prepare(`${uniqueTurnModels} select m.modelId,
++      json_extract(t.skill_metadata_json,'$.qualifiedName') as skillId,
++      json_extract(t.skill_metadata_json,'$.pluginId') as pluginId,
++      json_extract(t.skill_metadata_json,'$.source') as source,
++      count(*) as callCount,
++      sum(case when t.status = 'error' then 1 else 0 end) as errorCount,
++      avg(t.duration_ms) as avgDurationMs
++    from tool_usage t join unique_turn_models m
++      on t.session_id = m.session_id and t.turn_id = m.turn_id
++    where t.started_at >= ? and t.started_at <= ? and t.tool_name = 'Skill'
++      and json_type(t.skill_metadata_json,'$.qualifiedName') = 'text'
++      and length(trim(json_extract(t.skill_metadata_json,'$.qualifiedName'))) > 0
++    group by m.modelId, skillId, pluginId, source
++    order by m.modelId, callCount desc, skillId`).all(since, until, since, until) as unknown as {
++    modelId: string; skillId: string; pluginId: string | null; source: string | null;
++    callCount: number; errorCount: number; avgDurationMs: number | null;
++  }[];
++  const byModel = new Map<string, AppUsageModelActivityRow>();
++  const itemFor = (modelId: string) => {
++    let item = byModel.get(modelId);
++    if (!item) {
++      item = { modelId, sessionCount: 0, toolCallCount: 0, toolErrorCount: 0,
++        tools: [], skills: [], unidentifiedSkillCalls: 0 };
++      byModel.set(modelId, item);
++    }
++    return item;
++  };
++  for (const row of sessions) itemFor(row.modelId).sessionCount = row.sessionCount;
++  for (const row of tools) {
++    const item = itemFor(row.modelId);
++    item.toolCallCount += row.callCount;
++    item.toolErrorCount += row.errorCount;
++    item.tools.push({ toolName: row.toolName, callCount: row.callCount,
++      errorCount: row.errorCount, avgDurationMs: row.avgDurationMs });
++  }
++  for (const { modelId, ...skill } of skills) itemFor(modelId).skills.push(skill);
++  for (const item of byModel.values()) {
++    const skillCalls = item.tools.find((tool) => tool.toolName === "Skill")?.callCount ?? 0;
++    item.unidentifiedSkillCalls = skillCalls - item.skills.reduce((sum, skill) => sum + skill.callCount, 0);
++  }
++  return [...byModel.values()].sort((a, b) => a.modelId.localeCompare(b.modelId));
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index f3a8164..4df95a4 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -1,4 +1,5 @@
+ import { querySkillUsage } from "./usage-skills.js";
++import { queryModelActivity } from "./usage-model-activity.js";
+ import { accountingSnapshot, queryAccounting } from "./usage-accounting.js";
+ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+ import type {
+@@ -588,6 +589,7 @@ export async function queryAppUsage(
+       toolErrorCount: Number(toolTotals.toolErrorCount ?? 0),
+     },
+     accounting: queryAccounting(db,since,until),
++    modelActivities: queryModelActivity(db, since, until),
+     models: models.map((m) => ({
+       modelId: m.modelId ?? null,
+       totalTokens: Number(m.totalTokens),
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 8edc6c2..e63a0a4 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
+-import type { SessionId, ProjectId, ModelUsageRecord } from "@zcode/contracts";
++import type { SessionId, ProjectId, ModelUsageRecord, TurnId } from "@zcode/contracts";
+ import { allocateSubscriptionPayment, subscriptionPaymentsSchema } from "@zcode/shared";
+ import {
+   queryAccounting,
+@@ -268,7 +268,7 @@ test("new price coverage fills unpriced complete facts in a read projection with
+   const db = new DatabaseSync(":memory:");
+   try {
+     db.exec(
+-      "create table model_usage(provider_id text,model_id text,started_at integer,accounting_json text)",
++      "create table model_usage(provider_id text,model_id text,started_at integer,accounting_json text,query_source text default 'main_turn')",
+     );
+     const facts = {
+       accountId: "saved-account",
+@@ -279,7 +279,7 @@ test("new price coverage fills unpriced complete facts in a read projection with
+       cacheWriteTokens: 200,
+       reason: "provider-price-unavailable",
+     };
+-    const insert = db.prepare("insert into model_usage values(?,?,?,?)");
++    const insert = db.prepare("insert into model_usage(provider_id,model_id,started_at,accounting_json) values(?,?,?,?)");
+     insert.run("account:zai-individual-coding-plan", "GLM-5.3-Flash", 10, JSON.stringify(facts));
+     insert.run(
+       "account:zai-individual-coding-plan",
+@@ -345,6 +345,37 @@ test("project costs preserve the recorded workspace without assigning historical
+  }finally{await f.close();}
+ });
+ 
++test("model activity counts only single-model turns; cost rows retain their request source", async () => {
++  const f = await fixture();
++  const at = Date.UTC(2026, 7, 1);
++  try {
++    await f.record("main-a", "a", "standard", { modelId: "model-a", turnID: "turn-a" as TurnId });
++    await f.record("main-b", "a", "standard", { modelId: "model-b", turnID: "turn-b" as TurnId });
++    await f.record("mixed-a", "a", "standard", { modelId: "model-a", turnID: "turn-mixed" as TurnId });
++    await f.record("mixed-b", "a", "standard", { modelId: "model-b", turnID: "turn-mixed" as TurnId });
++    await f.record("tool-model", "a", "standard", { modelId: "model-a", querySource: "web_search_tool" });
++    const tool = (id: string, turnID: string, toolName: string) => ({
++      id, sessionID: "session" as SessionId, turnID: turnID as TurnId,
++      toolCallID: id, toolName, status: "completed" as const, startedAt: at, durationMs: 10,
++    });
++    await f.store.upsertToolUsage(tool("bash-a", "turn-a", "Bash"));
++    await f.store.upsertToolUsage({ ...tool("skill-a", "turn-a", "Skill"), skillMetadata: { qualifiedName: "design:review", pluginId: "design@registry", source: "plugin" } });
++    await f.store.upsertToolUsage(tool("read-b", "turn-b", "Read"));
++    await f.store.upsertToolUsage(tool("mixed", "turn-mixed", "Bash"));
++    const result = await f.query();
++    assert.equal(result.toolTotals.toolCallCount, 4);
++    const a = result.modelActivities?.find((item) => item.modelId === "model-a");
++    const b = result.modelActivities?.find((item) => item.modelId === "model-b");
++    assert.equal(a?.toolCallCount, 2);
++    assert.equal(b?.toolCallCount, 1);
++    assert.equal(a?.skills[0]?.skillId, "design:review");
++    assert.equal(a?.sessionCount, 1);
++    assert.equal(result.accounting?.some((row) => row.querySource === "web_search_tool"), true);
++  } finally {
++    await f.close();
++  }
++});
++
+ 
+ test("skill identity uses existing tool-call upserts, survives restart and leaves legacy attribution unknown",async()=>{
+  const f=await fixture();try{
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+index ae151dc..46f31dd 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+@@ -217,6 +217,13 @@ export function buildAppUsageSnapshot(
+     timeZone: opts.timeZone,
+     source: "agent-db",
+     accounting: result.accounting,
++    modelActivities: result.modelActivities?.map((activity) => ({
++      ...activity,
++      tools: activity.tools.map((tool) => ({
++        ...tool,
++        errorRate: tool.callCount > 0 ? tool.errorCount / tool.callCount : 0,
++      })),
++    })),
+     summary: {
+       totalTokens: totals.totalTokens,
+       inputTokens: totals.inputTokens,
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index a4d4243..36b4f7c 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -1033,6 +1033,16 @@ export interface AppUsageToolRow {
+   avgDurationMs: number | null;
+ }
+ 
++export interface AppUsageModelActivityRow {
++  modelId: string;
++  sessionCount: number;
++  toolCallCount: number;
++  toolErrorCount: number;
++  tools: AppUsageToolRow[];
++  skills: { skillId: string; pluginId: string | null; source: string | null; callCount: number; errorCount: number; avgDurationMs: number | null }[];
++  unidentifiedSkillCalls: number;
++}
++
+ export interface AppUsageDayRow {
+   dayIndex: number;
+   totalTokens: number;
+@@ -1047,6 +1057,7 @@ export interface AppUsageDayModelRow {
+ }
+ 
+ export interface AppUsageQueryResult {
++  modelActivities?: AppUsageModelActivityRow[];
+   skills?: { skillId: string; pluginId: string | null; source: string | null; callCount: number; errorCount: number; avgDurationMs: number | null }[];
+   unidentifiedSkillCalls?: number;
+   accounting?: import("@zcode/shared").UsageAccountingRow[];
+diff --git a/package.json b/package.json
+index a1e8aa0..1a46a38 100644
+--- a/package.json
++++ b/package.json
+@@ -51,7 +51,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/subscriptionListPrice.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/services/src/model-provider/codexResetCredits.ts b/packages/services/src/model-provider/codexResetCredits.ts
+index a1cefb4..8043eff 100644
+--- a/packages/services/src/model-provider/codexResetCredits.ts
++++ b/packages/services/src/model-provider/codexResetCredits.ts
+@@ -1,4 +1,3 @@
+-import type { SubscriptionRequestAuth } from "./subscriptionConnectionTypes.js";
+ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ 
+ // Source: OpenAI codex-rs/backend-client/src/client/rate_limit_resets.rs and types.rs.
+@@ -10,11 +9,13 @@ export interface CodexResetCredit {
+   title?: string;
+ }
+ export interface CodexResetCredits {
++  accountId: string;
+   revision: string;
+   availableCount: number;
+   credits: CodexResetCredit[];
+ }
+ export interface CodexResetRequest {
++  accountId: string;
+   revision: string;
+   creditId: string;
+   requestId: string;
+@@ -74,7 +75,7 @@ async function request(
+ export async function readCodexResetCredits(
+   credential: OAuthCredential,
+   fetcher: typeof fetch,
+-): Promise<Omit<CodexResetCredits, "revision">> {
++): Promise<Omit<CodexResetCredits, "revision" | "accountId">> {
+   const body = await request(credential, fetcher);
+   if (
+     !Number.isSafeInteger(body?.available_count) ||
+@@ -132,25 +133,25 @@ export function createSubscriptionResetActions(options: {
+   invalidate(id: string): void;
+   withAccount<T>(
+     id: string,
+-    auth: SubscriptionRequestAuth,
++    accountId: string,
+     revision: string | undefined,
+     operation: (credential: OAuthCredential, revision: string) => Promise<T>,
+   ): Promise<T>;
+ }) {
+   return {
+-    read(id: string, auth: SubscriptionRequestAuth): Promise<CodexResetCredits> {
+-      return options.withAccount(id, auth, undefined, async (credential, revision) => ({
++    read(id: string, accountId: string): Promise<CodexResetCredits> {
++      return options.withAccount(id, accountId, undefined, async (credential, revision) => ({
+         ...(await readCodexResetCredits(credential, options.fetch)),
++        accountId,
+         revision,
+       }));
+     },
+     consume(
+       id: string,
+       input: CodexResetRequest,
+-      auth: SubscriptionRequestAuth,
+     ): Promise<CodexResetResult> {
+       if (!input.revision) throw new Error("Reset account revision required");
+-      return options.withAccount(id, auth, input.revision, async (credential) => {
++      return options.withAccount(id, input.accountId, input.revision, async (credential) => {
+         const details = await readCodexResetCredits(credential, options.fetch);
+         const credit = details.credits.find((c) => c.id === input.creditId);
+         if (
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index acd0427..80c738e 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -55,7 +55,7 @@ export interface IProviderSettingsService {
+     refresh?: boolean,
+     accountId?: string,
+   ): Promise<SubscriptionUsageResult>;
+-  getSubscriptionResetCredits(providerId: string): Promise<CodexResetCredits>;
++  getSubscriptionResetCredits(providerId: string, accountId: string): Promise<CodexResetCredits>;
+   consumeSubscriptionResetCredit(
+     providerId: string,
+     request: CodexResetRequest,
+@@ -230,9 +230,9 @@ export function createProviderSettingsService(
+       if (!subscriptions) return { status: "unsupported" };
+       return subscriptions.usage(id, refresh, accountId);
+     },
+-    async getSubscriptionResetCredits(id) {
++    async getSubscriptionResetCredits(id, accountId) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+-      return subscriptions.resetCredits(id);
++      return subscriptions.resetCredits(id, accountId);
+     },
+     async consumeSubscriptionResetCredit(id, request) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+diff --git a/packages/services/src/model-provider/subscriptionConnectionTypes.ts b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+index afd9fee..be0ea34 100644
+--- a/packages/services/src/model-provider/subscriptionConnectionTypes.ts
++++ b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+@@ -30,7 +30,7 @@ export interface SubscriptionAccountsView {
+ export type SubscriptionRecovery = ZCodeSubscriptionRecovery;
+ 
+ export interface SubscriptionConnectionOwner {
+-  resetCredits(providerId: string): Promise<CodexResetCredits>;
++  resetCredits(providerId: string, accountId: string): Promise<CodexResetCredits>;
+   consumeResetCredit(providerId: string, request: CodexResetRequest): Promise<CodexResetResult>;
+   usage(
+     providerId: string,
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index c89c7e4..2ea088b 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -126,20 +126,21 @@ export function createSubscriptionConnections(options: {
+     fetch: options.fetch ?? globalThis.fetch,
+     now,
+     invalidate: (id) => usageReader.invalidate(id),
+-    withAccount: (id, auth, revision, operation) =>
++    withAccount: (id, accountId, revision, operation) =>
+       options.withConnectionLock(id, async () => {
+         await driver(id, "openai-codex");
+         const saved = await load(id, "openai-codex");
+-        const selected = saved?.accounts?.find((a) => a.id === saved.activeAccountId);
++        const selected = saved?.accounts?.find((a) => a.id === accountId);
+         if (
+           !selected ||
+           !saved ||
+-          saved.revision !== auth.credentialSelection?.revision ||
+-          selected.id !== auth.credentialSelection?.accountId ||
+           (revision !== undefined && saved.revision !== revision)
+         )
+           throw new Error("Subscription account changed; review the reset again");
+-        return operation(selected.credential, saved.revision!);
++        const credential = await refreshAccountCredential(
++          id, saved, selected, authorizationGeneration(id),
++        );
++        return operation(credential, saved.revision!);
+       }),
+   });
+ 
+@@ -160,11 +161,11 @@ export function createSubscriptionConnections(options: {
+     async usage(id, refresh = false, accountId) {
+       return usageReader.read(id, (await driver(id)).kind, refresh, accountId);
+     },
+-    async resetCredits(id) {
+-      return resetActions.read(id, await this.resolve(id, "openai-codex"));
++    async resetCredits(id, accountId) {
++      return resetActions.read(id, accountId);
+     },
+     async consumeResetCredit(id, request) {
+-      return resetActions.consume(id, request, await this.resolve(id, "openai-codex"));
++      return resetActions.consume(id, request);
+     },
+     async accounts(id) {
+       const { kind } = await driver(id);
+diff --git a/packages/services/src/setting/settingService.ts b/packages/services/src/setting/settingService.ts
+index e9e5c40..21340a7 100644
+--- a/packages/services/src/setting/settingService.ts
++++ b/packages/services/src/setting/settingService.ts
+@@ -316,7 +316,6 @@ export function createSettingServiceWithMigrations(): {
+           ...current,
+           ...validatedPatch,
+           ...(validatedPatch.subscriptionPayments ? {subscriptionPayments:{...current.subscriptionPayments,...validatedPatch.subscriptionPayments}} : {}),
+-          ...(validatedPatch.subscriptionPriceOverrides ? {subscriptionPriceOverrides:{...current.subscriptionPriceOverrides,...validatedPatch.subscriptionPriceOverrides}} : {}),
+         });
+ 
+         // 打开工作区后会几乎同时写 recentProjects 和 lastWorkspaceSession。
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index e707a19..fdf4daf 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -912,13 +912,16 @@ test("reset details are read-only; explicit redemption is account-bound and pres
+     });
+   });
+   await addAccount(f, "alice");
+-  const details = await f.owner.resetCredits("one");
++  const accountId = (await f.owner.accounts("one")).accounts[0]!.id;
++  const details = await f.owner.resetCredits("one", accountId);
+   assert.equal(details.availableCount, 1);
++  assert.equal(details.accountId, accountId);
+   assert.deepEqual(
+     requests.map((r) => r.method),
+     ["GET"],
+   );
+   const input = {
++    accountId,
+     revision: details.revision,
+     creditId: "credit-a",
+     requestId: "00000000-0000-4000-8000-000000000001",
+@@ -957,10 +960,11 @@ test("unknown and expired reset credits cannot be consumed", async () => {
+     });
+   });
+   await addAccount(f, "alice");
+-  const { revision } = await f.owner.accounts("one");
++  const { revision, accounts } = await f.owner.accounts("one");
+   for (const creditId of ["expired", "missing"])
+     await assert.rejects(
+       f.owner.consumeResetCredit("one", {
++        accountId: accounts[0]!.id,
+         revision,
+         creditId,
+         requestId: "00000000-0000-4000-8000-000000000001",
+@@ -969,6 +973,39 @@ test("unknown and expired reset credits cannot be consumed", async () => {
+     );
+   assert.equal(posts, 0);
+ });
++test("a backup account can read and use only its own reset card without changing the default", async () => {
++  const accountHeaders: string[] = [];
++  const f = fixture(undefined, async (_url, init) => {
++    const account = new Headers(init?.headers).get("ChatGPT-Account-Id")!;
++    accountHeaders.push(`${init?.method}:${account}`);
++    if (init?.method === "POST") return Response.json({ code: "reset" });
++    return Response.json({
++      available_count: 1,
++      credits: [{ id: `credit-${account}`, reset_type: "codex_rate_limits", status: "available" }],
++    });
++  });
++  await addAccount(f, "alice");
++  await addAccount(f, "bob");
++  const accounts = await f.owner.accounts("one");
++  const bob = accounts.accounts[1]!.id;
++  const details = await f.owner.resetCredits("one", bob);
++  assert.equal(details.accountId, bob);
++  assert.equal(details.credits[0]!.id, "credit-bob");
++  await assert.rejects(f.owner.consumeResetCredit("one", {
++    accountId: accounts.accounts[0]!.id,
++    revision: details.revision,
++    creditId: "credit-bob",
++    requestId: "00000000-0000-4000-8000-000000000001",
++  }), /no longer available/);
++  assert.equal(await f.owner.consumeResetCredit("one", {
++    accountId: bob,
++    revision: details.revision,
++    creditId: "credit-bob",
++    requestId: "00000000-0000-4000-8000-000000000001",
++  }), "reset");
++  assert.deepEqual(accountHeaders, ["GET:bob", "GET:alice", "GET:bob", "POST:bob"]);
++  assert.equal((await f.owner.accounts("one")).accounts[0]!.active, true);
++});
+ test("multiple subscription accounts keep a default and never expose tokens in metadata", async () => {
+   const f = fixture();
+   await addAccount(f, "alice");
+diff --git a/packages/services/test/subscription-payment-settings.test.ts b/packages/services/test/subscription-payment-settings.test.ts
+index 150e7ca..b67d0e2 100644
+--- a/packages/services/test/subscription-payment-settings.test.ts
++++ b/packages/services/test/subscription-payment-settings.test.ts
+@@ -18,22 +18,3 @@ test("payment records persist/reopen and concurrent per-key updates cannot erase
+   assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one:null,two});
+  }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
+ });
+-
+-test("monthly price corrections persist per account without altering historical payments", async () => {
+- const dir=await mkdtemp(join(tmpdir(),"fleet-price-correction-"));const previous=process.env.ZCODE_DESKTOP_HOME_DIR;process.env.ZCODE_DESKTOP_HOME_DIR=dir;
+- try{
+-  const service=createSettingService();
+-  const a={providerId:"chat",accountId:"a",planKey:"team",amountUsd:25};
+-  const b={providerId:"chat",accountId:"b",planKey:"team",amountUsd:40};
+-  const keyA=JSON.stringify([a.providerId,a.accountId]);
+-  const keyB=JSON.stringify([b.providerId,b.accountId]);
+-  await Promise.all([
+-   service.update({subscriptionPriceOverrides:{[keyA]:a}}),
+-   service.update({subscriptionPriceOverrides:{[keyB]:b}}),
+-  ]);
+-  assert.deepEqual((await createSettingService().get()).subscriptionPriceOverrides,{[keyA]:a,[keyB]:b});
+-  await assert.rejects(service.update({subscriptionPriceOverrides:{wrong:a}}),/identity mismatch/);
+-  await service.update({subscriptionPriceOverrides:{[keyA]:null}});
+-  assert.deepEqual((await createSettingService().get()).subscriptionPriceOverrides,{[keyA]:null,[keyB]:b});
+- }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
+-});
+diff --git a/packages/shared/src/protocol.ts b/packages/shared/src/protocol.ts
+index 51c6d06..0ad808a 100644
+--- a/packages/shared/src/protocol.ts
++++ b/packages/shared/src/protocol.ts
+@@ -236,7 +236,6 @@ export interface ResourceUsageSnapshot {
+ 
+ export interface AppSettings {
+   subscriptionPayments?: Record<string, import("./usage-accounting.js").SubscriptionPayment | null>;
+-  subscriptionPriceOverrides?: Record<string, import("./usage-accounting.js").SubscriptionPriceOverride | null>;
+   /** Local display preferences; never an authenticated account or Agent permission. */
+   localProfileName?: string;
+   localProfileAvatar?: string;
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+index 1886cfc..19dcc3c 100644
+--- a/packages/shared/src/usage-accounting.ts
++++ b/packages/shared/src/usage-accounting.ts
+@@ -1,20 +1,5 @@
+ import { z } from "zod";
+ 
+-/** User correction to a public monthly list price, scoped to the same saved account and plan. */
+-export const subscriptionPriceOverrideSchema = z.object({
+-  providerId: z.string().min(1),
+-  accountId: z.string().min(1),
+-  planKey: z.string().max(128).nullable(),
+-  amountUsd: z.number().finite().nonnegative().max(10_000_000),
+-}).strict();
+-export const subscriptionPriceOverridesSchema = z.record(z.string(), subscriptionPriceOverrideSchema.nullable())
+-  .superRefine((values, context) => {
+-    for (const [key, value] of Object.entries(values))
+-      if (value && key !== JSON.stringify([value.providerId, value.accountId]))
+-        context.addIssue({ code: "custom", path: [key], message: "Price account identity mismatch" });
+-  });
+-export type SubscriptionPriceOverride = z.infer<typeof subscriptionPriceOverrideSchema>;
+-
+ export const subscriptionPaymentSchema = z
+   .object({
+     id: z.string().min(1),
+@@ -54,6 +39,7 @@ export const subscriptionPaymentsSchema = z
+ export type SubscriptionPayment = z.infer<typeof subscriptionPaymentSchema>;
+ export const usageAccountingRowSchema = z.object({
+   providerId: z.string(),
++  querySource: z.string().optional(),
+   accountId: z.string().nullable(),
+   workspacePath: z.string().nullable().optional(),
+   modelId: z.string(),
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index f795f0a..fa9d88f 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -244,7 +244,21 @@ export const appUsageToolUsageSchema = z.object({
+   avgDurationMs: z.number().nullable(),
+ });
+ 
++export const appUsageModelActivitySchema = z.object({
++  modelId: z.string(),
++  sessionCount: z.number(),
++  toolCallCount: z.number(),
++  toolErrorCount: z.number(),
++  tools: z.array(appUsageToolUsageSchema),
++  skills: z.array(z.object({
++    skillId: z.string(), pluginId: z.string().nullable(), source: z.string().nullable(),
++    callCount: z.number(), errorCount: z.number(), avgDurationMs: z.number().nullable(),
++  })),
++  unidentifiedSkillCalls: z.number(),
++});
++
+ export const appUsageSnapshotSchema = z.object({
++  modelActivities: z.array(appUsageModelActivitySchema).optional(),
+   skills: z.array(z.object({skillId:z.string(),pluginId:z.string().nullable(),source:z.string().nullable(),callCount:z.number(),errorCount:z.number(),avgDurationMs:z.number().nullable()})).optional(),
+   unidentifiedSkillCalls: z.number().optional(),
+   range: z.enum(APP_USAGE_RANGES),
+diff --git a/packages/shared/src/validationAppSettings.ts b/packages/shared/src/validationAppSettings.ts
+index 7ab6471..fe4b790 100644
+--- a/packages/shared/src/validationAppSettings.ts
++++ b/packages/shared/src/validationAppSettings.ts
+@@ -1,5 +1,5 @@
+ /* oxlint-disable eslint(max-lines) -- AppSettings schema 聚合历史迁移、默认值和 patch 校验，拆分会削弱设置迁移的单一入口。 */
+-import { subscriptionPaymentsSchema, subscriptionPriceOverridesSchema } from "./usage-accounting.js";
++import { subscriptionPaymentsSchema } from "./usage-accounting.js";
+ import { z } from "zod";
+ import type { AppSettings } from "./protocol.js";
+ import { REMOTE_ASSET_INSTALL_MODES } from "./remoteAssetInstallMode.js";
+@@ -429,7 +429,6 @@ const localProfileAvatarSchema = z.union([
+ 
+ const appSettingsObjectSchema = z.object({
+   subscriptionPayments: subscriptionPaymentsSchema.optional(),
+-  subscriptionPriceOverrides: subscriptionPriceOverridesSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).default([]),
+@@ -506,7 +505,6 @@ export const appSettingsSchema = z.preprocess(
+ 
+ export const appSettingsPatchSchema = z.object({
+   subscriptionPayments: subscriptionPaymentsSchema.optional(),
+-  subscriptionPriceOverrides: subscriptionPriceOverridesSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).optional(),
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 48f4b56..8bad8fc 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -59,6 +59,7 @@ import {
+ import { runContextPanelActionWithClose } from "@/chat-input-toolbar/contextPanelAction.js";
+ import { coordinateCodingPlanQuotaResetAutoPlay } from "@/chat-input-toolbar/codingPlanQuotaResetAutoPlay.js";
+ import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";
++import { USAGE_PROGRESS_TONES } from "@/lib/usageProgressTones.js";
+ import {
+   CONTEXT_QUOTA_RESET_URGENT_SECONDS,
+   ContextQuotaResetOpportunityReminderContent,
+@@ -77,13 +78,6 @@ interface ContextUsageBreakdownSegment {
+   source: ContextUsageBreakdownSource;
+ }
+ 
+-const CONTEXT_PROGRESS_TONE_COLORS = [
+-  "var(--color-usage-chart-1)",
+-  "color-mix(in oklab, var(--color-usage-chart-1) 78%, var(--color-surface))",
+-  "color-mix(in oklab, var(--color-usage-chart-1) 58%, var(--color-surface))",
+-  "color-mix(in oklab, var(--color-usage-chart-1) 42%, var(--color-surface))",
+-  "color-mix(in oklab, var(--color-usage-chart-1) 28%, var(--color-surface))",
+-] as const;
+ const PERCENT_MAX = 100;
+ 
+ function formatContextUsageTokenCount(
+@@ -121,8 +115,8 @@ function formatContextUsageSummary({
+ function getBreakdownToneStyle(index: number): CSSProperties {
+   return {
+     backgroundColor:
+-      CONTEXT_PROGRESS_TONE_COLORS[Math.min(index, CONTEXT_PROGRESS_TONE_COLORS.length - 1)] ??
+-      CONTEXT_PROGRESS_TONE_COLORS[0],
++      USAGE_PROGRESS_TONES[Math.min(index, USAGE_PROGRESS_TONES.length - 1)] ??
++      USAGE_PROGRESS_TONES[0],
+   };
+ }
+ 
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 600e58c..fd4e7da 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -51,9 +51,13 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.testFailedStatus": "Recent connection test failed: {model} · {time}",
+ 
+   "settings.usage.activity.title": "Activity insights",
++  "settings.usage.activity.titleForModel": "Activity insights · {model}",
+   "settings.usage.activity.conversations": "Conversations",
++  "settings.usage.activity.modelRequests": "Model requests",
+   "settings.usage.activity.toolCalls": "Tool calls",
+   "settings.usage.activity.toolErrors": "Tool error rate",
++  "settings.usage.activity.cache": "Cache hit rate",
++  "settings.usage.activity.attributionHelp": "Only tool calls from a turn clearly served by this model are counted; mixed-model turns are not assigned to either model.",
+   "settings.usage.activity.fast": "Fast mode share",
+   "settings.usage.activity.tools": "Tools",
+   "settings.usage.activity.skills": "Skills",
+@@ -99,8 +103,8 @@ const enUS: Record<string, string> = {
+ 
+   "settings.modelProvider.allowance.stale": "Refresh failed. Showing the last successful reading.",
+   "settings.modelProvider.reset.count": "{count} resets available",
+-  "settings.modelProvider.reset.view": "View resets",
+-  "settings.modelProvider.reset.close": "Collapse",
++  "settings.modelProvider.reset.title": "Reset cards",
++  "settings.modelProvider.reset.empty": "No reset cards are currently available.",
+   "settings.modelProvider.reset.full": "Full reset",
+   "settings.modelProvider.reset.expires": "Expires",
+   "settings.modelProvider.reset.use": "Use",
+@@ -135,6 +139,8 @@ const enUS: Record<string, string> = {
+   "chat.contextUsage.compositionEstimate": "Context composition (character estimate)",
+   "settings.modelProvider.allowance.title": "Plan allowance",
+   "settings.modelProvider.allowance.refresh": "Refresh plan allowance",
++  "settings.modelProvider.allowance.lastFetched": "Last fetched:",
++  "settings.modelProvider.allowance.neverFetched": "Plan allowance has not been fetched yet.",
+   "settings.modelProvider.allowance.window": "Usage window",
+   "settings.modelProvider.allowance.hours": "hours",
+   "settings.modelProvider.allowance.unlimited": "Unlimited",
+@@ -191,21 +197,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.subscription.reauthorized":
+     "This account was already added; authorization updated.",
+   "settings.modelProvider.credentials.viewAccountAllowance": "View allowance for {account}",
+-  "settings.modelProvider.listPrice.label": "Official plan reference price",
+-  "settings.modelProvider.listPrice.correct": "Edit reference price",
+-  "settings.modelProvider.listPrice.corrected": "Manually corrected",
+-  "settings.modelProvider.listPrice.perSeat": "/ seat · month",
+-  "settings.modelProvider.listPrice.perMonth": "/ month",
+-  "settings.modelProvider.listPrice.unknown": "Not listed",
+-  "settings.modelProvider.listPrice.multiple": "Multiple prices; check plan",
+-  "settings.modelProvider.listPrice.source": "Official pricing",
+-  "settings.modelProvider.listPrice.monthlyUsd": "Reference monthly price (USD)",
+-  "settings.modelProvider.listPrice.seatMonthlyUsd": "Monthly price per seat (USD)",
+-  "settings.modelProvider.listPrice.save": "Save",
+-  "settings.modelProvider.listPrice.reset": "Restore official price",
+-  "settings.modelProvider.listPrice.cancel": "Cancel",
+-  "settings.modelProvider.listPrice.invalid": "Enter a valid USD reference price.",
+-  "settings.modelProvider.listPrice.saveFailed": "Could not save the reference price. Retry.",
+   "settings.modelProvider.credentials.accounts": "Subscription accounts",
+   "settings.modelProvider.subscription.description":
+     "Sign in with this provider subscription. Each connection has its own account.",
+@@ -7181,14 +7172,19 @@ const enUS: Record<string, string> = {
+   "settings.usage.accounting.cacheHelp":
+     "Cache hit rate divides cached input by input with reported cache data. * marks partial coverage. Hover or focus a model to see its coverage.",
+   "settings.usage.accounting.costHelp":
+-    "Estimated from this app's recorded tokens and public API rates. Missing usage or prices are not guessed. This is not an API bill and excludes subscription fees.",
+-  "settings.usage.apiEstimate.title": "API list-price reference",
++    "Amounts use this app's recorded tokens and public API rates. Bar segments show which request path invoked the model; ordinary tool calls and outputs are not assigned a model cost. Missing prices are not guessed, and subscription fees are excluded.",
++  "settings.usage.apiEstimate.title": "Usage and cost",
++  "settings.usage.apiEstimate.apiReference": "At API list prices",
++  "settings.usage.apiEstimate.source.conversation": "Main conversation",
++  "settings.usage.apiEstimate.source.tool": "Tool-initiated model calls",
++  "settings.usage.apiEstimate.source.delegate": "Child tasks",
++  "settings.usage.apiEstimate.source.other": "Other model calls",
+   "settings.usage.apiEstimate.models": "By model",
+   "settings.usage.apiEstimate.projects": "By project",
+   "settings.usage.apiEstimate.other": "Other",
+   "settings.usage.apiEstimate.coverage": "Priced {priced}/{total} requests",
+   "settings.usage.apiEstimate.loading": "Reading local usage…",
+-  "settings.usage.apiEstimate.empty": "No usage with known pricing",
++  "settings.usage.apiEstimate.empty": "No recorded model calls",
+   "chat.allowance.lastUsed": "Last used",
+   "chat.allowance.inspect": "View:",
+   "chat.allowance.autoSwitch": "Auto switch",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 68e8aba..78394de 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -41,9 +41,13 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testFailedStatus": "最近连接测试失败：{model} · {time}",
+ 
+   "settings.usage.activity.title": "活动洞察",
++  "settings.usage.activity.titleForModel": "活动洞察 · {model}",
+   "settings.usage.activity.conversations": "对话数",
++  "settings.usage.activity.modelRequests": "模型请求",
+   "settings.usage.activity.toolCalls": "工具调用",
+   "settings.usage.activity.toolErrors": "工具错误率",
++  "settings.usage.activity.cache": "缓存命中率",
++  "settings.usage.activity.attributionHelp": "只统计同一轮明确使用该模型的工具调用；切换过模型的轮次不强行归属。",
+   "settings.usage.activity.fast": "快速模式占比",
+   "settings.usage.activity.tools": "工具",
+   "settings.usage.activity.skills": "技能",
+@@ -83,8 +87,8 @@ const zhCN: Record<string, string> = {
+ 
+   "settings.modelProvider.allowance.stale": "刷新失败，保留上次成功读取的额度。",
+   "settings.modelProvider.reset.count": "可用重置卡：{count} 张",
+-  "settings.modelProvider.reset.view": "查看重置卡",
+-  "settings.modelProvider.reset.close": "收起",
++  "settings.modelProvider.reset.title": "重置卡",
++  "settings.modelProvider.reset.empty": "暂无可用的重置卡。",
+   "settings.modelProvider.reset.full": "完整重置",
+   "settings.modelProvider.reset.expires": "到期时间",
+   "settings.modelProvider.reset.use": "使用",
+@@ -116,6 +120,8 @@ const zhCN: Record<string, string> = {
+   "chat.contextUsage.compositionEstimate": "上下文构成（按字符估算）",
+   "settings.modelProvider.allowance.title": "订阅额度",
+   "settings.modelProvider.allowance.refresh": "刷新订阅额度",
++  "settings.modelProvider.allowance.lastFetched": "上次获取：",
++  "settings.modelProvider.allowance.neverFetched": "尚未获取过订阅额度。",
+   "settings.modelProvider.allowance.window": "用量窗口",
+   "settings.modelProvider.allowance.hours": "小时",
+   "settings.modelProvider.allowance.unlimited": "不限额",
+@@ -164,21 +170,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.credentials.removeAccount": "移除此账号",
+   "settings.modelProvider.subscription.reauthorized": "该账号已添加，本次已更新授权。",
+   "settings.modelProvider.credentials.viewAccountAllowance": "查看 {account} 的订阅额度",
+-  "settings.modelProvider.listPrice.label": "官网套餐参考价",
+-  "settings.modelProvider.listPrice.correct": "修改参考价",
+-  "settings.modelProvider.listPrice.corrected": "已手动修正",
+-  "settings.modelProvider.listPrice.perSeat": "/席位·月",
+-  "settings.modelProvider.listPrice.perMonth": "/月",
+-  "settings.modelProvider.listPrice.unknown": "未收录",
+-  "settings.modelProvider.listPrice.multiple": "多档价格，需确认",
+-  "settings.modelProvider.listPrice.source": "官网价格",
+-  "settings.modelProvider.listPrice.monthlyUsd": "参考月价（USD）",
+-  "settings.modelProvider.listPrice.seatMonthlyUsd": "单席位月价（USD）",
+-  "settings.modelProvider.listPrice.save": "保存",
+-  "settings.modelProvider.listPrice.reset": "恢复官网价",
+-  "settings.modelProvider.listPrice.cancel": "取消",
+-  "settings.modelProvider.listPrice.invalid": "请输入有效的 USD 参考月价。",
+-  "settings.modelProvider.listPrice.saveFailed": "参考价保存失败，请重试。",
+   "settings.modelProvider.credentials.accounts": "订阅账号",
+   "settings.modelProvider.subscription.description": "使用该厂商的订阅登录，每条连接独立绑定账号。",
+   "settings.modelProvider.subscription.connected": "订阅已连接",
+@@ -6817,14 +6808,19 @@ const zhCN: Record<string, string> = {
+   "settings.usage.accounting.cacheHelp":
+     "缓存命中率 = 命中的输入 Tokens ÷ 已报告缓存信息的输入 Tokens。* 表示部分请求缺少数据；悬停或聚焦模型可查看统计范围。",
+   "settings.usage.accounting.costHelp":
+-    "仅按本软件记录的 Token 和公开 API 单价估算；缺少价格或用量的请求不补猜。这不是 API 账单，也不包含会员费用。",
+-  "settings.usage.apiEstimate.title": "API 原价参考",
++    "金额按本软件记录的 Token 和公开 API 单价估算；色段只区分发起模型请求的来源，不把普通工具调用或工具输出摊入费用。缺价不补猜，也不包含会员费用。",
++  "settings.usage.apiEstimate.title": "用量与成本",
++  "settings.usage.apiEstimate.apiReference": "按 API 原价估算",
++  "settings.usage.apiEstimate.source.conversation": "主对话",
++  "settings.usage.apiEstimate.source.tool": "工具内模型调用",
++  "settings.usage.apiEstimate.source.delegate": "子任务",
++  "settings.usage.apiEstimate.source.other": "其他模型调用",
+   "settings.usage.apiEstimate.models": "按模型",
+   "settings.usage.apiEstimate.projects": "按项目",
+   "settings.usage.apiEstimate.other": "其他",
+   "settings.usage.apiEstimate.coverage": "已计价 {priced}/{total} 次请求",
+   "settings.usage.apiEstimate.loading": "正在读取本地用量…",
+-  "settings.usage.apiEstimate.empty": "暂无可估价的用量",
++  "settings.usage.apiEstimate.empty": "暂无模型调用记录",
+   "chat.allowance.lastUsed": "上次使用",
+   "chat.allowance.inspect": "查看：",
+   "chat.allowance.autoSwitch": "自动切换",
+diff --git a/packages/ui/src/lib/usageProgressTones.ts b/packages/ui/src/lib/usageProgressTones.ts
+new file mode 100644
+index 0000000..b5e7d3e
+--- /dev/null
++++ b/packages/ui/src/lib/usageProgressTones.ts
+@@ -0,0 +1,8 @@
++/** Shared segmented-meter tones from ZCode's context usage ring. */
++export const USAGE_PROGRESS_TONES = [
++  "var(--color-usage-chart-1)",
++  "color-mix(in oklab, var(--color-usage-chart-1) 78%, var(--color-surface))",
++  "color-mix(in oklab, var(--color-usage-chart-1) 58%, var(--color-surface))",
++  "color-mix(in oklab, var(--color-usage-chart-1) 42%, var(--color-surface))",
++  "color-mix(in oklab, var(--color-usage-chart-1) 28%, var(--color-surface))",
++] as const;
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index dd13725..69825f5 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -12,7 +12,6 @@ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+ import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
+-import { SubscriptionListPrice } from "./SubscriptionListPrice.js";
+ 
+ export function SubscriptionAccountRow({
+   account,
+@@ -129,13 +128,7 @@ export function SubscriptionAccountRow({
+                   compact
+                   reading={reading}
+                   onScopeChanged={onScopeChanged}
+-                  showReset={account.active}
+-                />
+-                <SubscriptionListPrice
+-                  providerId={providerId}
+-                  accountId={account.id}
+-                  kind={kind}
+-                  plan={plan}
++                  showReset
+                 />
+                 {!canRemove ? (
+                   <Button
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+index ff9c280..dddc883 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+@@ -146,15 +146,8 @@ export function SubscriptionAllowanceDetails({
+           {activeUntil !== undefined && !condensed ? ` · ${dateFormat.format(activeUntil)}` : ""}
+         </span>
+         {result.membership?.stale ? <span>{t("membershipStale")}</span> : null}
+-        {!condensed ? (
+-          <span title={result.source}>
+-            {t("observed")} {dateFormat.format(result.observedAt)}
+-          </span>
+-        ) : null}
+-        {showResetCount && result.resetsAvailable === 0 ? (
+-          <span>
+-            {intl.formatMessage({ id: "settings.modelProvider.reset.count" }, { count: 0 })}
+-          </span>
++        {showResetCount ? (
++          <span>{intl.formatMessage({ id: "settings.modelProvider.reset.count" }, { count: 0 })}</span>
+         ) : null}
+       </div>
+       {resetControl}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx
+deleted file mode 100644
+index 34f986f..0000000
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx
++++ /dev/null
+@@ -1,96 +0,0 @@
+-import { useState } from "react";
+-import { Button } from "@/components/ui/button.js";
+-import { Input } from "@/components/ui/input.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import { usePlatform } from "@/hooks/usePlatform.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import {
+-  normalizeSubscriptionPlanKey,
+-  officialSubscriptionPrices,
+-} from "@/settings/usage-stats/officialSubscriptionPrices.js";
+-import { accountMonthlyPrice } from "./subscriptionListPriceModel.js";
+-
+-/** List-price metadata belongs to the account; local API estimates belong to Usage. */
+-export function SubscriptionListPrice({
+-  providerId, accountId, kind, plan,
+-}: {
+-  providerId: string;
+-  accountId: string;
+-  kind: "openai-codex" | "github-copilot" | "xai";
+-  plan?: string;
+-}) {
+-  const { intl, locale } = useZCodeIntl();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.listPrice.${key}` });
+-  const { settings, update } = useSettings();
+-  const platform = usePlatform();
+-  const key = JSON.stringify([providerId, accountId]);
+-  const planKey = normalizeSubscriptionPlanKey(plan);
+-  const official = officialSubscriptionPrices(kind, plan);
+-  const { correction, exact, perSeat } = accountMonthlyPrice(
+-    official, settings?.subscriptionPriceOverrides?.[key], planKey,
+-  );
+-  const [editing, setEditing] = useState(false);
+-  const [draft, setDraft] = useState("");
+-  const [busy, setBusy] = useState(false);
+-  const [error, setError] = useState<string>();
+-  const money = (amount: number) => new Intl.NumberFormat(locale, {
+-    style: "currency", currency: "USD", maximumFractionDigits: 2,
+-  }).format(amount);
+-  const amount = exact !== undefined ? money(exact)
+-    : official.length > 1 ? t("multiple") : t("unknown");
+-  const save = async () => {
+-    const value = Number(draft);
+-    if (!draft.trim() || !Number.isFinite(value) || value < 0 || value > 10_000_000) {
+-      setError(t("invalid"));
+-      return;
+-    }
+-    setBusy(true);
+-    try {
+-      await update({ subscriptionPriceOverrides: { [key]: {
+-        providerId, accountId, planKey, amountUsd: value,
+-      } } });
+-      setEditing(false);
+-      setError(undefined);
+-    } catch {
+-      setError(t("saveFailed"));
+-    } finally {
+-      setBusy(false);
+-    }
+-  };
+-  const reset = async () => {
+-    setBusy(true);
+-    try {
+-      await update({ subscriptionPriceOverrides: { [key]: null } });
+-      setEditing(false);
+-      setError(undefined);
+-    } catch {
+-      setError(t("saveFailed"));
+-    } finally {
+-      setBusy(false);
+-    }
+-  };
+-  if (!planKey) return null;
+-  return (
+-    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-ui-sm" data-testid="subscription-list-price">
+-      <span className="text-foreground-subtle">{t("label")}</span>
+-      <span className="font-mono tabular-nums">{amount}{exact !== undefined ? ` ${perSeat ? t("perSeat") : t("perMonth")}` : ""}</span>
+-      {correction ? <span className="text-foreground-subtle">{t("corrected")}</span> : null}
+-      <Button variant="link" className="h-auto p-0 text-ui-sm" onClick={() => {
+-        setDraft(String(exact ?? "")); setEditing(true); setError(undefined);
+-      }}>{t("correct")}</Button>
+-      {official[0]?.sourceUrl ? (
+-        <Button variant="link" className="h-auto p-0 text-ui-sm" onClick={() => void platform.openExternal(official[0]!.sourceUrl)}>{t("source")}</Button>
+-      ) : null}
+-      {editing ? (
+-        <div className="flex w-full flex-wrap items-center gap-2 pt-2">
+-          <label htmlFor={`subscription-price-${accountId}`}>{t(perSeat ? "seatMonthlyUsd" : "monthlyUsd")}</label>
+-          <Input id={`subscription-price-${accountId}`} className="w-28" type="number" min="0" step="0.01" value={draft} onChange={(event) => setDraft(event.target.value)} />
+-          <Button size="sm" disabled={busy} onClick={() => void save()}>{t("save")}</Button>
+-          {correction ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void reset()}>{t("reset")}</Button> : null}
+-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(false)}>{t("cancel")}</Button>
+-          {error ? <span role="alert" className="text-destructive">{error}</span> : null}
+-        </div>
+-      ) : null}
+-    </div>
+-  );
+-}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx
+index 213c209..5b94eb5 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx
+@@ -2,17 +2,20 @@ import { useEffect, useRef, useState } from "react";
+ import { Button } from "@/components/ui/button.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { ChevronDown, ChevronRight } from "lucide-react";
+ 
+ // Follow Codex's usage picker → selected credit → explicit confirmation, within the account card.
+ export function SubscriptionResetCredits({
+   providerId,
++  accountId,
+   revision,
+   count,
+   onConsumed,
+ }: {
+   providerId: string;
++  accountId: string;
+   revision: string;
+-  count: number;
++  count?: number;
+   onConsumed: () => void;
+ }) {
+   const { providerSettingsService: service } = useServices();
+@@ -37,8 +40,9 @@ export function SubscriptionResetCredits({
+     setBusy(true);
+     setMessage(undefined);
+     try {
+-      const value = await service.getSubscriptionResetCredits(providerId);
+-      if (active.current && value.revision === revision) setDetails(value);
++      const value = await service.getSubscriptionResetCredits(providerId, accountId);
++      if (active.current && value.revision === revision && value.accountId === accountId)
++        setDetails(value);
+     } catch {
+       if (active.current) setMessage(t("loadFailed"));
+     } finally {
+@@ -53,6 +57,7 @@ export function SubscriptionResetCredits({
+     setMessage(undefined);
+     try {
+       const code = await service.consumeSubscriptionResetCredit(providerId, {
++        accountId,
+         revision: details.revision,
+         creditId: selected.id,
+         requestId: selected.requestId,
+@@ -77,25 +82,25 @@ export function SubscriptionResetCredits({
+       c.resetType === "codex_rate_limits" &&
+       (c.expiresAt === undefined || c.expiresAt > Date.now()),
+   );
++  const displayCount = details?.availableCount ?? count;
+   return (
+     <div className="space-y-2 border-t border-border pt-3">
+-      <div className="flex items-center justify-between gap-3">
+-        <span className="text-ui-base">
+-          {intl.formatMessage(
+-            { id: "settings.modelProvider.reset.count" },
+-            { count: details?.availableCount ?? count },
+-          )}
+-        </span>
+-        {count > 0 || details ? (
+-          <Button
+-            variant="ghost"
+-            size="sm"
+-            disabled={busy}
+-            onClick={() => (details ? setDetails(undefined) : void read())}
+-          >
+-            {details ? t("close") : t("view")}
+-          </Button>
+-        ) : null}
++      <div>
++        <Button
++          variant="link"
++          className="h-auto gap-1 p-0 text-ui-base"
++          disabled={busy}
++          aria-expanded={Boolean(details)}
++          onClick={() => (details ? setDetails(undefined) : void read())}
++        >
++          {displayCount !== undefined
++            ? intl.formatMessage(
++                { id: "settings.modelProvider.reset.count" },
++                { count: displayCount },
++              )
++            : t("title")}
++          {details ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
++        </Button>
+       </div>
+       {available?.map((credit) => (
+         <div key={credit.id} className="flex items-center justify-between gap-3 text-ui-base">
+@@ -121,6 +126,9 @@ export function SubscriptionResetCredits({
+           </Button>
+         </div>
+       ))}
++      {details && available?.length === 0 ? (
++        <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>
++      ) : null}
+       {selected ? (
+         <div className="space-y-2 rounded-lg border border-border p-3">
+           <p className="text-ui-base">{t("confirm")}</p>
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 2ae59e0..b48cff4 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -7,6 +7,7 @@ import { SubscriptionAllowanceDetails } from "./SubscriptionAllowanceDetails.js"
+ import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ 
+ // 沿用 ZCode 状态卡的标题/动作/内容布局，额度属于账号，不属于上下文 Token 环。
+ export function SubscriptionUsageSection({
+@@ -58,24 +59,26 @@ export function SubscriptionUsageSection({
+             ? ` · ${subscriptionPlanPresentation(kind, result.plan).name}`
+             : ""}
+         </span>
+-        <Button
+-          variant="ghost"
+-          size="icon-sm"
+-          disabled={busy || !enabled || paused}
+-          aria-label={t("refresh")}
+-          title={
+-            result?.status === "available"
+-              ? `${t("observed")} ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(result.observedAt)}`
+-              : t("refresh")
+-          }
+-          onClick={() => void refresh(true)}
++        <ControlHintTooltip
++          title={t("refresh")}
++          description={result?.status === "available"
++            ? `${t("lastFetched")} ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(result.observedAt)}`
++            : t("neverFetched")}
+         >
+-          {busy ? (
+-            <LoaderCircleIcon className="size-4 animate-spin" />
+-          ) : (
+-            <RefreshCwIcon className="size-4" />
+-          )}
+-        </Button>
++          <Button
++            variant="ghost"
++            size="icon-sm"
++            disabled={busy || !enabled || paused}
++            aria-label={t("refresh")}
++            onClick={() => void refresh(true)}
++          >
++            {busy ? (
++              <LoaderCircleIcon className="size-4 animate-spin" />
++            ) : (
++              <RefreshCwIcon className="size-4" />
++            )}
++          </Button>
++        </ControlHintTooltip>
+       </div>
+       {accountControl}
+       {result?.status === "available" ? (
+@@ -83,14 +86,15 @@ export function SubscriptionUsageSection({
+           result={result}
+           condensed={condensed}
+           now={now}
+-          showResetCount={showReset && kind === "openai-codex"}
++          showResetCount={showReset && kind === "openai-codex" && result.resetsAvailable === 0}
+           resetControl={
+-            showReset && kind === "openai-codex" && (result.resetsAvailable ?? 0) > 0 ? (
++            showReset && kind === "openai-codex" && accountId && result.resetsAvailable !== 0 ? (
+               <SubscriptionResetCredits
+                 key={`${accountId ?? "default"}:${revision}`}
+                 providerId={providerId}
++                accountId={accountId}
+                 revision={revision}
+-                count={result.resetsAvailable!}
++                count={result.resetsAvailable}
+                 onConsumed={() => void refresh(true)}
+               />
+             ) : undefined
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts b/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts
+deleted file mode 100644
+index 2dcbdcf..0000000
+--- a/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import type { SubscriptionPriceOverride } from "@zcode/shared";
+-import type { OfficialSubscriptionPrice } from "@/settings/usage-stats/officialSubscriptionPrices.js";
+-
+-export function accountMonthlyPrice(
+-  prices: readonly OfficialSubscriptionPrice[],
+-  override: SubscriptionPriceOverride | null | undefined,
+-  planKey: string | null,
+-) {
+-  const correction = override?.planKey === planKey ? override : undefined;
+-  const exactOfficial = prices.length === 1 && !prices[0]!.perSeat ? prices[0] : undefined;
+-  const amounts = prices.map((item) => item.amount);
+-  return {
+-    correction,
+-    exact: correction?.amountUsd ?? exactOfficial?.amount,
+-    low: amounts.length ? Math.min(...amounts) : null,
+-    high: amounts.length ? Math.max(...amounts) : null,
+-    perSeat: prices.length > 0 && prices.every((item) => item.perSeat),
+-  };
+-}
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+index dca7002..48cdfde 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+@@ -9,7 +9,7 @@ import {
+ } from "./usageStatsUiParts.js";
+ 
+ /** Display original usage/stats facts; never count installed resources as executions. */
+-export function AppUsageActivity({ snapshot }: { snapshot: AppUsageSnapshot }) {
++export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnapshot; modelId?: string }) {
+   const { intl, locale } = useZCodeIntl();
+   const t = (key: string, values?: Record<string, string | number>) =>
+     intl.formatMessage({ id: `settings.usage.activity.${key}` }, values);
+@@ -17,38 +17,52 @@ export function AppUsageActivity({ snapshot }: { snapshot: AppUsageSnapshot }) {
+   const counts = new Intl.NumberFormat(locale);
+   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
+   const accounted = snapshot.accounting ?? [];
+-  const speedKnown = accounted
++  const scoped = modelId ? accounted.filter((row) => row.modelId === modelId) : accounted;
++  const model = modelId ? snapshot.models.find((row) => row.modelId === modelId) : undefined;
++  const activity = modelId ? snapshot.modelActivities?.find((row) => row.modelId === modelId) : undefined;
++  const speedKnown = scoped
+     .filter((r) => r.speedMode !== null)
+     .reduce((n, r) => n + r.requestCount, 0);
+-  const fast = accounted
++  const fast = scoped
+     .filter((r) => r.speedMode === "fast" || r.speedMode === "priority")
+     .reduce((n, r) => n + r.requestCount, 0);
++  const cacheKnown = scoped.reduce((n, row) => n + row.cacheReportedCount, 0);
++  const cacheInput = scoped.reduce((n, row) => n + row.cacheInputTokens, 0);
++  const cacheRead = scoped.reduce((n, row) => n + row.cacheReadTokens, 0);
++  const toolCalls = modelId ? activity?.toolCallCount : snapshot.summary.toolCallCount;
++  const toolErrors = modelId ? activity?.toolErrorCount : snapshot.tools.reduce((sum, row) => sum + row.errorCount, 0);
+   const summary = [
+-    [t("conversations"), counts.format(snapshot.summary.totalSessions)],
+-    [t("toolCalls"), counts.format(snapshot.summary.toolCallCount)],
++    [t("conversations"), modelId ? activity ? counts.format(activity.sessionCount) : "—" : counts.format(snapshot.summary.totalSessions)],
++    [t("modelRequests"), counts.format(modelId ? model?.requestCount ?? 0 : snapshot.models.reduce((sum, row) => sum + row.requestCount, 0))],
++    [t("toolCalls"), toolCalls === undefined ? "—" : counts.format(toolCalls)],
+     [
+       t("toolErrors"),
+-      snapshot.summary.toolCallCount ? percent.format(snapshot.summary.toolErrorRate) : "—",
++      toolCalls && toolErrors !== undefined ? percent.format(toolErrors / toolCalls) : "—",
+     ],
++    [t("cache"), cacheKnown && cacheInput ? percent.format(cacheRead / cacheInput) : "—"],
+     [t("fast"), speedKnown ? percent.format(fast / speedKnown) : "—"],
+   ];
+   const rows =
+     view === "tools"
+-      ? snapshot.tools.map((r) => ({ ...r, key: r.toolName, label: r.toolName, source: undefined }))
+-      : (snapshot.skills ?? []).map((r) => ({
++      ? (modelId ? activity?.tools ?? [] : snapshot.tools).map((r) => ({ ...r, key: r.toolName, label: r.toolName, source: undefined }))
++      : (modelId ? activity?.skills ?? [] : snapshot.skills ?? []).map((r) => ({
+           ...r,
+           key: JSON.stringify([r.skillId, r.pluginId, r.source]),
+           label: r.skillId,
+           source: r.pluginId ?? r.source ?? undefined,
+         }));
+   return (
+-    <section className="grid gap-6 rounded-xl bg-surface p-4 md:grid-cols-2">
++    <div className="grid gap-6 md:grid-cols-2">
+       <div className="space-y-3">
+-        <h3 className="text-ui-base font-medium">{t("title")}</h3>
++        <h3 className="min-w-0 truncate text-ui-base font-medium">{modelId ? t("titleForModel", { model: modelId }) : t("title")}</h3>
+         <dl className="space-y-3">
+           {summary.map(([label, value]) => (
+             <div key={label} className="flex items-center justify-between gap-3 text-ui-base">
+-              <dt className="text-foreground-subtle">{label}</dt>
++              <dt className="text-foreground-subtle">
++                {modelId && label === t("toolCalls") ? (
++                  <ControlHintTooltip title={t("attributionHelp")}><span tabIndex={0}>{label}</span></ControlHintTooltip>
++                ) : label}
++              </dt>
+               <dd className="font-mono tabular-nums">{value}</dd>
+             </div>
+           ))}
+@@ -96,12 +110,12 @@ export function AppUsageActivity({ snapshot }: { snapshot: AppUsageSnapshot }) {
+             {t(view === "skills" ? "noSkills" : "empty")}
+           </p>
+         ) : null}
+-        {view === "skills" && snapshot.unidentifiedSkillCalls ? (
++        {view === "skills" && (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ? (
+           <p className="text-ui-sm text-foreground-subtle">
+-            {t("unidentified", { count: snapshot.unidentifiedSkillCalls })}
++            {t("unidentified", { count: (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ?? 0 })}
+           </p>
+         ) : null}
+       </div>
+-    </section>
++    </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index f9c3f06..83a95f9 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -1,4 +1,3 @@
+-import { AppUsageActivity } from "./AppUsageActivity.js";
+ import { UsageCostAnalysis } from "./UsageCostAnalysis.js";
+ import { RefreshCcw } from "lucide-react";
+ import { Fragment, lazy, useState } from "react";
+@@ -114,7 +113,6 @@ export function AppUsagePanel() {
+         <AppUsageModelUsagePieChart snapshot={snapshot} />
+       </UsageChartLoadBoundary>
+ 
+-      <AppUsageActivity snapshot={snapshot} />
+       <UsageCostAnalysis snapshot={snapshot} />
+       <div className="flex justify-end">
+         <Button
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 3e4754b..ea7ae20 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -1,60 +1,63 @@
+-import { lazy, useMemo, useState } from "react";
++import { useMemo, useState } from "react";
+ import { buildUsageCostReport, isRemoteWorkspaceIdentity, type AppUsageSnapshot } from "@zcode/shared";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { isWorkspaceTab } from "@/store/tabStore.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
++import { useSettings } from "@/hooks/useSettingService.js";
+ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
++import { AppUsageActivity } from "./AppUsageActivity.js";
+ import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+-import { UsageChartLoadBoundary } from "./UsageChartLoadBoundary.js";
++import { UsageCostSourceBars } from "./UsageCostSourceBars.js";
++import { buildUsageCostSourceRows, type UsageCostSource } from "./usageCostSourceViewModel.js";
+ import { USAGE_STATS_TABS_LIST_CLASS, USAGE_STATS_TABS_TRIGGER_CLASS } from "./usageStatsUiParts.js";
+ 
+-const UsageCostBarChart = lazy(() =>
+-  import("./UsageCostBarChart.js").then((module) => ({ default: module.UsageCostBarChart })),
+-);
+-
+-/** Local recorded usage priced at API list rates; a subscription bill is not inferred. */
++/** One selected range and model focus own cost and activity; plan fees remain outside this view. */
+ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot }) {
+   const { intl, locale } = useZCodeIntl();
+   const t = (key: string, values?: Record<string, number>) =>
+     intl.formatMessage({ id: `settings.usage.apiEstimate.${key}` }, values);
+   const [group, setGroup] = useState<"models" | "projects">("models");
++  const [focusedModel, setFocusedModel] = useState<string>();
+   const tabs = useTabStore((state) => state.tabs);
++  const { settings } = useSettings();
+   const projectPaths = useMemo(
+-    () => tabs.filter(isWorkspaceTab).filter((tab) =>
++    () => [...new Set([...(settings?.recentProjects ?? []), ...tabs.filter(isWorkspaceTab).filter((tab) =>
+       tab.workspacePurpose !== "conversation" && !tab.remoteSessionId &&
+       (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
+-    ).map((tab) => tab.workspacePath),
+-    [tabs],
++    ).map((tab) => tab.workspacePath)])],
++    [settings?.recentProjects, tabs],
+   );
++  const accounting = (snapshot.accounting ?? []).filter((row) => row.requestCount > 0);
+   const report = useMemo(
+-    () => buildUsageCostReport(snapshot.accounting ?? [], { projectPaths }),
++    () => buildUsageCostReport(accounting, { projectPaths }),
+     [snapshot.accounting, projectPaths],
+   );
++  const rows = useMemo(
++    () => buildUsageCostSourceRows(accounting, group, projectPaths),
++    [snapshot.accounting, group, projectPaths],
++  );
++  const modelFocus = group === "models" && rows.some((row) => row.key === focusedModel)
++    ? focusedModel : undefined;
+   const money = (amount: number | null) => amount === null ? "—" : new Intl.NumberFormat(locale, {
+     style: "currency", currency: "USD", maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
+   }).format(amount);
+-  const rows = group === "models"
+-    ? report.models.filter((item) => item.apiUsd !== null).map((item) => ({ key: item.modelId, label: item.modelId, api: item.apiUsd, actual: null }))
+-    : report.projects.filter((item) => item.apiUsd !== null).map((item) => ({
+-      key: item.workspacePath ?? "other",
+-      label: item.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("other"),
+-      fullLabel: item.workspacePath ?? t("other"),
+-      api: item.apiUsd,
+-      actual: null,
+-    }));
+   const partial = report.summary.pricedCount < report.summary.requests;
++  const sourceLabels = Object.fromEntries(
++    (["conversation", "tool", "delegate", "other"] as UsageCostSource[])
++      .map((source) => [source, t(`source.${source}`)]),
++  ) as Record<UsageCostSource, string>;
+   return (
+-    <section className="space-y-3 rounded-xl bg-surface p-4">
++    <section className="space-y-4 rounded-xl bg-surface p-4">
+       <div className="flex flex-wrap items-start justify-between gap-3">
+-        <div>
++        <div className="space-y-1">
+           <div className="flex items-center gap-1">
+             <h3 className="text-ui-base font-medium">{t("title")}</h3>
+             <UsageAccountingHelp metric="cost" sources={report.models.filter((item) => item.priceSources.length).map((item) => ({
+-              modelId: item.modelId,
+-              urls: item.priceSources,
++              modelId: item.modelId, urls: item.priceSources,
+             }))} />
+           </div>
+-          <div className="mt-1 font-mono text-ui-lg font-medium tabular-nums">
++          <div className="text-ui-sm text-foreground-subtle">{t("apiReference")}</div>
++          <div className="font-mono text-ui-lg font-medium tabular-nums">
+             {partial && report.summary.apiUsd !== null ? "≥ " : ""}{money(report.summary.apiUsd)}
+           </div>
+           {partial && report.summary.requests > 0 ? (
+@@ -63,7 +66,10 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+             })}</p>
+           ) : null}
+         </div>
+-        <Tabs value={group} onValueChange={(value) => setGroup(value as typeof group)}>
++        <Tabs value={group} onValueChange={(value) => {
++          setGroup(value as typeof group);
++          setFocusedModel(undefined);
++        }}>
+           <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+             <TabsTrigger value="models" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("models")}</TabsTrigger>
+             <TabsTrigger value="projects" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("projects")}</TabsTrigger>
+@@ -71,22 +77,21 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+         </Tabs>
+       </div>
+       {rows.length ? (
+-        <UsageChartLoadBoundary
+-          scope="settings.usage.api-estimate"
+-          resetKeys={[snapshot.generatedAt, group]}
+-          loadingDescription={t("loading")}
+-        >
+-          <UsageCostBarChart
+-            rows={rows}
+-            series={[{ key: "api", label: t("title"), color: "var(--color-usage-chart-1)" }]}
+-            currency="USD"
+-            money={money}
+-            title={t(group)}
+-          />
+-        </UsageChartLoadBoundary>
++        <UsageCostSourceBars
++          rows={rows}
++          focused={modelFocus}
++          onFocus={(key) => setFocusedModel(group === "models" ? key : undefined)}
++          money={money}
++          label={t(group)}
++          otherLabel={group === "projects" ? t("other") : undefined}
++          sourceLabels={sourceLabels}
++        />
+       ) : (
+         <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>
+       )}
++      <div className="border-t border-border pt-4">
++        <AppUsageActivity snapshot={snapshot} modelId={modelFocus} />
++      </div>
+     </section>
+   );
+ }
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx b/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx
+deleted file mode 100644
+index 6359426..0000000
+--- a/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx
++++ /dev/null
+@@ -1,135 +0,0 @@
+-import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
+-import {
+-  ChartContainer,
+-  ChartTooltip,
+-  ChartTooltipContent,
+-  type ChartConfig,
+-} from "@/components/ui/chart.js";
+-
+-export interface CostChartRow {
+-  key: string;
+-  label: string;
+-  fullLabel?: string;
+-  api: number | null;
+-  actual: number | null;
+-}
+-
+-/** Horizontal grouped comparison: EvilCharts 500ecd44 pattern, hosted by ZCode chart primitives. */
+-export function UsageCostBarChart({
+-  rows,
+-  series,
+-  currency,
+-  money,
+-  title,
+-}: {
+-  rows: CostChartRow[];
+-  series: { key: "api" | "actual"; label: string; color: string }[];
+-  currency: string;
+-  money(value: number | null, currency?: string): string;
+-  title: string;
+-}) {
+-  const config = Object.fromEntries(
+-    series.map((s) => [s.key, { label: s.label, color: s.color }]),
+-  ) as ChartConfig;
+-  return (
+-    <div className="max-h-80 overflow-y-auto">
+-      <ChartContainer
+-        config={config}
+-        className="aspect-auto w-full"
+-        style={{ height: Math.max(164, rows.length * (series.length === 2 ? 64 : 44) + 28) }}
+-      >
+-        <BarChart
+-          accessibilityLayer
+-          layout="vertical"
+-          data={rows}
+-          margin={{ top: 8, right: 80, bottom: 0, left: 0 }}
+-          barCategoryGap={10}
+-          barGap={4}
+-        >
+-          <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+-          <YAxis
+-            dataKey="key"
+-            type="category"
+-            width={130}
+-            tickLine={false}
+-            axisLine={false}
+-            tickFormatter={(key: string) => {
+-              const label = rows.find((row) => row.key === key)?.label ?? key;
+-              return label.length > 20 ? label.slice(0, 19) + "…" : label;
+-            }}
+-          />
+-          <XAxis
+-            type="number"
+-            tickLine={false}
+-            axisLine={false}
+-            tickFormatter={(value) => money(Number(value), currency)}
+-            minTickGap={36}
+-          />
+-          <ChartTooltip
+-            cursor={{ fill: "var(--color-surface)" }}
+-            content={
+-              <ChartTooltipContent
+-                labelFormatter={(key) =>
+-                  rows.find((row) => row.key === key)?.fullLabel ??
+-                  rows.find((row) => row.key === key)?.label ??
+-                  key
+-                }
+-                formatter={(value, name) => (
+-                  <div className="flex min-w-40 items-center justify-between gap-4">
+-                    <span className="text-foreground-subtle">
+-                      {config[String(name)]?.label ?? name}
+-                    </span>
+-                    <span className="font-mono tabular-nums">
+-                      {money(typeof value === "number" ? value : null, currency)}
+-                    </span>
+-                  </div>
+-                )}
+-              />
+-            }
+-          />
+-          {series.map((s) => (
+-            <Bar
+-              key={s.key}
+-              dataKey={s.key}
+-              name={s.key}
+-              fill={`var(--color-${s.key})`}
+-              radius={[0, 4, 4, 0]}
+-              maxBarSize={16}
+-              isAnimationActive={false}
+-            >
+-              <LabelList
+-                dataKey={s.key}
+-                position="right"
+-                className="fill-foreground text-ui-xs"
+-                formatter={(value: unknown) =>
+-                  typeof value === "number" ? money(value, currency) : "—"
+-                }
+-              />
+-            </Bar>
+-          ))}
+-        </BarChart>
+-      </ChartContainer>
+-      <table className="sr-only">
+-        <caption>{currency}</caption>
+-        <thead>
+-          <tr>
+-            <th>{title}</th>
+-            {series.map((s) => (
+-              <th key={s.key}>{s.label}</th>
+-            ))}
+-          </tr>
+-        </thead>
+-        <tbody>
+-          {rows.map((row) => (
+-            <tr key={row.key}>
+-              <th>{row.fullLabel ?? row.label}</th>
+-              {series.map((s) => (
+-                <td key={s.key}>{money(row[s.key], currency)}</td>
+-              ))}
+-            </tr>
+-          ))}
+-        </tbody>
+-      </table>
+-    </div>
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+new file mode 100644
+index 0000000..fc7250d
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+@@ -0,0 +1,77 @@
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { Progress } from "@/components/ui/progress.js";
++import type { UsageCostSource, UsageCostSourceRow } from "./usageCostSourceViewModel.js";
++import { USAGE_PROGRESS_TONES } from "@/lib/usageProgressTones.js";
++
++const SOURCES: UsageCostSource[] = ["conversation", "tool", "delegate", "other"];
++const COLORS = USAGE_PROGRESS_TONES;
++
++/** Original segmented Progress treatment, applied to recorded request-source API estimates. */
++export function UsageCostSourceBars({
++  rows, focused, onFocus, money, label, otherLabel,
++  sourceLabels,
++}: {
++  rows: readonly UsageCostSourceRow[];
++  focused?: string;
++  onFocus: (key?: string) => void;
++  money: (value: number | null) => string;
++  label: string;
++  otherLabel?: string;
++  sourceLabels: Record<UsageCostSource, string>;
++}) {
++  const max = Math.max(0, ...rows.map((row) => row.total ?? 0));
++  const present = SOURCES.filter((source) => rows.some((row) => row[source] > 0));
++  return (
++    <div className="space-y-3">
++      {present.length ? (
++        <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-sm text-foreground-subtle">
++          {present.map((source) => (
++            <span key={source} className="inline-flex items-center gap-1.5">
++              <span className="size-2 rounded-sm" style={{ backgroundColor: COLORS[SOURCES.indexOf(source)] }} />
++              {sourceLabels[source]}
++            </span>
++          ))}
++        </div>
++      ) : null}
++      <div className="max-h-80 space-y-1 overflow-y-auto" role="list" aria-label={label}>
++        {rows.map((row) => {
++          const total = row.total;
++          const detail = total === null
++            ? `${row.fullLabel} · ${money(null)}`
++            : [row.fullLabel, money(total), ...SOURCES.filter((source) => row[source] > 0)
++              .map((source) => `${sourceLabels[source]} ${Math.round(row[source] / total * 100)}%`)].join(" · ");
++          return (
++            <ControlHintTooltip key={row.key} title={detail}>
++              <div
++                role="listitem"
++                tabIndex={0}
++                onMouseEnter={() => onFocus(row.key)}
++                onMouseLeave={() => onFocus(undefined)}
++                onFocus={() => onFocus(row.key)}
++                onBlur={() => onFocus(undefined)}
++                className={`flex min-w-0 items-center gap-3 rounded-md px-2 py-1.5 text-ui-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${focused === row.key ? "bg-hover" : ""}`}
++                aria-label={detail}
++              >
++                <span className="w-28 shrink-0 truncate font-mono text-foreground sm:w-36" title={row.fullLabel}>
++                  {otherLabel && row.key === "other" ? otherLabel : row.label}
++                </span>
++                <Progress
++                  className="h-2 min-w-0 flex-1"
++                  value={max > 0 && total !== null ? total / max * 100 : 0}
++                  aria-label={row.fullLabel}
++                  segments={total && total > 0 ? SOURCES.map((source, index) => ({
++                    id: source, percent: row[source] / total,
++                    style: { backgroundColor: COLORS[index] },
++                  })) : undefined}
++                />
++                <span className="w-20 shrink-0 text-right font-mono tabular-nums text-foreground-subtle">
++                  {row.pricedCount < row.requestCount && total !== null ? "≥ " : ""}{money(total)}
++                </span>
++              </div>
++            </ControlHintTooltip>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts b/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts
+deleted file mode 100644
+index ed0960c..0000000
+--- a/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts
++++ /dev/null
+@@ -1,63 +0,0 @@
+-export interface OfficialSubscriptionPrice {
+-  id: string;
+-  label: string;
+-  amount: number;
+-  currency: "USD";
+-  sourceUrl: string;
+-  annualEquivalent?: boolean;
+-  /** Team prices are per seat, not an account's actual payment. */
+-  perSeat?: boolean;
+-}
+-
+-const CHATGPT_BUSINESS = "https://help.openai.com/en/articles/8542115-chatgpt-business-general-faq";
+-const CHATGPT_RELEASES = "https://help.openai.com/en/articles/6825453-chatgpt-release-notes";
+-const COPILOT_PRICING = "https://docs.github.com/en/copilot/get-started/plans";
+-const GROK_PRICING = "https://x.ai/pricing";
+-
+-export function normalizeSubscriptionPlanKey(plan: string | undefined): string | null {
+-  return plan?.trim().toLowerCase().replace(/[\s_-]/g, "").replace(/\+/g, "plus") || null;
+-}
+-
+-/** A checked public list price is a suggestion, never a paid invoice or a quota multiplier. */
+-export function officialSubscriptionPrices(
+-  kind: "openai-codex" | "github-copilot" | "xai",
+-  reportedPlan: string | undefined,
+-): OfficialSubscriptionPrice[] {
+-  const plan = normalizeSubscriptionPlanKey(reportedPlan);
+-  if (!plan) return [];
+-  const price = (
+-    id: string, label: string, amount: number, sourceUrl: string,
+-    options: { perSeat?: boolean; annualEquivalent?: boolean } = {},
+-  ) => ({ id, label, amount, currency: "USD" as const, sourceUrl, ...options });
+-  if (kind === "openai-codex") {
+-    if (["plus", "chatgptplusplan"].includes(plan))
+-      return [price("chatgpt-plus", "Plus", 20, CHATGPT_RELEASES)];
+-    if (["pro", "chatgptproplan"].includes(plan))
+-      return [
+-        price("chatgpt-pro-100", "Pro 100", 100, CHATGPT_RELEASES),
+-        price("chatgpt-pro-200", "Pro 200", 200, CHATGPT_RELEASES),
+-      ];
+-    if (["team", "business", "chatgptteamplan"].includes(plan))
+-      return [
+-        price("chatgpt-business-standard-monthly", "Standard", 25, CHATGPT_BUSINESS, { perSeat: true }),
+-        price("chatgpt-business-premium-monthly", "Premium", 125, CHATGPT_BUSINESS, { perSeat: true }),
+-        price("chatgpt-business-standard-annual", "Standard", 20, CHATGPT_BUSINESS, { perSeat: true, annualEquivalent: true }),
+-        price("chatgpt-business-premium-annual", "Premium", 100, CHATGPT_BUSINESS, { perSeat: true, annualEquivalent: true }),
+-      ];
+-    return [];
+-  }
+-  if (kind === "github-copilot") {
+-    if (plan === "pro") return [price("copilot-pro", "Pro", 10, COPILOT_PRICING)];
+-    if (plan === "proplus") return [price("copilot-pro-plus", "Pro+", 39, COPILOT_PRICING)];
+-    if (plan === "max") return [price("copilot-max", "Max", 100, COPILOT_PRICING)];
+-    if (plan === "business") return [price("copilot-business", "Business", 19, COPILOT_PRICING, { perSeat: true })];
+-    if (plan === "enterprise") return [price("copilot-enterprise", "Enterprise", 39, COPILOT_PRICING, { perSeat: true })];
+-    return [];
+-  }
+-  if (kind === "xai") {
+-    if (plan === "supergrok") return [price("supergrok", "SuperGrok", 30, GROK_PRICING)];
+-    if (plan === "supergrokplus") return [price("supergrok-plus", "SuperGrok Plus", 100, GROK_PRICING)];
+-    return [];
+-  }
+-  return [];
+-}
+diff --git a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+new file mode 100644
+index 0000000..ff94e0d
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+@@ -0,0 +1,55 @@
++import type { UsageAccountingRow } from "@zcode/shared";
++
++export type UsageCostSource = "conversation" | "tool" | "delegate" | "other";
++export interface UsageCostSourceRow {
++  key: string;
++  label: string;
++  fullLabel: string;
++  conversation: number;
++  tool: number;
++  delegate: number;
++  other: number;
++  total: number | null;
++  pricedCount: number;
++  requestCount: number;
++}
++
++export function usageCostSource(querySource: string | undefined): UsageCostSource {
++  if (querySource === "main_turn") return "conversation";
++  if (["web_search_tool", "web_fetch_processing", "read_session_context"].includes(querySource ?? ""))
++    return "tool";
++  if (querySource === "subagent" || querySource === "workflow_child") return "delegate";
++  return "other";
++}
++
++/** Public API-value composition follows the recorded request source, never tool-call counts. */
++export function buildUsageCostSourceRows(
++  rows: readonly UsageAccountingRow[],
++  group: "models" | "projects",
++  projectPaths: readonly string[] = [],
++): UsageCostSourceRow[] {
++  const projects = new Set(projectPaths);
++  const byKey = new Map<string, UsageCostSourceRow>();
++  for (const row of rows) {
++    if (row.requestCount <= 0) continue;
++    const path = row.workspacePath && projects.has(row.workspacePath) ? row.workspacePath : null;
++    const key = group === "models" ? row.modelId : path ?? "other";
++    let item = byKey.get(key);
++    if (!item) {
++      item = {
++        key, label: group === "models" ? row.modelId : path?.split(/[/\\]/).filter(Boolean).at(-1) ?? "other",
++        fullLabel: group === "models" ? row.modelId : path ?? "other",
++        conversation: 0, tool: 0, delegate: 0, other: 0,
++        total: null, pricedCount: 0, requestCount: 0,
++      };
++      byKey.set(key, item);
++    }
++    item.requestCount += row.requestCount;
++    item.pricedCount += row.pricedCount;
++    if (row.pricedCount > 0) {
++      item.total = (item.total ?? 0) + row.estimatedUsd;
++      item[usageCostSource(row.querySource)] += row.estimatedUsd;
++    }
++  }
++  return [...byKey.values()].sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.key.localeCompare(b.key));
++}
+diff --git a/packages/ui/test/subscriptionListPrice.test.ts b/packages/ui/test/subscriptionListPrice.test.ts
+deleted file mode 100644
+index fbc3b98..0000000
+--- a/packages/ui/test/subscriptionListPrice.test.ts
++++ /dev/null
+@@ -1,20 +0,0 @@
+-import assert from "node:assert/strict";
+-import test from "node:test";
+-import { officialSubscriptionPrices } from "../src/settings/usage-stats/officialSubscriptionPrices.js";
+-import { accountMonthlyPrice } from "../src/settings/model-provider-section/subscriptionListPriceModel.js";
+-
+-test("a manual correction is account-and-plan scoped and ambiguous Team prices stay unresolved", () => {
+-  const plus = officialSubscriptionPrices("openai-codex", "Plus");
+-  const team = officialSubscriptionPrices("openai-codex", "Team");
+-  assert.equal(accountMonthlyPrice(plus, undefined, "plus").exact, 20);
+-  assert.deepEqual(
+-    [accountMonthlyPrice(team, undefined, "team").low, accountMonthlyPrice(team, undefined, "team").high],
+-    [20, 125],
+-  );
+-  assert.equal(accountMonthlyPrice(team, undefined, "team").exact, undefined);
+-  assert.equal(accountMonthlyPrice(team, undefined, "team").perSeat, true);
+-  const correction = { providerId: "chat", accountId: "a", planKey: "team", amountUsd: 35 };
+-  assert.equal(accountMonthlyPrice(team, correction, "team").exact, 35);
+-  assert.equal(accountMonthlyPrice(plus, correction, "plus").exact, 20);
+-  assert.deepEqual(officialSubscriptionPrices("xai", "SuperGrok Heavy"), []);
+-});
+diff --git a/packages/ui/test/usageCostSourceViewModel.test.ts b/packages/ui/test/usageCostSourceViewModel.test.ts
+new file mode 100644
+index 0000000..4ac4fb8
+--- /dev/null
++++ b/packages/ui/test/usageCostSourceViewModel.test.ts
+@@ -0,0 +1,41 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { UsageAccountingRow } from "@zcode/shared";
++import { buildUsageCostSourceRows, usageCostSource } from "../src/settings/usage-stats/usageCostSourceViewModel.js";
++
++const usage = (querySource: string, modelId: string, estimatedUsd: number, workspacePath = "/project") => ({
++  providerId: "provider", accountId: "account", workspacePath, modelId, querySource,
++  requestCount: 1, pricedCount: 1, reportedCount: 1, estimatedUsd,
++}) as UsageAccountingRow;
++
++test("cost composition uses recorded model request sources rather than tool-call counts", () => {
++  const rows = [
++    usage("main_turn", "m", 6), usage("web_search_tool", "m", 2),
++    usage("subagent", "m", 1), usage("compact", "m", 1),
++    { ...usage("main_turn", "m", 0), pricedCount: 0 },
++  ];
++  const model = buildUsageCostSourceRows(rows, "models")[0]!;
++  assert.equal(model.total, 10);
++  assert.deepEqual([model.conversation, model.tool, model.delegate, model.other], [6, 2, 1, 1]);
++  assert.deepEqual([model.pricedCount, model.requestCount], [4, 5]);
++  assert.equal(usageCostSource("web_fetch_processing"), "tool");
++  assert.equal(usageCostSource("unrecognized"), "other");
++});
++
++test("project composition groups unregistered and projectless usage under Other without inventing cost", () => {
++  const rows = [usage("main_turn", "m", 2), usage("main_turn", "m", 3, "/unregistered"),
++    { ...usage("main_turn", "m", 0, "/project"), pricedCount: 0 }];
++  const projects = buildUsageCostSourceRows(rows, "projects", ["/project"]);
++  assert.equal(projects.find((row) => row.key === "/project")?.total, 2);
++  assert.equal(projects.find((row) => row.key === "other")?.total, 3);
++  assert.equal(projects.find((row) => row.key === "/project")?.requestCount, 2);
++});
++
++test("model and project bars include only recorded requests", () => {
++  const rows = [usage("main_turn", "used", 1), {
++    ...usage("main_turn", "never-used", 0, "/unused-project"), requestCount: 0,
++  }];
++  assert.deepEqual(buildUsageCostSourceRows(rows, "models").map((row) => row.key), ["used"]);
++  assert.deepEqual(buildUsageCostSourceRows(rows, "projects", ["/project", "/unused-project"])
++    .map((row) => row.key), ["/project"]);
++});

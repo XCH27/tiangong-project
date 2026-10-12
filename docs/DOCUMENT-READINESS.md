@@ -127,3 +127,26 @@ The following Fable proposals were deliberately not adopted unchanged:
 - `export_selection` as L0 while writing a file;
 - one PanelDefinition type for both panels and main surfaces;
 - unverified performance numbers and engine command names.
+
+
+## Existing ZCode corrective slice (D57)
+
+`docs/modules/zcode-kernel-lifecycle.md` is `execution-ready` for ZK-FIX/B,R,S,C,U only:
+observed counterexamples, existing owners, immutable input identities, preservation, bounded
+termination and proof limits are fixed. The historical Craft specifications stay historical.
+This authorizes no new authority, dependency, creative surface or capability promotion.
+
+### D57 local integration evidence — 2026-10-12
+
+Candidate `85efd4aacbb187acc9b41da8a3e77e425879cc65`, source tree
+`10f55ae9c07d183a134a54cd561d937c5eba3c2a`, replayed by all 211 ordered patches.
+Current-source CLI and desktop builds, root and all 15 CLI package type checks, architecture,
+and configured pre-push suites passed (1,429 test executions; overlapping suites are not unique cases).
+The staged CLI persisted separate A/B receipts through EOF and two new processes on development
+Node 26.3 and existing packaged Node 22.16; no provider input was executed. Current styled Electron
+renderer suites passed 32 cases. Heavy process suites run serially after other Kernel cases;
+product acknowledgement/termination deadlines and failure assertions were not raised.
+Full strict CLI lint remains failing with the same 87 inherited oversized-file errors; the four
+new errors and desktop fixture error were corrected without policy waivers. Source/build/fixture
+results do not imply signed distribution, live SSH/WSL/Windows/provider proof, whole-product
+`usable`, or historical wave readiness. Original user data/profile roots were not migrated.

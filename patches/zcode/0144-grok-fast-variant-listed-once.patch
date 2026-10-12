@@ -1,0 +1,75 @@
+diff --git a/packages/ui/src/lib/modelSelectionGroups.ts b/packages/ui/src/lib/modelSelectionGroups.ts
+index 8e2200d..56b7911 100644
+--- a/packages/ui/src/lib/modelSelectionGroups.ts
++++ b/packages/ui/src/lib/modelSelectionGroups.ts
+@@ -1,4 +1,6 @@
+ import {
++  isGrokBuildFastModel,
++  resolveGrokBuildSpeedPair,
+   isZCodeAgentProvider,
+   resolveModelProviderFamilySpecByProviderId,
+   zcodeProviderAccountAccessSchema,
+@@ -47,7 +49,16 @@ export function buildRegistryModelSelectGroups(
+         label: accountPresentation?.label || provider.providerName?.trim() || provider.providerId,
+         ...(accountPresentation?.labelBadge ? { labelBadge: accountPresentation.labelBadge } : {}),
+         ...(accountPresentation ? { directItems: true } : {}),
+-        items: provider.models.map(({ modelId, config, evidenceConfig }) => ({
++        // Grok Build 的快速变体由"快速"开关切换；成对可用时不在列表里重复出现。
++        items: provider.models
++          .filter(
++            ({ modelId }) =>
++              !(
++                isGrokBuildFastModel(modelId) &&
++                resolveGrokBuildSpeedPair(provider.config.access, provider.models, modelId)
++              ),
++          )
++          .map(({ modelId, config, evidenceConfig }) => ({
+           key: `registry-provider:${provider.providerId}:${modelId}`,
+           value: encodeCustomModelValue(provider.providerId, modelId),
+           name: modelId,
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index cbb1410..e347868 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -723,7 +723,17 @@ function V4ComposerModelControlsImpl({
+       (candidate) => candidate.providerId === effectiveConfig.provider,
+     );
+     if (providerExists) {
+-      return encodeCustomModelValue(effectiveConfig.provider, effectiveConfig.model);
++      const provider = modelSelectionView?.providers.find(
++        (candidate) => candidate.providerId === effectiveConfig.provider,
++      );
++      // 快速变体不在列表中单列：高亮与触发器显示对应的标准模型，快速状态由开关体现。
++      const pair = provider
++        ? resolveGrokBuildSpeedPair(provider.config.access, provider.models, effectiveConfig.model)
++        : undefined;
++      return encodeCustomModelValue(
++        effectiveConfig.provider,
++        pair?.mode === "fast" ? pair.standard : effectiveConfig.model,
++      );
+     }
+     return effectiveConfig.model;
+   }, [effectiveConfig, modelSelectionView]);
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+index e1c6b3e..10c6a9e 100644
+--- a/packages/ui/test/modelEvidenceSelection.test.ts
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -78,6 +78,18 @@ test("Grok Fast requires the paired models in the same connected subscription",
+   assert.equal(modelSupportsFast(catalog, "grok-one", "grok-4.7-build-fast"), true);
+   assert.equal(modelSupportsFast(catalog, "grok-two", "grok-4.7"), false);
+   assert.equal(modelSupportsFast(catalog, "api", "grok-4.7"), false);
++  // 成对可用的 Grok Build 快速变体由"快速"开关切换，不在模型列表中重复；API 连接照常列出。
++  const routed = {
++    providers: catalog.providers.map((provider) => ({
++      ...provider,
++      config: { ...provider.config, api: { type: "openai-chat-completions" } },
++    })),
++  } as unknown as ModelSelectionView;
++  const groups = buildRegistryModelSelectGroups(ZCODE_AGENT_PROVIDER, routed);
++  const names = (id: string) =>
++    groups.find((group) => group.key === `registry-provider:${id}`)?.items.map((item) => item.name);
++  assert.deepEqual(names("grok-one"), ["grok-4.7"]);
++  assert.deepEqual(names("api"), ["grok-4.7", "grok-4.7-build-fast"]);
+ });
+ 
+ test("the composer retains a registry-admitted native subscription without an API address", () => {

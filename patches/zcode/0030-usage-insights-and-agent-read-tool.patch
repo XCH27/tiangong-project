@@ -1,0 +1,1259 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 8cb7a5f..84372e5 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -528,3 +528,33 @@ Project cost projection uses the existing registered local project list. Convers
+ unregistered paths and null history group under Other without rewriting immutable usage facts or
+ removing them from account-period allocation. Agent-editable statistics must reuse the existing
+ Session/permission and Settings owners; that contextual bridge is not implemented by this change.
++
++### Activity evidence and source-backed charts
++
++Reuse the existing model_usage, turn_usage and tool_usage records and the same usage/stats query.
++The original tool_usage table already owns identity, scope, outcomes, latency, output size, retries
++and permissions. Expose its existing tool aggregate before adding counters. Skill result/error events
++already carry qualified name, plugin ID and source, but those fields are not retained in tool_usage;
++extend that row with nullable metadata, not another event stream or telemetry service. Repeated
++events upsert the same session/tool-call identity. Never infer historical skills from installed lists.
++
++The initial activity view reports tool calls and explicit Skill invocations with outcome/latency.
++Installed/enabled/loaded/executed are distinct; a loaded skill does not prove task success. Actual
++API billing remains per request. Session/turn links permit later associated-cost analysis but do not
++justify billing every tool or skill for a whole model request. Version provenance, accepted outcome,
++before/after configuration cohorts and an Agent read/write bridge still need their own real facts.
++Keep structured facts, not additional copies of prompts, credentials or complete tool output.
++
++Cost presentation follows EvilCharts' grouped horizontal bar pattern over the existing ZCode
++Recharts/ChartContainer. Model/project grouping is separate from total/per-million units. API
++estimates and allocated payments are alternative valuations, not stackable components. Unknowns
++remain gaps; different currencies use separate charts. Reuse original page order, tokens and controls.
++
++
++ReadUsageStats is a read-only tool over the same injected SessionStore usage query, bounded to 7/30
++days. It returns aggregate models/tools/identified skills and price coverage with local-host scope,
++never raw messages, credentials or configuration commands. It remains available independently of
++dynamic workflow gating. Normal tool deny/permission rules apply. It does not claim Agent settings
++editing, automatically disable plugins, change models or allocate per-tool bills. Missing port/data
++returns explicit unavailable/null instead of a fabricated empty account. Human and Agent statistics
++share the same query owner and scope semantics.
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
+index bb56cca..628e944 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
+@@ -937,6 +937,11 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
+         'requestedSpeedMode', json_extract(provider_metadata_json,'$.fleetAccounting.requestedSpeedMode')
+       ) where raw_usage_json is not null;`,
+   },
++  {
++    appVersion: "0.16.9",
++    id: "0024_usage_skill_identity",
++    sql: "alter table tool_usage add column skill_metadata_json text;",
++  },
+ ];
+ import { OFFICIAL_GLM_SELECTION_MIGRATION_SQL } from "./migrations/0021-official-glm-selection.js";
+ import { BACKFILLED_SESSION_REASONING_MIGRATION_SQL } from "./migrations/0022-backfilled-session-reasoning.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts
+new file mode 100644
+index 0000000..2b5bfe3
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts
+@@ -0,0 +1,19 @@
++import type { DatabaseSync } from "node:sqlite";
++import type { AppUsageQueryResult } from "@zcode/contracts";
++
++/** The existing tool ledger is the only counter; missing old metadata is explicit coverage. */
++export function querySkillUsage(db: DatabaseSync, since: number, until: number): Pick<AppUsageQueryResult,"skills"|"unidentifiedSkillCalls"> {
++ const skills=db.prepare(`select
++   json_extract(skill_metadata_json,'$.qualifiedName') as skillId,
++   json_extract(skill_metadata_json,'$.pluginId') as pluginId,
++   json_extract(skill_metadata_json,'$.source') as source,
++   count(*) as callCount,
++   sum(case when status='error' then 1 else 0 end) as errorCount,
++   avg(duration_ms) as avgDurationMs
++   from tool_usage where tool_name='Skill' and started_at >= ? and started_at <= ?
++   and json_type(skill_metadata_json,'$.qualifiedName')='text'
++   and length(trim(json_extract(skill_metadata_json,'$.qualifiedName'))) > 0
++   group by skillId,pluginId,source order by callCount desc,skillId`).all(since,until) as unknown as NonNullable<AppUsageQueryResult['skills']>;
++ const total=db.prepare("select count(*) as total from tool_usage where tool_name='Skill' and started_at >= ? and started_at <= ?").get(since,until) as {total:number};
++ return {skills: skills.map((row) => ({...row})),unidentifiedSkillCalls:total.total-skills.reduce((n,s)=>n+s.callCount,0)};
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index d792442..f3a8164 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -1,3 +1,4 @@
++import { querySkillUsage } from "./usage-skills.js";
+ import { accountingSnapshot, queryAccounting } from "./usage-accounting.js";
+ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+ import type {
+@@ -267,6 +268,7 @@ export async function upsertToolUsage(db: DatabaseSync, input: ToolUsageRecord):
+         trace_id,
+         tool_call_id,
+         tool_name,
++        skill_metadata_json,
+         side_effect_scope,
+         read_only,
+         destructive,
+@@ -292,13 +294,14 @@ export async function upsertToolUsage(db: DatabaseSync, input: ToolUsageRecord):
+       values (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+-        ?, ?, ?, ?, ?, ?, ?
++        ?, ?, ?, ?, ?, ?, ?, ?
+       )
+       on conflict(id) do update set
+         session_id = excluded.session_id,
+         turn_id = coalesce(excluded.turn_id, tool_usage.turn_id),
+         trace_id = coalesce(excluded.trace_id, tool_usage.trace_id),
+         tool_call_id = excluded.tool_call_id,
++        skill_metadata_json = coalesce(excluded.skill_metadata_json, tool_usage.skill_metadata_json),
+         tool_name = case
+           when excluded.tool_name = 'unknown' then tool_usage.tool_name
+           else excluded.tool_name
+@@ -360,6 +363,7 @@ function toolUsageValues(input: ToolUsageRecord): SQLInputValue[] {
+     input.traceID ?? null,
+     input.toolCallID,
+     input.toolName,
++    input.skillMetadata ? encodeJson({qualifiedName: input.skillMetadata.qualifiedName, pluginId: input.skillMetadata.pluginId, source: input.skillMetadata.source}) : null,
+     input.sideEffectScope ?? null,
+     nullableBoolean(input.readOnly),
+     nullableBoolean(input.destructive),
+@@ -602,6 +606,7 @@ export async function queryAppUsage(
+       errorCount: Number(t.errorCount),
+       avgDurationMs: t.avgDurationMs == null ? null : Number(t.avgDurationMs),
+     })),
++    ...querySkillUsage(db, since, until),
+     days: [...dayMap.values()].sort((a, b) => a.dayIndex - b.dayIndex),
+     dayModels: dayModels.map((d) => ({
+       dayIndex: Number(d.dayIndex),
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 9e0e89a..8edc6c2 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -57,6 +57,7 @@ async function fixture() {
+   return {
+     path,
+     record,
++    get store() { return store; },
+     query: (since = 0, until = Date.UTC(2026, 9, 1)) =>
+       store.queryAppUsage({ since, until, tzOffsetMs: 0 }),
+     reopen() {
+@@ -343,3 +344,30 @@ test("project costs preserve the recorded workspace without assigning historical
+   assert.equal(rows.reduce((sum,row)=>sum+row.requestCount,0),3);
+  }finally{await f.close();}
+ });
++
++
++test("skill identity uses existing tool-call upserts, survives restart and leaves legacy attribution unknown",async()=>{
++ const f=await fixture();try{
++  const input={id:"skill-1",sessionID:"session" as SessionId,toolCallID:"call-1",toolName:"Skill",status:"completed" as const,startedAt:100,durationMs:20,skillMetadata:{qualifiedName:"design:review",pluginId:"design@registry",source:"plugin" as const}};
++  await f.store.upsertToolUsage(input);await f.store.upsertToolUsage({...input,toolName:"unknown",skillMetadata:undefined});
++  await f.store.upsertToolUsage({...input,id:"skill-2",toolCallID:"call-2",status:"error",skillMetadata:undefined});
++  await f.store.upsertToolUsage({...input,id:"outside",toolCallID:"call-3",startedAt:1000});
++  f.reopen();const result=await f.query(0,500);
++  assert.equal(result.tools.find(t=>t.toolName==="Skill")!.callCount,2);
++  assert.deepEqual(result.skills,[{skillId:"design:review",pluginId:"design@registry",source:"plugin",callCount:1,errorCount:0,avgDurationMs:20}]);
++  assert.equal(result.unidentifiedSkillCalls,1);
++ }finally{await f.close();}
++});
++
++test("runtime skill result persists its existing identity event without persisting skill text",async()=>{
++ const f=await fixture();try{
++  const {recordToolUsageFromEvent}=await import("../../core/src/runtime/methods/usage-observability.js");
++  const {SessionEventType}=await import("@zcode/contracts");
++  const runtime={sessionId:"session",sessionStore:f.store,registry:{get:()=>undefined}} as never;
++  const base={timestamp:new Date(100),payload:{toolCallId:"event-skill",toolName:"Skill"}};
++  await recordToolUsageFromEvent(runtime,{...base,type:SessionEventType.ToolCallScheduled} as never,{} as never);
++  await recordToolUsageFromEvent(runtime,{...base,type:SessionEventType.ToolCallResult,payload:{toolCallId:"event-skill",duration:12,result:{content:"private skill body"},skillMetadata:{qualifiedName:"design:review",pluginId:"design@registry",source:"plugin"}}} as never,{} as never);
++  f.reopen();const result=await f.query(0,500);assert.equal(result.skills?.[0]?.skillId,"design:review");assert.equal(result.tools[0]!.callCount,1);
++  const db=new DatabaseSync(f.path,{readOnly:true});const stored=db.prepare('select skill_metadata_json from tool_usage').get() as {skill_metadata_json:string};db.close();assert.equal(stored.skill_metadata_json.includes('private skill body'),false);
++ }finally{await f.close();}
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+index c8a0c89..ae151dc 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+@@ -243,5 +243,7 @@ export function buildAppUsageSnapshot(
+     dailyModelUsage,
+     models,
+     tools,
++    skills: result.skills,
++    unidentifiedSkillCalls: result.unidentifiedSkillCalls,
+   };
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index 86cd100..a4d4243 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -950,6 +950,7 @@ export interface TurnUsageRecord {
+ }
+ 
+ export interface ToolUsageRecord {
++  skillMetadata?: import("../skills/index.js").SkillTelemetryMetadata;
+   id: string;
+   sessionID: SessionId;
+   turnID?: TurnId;
+@@ -1046,6 +1047,8 @@ export interface AppUsageDayModelRow {
+ }
+ 
+ export interface AppUsageQueryResult {
++  skills?: { skillId: string; pluginId: string | null; source: string | null; callCount: number; errorCount: number; avgDurationMs: number | null }[];
++  unidentifiedSkillCalls?: number;
+   accounting?: import("@zcode/shared").UsageAccountingRow[];
+   totals: AppUsageTotalsRow;
+   turnTotals: AppUsageTurnTotalsRow;
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/index.ts b/apps/zcode-cli/packages/contracts/src/tools/index.ts
+index 2d86805..902390a 100644
+--- a/apps/zcode-cli/packages/contracts/src/tools/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/tools/index.ts
+@@ -40,6 +40,7 @@ export * from "./list-saved-workflows.js";
+ // dwf 选型的发现面：名字常量被 core 的工具注册与
+ // bootstrap 的 actor 禁用名单读走，漏掉这行消费方拿不到 schema 与 LIST_MODELS_TOOL_NAME。
+ export * from "./list-models.js";
++export * from "./read-usage-stats.js";
+ export * from "./eval-workflow-snippet.js";
+ export * from "./list-workflow-runs.js";
+ export * from "./get-workflow-run.js";
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/read-usage-stats.ts b/apps/zcode-cli/packages/contracts/src/tools/read-usage-stats.ts
+new file mode 100644
+index 0000000..b5c378a
+--- /dev/null
++++ b/apps/zcode-cli/packages/contracts/src/tools/read-usage-stats.ts
+@@ -0,0 +1,54 @@
++import { z } from "zod";
++import { toToolJsonSchema } from "./json-schema.js";
++
++export const ReadUsageStatsInputSchema = z
++  .object({ range: z.enum(["7d", "30d"]).default("7d") })
++  .strict();
++export const ReadUsageStatsInputJsonSchema = toToolJsonSchema(ReadUsageStatsInputSchema);
++
++const counters = z.object({
++  callCount: z.number(),
++  errorCount: z.number(),
++  avgDurationMs: z.number().nullable(),
++});
++export const ReadUsageStatsOutputSchema = z.object({
++  scope: z.literal("local-host"),
++  since: z.number(),
++  until: z.number(),
++  models: z.array(
++    z.object({
++      modelId: z.string().nullable(),
++      requestCount: z.number(),
++      totalTokens: z.number(),
++      inputTokens: z.number(),
++      outputTokens: z.number(),
++      cacheReadTokens: z.number().optional(),
++      cacheHitRate: z.number().nullable().optional(),
++      cacheReportedRequestCount: z.number().optional(),
++      fastRequestCount: z.number().optional(),
++      speedReportedRequestCount: z.number().optional(),
++    }),
++  ),
++  tools: z.array(counters.extend({ toolName: z.string() })),
++  skills: z
++    .array(
++      counters.extend({
++        skillId: z.string(),
++        pluginId: z.string().nullable(),
++        source: z.string().nullable(),
++      }),
++    )
++    .nullable(),
++  unidentifiedSkillCalls: z.number().nullable(),
++  priceEstimates: z.array(
++    z.object({
++      modelId: z.string(),
++      apiUsdEstimate: z.number().nullable(),
++      pricedRequests: z.number(),
++      recordedRequests: z.number(),
++      priceSources: z.array(z.string()),
++    }),
++  ),
++  attribution: z.string(),
++});
++export const ReadUsageStatsOutputJsonSchema = toToolJsonSchema(ReadUsageStatsOutputSchema);
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index 1895dca..37ec75a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -218,6 +218,9 @@ export async function recordToolUsageFromEvent(
+   const metadata = runtime.registry.get(toolName)?.metadata;
+   const startedAt = event.timestamp.getTime();
+   const base = {
++    ...(payload.skillMetadata && typeof payload.skillMetadata === "object" ? {
++      skillMetadata: payload.skillMetadata as import("@zcode/contracts").SkillTelemetryMetadata,
++    } : {}),
+     id: toolUsageId(runtime.sessionId, toolCallId),
+     sessionID: runtime.sessionId,
+     turnID: event.turnId ?? traceContext.turnId,
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+index 43a8e80..9719fe1 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+@@ -62,6 +62,7 @@ import { amendWorkflowToolEntry } from "./amend-workflow.js";
+ import { createWorkflowToolEntry } from "./create-workflow.js";
+ import { saveWorkflowToolEntry } from "./save-workflow.js";
+ import { listSavedWorkflowsToolEntry } from "./list-saved-workflows.js";
++import { readUsageStatsToolEntry } from "./read-usage-stats.js";
+ import { listModelsToolEntry } from "./list-models.js";
+ import { evalWorkflowSnippetToolEntry } from "./eval-workflow-snippet.js";
+ import { listWorkflowRunsToolEntry } from "./list-workflow-runs.js";
+@@ -133,6 +134,7 @@ export const builtInTools: ToolEntry[] = [
+   // `subagent_model`。不进 WORKFLOW_CHILD_DISALLOWED_TOOLS
+   // ——那条禁令的理由是 alwaysAsk 在 child 里无窗可弹，只读查询不适用。
+   listModelsToolEntry,
++  readUsageStatsToolEntry,
+   // workflowToolEntry,
+ ];
+ 
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/read-usage-stats.ts b/apps/zcode-cli/packages/core/src/tool/handlers/read-usage-stats.ts
+new file mode 100644
+index 0000000..ac4bf92
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/read-usage-stats.ts
+@@ -0,0 +1,115 @@
++import {
++  ReadUsageStatsInputSchema,
++  ReadUsageStatsOutputSchema,
++  ReadUsageStatsOutputJsonSchema,
++  ReadUsageStatsInputJsonSchema,
++  type UsageStorePort,
++} from "@zcode/contracts";
++import type { ToolEntry, ToolHandler } from "../types.js";
++
++const handler: ToolHandler = async (input, context) => {
++  const { range } = ReadUsageStatsInputSchema.parse(input);
++  const store = context.sessionStore as Partial<UsageStorePort> | undefined;
++  if (typeof store?.queryAppUsage !== "function")
++    return {
++      result: false,
++      errorCode: 32,
++      message: "usage_stats_unavailable: this runtime does not expose its local usage ledger",
++    };
++  const until = Date.now();
++  const since = until - (range === "7d" ? 7 : 30) * 86400000;
++  const result = await store.queryAppUsage({ since, until, tzOffsetMs: 0 });
++  const prices = new Map<
++    string,
++    {
++      modelId: string;
++      apiUsdEstimate: number;
++      pricedRequests: number;
++      recordedRequests: number;
++      priceSources: Set<string>;
++    }
++  >();
++  for (const row of result.accounting ?? []) {
++    const value = prices.get(row.modelId) ?? {
++      modelId: row.modelId,
++      apiUsdEstimate: 0,
++      pricedRequests: 0,
++      recordedRequests: 0,
++      priceSources: new Set<string>(),
++    };
++    value.apiUsdEstimate += row.estimatedUsd;
++    value.pricedRequests += row.pricedCount;
++    value.recordedRequests += row.requestCount;
++    (row.priceSources ?? "")
++      .split(",")
++      .filter(Boolean)
++      .forEach((source) => value.priceSources.add(source));
++    prices.set(row.modelId, value);
++  }
++  return ReadUsageStatsOutputSchema.parse({
++    scope: "local-host",
++    since,
++    until,
++    models: result.models,
++    tools: result.tools,
++    skills: result.skills ?? null,
++    unidentifiedSkillCalls: result.unidentifiedSkillCalls ?? null,
++    priceEstimates: [...prices.values()].map((p) => ({
++      ...p,
++      apiUsdEstimate: p.pricedRequests ? p.apiUsdEstimate : null,
++      priceSources: [...p.priceSources],
++    })),
++    attribution:
++      "API equivalents are not subscription payments. Tool/skill counts do not establish accepted outcomes or per-tool token cost. Missing historical identity and prices remain unknown.",
++  });
++};
++export const readUsageStatsToolEntry: ToolEntry = {
++  capability:
++    "Inspect recorded model costs and tool/skill outcomes before proposing resource or cost changes",
++  metadata: {
++    name: "ReadUsageStats",
++    description:
++      "Read this host's existing usage ledger for the last 7 or 30 days. Reports model usage and API-equivalent price coverage, tool call/error/duration counts, and identified Skill invocations. Use measured failures and costs as evidence, not frequency alone. No prompts, credentials, raw tool output or configuration writes are exposed; this cannot remove plugins or switch the user's model.",
++    readOnly: true,
++    destructive: false,
++    concurrentSafe: true,
++    timeoutMs: 10000,
++    maxOutputBytes: 48000,
++    sideEffectScope: "none",
++    riskLevel: "low",
++    needsApproval: false,
++  },
++  handler,
++  inputSchema: ReadUsageStatsInputJsonSchema,
++  outputSchema: ReadUsageStatsOutputJsonSchema,
++  runtimeOutputSchema: ReadUsageStatsOutputSchema,
++  runtimeInputSchema: ReadUsageStatsInputSchema,
++  permission: {
++    permission: "readUsageStats",
++    reason: "Read aggregated local usage facts",
++    riskLevel: "low",
++    sideEffectScope: "none",
++    needsApproval: false,
++    patternSources: ["toolName"],
++    alwaysAllowPatternSources: ["toolName"],
++    denyPriority: "beforeAsk",
++  },
++  resultBudget: {
++    maxInlineBytes: 48000,
++    maxModelBytes: 48000,
++    strategy: "truncate",
++    preview: { maxBytes: 48000, direction: "head" },
++  },
++  timeout: { kind: "timed", defaultMs: 10000, maxMs: 10000, allowCallOverride: false },
++  cancellation: {
++    supported: false,
++    cleanup: "none",
++    userVisibleMessage: "Reading the local usage ledger",
++  },
++  trace: {
++    required: true,
++    propagateToAdapters: false,
++    recordInput: "summary",
++    recordOutput: "summary",
++  },
++};
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts b/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
+index 41ff843..1fadd11 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
+@@ -50,7 +50,7 @@ const skillHandler: ToolHandler = async (input, context) => {
+   );
+ 
+   context.recordSkillTelemetryMetadata?.({
+-    ...(loaded.metadata.qualifiedName ? { qualifiedName: loaded.metadata.qualifiedName } : {}),
++    qualifiedName: loaded.metadata.qualifiedName ?? loaded.metadata.name,
+     ...(loaded.metadata.pluginId ? { pluginId: loaded.metadata.pluginId } : {}),
+     source: loaded.metadata.source,
+   });
+diff --git a/apps/zcode-cli/packages/core/test/read-usage-stats.test.ts b/apps/zcode-cli/packages/core/test/read-usage-stats.test.ts
+new file mode 100644
+index 0000000..2832131
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/read-usage-stats.test.ts
+@@ -0,0 +1,48 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readUsageStatsToolEntry } from "../src/tool/handlers/read-usage-stats.js";
++
++test("Agent statistics reuse the injected ledger, redact account facts and retain pricing coverage", async () => {
++  let calls = 0;
++  const context = {
++    sessionStore: {
++      queryAppUsage: async (input: any) => {
++        calls++;
++        assert.equal(input.until - input.since, 7 * 86400000);
++        return {
++          models: [
++            { modelId: "m", requestCount: 2, totalTokens: 20, inputTokens: 18, outputTokens: 2 },
++          ],
++          tools: [{ toolName: "Read", callCount: 3, errorCount: 1, avgDurationMs: 3 }],
++          skills: [],
++          unidentifiedSkillCalls: 2,
++          accounting: [
++            {
++              accountId: "private-id",
++              modelId: "m",
++              estimatedUsd: 3,
++              pricedCount: 1,
++              requestCount: 2,
++              priceSources: "https://example.com/prices",
++            },
++          ],
++          privateKey: "do-not-return",
++        };
++      },
++    },
++  };
++  const output: any = await readUsageStatsToolEntry.handler({}, context as never);
++  assert.equal(calls, 1);
++  assert.equal(output.tools[0].callCount, 3);
++  assert.equal(output.priceEstimates[0].apiUsdEstimate, 3);
++  assert.equal(output.priceEstimates[0].pricedRequests, 1);
++  assert.equal(output.unidentifiedSkillCalls, 2);
++  assert.equal(JSON.stringify(output).includes("private-id"), false);
++  assert.equal(JSON.stringify(output).includes("do-not-return"), false);
++  assert.equal(readUsageStatsToolEntry.metadata.readOnly, true);
++});
++test("missing ledger and invalid ranges do not become empty successful statistics", async () => {
++  const output: any = await readUsageStatsToolEntry.handler({}, {} as never);
++  assert.equal(output.result, false);
++  await assert.rejects(readUsageStatsToolEntry.handler({ range: "all" }, {} as never));
++});
+diff --git a/package.json b/package.json
+index 6ca3a65..7a8d617 100644
+--- a/package.json
++++ b/package.json
+@@ -51,7 +51,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index cac22e6..f795f0a 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -245,6 +245,8 @@ export const appUsageToolUsageSchema = z.object({
+ });
+ 
+ export const appUsageSnapshotSchema = z.object({
++  skills: z.array(z.object({skillId:z.string(),pluginId:z.string().nullable(),source:z.string().nullable(),callCount:z.number(),errorCount:z.number(),avgDurationMs:z.number().nullable()})).optional(),
++  unidentifiedSkillCalls: z.number().optional(),
+   range: z.enum(APP_USAGE_RANGES),
+   generatedAt: z.number(),
+   timeZone: z.string(),
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 1e6f283..0f49d05 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,22 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.usage.costAnalysis.total": "Total cost",
++  "settings.usage.costAnalysis.unitChoice": "Cost unit",
++
++  "settings.usage.activity.title": "Activity insights",
++  "settings.usage.activity.conversations": "Conversations",
++  "settings.usage.activity.toolCalls": "Tool calls",
++  "settings.usage.activity.toolErrors": "Tool error rate",
++  "settings.usage.activity.fast": "Fast mode share",
++  "settings.usage.activity.tools": "Tools",
++  "settings.usage.activity.skills": "Skills",
++  "settings.usage.activity.errors": "{count} errors",
++  "settings.usage.activity.duration": "Average {ms} ms",
++  "settings.usage.activity.count": "{count} calls",
++  "settings.usage.activity.empty": "No tool calls in this period.",
++  "settings.usage.activity.noSkills": "No identified skill calls in this period.",
++  "settings.usage.activity.unidentified": "{count} older skill calls have no recorded identity.",
++
+   "settings.modelProvider.import.boundExisting": "Already connected: {name}",
+   "settings.usage.payments.billingRead":
+     "Billing dates and currency loaded; the provider did not return an amount paid.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index b343a09..96eceec 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,22 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.usage.costAnalysis.total": "总费用",
++  "settings.usage.costAnalysis.unitChoice": "费用单位",
++
++  "settings.usage.activity.title": "活动洞察",
++  "settings.usage.activity.conversations": "对话数",
++  "settings.usage.activity.toolCalls": "工具调用",
++  "settings.usage.activity.toolErrors": "工具错误率",
++  "settings.usage.activity.fast": "快速模式占比",
++  "settings.usage.activity.tools": "工具",
++  "settings.usage.activity.skills": "技能",
++  "settings.usage.activity.errors": "失败 {count} 次",
++  "settings.usage.activity.duration": "平均 {ms} 毫秒",
++  "settings.usage.activity.count": "{count} 次",
++  "settings.usage.activity.empty": "此时段没有工具调用记录。",
++  "settings.usage.activity.noSkills": "此时段没有可识别的技能调用记录。",
++  "settings.usage.activity.unidentified": "另有 {count} 次历史技能调用未记录名称。",
++
+   "settings.modelProvider.import.boundExisting": "已绑定：{name}",
+   "settings.usage.payments.billingRead": "已读取账期与币种；服务商未返回实付金额。",
+   "settings.modelProvider.import.completeExisting": "补全已有连接：{name}",
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+new file mode 100644
+index 0000000..dca7002
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+@@ -0,0 +1,107 @@
++import { useState } from "react";
++import type { AppUsageSnapshot } from "@zcode/shared";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import {
++  USAGE_STATS_TABS_LIST_CLASS,
++  USAGE_STATS_TABS_TRIGGER_CLASS,
++} from "./usageStatsUiParts.js";
++
++/** Display original usage/stats facts; never count installed resources as executions. */
++export function AppUsageActivity({ snapshot }: { snapshot: AppUsageSnapshot }) {
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string, values?: Record<string, string | number>) =>
++    intl.formatMessage({ id: `settings.usage.activity.${key}` }, values);
++  const [view, setView] = useState<"tools" | "skills">("tools");
++  const counts = new Intl.NumberFormat(locale);
++  const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
++  const accounted = snapshot.accounting ?? [];
++  const speedKnown = accounted
++    .filter((r) => r.speedMode !== null)
++    .reduce((n, r) => n + r.requestCount, 0);
++  const fast = accounted
++    .filter((r) => r.speedMode === "fast" || r.speedMode === "priority")
++    .reduce((n, r) => n + r.requestCount, 0);
++  const summary = [
++    [t("conversations"), counts.format(snapshot.summary.totalSessions)],
++    [t("toolCalls"), counts.format(snapshot.summary.toolCallCount)],
++    [
++      t("toolErrors"),
++      snapshot.summary.toolCallCount ? percent.format(snapshot.summary.toolErrorRate) : "—",
++    ],
++    [t("fast"), speedKnown ? percent.format(fast / speedKnown) : "—"],
++  ];
++  const rows =
++    view === "tools"
++      ? snapshot.tools.map((r) => ({ ...r, key: r.toolName, label: r.toolName, source: undefined }))
++      : (snapshot.skills ?? []).map((r) => ({
++          ...r,
++          key: JSON.stringify([r.skillId, r.pluginId, r.source]),
++          label: r.skillId,
++          source: r.pluginId ?? r.source ?? undefined,
++        }));
++  return (
++    <section className="grid gap-6 rounded-xl bg-surface p-4 md:grid-cols-2">
++      <div className="space-y-3">
++        <h3 className="text-ui-base font-medium">{t("title")}</h3>
++        <dl className="space-y-3">
++          {summary.map(([label, value]) => (
++            <div key={label} className="flex items-center justify-between gap-3 text-ui-base">
++              <dt className="text-foreground-subtle">{label}</dt>
++              <dd className="font-mono tabular-nums">{value}</dd>
++            </div>
++          ))}
++        </dl>
++      </div>
++      <div className="min-w-0 space-y-3">
++        <Tabs value={view} onValueChange={(v) => setView(v as "tools" | "skills")}>
++          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
++            {(["tools", "skills"] as const).map((v) => (
++              <TabsTrigger key={v} value={v} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++                {t(v)}
++              </TabsTrigger>
++            ))}
++          </TabsList>
++        </Tabs>
++        <ol className="max-h-48 space-y-2 overflow-y-auto">
++          {rows.map((row) => (
++            <li key={row.key}>
++              <ControlHintTooltip
++                title={[
++                  row.source,
++                  t("errors", { count: row.errorCount }),
++                  row.avgDurationMs === null
++                    ? null
++                    : t("duration", { ms: Math.round(row.avgDurationMs) }),
++                ]
++                  .filter(Boolean)
++                  .join(" · ")}
++              >
++                <div
++                  tabIndex={0}
++                  className="flex min-w-0 items-center justify-between gap-3 text-ui-base"
++                >
++                  <span className="truncate">{row.label}</span>
++                  <span className="shrink-0 font-mono tabular-nums text-foreground-subtle">
++                    {t("count", { count: row.callCount })}
++                  </span>
++                </div>
++              </ControlHintTooltip>
++            </li>
++          ))}
++        </ol>
++        {!rows.length ? (
++          <p className="text-ui-sm text-foreground-subtle">
++            {t(view === "skills" ? "noSkills" : "empty")}
++          </p>
++        ) : null}
++        {view === "skills" && snapshot.unidentifiedSkillCalls ? (
++          <p className="text-ui-sm text-foreground-subtle">
++            {t("unidentified", { count: snapshot.unidentifiedSkillCalls })}
++          </p>
++        ) : null}
++      </div>
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index eaf0506..078a781 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -1,3 +1,4 @@
++import { AppUsageActivity } from "./AppUsageActivity.js";
+ import { UsageCostAnalysis } from "./UsageCostAnalysis.js";
+ import { RefreshCcw } from "lucide-react";
+ import { Fragment, lazy, useState } from "react";
+@@ -115,6 +116,7 @@ export function AppUsagePanel() {
+         <AppUsageModelUsagePieChart snapshot={snapshot} />
+       </UsageChartLoadBoundary>
+ 
++      <AppUsageActivity snapshot={snapshot} />
+       <UsageCostAnalysis snapshot={snapshot} />
+       <div className="flex justify-end">
+         <Button
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx b/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx
+new file mode 100644
+index 0000000..6359426
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx
+@@ -0,0 +1,135 @@
++import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
++import {
++  ChartContainer,
++  ChartTooltip,
++  ChartTooltipContent,
++  type ChartConfig,
++} from "@/components/ui/chart.js";
++
++export interface CostChartRow {
++  key: string;
++  label: string;
++  fullLabel?: string;
++  api: number | null;
++  actual: number | null;
++}
++
++/** Horizontal grouped comparison: EvilCharts 500ecd44 pattern, hosted by ZCode chart primitives. */
++export function UsageCostBarChart({
++  rows,
++  series,
++  currency,
++  money,
++  title,
++}: {
++  rows: CostChartRow[];
++  series: { key: "api" | "actual"; label: string; color: string }[];
++  currency: string;
++  money(value: number | null, currency?: string): string;
++  title: string;
++}) {
++  const config = Object.fromEntries(
++    series.map((s) => [s.key, { label: s.label, color: s.color }]),
++  ) as ChartConfig;
++  return (
++    <div className="max-h-80 overflow-y-auto">
++      <ChartContainer
++        config={config}
++        className="aspect-auto w-full"
++        style={{ height: Math.max(164, rows.length * (series.length === 2 ? 64 : 44) + 28) }}
++      >
++        <BarChart
++          accessibilityLayer
++          layout="vertical"
++          data={rows}
++          margin={{ top: 8, right: 80, bottom: 0, left: 0 }}
++          barCategoryGap={10}
++          barGap={4}
++        >
++          <CartesianGrid horizontal={false} strokeDasharray="3 3" />
++          <YAxis
++            dataKey="key"
++            type="category"
++            width={130}
++            tickLine={false}
++            axisLine={false}
++            tickFormatter={(key: string) => {
++              const label = rows.find((row) => row.key === key)?.label ?? key;
++              return label.length > 20 ? label.slice(0, 19) + "…" : label;
++            }}
++          />
++          <XAxis
++            type="number"
++            tickLine={false}
++            axisLine={false}
++            tickFormatter={(value) => money(Number(value), currency)}
++            minTickGap={36}
++          />
++          <ChartTooltip
++            cursor={{ fill: "var(--color-surface)" }}
++            content={
++              <ChartTooltipContent
++                labelFormatter={(key) =>
++                  rows.find((row) => row.key === key)?.fullLabel ??
++                  rows.find((row) => row.key === key)?.label ??
++                  key
++                }
++                formatter={(value, name) => (
++                  <div className="flex min-w-40 items-center justify-between gap-4">
++                    <span className="text-foreground-subtle">
++                      {config[String(name)]?.label ?? name}
++                    </span>
++                    <span className="font-mono tabular-nums">
++                      {money(typeof value === "number" ? value : null, currency)}
++                    </span>
++                  </div>
++                )}
++              />
++            }
++          />
++          {series.map((s) => (
++            <Bar
++              key={s.key}
++              dataKey={s.key}
++              name={s.key}
++              fill={`var(--color-${s.key})`}
++              radius={[0, 4, 4, 0]}
++              maxBarSize={16}
++              isAnimationActive={false}
++            >
++              <LabelList
++                dataKey={s.key}
++                position="right"
++                className="fill-foreground text-ui-xs"
++                formatter={(value: unknown) =>
++                  typeof value === "number" ? money(value, currency) : "—"
++                }
++              />
++            </Bar>
++          ))}
++        </BarChart>
++      </ChartContainer>
++      <table className="sr-only">
++        <caption>{currency}</caption>
++        <thead>
++          <tr>
++            <th>{title}</th>
++            {series.map((s) => (
++              <th key={s.key}>{s.label}</th>
++            ))}
++          </tr>
++        </thead>
++        <tbody>
++          {rows.map((row) => (
++            <tr key={row.key}>
++              <th>{row.fullLabel ?? row.label}</th>
++              {series.map((s) => (
++                <td key={s.key}>{money(row[s.key], currency)}</td>
++              ))}
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx b/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
+index edb9e03..e7d0f2e 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
+@@ -4,21 +4,26 @@ import type { SubscriptionPayment, UsageCostReport } from "@zcode/shared";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { Button } from "@/components/ui/button.js";
+-import { Progress } from "@/components/ui/progress.js";
+ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectTrigger,
++  SelectValue,
++} from "@/components/ui/select.js";
+ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { UsageCostBarChart } from "./UsageCostBarChart.js";
+ import {
+-  formatCompactTokenUsage,
+   USAGE_STATS_TABS_LIST_CLASS,
+   USAGE_STATS_TABS_TRIGGER_CLASS,
+ } from "./usageStatsUiParts.js";
+ 
+-type View = "unit" | "models" | "projects";
+ const API_COLOR = "var(--color-usage-chart-1)",
+   PAID_COLOR = "var(--color-usage-chart-2)";
+ 
+-/** Original summary/legend/progress primitives, comparing the same account-period facts. */
++/** Shared account-period facts; reference value and actual payment are compared, never stacked. */
+ export function UsageCostComparison({
+   report,
+   payment,
+@@ -29,14 +34,15 @@ export function UsageCostComparison({
+   const { intl, locale } = useZCodeIntl();
+   const platform = usePlatform();
+   const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
+-  const [view, setView] = useState<View>("unit");
++  const [group, setGroup] = useState<"models" | "projects">("models");
++  const [unit, setUnit] = useState<"total" | "unit">("total");
+   const currency = payment?.currency ?? "USD";
+-  const money = (value: number | null, unit = "USD") =>
++  const money = (value: number | null, c = "USD") =>
+     value === null
+       ? "—"
+       : new Intl.NumberFormat(locale, {
+           style: "currency",
+-          currency: unit,
++          currency: c,
+           maximumFractionDigits: Math.abs(value) > 0 && Math.abs(value) < 0.0001 ? 8 : 4,
+         }).format(value);
+   const summary = report.summary;
+@@ -45,86 +51,124 @@ export function UsageCostComparison({
+     ...(payment ? [{ label: t("paid"), value: money(payment.amount, currency) }] : []),
+     {
+       label: t("apiEquivalent"),
+-      value: `${money(summary.apiUsd)}${partial && summary.apiUsd !== null ? " *" : ""}`,
+-    },
+-    {
+-      label: payment ? t("actualUnit") : t("recordedTokens"),
+-      value: payment
+-        ? money(summary.actualPerMillion, currency)
+-        : formatCompactTokenUsage(locale, summary.totalTokens),
++      value: money(summary.apiUsd) + (partial && summary.apiUsd !== null ? " *" : ""),
+     },
+   ];
+-  const data =
+-    view === "projects"
+-      ? report.projects.map((project) => ({
+-          key: project.workspacePath ?? "unassigned",
+-          label: project.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("unassigned"),
+-          fullLabel: project.workspacePath ?? t("unassigned"),
+-          api: project.apiUsd,
+-          actual: project.actualAmount,
+-          sources: [] as string[],
+-          tokens: project.totalTokens,
+-          priced: project.pricedCount,
+-          requests: project.requests,
++  const perMillion = group === "models" && unit === "unit";
++  const rows =
++    group === "projects"
++      ? report.projects.map((p) => ({
++          key: p.workspacePath ?? "other",
++          fullLabel: p.workspacePath ?? t("unassigned"),
++          label: p.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("unassigned"),
++          api: p.apiUsd,
++          actual: p.actualAmount,
+         }))
+-      : report.models.map((model) => ({
+-          key: model.modelId,
+-          label: model.modelId,
+-          fullLabel: model.modelId,
+-          api: view === "unit" ? model.apiPerMillion : model.apiUsd,
+-          actual: view === "unit" ? model.actualPerMillion : model.actualAmount,
+-          sources: model.priceSources,
+-          tokens: model.totalTokens,
+-          priced: model.pricedCount,
+-          requests: model.requests,
++      : report.models.map((m) => ({
++          key: m.modelId,
++          label: m.modelId,
++          api: perMillion ? m.apiPerMillion : m.apiUsd,
++          actual: perMillion ? m.actualPerMillion : m.actualAmount,
+         }));
+-  // 没有汇率事实时不把不同币种画在同一比例尺上；API 参考数值仍保留在同一行。
+-  const comparable = currency === "USD";
+-  const max = Math.max(
+-    0,
+-    ...data.flatMap((row) => [...(comparable || !payment ? [row.api ?? 0] : []), row.actual ?? 0]),
+-  );
+-  const bar = (label: string, value: number | null, color: string, unit: string, draw: boolean) => (
+-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-ui-sm">
+-      <span className="w-12 text-foreground-subtle">{label}</span>
+-      {draw && value !== null && max > 0 ? (
+-        <Progress
+-          value={(value / max) * 100}
+-          aria-label={`${label} ${money(value, unit)}`}
+-          aria-valuenow={(value / max) * 100}
+-          segments={[{ id: label, percent: 1, style: { backgroundColor: color } }]}
+-        />
+-      ) : (
+-        <span />
+-      )}
+-      <span className="font-mono tabular-nums text-foreground">{money(value, unit)}</span>
+-    </div>
+-  );
++  const api = { key: "api" as const, label: t("api"), color: API_COLOR };
++  const paid = { key: "actual" as const, label: t("actual"), color: PAID_COLOR };
++  const charts =
++    payment && currency !== "USD"
++      ? [
++          { currency: "USD", series: [api] },
++          { currency, series: [paid] },
++        ]
++      : [{ currency: "USD", series: payment ? [api, paid] : [api] }];
+   return (
+-    <div className="space-y-3">
+-      <div className="flex flex-col overflow-hidden sm:flex-row sm:items-center">
+-        {stats.map((stat, index) => (
++    <div className="space-y-4">
++      <div className="flex flex-wrap items-center gap-y-3">
++        {stats.map((stat, i) => (
+           <Fragment key={stat.label}>
+-            {index ? (
+-              <div aria-hidden="true" className="hidden h-7 w-px bg-border sm:block" />
+-            ) : null}
+-            <div className="min-w-0 flex-1 px-4 py-3 text-center">
+-              <div className="truncate text-ui-lg font-medium text-foreground">{stat.value}</div>
+-              <div className="mt-1 text-ui-sm text-foreground-subtle">{stat.label}</div>
++            {i ? <div aria-hidden className="mx-4 h-9 w-px bg-border" /> : null}
++            <div className="min-w-0 py-2">
++              <div className="text-ui-sm text-foreground-subtle">{stat.label}</div>
++              <div className="mt-1 font-mono text-ui-lg font-medium tabular-nums">{stat.value}</div>
+             </div>
+           </Fragment>
+         ))}
+       </div>
+       <div className="flex flex-wrap items-center justify-between gap-2">
+-        <Tabs value={view} onValueChange={(value) => setView(value as View)}>
++        <Tabs value={group} onValueChange={(v) => setGroup(v as typeof group)}>
+           <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+-            {(["unit", "models", "projects"] as const).map((value) => (
+-              <TabsTrigger key={value} value={value} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+-                {t(value)}
++            {(["models", "projects"] as const).map((v) => (
++              <TabsTrigger key={v} value={v} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++                {t(v)}
+               </TabsTrigger>
+             ))}
+           </TabsList>
+         </Tabs>
++        {group === "models" ? (
++          <Select value={unit} onValueChange={(v) => setUnit(v as typeof unit)}>
++            <SelectTrigger className="w-auto min-w-36" aria-label={t("unitChoice")}>
++              <SelectValue />
++            </SelectTrigger>
++            <SelectContent>
++              <SelectItem value="total">{t("total")}</SelectItem>
++              <SelectItem value="unit">{t("unit")}</SelectItem>
++            </SelectContent>
++          </Select>
++        ) : null}
++      </div>
++      {rows.length ? (
++        charts.map((chart) => (
++          <div key={chart.currency} className="space-y-2">
++            <div className="flex flex-wrap items-center gap-4 text-ui-sm text-foreground-subtle">
++              {chart.series.map((s) => (
++                <span key={s.key} className="inline-flex items-center gap-1.5">
++                  <span className="size-2 rounded-sm" style={{ backgroundColor: s.color }} />
++                  {s.label}
++                </span>
++              ))}
++              <span className="ml-auto">
++                {chart.currency}
++                {perMillion ? " / 1M Tokens" : ""}
++              </span>
++            </div>
++            <UsageCostBarChart
++              rows={rows}
++              series={chart.series}
++              currency={chart.currency}
++              money={money}
++              title={t(group)}
++            />
++          </div>
++        ))
++      ) : (
++        <p className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</p>
++      )}
++      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
++        <Popover>
++          <PopoverTrigger asChild>
++            <Button variant="ghost" size="sm">
++              <ExternalLink className="size-3.5" />
++              {t("priceSources")}
++            </Button>
++          </PopoverTrigger>
++          <PopoverContent align="start" className="max-h-64 w-80 space-y-3 overflow-y-auto p-3">
++            {report.models.map((model) => (
++              <div key={model.modelId} className="space-y-1">
++                <div className="truncate text-ui-sm font-medium">{model.modelId}</div>
++                {model.priceSources
++                  .filter((s) => s.startsWith("https://"))
++                  .map((source) => (
++                    <Button
++                      key={source}
++                      variant="link"
++                      className="h-auto p-0 text-ui-sm"
++                      onClick={() => void platform.openExternal(source)}
++                    >
++                      {new URL(source).hostname}
++                    </Button>
++                  ))}
++              </div>
++            ))}
++          </PopoverContent>
++        </Popover>
+         {payment && summary.allocationBasis === "unavailable" ? (
+           <ControlHintTooltip
+             title={
+@@ -144,57 +188,6 @@ export function UsageCostComparison({
+           <span className="text-ui-sm text-foreground-subtle">{t("periodOpen")}</span>
+         ) : null}
+       </div>
+-      <div className="max-h-80 overflow-y-auto px-3" role="list">
+-        {data.map((row) => (
+-          <div
+-            key={row.key}
+-            role="listitem"
+-            className="space-y-2 border-b border-border/70 py-3 last:border-b-0"
+-          >
+-            <div className="flex items-center justify-between gap-2">
+-              <ControlHintTooltip
+-                title={`${row.fullLabel}\n${formatCompactTokenUsage(locale, row.tokens)} Tokens · ${row.priced}/${row.requests} ${t("priced")}`}
+-              >
+-                <span tabIndex={0} className="min-w-0 truncate font-mono text-ui-sm">
+-                  {row.label}
+-                </span>
+-              </ControlHintTooltip>
+-              {row.sources.length ? (
+-                <Popover>
+-                  <PopoverTrigger asChild>
+-                    <Button
+-                      variant="ghost"
+-                      size="icon-sm"
+-                      aria-label={`${row.label} · ${t("priceSources")}`}
+-                    >
+-                      <ExternalLink className="size-3.5" />
+-                    </Button>
+-                  </PopoverTrigger>
+-                  <PopoverContent align="end" className="w-72 space-y-2 p-3">
+-                    {row.sources
+-                      .filter((url) => url.startsWith("https://"))
+-                      .map((url) => (
+-                        <Button
+-                          key={url}
+-                          variant="link"
+-                          className="h-auto max-w-full justify-start p-0 text-ui-sm"
+-                          onClick={() => void platform.openExternal(url)}
+-                        >
+-                          {new URL(url).hostname}
+-                        </Button>
+-                      ))}
+-                  </PopoverContent>
+-                </Popover>
+-              ) : null}
+-            </div>
+-            {bar(t("api"), row.api, API_COLOR, "USD", comparable || !payment)}
+-            {payment ? bar(t("actual"), row.actual, PAID_COLOR, currency, true) : null}
+-          </div>
+-        ))}
+-        {!data.length ? (
+-          <div className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</div>
+-        ) : null}
+-      </div>
+     </div>
+   );
+ }
+diff --git a/third-party/copied-components.json b/third-party/copied-components.json
+index 41c0dbd..0e272fe 100644
+--- a/third-party/copied-components.json
++++ b/third-party/copied-components.json
+@@ -7,7 +7,10 @@
+     "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f",
+     "importRevision": null,
+     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
+-    "roots": ["packages/ui/src/components/ui", "packages/ui/src/styles.css"],
++    "roots": [
++      "packages/ui/src/components/ui",
++      "packages/ui/src/styles.css"
++    ],
+     "scope": "Upstream-derived portions only; ZCode-specific files in the same directory are not attributed to the upstream project.",
+     "license": "MIT"
+   },
+@@ -19,7 +22,10 @@
+     "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+     "importRevision": null,
+     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
+-    "roots": ["packages/ui/src/components/ai-elements", ".agents/skills/ai-elements"],
++    "roots": [
++      "packages/ui/src/components/ai-elements",
++      ".agents/skills/ai-elements"
++    ],
+     "scope": "Upstream-derived UI components, skill instructions, reference documentation and example scripts only; locally adapted for ZCode imports, styling and agent workflow. Original import revision not recorded.",
+     "license": "Apache-2.0",
+     "modifiedFiles": [
+@@ -166,7 +172,9 @@
+   },
+   {
+     "id": "Fig autocomplete registry",
+-    "roots": ["apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"],
++    "roots": [
++      "apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"
++    ],
+     "license": "MIT",
+     "source": "https://raw.githubusercontent.com/withfig/autocomplete/aef52acff84c45edde61ae610cc2c964802b9a38/LICENSE",
+     "file": "third-party/upstream/5129f8779dca579cfcb235570688a2f15822b270575e04f27ef906aabbcc0355.txt",
+@@ -195,7 +203,11 @@
+     "sha256": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
+     "importRevision": null,
+     "provenance": "Original import revision is not recorded. This pinned upstream license/source reference is not asserted to be the original import version.",
+-    "roots": [".agents/skills/agent-browser", ".agents/skills/dogfood", ".agents/skills/electron"],
++    "roots": [
++      ".agents/skills/agent-browser",
++      ".agents/skills/dogfood",
++      ".agents/skills/electron"
++    ],
+     "scope": "Upstream-derived instructions, reference documents and shell templates; locally adapted for the ZCode workspace. Reference release v0.20.0 contains all three skills.",
+     "license": "Apache-2.0",
+     "modifiedFiles": [
+@@ -246,7 +258,9 @@
+     "referenceRevision": "063bee94c3f4df8453406c830b0a7df0f2860278",
+     "source": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278",
+     "importRevision": null,
+-    "roots": [".agents/skills/react-best-practices"],
++    "roots": [
++      ".agents/skills/react-best-practices"
++    ],
+     "license": "MIT",
+     "scope": "Vendored React/Next.js guidance and local adaptations; local README preserves Shu Ding / Vercel attribution.",
+     "reviewRequired": "Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained."
+@@ -263,5 +277,18 @@
+     ],
+     "scope": "Bundled price data only; calculator and sync script are independently implemented.",
+     "license": "MIT"
++  },
++  {
++    "id": "evilcharts-cost-bar-pattern",
++    "referenceRevision": "500ecd44c1fdcf319ba83ea68f3771bc76125974",
++    "importRevision": "500ecd44c1fdcf319ba83ea68f3771bc76125974",
++    "source": "https://github.com/legions-developer/evilcharts/blob/500ecd44c1fdcf319ba83ea68f3771bc76125974/LICENSE",
++    "file": "third-party/evilcharts-LICENSE.txt",
++    "sha256": "7b6baf25f6caa0de061a2c99a47205d6651cdefc6e636910bc51bb3853ed056e",
++    "roots": [
++      "packages/ui/src/settings/usage-stats/UsageCostBarChart.tsx"
++    ],
++    "scope": "Horizontal grouped-bar composition adapted to existing ZCode ChartContainer and monetary/unknown-value semantics; no EvilCharts runtime, styling system or dependencies imported.",
++    "license": "MIT"
+   }
+ ]
+diff --git a/third-party/evilcharts-LICENSE.txt b/third-party/evilcharts-LICENSE.txt
+new file mode 100644
+index 0000000..49228a9
+--- /dev/null
++++ b/third-party/evilcharts-LICENSE.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2026 Gurbinder
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.

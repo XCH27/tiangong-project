@@ -1,0 +1,157 @@
+diff --git a/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts b/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
+index 9c1f55f..2cda61c 100644
+--- a/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
++++ b/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
+@@ -8,7 +8,7 @@ if (typeof window !== "undefined") {
+   // Guest keyboard events do not bubble through <webview>. Keep this bridge in the
+   // isolated preload; pages get no callable host API, and synthetic keys cannot invoke it.
+   window.addEventListener("keydown", (event) => {
+-    if (!event.isTrusted || event.altKey || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
++    if (!event.isTrusted || event.altKey || event.shiftKey || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
+     event.preventDefault();
+     ipcRenderer.sendToHost(EmbeddedBrowserWebviewChannels.Find);
+   }, true);
+diff --git a/packages/ui/src/EmbeddedBrowserPaneParts.tsx b/packages/ui/src/EmbeddedBrowserPaneParts.tsx
+index 4ade2ac..f3c6e51 100644
+--- a/packages/ui/src/EmbeddedBrowserPaneParts.tsx
++++ b/packages/ui/src/EmbeddedBrowserPaneParts.tsx
+@@ -187,7 +187,7 @@ function BrowserToolbarMoreMenu({
+           </Button>
+         </DropdownMenuTrigger>
+       </ControlHintTooltip>
+-      <DropdownMenuContent align="end" className="w-52">
++      <DropdownMenuContent data-embedded-browser align="end" className="w-52">
+         <DropdownMenuItem disabled={!canOpenDevTools} onSelect={onFind}>
+           <Search className="size-4" />
+           <span>{formatMessage({ id: "browser.find" })}</span>
+diff --git a/packages/ui/src/browser-use/UnifiedBrowserView.tsx b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+index bc40d80..1f54bd8 100644
+--- a/packages/ui/src/browser-use/UnifiedBrowserView.tsx
++++ b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+@@ -1019,7 +1019,8 @@ export function UnifiedBrowserView({
+   return (
+     <div
+       aria-hidden={!isVisible}
+-      onKeyDownCapture={find.onKeyDown}
++      data-embedded-browser
++      onKeyDown={find.onKeyDown}
+       data-browser-screenshot-webview-state={
+         screenshotSurfaceRequest ? (webview ? "ready" : "missing") : undefined
+       }
+diff --git a/packages/ui/src/browser-use/useBrowserFind.ts b/packages/ui/src/browser-use/useBrowserFind.ts
+index 839a1a2..89b8618 100644
+--- a/packages/ui/src/browser-use/useBrowserFind.ts
++++ b/packages/ui/src/browser-use/useBrowserFind.ts
+@@ -90,14 +90,20 @@ export function useBrowserFind(
+   // conversation/editor's Cmd/Ctrl+F or Escape through a window-wide listener.
+   const onKeyDown = useCallback(
+     (event: KeyboardEvent<HTMLElement>) => {
+-      if (!isVisible) return;
+-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
++      if (!isVisible || event.defaultPrevented) return;
++      if (
++        (event.metaKey || event.ctrlKey) &&
++        !event.altKey &&
++        !event.shiftKey &&
++        event.key.toLowerCase() === "f"
++      ) {
+         if (!isReady) return;
+         event.preventDefault();
+         event.stopPropagation();
+         open();
+       } else if (isOpen && event.key === "Escape") {
+         event.preventDefault();
++        event.stopPropagation();
+         close();
+       }
+     },
+diff --git a/packages/ui/src/hooks/useAppKeyboard.ts b/packages/ui/src/hooks/useAppKeyboard.ts
+index 0a5cfa8..50343d1 100644
+--- a/packages/ui/src/hooks/useAppKeyboard.ts
++++ b/packages/ui/src/hooks/useAppKeyboard.ts
+@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
+ import { SHORTCUT_COMMANDS, type ShortcutCommandId } from "@zcode/shared";
+ import {
+   isEditableShortcutEventTarget,
++  isEmbeddedBrowserFindEvent,
+   isShiftOnlyPrintableBinding,
+   isShortcutRecordingActive,
+   matchesShortcutBinding,
+@@ -47,6 +48,7 @@ export function useAppKeyboard(handlers: AppKeyboardHandlers) {
+         if (entry.scope === "composer") {
+           continue;
+         }
++        if (entry.id === "findInTask" && isEmbeddedBrowserFindEvent(event)) continue;
+         const handler = currentHandlers[entry.id];
+         if (!handler) {
+           continue;
+diff --git a/packages/ui/src/shortcuts/bindings.ts b/packages/ui/src/shortcuts/bindings.ts
+index d70933b..4da1bb8 100644
+--- a/packages/ui/src/shortcuts/bindings.ts
++++ b/packages/ui/src/shortcuts/bindings.ts
+@@ -380,3 +380,9 @@ export function resolveEffectiveShortcutBindings(
+   }
+   return effective;
+ }
++/** Native browser page search owns its default gesture only while focus is in browser chrome. */
++export function isEmbeddedBrowserFindEvent(event: KeyboardEvent): boolean {
++  return !event.altKey && !event.shiftKey && (event.metaKey || event.ctrlKey)
++    && event.key.toLowerCase() === "f" && event.target instanceof Element
++    && Boolean(event.target.closest("[data-embedded-browser]"));
++}
+diff --git a/packages/ui/test/embeddedBrowser.browser.tsx b/packages/ui/test/embeddedBrowser.browser.tsx
+index c4b1d3e..f26c181 100644
+--- a/packages/ui/test/embeddedBrowser.browser.tsx
++++ b/packages/ui/test/embeddedBrowser.browser.tsx
+@@ -4,6 +4,7 @@ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+ import { TooltipProvider } from "../src/components/ui/tooltip.js";
+ import { BrowserFindBar } from "../src/browser-use/BrowserFindBar.js";
+ import { useBrowserFind } from "../src/browser-use/useBrowserFind.js";
++import { isEmbeddedBrowserFindEvent } from "../src/shortcuts/bindings.js";
+ 
+ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+ const globals = window as unknown as Record<string, unknown>;
+@@ -29,7 +30,7 @@ function Find({ guest, visible }: { guest: ElectronWebviewTag; visible: boolean
+   const find = useBrowserFind(guest, visible, true);
+   currentFind = find;
+   return (
+-    <div onKeyDownCapture={find.onKeyDown}>
++    <div data-embedded-browser onKeyDown={find.onKeyDown}>
+       {find.isOpen ? <BrowserFindBar find={find} /> : <button>Browser focus target</button>}
+     </div>
+   );
+@@ -114,6 +115,34 @@ globals.__embeddedBrowserTests = (async () => {
+       "Visible browser stole the composer's find shortcut",
+     );
+     outside.remove();
++    let taskFinds = 0;
++    const dispatcher = (event: KeyboardEvent) => {
++      if (event.ctrlKey && event.key === "f" && !isEmbeddedBrowserFindEvent(event)) taskFinds++;
++    };
++    window.addEventListener("keydown", dispatcher, true);
++    await act(async () =>
++      node
++        .querySelector("button")!
++        .dispatchEvent(
++          new KeyboardEvent("keydown", {
++            key: "f",
++            ctrlKey: true,
++            bubbles: true,
++            cancelable: true,
++          }),
++        ),
++    );
++    check(currentFind.isOpen && taskFinds === 0, "Browser focus opened task find too");
++    await act(async () =>
++      node
++        .querySelector("input")!
++        .dispatchEvent(
++          new KeyboardEvent("keydown", { key: "f", ctrlKey: true, shiftKey: true, bubbles: true }),
++        ),
++    );
++    check(taskFinds === 1, "A different configured gesture was swallowed by browser find");
++    window.removeEventListener("keydown", dispatcher, true);
++    await act(async () => currentFind.close());
+     const inputGuest = guest as unknown as { sendInputEvent(input: Record<string, unknown>): void };
+     guest.focus();
+     inputGuest.sendInputEvent({

@@ -1,0 +1,1001 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts
+new file mode 100644
+index 0000000..0fe3c2a
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts
+@@ -0,0 +1,102 @@
++import { AcpClient } from "./acp-client.js";
++import { ACP_PROFILES, type AcpExecutorKind } from "./acp-profiles.js";
++import { acpFailure } from "./acp-session.js";
++
++/**
++ * Sign-in through the agent's own ACP `authenticate` methods: the vendor runs its own flow (browser
++ * page, device code) and keeps the credentials; Fleet only asks it to start and waits. Methods that
++ * declare ACP terminal auth are shown as the command to run, since they need an interactive terminal.
++ */
++export interface AcpAuthMethod {
++  id: string;
++  name: string;
++  terminal?: { command: string; args: string[] };
++}
++
++interface Target {
++  kind: AcpExecutorKind;
++  executable: string;
++  cwd: string;
++  env: NodeJS.ProcessEnv;
++}
++
++function client(target: Target) {
++  return new AcpClient({
++    executable: target.executable,
++    args: ACP_PROFILES[target.kind].args,
++    cwd: target.cwd,
++    env: target.env,
++    onNotification: () => {},
++    onRequest: async () => ({ outcome: { outcome: "cancelled" } }),
++    onExit: () => {},
++  });
++}
++
++const initialize = (acp: AcpClient) =>
++  acp.request<{ protocolVersion?: number; authMethods?: unknown[] }>(
++    "initialize",
++    {
++      protocolVersion: 1,
++      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
++      clientInfo: { name: "Fleet", version: "1" },
++    },
++    60_000,
++  );
++
++export function parseAcpAuthMethods(raw: unknown[] | undefined): AcpAuthMethod[] {
++  const methods: AcpAuthMethod[] = [];
++  for (const entry of raw ?? []) {
++    if (!entry || typeof entry !== "object") continue;
++    const value = entry as { id?: unknown; name?: unknown; _meta?: Record<string, unknown> };
++    if (typeof value.id !== "string" || !value.id) continue;
++    // A cached credential is not a sign-in the user can start (Grok `cached_token`).
++    if (/^cached/u.test(value.id)) continue;
++    const terminal = value._meta?.["terminal-auth"] as { command?: unknown; args?: unknown } | undefined;
++    methods.push({
++      id: value.id,
++      name: typeof value.name === "string" && value.name ? value.name : value.id,
++      ...(terminal && typeof terminal.command === "string"
++        ? {
++            terminal: {
++              command: terminal.command,
++              args: Array.isArray(terminal.args) ? terminal.args.filter((arg): arg is string => typeof arg === "string") : [],
++            },
++          }
++        : {}),
++    });
++  }
++  return methods;
++}
++
++export async function listAcpAuthMethods(target: Target): Promise<AcpAuthMethod[]> {
++  const acp = client(target);
++  try {
++    return parseAcpAuthMethods((await initialize(acp)).authMethods);
++  } finally {
++    acp.close();
++  }
++}
++
++/** Runs one vendor sign-in; completes when the agent reports success. Ten minutes at most. */
++export function startAcpLogin(target: Target & { methodId: string; timeoutMs?: number }) {
++  const acp = client(target);
++  let settled = false;
++  const completion = (async () => {
++    await initialize(acp);
++    await acp.request("authenticate", { methodId: target.methodId }, target.timeoutMs ?? 600_000);
++  })()
++    .catch((error: unknown) => {
++      throw acpFailure(target.kind, error);
++    })
++    .finally(() => {
++      settled = true;
++      acp.close();
++    });
++  void completion.catch(() => {});
++  return {
++    completion,
++    cancel() {
++      if (!settled) acp.close();
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index 3a78d1e..a5be681 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -12,3 +12,5 @@ export { inspectAntigravityConnection, parseAgyModels, ANTIGRAVITY_LOCAL_ACCOUNT
+ export { inspectAcpConnection, type AcpInspection } from "./acp-inspect.js";
+ export { foldVendorModels, defaultVariantEffort, type FoldedModel } from "./native-variants.js";
+ export { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
++export { listAcpAuthMethods, startAcpLogin, parseAcpAuthMethods, type AcpAuthMethod } from "./acp-auth.js";
++export { withNativeExecutorNetwork } from "./native-network.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts
+index 8afd730..cd2f479 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-prompt.ts
+@@ -12,6 +12,24 @@ function text(content: ModelInputMessage["content"], images: boolean): string {
+     .join("\n");
+ }
+ 
++/** Tool output is evidence, not instructions; long output is trimmed to keep the replay bounded. */
++const TOOL_TEXT_LIMIT = 4000;
++const clip = (value: string) =>
++  value.length > TOOL_TEXT_LIMIT ? `${value.slice(0, TOOL_TEXT_LIMIT)}\n[… ${value.length - TOOL_TEXT_LIMIT} more characters]` : value;
++
++function transcriptLine(message: ModelInputMessage): string {
++  const body = text(message.content, false);
++  if (message.role === "tool")
++    return `Tool result${message.toolName ? ` (${message.toolName})` : ""}${message.isError ? " [error]" : ""}: ${clip(body)}`;
++  if (message.role === "assistant") {
++    const calls = (message.toolCalls ?? [])
++      .map((call) => `[Assistant called ${call.name}: ${clip(JSON.stringify(call.input) ?? "")}]`)
++      .join("\n");
++    return [body && `Assistant: ${body}`, calls].filter(Boolean).join("\n");
++  }
++  return body ? `User: ${body}` : "";
++}
++
+ /**
+  * One prompt per Fleet turn for executors that own their conversation (agy, ACP CLIs). A resumed
+  * vendor session already holds its history, so only messages after the covered offset are sent;
+@@ -33,9 +51,11 @@ export function nativeTranscriptPrompt(
+   if (!resumed && system.length) parts.push(system.join("\n\n"));
+   if (prior.length)
+     parts.push(
+-      prior
+-        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${text(message.content, images)}`)
+-        .join("\n\n"),
++      // 修复：曾把工具结果标成 "User:"、丢掉助手的工具调用；换模型/换执行器后新会话会误读谁说了什么。
++      `${resumed ? "" : "Earlier conversation (it may have run on another model or executor):\n\n"}${prior
++        .map(transcriptLine)
++        .filter(Boolean)
++        .join("\n\n")}`,
+     );
+   if (last) parts.push(text(last.content, images));
+   return parts.join("\n\n").trim();
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index c786172..72421e2 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -20,3 +20,4 @@ export { matchEndpointTemplate } from "./endpoint-template.js";
+ export * from "./classifier-models.js";
+ 
+ export { connectionRouteRestriction, RESTRICTED_ROUTE_ALTERNATIVE, type ConnectionRouteRestriction } from "./route-policy.js";
++export { lookupModelKnowledge, modelKnowledgeConfig, type ModelKnowledge } from "./model-knowledge.js";
+diff --git a/packages/provider/src/route-policy.ts b/packages/provider/src/route-policy.ts
+index a19a8f7..c5129ab 100644
+--- a/packages/provider/src/route-policy.ts
++++ b/packages/provider/src/route-policy.ts
+@@ -3,10 +3,12 @@
+  * restricted connection keeps its saved data but cannot run, and is not offered for new
+  * connections; the UI explains the permitted alternative. Sources (checked 2026-10-06):
+  *
+- * - anthropic-subscription: Anthropic does not allow third-party developers to offer claude.ai
+- *   login or route requests through Free/Pro/Max credentials, including agents built on the Claude
+- *   Agent SDK (code.claude.com/docs/en/legal-and-compliance; /docs/en/agent-sdk/overview). Claude
+- *   runs through an API key or a cloud provider; a subscription only in Claude Code itself.
++ * Claude is not restricted: Anthropic's help article "Use the Claude Agent SDK with your Claude
++ *   plan" counts "third-party apps that authenticate with your Claude subscription through the
++ *   Agent SDK" as plan usage. What Anthropic forbids — offering a Fleet-owned Claude login, or
++ *   collecting, storing or routing Claude credentials — Fleet never does: it runs the unmodified
++ *   Claude Code, which signs in through Anthropic's own flow and keeps its own credentials. One
++ *   account per connection and no automatic rotation keep usage "ordinary, individual".
+  * - google-antigravity: Antigravity Additional Terms §6, "Using third party software, tools, or
+  *   services to access the Service … is a breach", enforced with account suspensions in 2026.
+  * - impersonated-client: the login presents another product's OAuth client (GitHub Copilot as the
+@@ -14,7 +16,6 @@
+  *   their documented ACP modes (`copilot --acp`, `grok agent stdio`).
+  */
+ export type ConnectionRouteRestriction =
+-  | "anthropic-subscription"
+   | "google-antigravity"
+   | "impersonated-client";
+ 
+@@ -27,7 +28,6 @@ export function connectionRouteRestriction(
+   access: AccessLike | null | undefined,
+ ): ConnectionRouteRestriction | undefined {
+   if (access?.type === "native-cli") {
+-    if (access.provider === "claude") return "anthropic-subscription";
+     if (access.provider === "antigravity") return "google-antigravity";
+   }
+   if (access?.type === "subscription" && (access.provider === "github-copilot" || access.provider === "xai"))
+@@ -37,7 +37,6 @@ export function connectionRouteRestriction(
+ 
+ /** The API-key template a restricted connection points users to. */
+ export const RESTRICTED_ROUTE_ALTERNATIVE: Readonly<Record<string, string>> = {
+-  claude: "anthropic",
+   antigravity: "fleet-google",
+   xai: "xai",
+   "github-copilot": "fleet-copilot-native",
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index c7375dd..8389cca 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -20,10 +20,16 @@ export interface NativeCliConnectionAdapter {
+   /** Fleet-owned per-account CLI homes (CODEX_HOME / CLAUDE_CONFIG_DIR); absent = single account. */
+   accountHomes?: { create(provider: string): string; remove(dir: string): void };
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
++  /** Sign-in methods the CLI advertises over ACP (empty for CLIs without them). */
++  authMethods?(
++    access: NativeCliAccessConfigObject,
++  ): Promise<{ id: string; name: string; terminal?: { command: string; args: string[] } }[]>;
+   login(options: {
+     provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
+     executable?: string;
+     configDir?: string;
++    /** ACP sign-in method to run (CLIs that advertise `authenticate` methods). */
++    methodId?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+ }
+ export async function inspectNativeCliConnection(
+@@ -37,7 +43,8 @@ export async function inspectNativeCliConnection(
+ 
+ export type NativeCliSavedAccount = NonNullable<NativeCliAccessConfigObject["accounts"]>[number];
+ /** CLIs whose official login honours an isolated home, so one connection can hold several sign-ins. */
+-// Claude is excluded: Anthropic does not permit subscription sign-in in third-party apps (route-policy).
++// Claude stays single-account: Anthropic's plan limits assume ordinary, individual use, so Fleet
++// neither keeps several Claude sign-ins nor rotates between them.
+ export const NATIVE_CLI_MULTI_ACCOUNT = new Set(["codex"]);
+ const home = (dir?: string) => dir || "";
+ 
+@@ -207,7 +214,7 @@ export function createNativeCliConnectionOperations(
+     },
+     async beginNativeCliLogin(
+       id: string,
+-      options?: { addAccount?: boolean; accountId?: string },
++      options?: { addAccount?: boolean; accountId?: string; methodId?: string },
+     ): Promise<{ flowId: string }> {
+       assertActive();
+       await ensureReady();
+@@ -215,7 +222,12 @@ export function createNativeCliConnectionOperations(
+       const snapshot = facade.getView();
+       const current = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
+         .access;
+-      if (current?.type !== "native-cli" || current.provider !== "codex")
++      // Codex runs its own login; ACP CLIs run the sign-in method they advertise (`authenticate`).
++      const acpSignIn = Boolean(options?.methodId) && current?.type === "native-cli" &&
++        !["claude", "codex", "antigravity"].includes(current.provider);
++      // Claude and Codex run their own official login (Anthropic's / OpenAI's flow; tokens stay in the CLI).
++      const officialLogin = current?.type === "native-cli" && ["claude", "codex"].includes(current.provider);
++      if (current?.type !== "native-cli" || (!officialLogin && !acpSignIn) || connectionRouteRestriction(current))
+         throw new Error("This native CLI login is not available");
+       if (!native) throw new Error("Native CLI connection unavailable on this host");
+       let access: NativeCliAccessConfigObject = current;
+@@ -251,7 +263,12 @@ export function createNativeCliConnectionOperations(
+       };
+       flows.set(id, flow);
+       try {
+-        login = await native.login({ provider: access.provider, executable: access.executable, configDir: access.configDir });
++        login = await native.login({
++          provider: access.provider,
++          executable: access.executable,
++          configDir: access.configDir,
++          ...(options?.methodId ? { methodId: options.methodId } : {}),
++        });
+         if (cancelled || flows.get(id) !== flow) {
+           login.cancel();
+           throw new Error("Native CLI login cancelled");
+@@ -341,6 +358,14 @@ export function createNativeCliConnectionOperations(
+       adoptions.set(id, run);
+       return run;
+     },
++    /** Sign-in methods the connection's CLI advertises (ACP `authMethods`). */
++    async nativeCliSignInMethods(id: string) {
++      assertActive();
++      await ensureReady();
++      const { access } = nativeAccess(id);
++      if (connectionRouteRestriction(access) || !native?.authMethods) return [];
++      return native.authMethods(access);
++    },
+     /** Same contract as subscription accounts: select, remove or toggle automatic switching. */
+     async updateNativeCliAccounts(
+       id: string,
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index fcd500a..2152c05 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -13,12 +13,17 @@ import {
+   isAcpExecutorKind,
+   ACP_PROFILES,
+   foldVendorModels,
++  listAcpAuthMethods,
++  startAcpLogin,
++  resolveAcpExecutable,
++  withNativeExecutorNetwork,
+ } from "@zcode/adapters/native-agent";
+ import { randomUUID } from "node:crypto";
+ import { mkdirSync, rmSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { isAbsolute, join, relative } from "node:path";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
++import { lookupModelKnowledge } from "@zcode/provider";
+ import { parseClaudeNativeUsage, parseCodexNativeUsage } from "./nativeCliUsage.js";
+ 
+ export function mapClaudeNativeModels(
+@@ -91,6 +96,13 @@ export function mapCodexNativeModels(
+   }));
+ }
+ 
++/** ACP probes and sign-ins run outside any user project. */
++function acpScratch(): string {
++  const cwd = join(tmpdir(), "fleet-acp-inspect");
++  mkdirSync(cwd, { recursive: true });
++  return cwd;
++}
++
+ /** Node host only, injected alongside the existing subscription and CC Switch adapters. */
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+@@ -152,8 +164,7 @@ export function createNativeCliConnectionAdapter(
+       }
+       if (isAcpExecutorKind(access.provider)) {
+         // ACP CLI 的连接检查只建一个临时会话读取本账号可用模型；工作目录与用户项目隔离。
+-        const cwd = join(tmpdir(), "fleet-acp-inspect");
+-        mkdirSync(cwd, { recursive: true });
++        const cwd = acpScratch();
+         const inspected = await inspectAcpConnection({
+           kind: access.provider,
+           executable: access.executable,
+@@ -162,6 +173,16 @@ export function createNativeCliConnectionAdapter(
+         });
+         if (access.accountId && access.accountId !== inspected.accountId)
+           throw new Error("Native CLI account changed; reconnect this connection");
++        // 修复：ACP 的思考档位是会话级的一份列表，曾原样套到每个模型（OpenCode 31 个模型档位相同）。
++        // 模型目录知道每个模型自己的档位时取交集；目录说明它不推理时不给档位；目录不认识则保持原样。
++        const levelsFor = (modelId: string) => {
++          const known = lookupModelKnowledge({ templateId: undefined, modelId });
++          if (!known) return inspected.thoughtLevels;
++          if (!known.reasoning) return [];
++          if (!known.reasoningLevels.length) return inspected.thoughtLevels;
++          const shared = inspected.thoughtLevels.filter((level) => known.reasoningLevels.includes(level));
++          return shared.length ? shared : inspected.thoughtLevels;
++        };
+         return {
+           accountId: inspected.accountId,
+           accountName: inspected.accountName,
+@@ -185,11 +206,11 @@ export function createNativeCliConnectionAdapter(
+                   },
+                   outputFormat: { supportsText: true },
+                 },
+-                ...(inspected.thoughtLevels.length || model.fast
++                ...(levelsFor(model.id).length || model.fast
+                   ? {
+                       optionSpecs: {
+-                        ...(inspected.thoughtLevels.length
+-                          ? { reasoningLevel: { values: ["auto", ...inspected.thoughtLevels], map: "{}" } }
++                        ...(levelsFor(model.id).length
++                          ? { reasoningLevel: { values: ["auto", ...levelsFor(model.id)], map: "{}" } }
+                           : {}),
+                         // 厂商把快速版列为独立模型（Kimi -highspeed）：合并为同一模型的"快速"。
+                         ...(model.fast ? { speedMode: "variant-model" as const } : {}),
+@@ -281,14 +302,38 @@ export function createNativeCliConnectionAdapter(
+           },
+         }
+       : {}),
++    authMethods: async (access) => {
++      if (!isAcpExecutorKind(access.provider)) return [];
++      return listAcpAuthMethods({
++        kind: access.provider,
++        executable: resolveAcpExecutable(access.provider, access.executable),
++        cwd: acpScratch(),
++        env: withNativeExecutorNetwork(
++          { ...process.env, ...(await resolveEnvironment(access.provider)) },
++          access.provider,
++        ),
++      });
++    },
+     login: async (options) => {
+       if (options.provider === "antigravity")
+         throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
+       if (isAcpExecutorKind(options.provider)) {
+         const profile = ACP_PROFILES[options.provider];
+-        throw new Error(
+-          `Sign in to the official ${profile.label} CLI first: run \`${profile.loginCommand}\` in a terminal`,
+-        );
++        // 由 CLI 自己的 ACP authenticate 方法登录（厂商自己的页面/设备码），Fleet 只发起并等待。
++        if (!options.methodId)
++          throw new Error(
++            `Sign in to the official ${profile.label} CLI first: run \`${profile.loginCommand}\` in a terminal`,
++          );
++        return startAcpLogin({
++          kind: options.provider,
++          executable: resolveAcpExecutable(options.provider, options.executable),
++          cwd: acpScratch(),
++          env: withNativeExecutorNetwork(
++            { ...process.env, ...(await resolveEnvironment(options.provider)) },
++            options.provider,
++          ),
++          methodId: options.methodId,
++        });
+       }
+       return options.provider === "codex"
+         ? startCodexNativeLogin({ ...options, env: await resolveEnvironment("codex") })
+diff --git a/packages/services/test/acp-native.test.ts b/packages/services/test/acp-native.test.ts
+index 91dec14..fb446b8 100644
+--- a/packages/services/test/acp-native.test.ts
++++ b/packages/services/test/acp-native.test.ts
+@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
+ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { fileURLToPath } from "node:url";
+ import test from "node:test";
+ import {
+   acpApprovalDecision,
+@@ -262,3 +263,68 @@ process.stdin.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\\n"
+   await assert.rejects(drain(turn), /Sign in to the official CodeBuddy CLI first/u);
+   await turn.close();
+ });
++
++test("a signed-out ACP CLI offers its own sign-in methods and connects after the vendor flow", async () => {
++  const dir = mkdtempSync(join(tmpdir(), "signin-acp-"));
++  const script = join(dir, "codebuddy");
++  const state = join(dir, "signed-in");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++const fs = require("node:fs");
++if (process.argv[2] === "--version") { console.log("1.0"); process.exit(0); }
++let buf = "";
++const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
++process.stdin.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
++  if (m.method === "initialize") send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: 1, agentCapabilities: {}, authMethods: [
++    { id: "external", name: "Login with Google/Github" },
++    { id: "terminal", name: "Terminal login", _meta: { "terminal-auth": { command: "codebuddy", args: ["login"] } } },
++    { id: "cached_token", name: "cached_token" } ] } });
++  else if (m.method === "authenticate") { fs.writeFileSync(${JSON.stringify(state)}, m.params.methodId); send({ jsonrpc: "2.0", id: m.id, result: {} }); }
++  else if (m.method === "session/new") {
++    if (!fs.existsSync(${JSON.stringify(state)})) send({ jsonrpc: "2.0", id: m.id, error: { code: -32000, message: "Authentication required", data: { category: "auth" } } });
++    else send({ jsonrpc: "2.0", id: m.id, result: { sessionId: "s", configOptions: [{ id: "model", category: "model", currentValue: "hy3", options: [{ value: "hy3", name: "HY3" }] }] } });
++  }
++  else send({ jsonrpc: "2.0", id: m.id, result: {} }); } });
++`,
++  );
++  chmodSync(script, 0o755);
++  const { ProviderRuntime } = await import("../src/model-provider/providerRuntime.js");
++  const { createProviderConfigRuntime } = await import("../src/model-provider/providerConfigRuntime.js");
++  const { createNativeCliConnectionAdapter } = await import("../src/model-provider/nativeCliConnectionAdapter.js");
++  const runtime = new ProviderRuntime({
++    configRuntime: createProviderConfigRuntime({
++      personalFilePath: join(dir, "providers.json"),
++      zcodeBuiltinFilePath: fileURLToPath(new URL("../../../config/provider/zcode-builtin.json", import.meta.url)),
++      watch: false,
++      personalPollingIntervalMs: false,
++    }),
++    nativeCli: createNativeCliConnectionAdapter(),
++  });
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({ templateId: "fleet-codebuddy-native" });
++    const view = (await service.getView()).providers.find((p) => p.providerId === providerId)!;
++    await service.savePersonalProviderOverlay(providerId, {
++      access: { ...(view.effectiveConfig.access as object), executable: script } as never,
++    });
++    await assert.rejects(service.connectNativeCli(providerId), /Sign in to the official CodeBuddy CLI/);
++    const methods = await service.nativeCliSignInMethods(providerId);
++    assert.deepEqual(methods.map((m) => m.id), ["external", "terminal"], "a cached token is not a sign-in to start");
++    assert.deepEqual(methods[1]?.terminal, { command: "codebuddy", args: ["login"] });
++    const { flowId } = await service.beginNativeCliLogin(providerId, { methodId: "external" });
++    let status = "pending";
++    for (let attempt = 0; attempt < 100 && status === "pending"; attempt++) {
++      status = (await service.pollNativeCliLogin(providerId, flowId)).status;
++      if (status === "pending") await new Promise((resolve) => setTimeout(resolve, 50));
++    }
++    assert.equal(status, "connected");
++    assert.equal(readFileSync(state, "utf8"), "external");
++    const connected = (await service.getView()).providers.find((p) => p.providerId === providerId)!;
++    assert.equal((connected.effectiveConfig.access as { connected?: boolean }).connected, true);
++    assert.deepEqual(connected.models.map((m) => m.modelId), ["hy3"]);
++  } finally {
++    runtime.dispose();
++  }
++});
+diff --git a/packages/services/test/antigravity-native.test.ts b/packages/services/test/antigravity-native.test.ts
+index 884784c..6a69792 100644
+--- a/packages/services/test/antigravity-native.test.ts
++++ b/packages/services/test/antigravity-native.test.ts
+@@ -65,10 +65,30 @@ test("a fresh prompt carries instructions and transcript; a resumed one only the
+     { role: "assistant" as const, content: [{ type: "text" as const, text: "answer" }] },
+     { role: "user" as const, content: "second" },
+   ];
+-  assert.equal(agyPrompt(messages, false), "Fleet rules\n\nUser: first\n\nAssistant: answer\n\nsecond");
++  assert.equal(
++    agyPrompt(messages, false),
++    "Fleet rules\n\nEarlier conversation (it may have run on another model or executor):\n\nUser: first\n\nAssistant: answer\n\nsecond",
++  );
+   assert.equal(agyPrompt(messages, true, 2), "second");
+ });
+ 
++test("a replayed transcript keeps tool calls and results attributed to the tools, not the user", () => {
++  const prompt = agyPrompt(
++    [
++      { role: "user", content: "read the file" },
++      { role: "assistant", content: "", toolCalls: [{ id: "1", name: "read_file", input: { path: "a.ts" } }] },
++      { role: "tool", content: "x".repeat(5000), toolCallId: "1", toolName: "read_file" },
++      { role: "assistant", content: "done" },
++      { role: "user", content: "next" },
++    ],
++    false,
++  );
++  assert.match(prompt, /\[Assistant called read_file: \{"path":"a.ts"\}\]/);
++  assert.match(prompt, /Tool result \(read_file\): x+\n\[… 1000 more characters\]/);
++  assert.doesNotMatch(prompt, /User: x{10}/);
++  assert.ok(prompt.endsWith("next"));
++});
++
+ /** A stand-in agy that records its argv and stdin, then replays captured frames. */
+ function fakeAgy(frames: object[], exitCode = 0) {
+   const dir = mkdtempSync(join(tmpdir(), "fake-agy-"));
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index 7dd02ae..24a8e94 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -99,10 +99,10 @@ test("Codex directory capacity replaces old recommendations and preserves explic
+   }
+ });
+ 
+-test("the Claude subscription route is refused, cannot run and keeps its saved data", async () => {
+-  // Anthropic does not permit claude.ai login in third-party apps, including Agent SDK agents.
++test("Claude connects through the official Claude Code, single account, without rotation", async () => {
++  // Anthropic counts third-party apps that authenticate through the Agent SDK as plan usage; Fleet
++  // runs the unmodified Claude Code and keeps one Claude sign-in (ordinary, individual use).
+   const directory = await mkdtemp(join(tmpdir(), "fleet-native-claude-policy-"));
+-  let inspections = 0;
+   const runtime = new ProviderRuntime({
+     configRuntime: createProviderConfigRuntime({
+       personalFilePath: join(directory, "providers.json"),
+@@ -113,13 +113,18 @@ test("the Claude subscription route is refused, cannot run and keeps its saved d
+       personalPollingIntervalMs: false,
+     }),
+     nativeCli: {
+-      inspect: async () => {
+-        inspections++;
+-        throw new Error("must not run");
+-      },
++      inspect: async () => ({
++        accountId: "fixture@example.invalid",
++        accountName: "Fixture",
++        planType: "pro",
++        catalog: { source: "provider", models: mapClaudeNativeModels([
++          { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus", description: "Fixture", supportsFastMode: false, supportedEffortLevels: ["high"] },
++        ]) },
++      }),
+       login: () => {
+-        throw new Error("must not run");
++        throw new Error("already signed in");
+       },
++      accountHomes: { create: () => join(directory, "home"), remove: () => {} },
+     },
+   });
+   try {
+@@ -127,15 +132,17 @@ test("the Claude subscription route is refused, cannot run and keeps its saved d
+     const { providerId } = await runtime.providerSettings.createPersonalProvider({
+       templateId: "fleet-claude-native",
+     });
+-    await assert.rejects(runtime.providerSettings.connectNativeCli(providerId), /not permitted/);
+-    await assert.rejects(runtime.providerSettings.beginNativeCliLogin(providerId), /not available/);
+-    await assert.rejects(runtime.providerSettings.discoverModels(providerId), /not permitted/);
++    await runtime.providerSettings.connectNativeCli(providerId);
+     const provider = (await runtime.providerSettings.getView()).providers.find(
+       (p) => p.providerId === providerId,
+     )!;
+-    assert.equal(provider.routeRestriction, "anthropic-subscription");
+-    assert.equal(provider.executable, false);
+-    assert.equal(inspections, 0, "the Claude CLI is never started on a subscription");
++    assert.equal(provider.routeRestriction, undefined);
++    assert.equal(provider.executable, true);
++    assert.equal(provider.models[0]?.selectable, true);
++    await assert.rejects(
++      runtime.providerSettings.beginNativeCliLogin(providerId, { addAccount: true }),
++      /does not support several accounts/,
++    );
+   } finally {
+     runtime.dispose();
+     await rm(directory, { recursive: true, force: true });
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 22a2f88..123e110 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7397,8 +7397,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.duplicate": "This account is already added.",
+   "settings.modelProvider.routeRestricted.title":
+     "This connection route is retired",
+-  "settings.modelProvider.routeRestricted.anthropic-subscription":
+-    "Anthropic does not allow third-party apps to use Claude subscription sign-in, including apps built on the Agent SDK. Use a Claude API key instead (Add provider → Anthropic); subscription allowance is only for Claude Code itself. Saved settings are kept.",
+   "settings.modelProvider.routeRestricted.google-antigravity":
+     "Google Antigravity's terms forbid accessing it through third-party software and suspend accounts that do. Use a Gemini API key instead (Add provider → Google). Saved settings are kept.",
+   "settings.modelProvider.routeRestricted.impersonated-client":
+@@ -7407,6 +7405,8 @@ const enUS: Record<string, string> = {
+     "This sign-in borrows the Grok CLI's identity, which xAI has not published for other apps. Use the official Grok Build CLI (Add provider → Grok Build CLI) or an xAI API key instead. Saved settings are kept.",
+   "settings.modelProvider.routeRestricted.source":
+     "Official statement",
++  "settings.modelProvider.nativeCli.signInMethods": "Choose how to sign in (the official CLI opens its sign-in page):",
++  "settings.modelProvider.nativeCli.signInTerminal": "Or run {command} in a terminal to sign in.",
+   "settings.modelProvider.nativeCli.changed":
+     "The CLI on this machine switched accounts; syncing. Reconnect if this persists.",
+   "settings.modelProvider.nativeCli.failed":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 271b815..6a52e9a 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -7007,8 +7007,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.duplicate": "该账号已添加。",
+   "settings.modelProvider.routeRestricted.title":
+     "此接入方式已停用",
+-  "settings.modelProvider.routeRestricted.anthropic-subscription":
+-    "Anthropic 不允许第三方应用使用 Claude 订阅登录（包括基于 Agent SDK 的应用）。请改用 Claude API Key（添加供应商 → Anthropic）；订阅额度只能在 Claude Code 中直接使用。已保存的设置保留。",
+   "settings.modelProvider.routeRestricted.google-antigravity":
+     "Google Antigravity 条款禁止通过第三方软件访问其服务，违者可能被封号。请改用 Gemini API Key（添加供应商 → Google）。已保存的设置保留。",
+   "settings.modelProvider.routeRestricted.impersonated-client":
+@@ -7017,6 +7015,8 @@ const zhCN: Record<string, string> = {
+     "这条登录方式借用了 Grok CLI 的身份，xAI 未公开授权第三方这样使用。请改用官方 Grok Build CLI 接入（添加供应商 → Grok Build CLI）或 xAI API Key。已保存的设置保留。",
+   "settings.modelProvider.routeRestricted.source":
+     "查看官方说明",
++  "settings.modelProvider.nativeCli.signInMethods": "选择登录方式（由官方 CLI 打开登录页面）：",
++  "settings.modelProvider.nativeCli.signInTerminal": "或在终端运行 {command} 完成登录。",
+   "settings.modelProvider.nativeCli.changed": "本机 CLI 已切换账号，正在同步新账号；若持续出现请重新连接。",
+   "settings.modelProvider.nativeCli.failed":
+     "无法读取原生 CLI 连接，请检查官方 CLI 的安装和登录状态。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx b/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx
+index 4d8b709..f1e4d7a 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx
+@@ -1,4 +1,7 @@
++import { useState } from "react";
+ import { LoaderCircleIcon, MoreHorizontal, Plus } from "lucide-react";
++import { useServices } from "@/hooks/useServices.js";
++import { useSubscriptionAccountList } from "./useSubscriptionAccountList.js";
+ import { Button } from "@/components/ui/button.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import {
+@@ -224,3 +227,97 @@ export function NativeCliAccountList({
+     </section>
+   );
+ }
++
++/**
++ * Claude/Codex sign-ins. One account keeps the compact allowance; several reuse the subscription
++ * account rows (default, allowance, remove) and automatic switching.
++ */
++export function NativeCliAccounts({
++  providerId,
++  kind,
++  busy,
++  adding,
++  onAddAccount,
++  onReconnect,
++  onError,
++}: {
++  providerId: string;
++  kind: "claude" | "openai-codex";
++  busy: boolean;
++  adding: boolean;
++  onReconnect(accountId: string): void;
++  onAddAccount(): void;
++  onError(error: unknown): void;
++}) {
++  const { providerSettingsService } = useServices();
++  const { intl } = useZCodeIntl();
++  const accountList = useSubscriptionAccountList(
++    providerSettingsService,
++    providerId,
++    () => {},
++    onError,
++  );
++  const { accounts, reload } = accountList;
++  const [updating, setUpdating] = useState(false);
++  const update = async (change: { select?: string; remove?: string; autoSwitch?: boolean }) => {
++    if (updating) return;
++    setUpdating(true);
++    try {
++      // 切换要先由官方 CLI 验证目标账号；失败必须提示，不能被列表读取的过期判断吞掉。
++      await providerSettingsService.updateSubscriptionAccounts(providerId, change);
++    } catch (error) {
++      onError(error);
++    } finally {
++      setUpdating(false);
++      void reload();
++    }
++  };
++  const list = accounts?.accounts ?? [];
++  const account = list.find((entry) => entry.active);
++  // Claude keeps one sign-in (Anthropic plan limits assume ordinary, individual use); Codex may add more.
++  const addButton = kind === "claude" ? null : (
++    <Button
++      type="button"
++      variant="ghost"
++      className="h-auto px-0 text-ui-sm"
++      disabled={busy || updating || list.length >= 10}
++      onClick={onAddAccount}
++    >
++      <Plus className="size-4" />
++      {intl.formatMessage({ id: "settings.modelProvider.nativeCli.addAccount" })}
++    </Button>
++  );
++  if (!accounts) return null;
++  if (list.length < 2)
++    return (
++      <div className="space-y-2">
++        {account ? (
++          <SubscriptionUsageSection
++            providerId={providerId}
++            kind={kind}
++            accountId={account.id}
++            revision={accounts.revision}
++            compact
++            showReset={false}
++            onScopeChanged={() => void reload()}
++          />
++        ) : null}
++        {addButton}
++      </div>
++    );
++  return (
++    <NativeCliAccountList
++      providerId={providerId}
++      kind={kind}
++      accounts={list}
++      revision={accounts.revision}
++      autoSwitch={accounts.autoSwitch}
++      busy={busy || updating}
++      adding={adding}
++      onAdd={onAddAccount}
++      onReconnect={onReconnect}
++      onUpdate={(change) => void update(change)}
++      onScopeChanged={() => void reload()}
++    />
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index f25fe8d..7a3fad3 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useCallback, useRef, useState } from "react";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+-import { ExternalLinkIcon, LoaderCircleIcon, Plus } from "lucide-react";
++import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import { useServices } from "@/hooks/useServices.js";
+@@ -8,102 +8,10 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+-import { useSubscriptionAccountList } from "./useSubscriptionAccountList.js";
+-import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+-import { NativeCliAccountList } from "./NativeCliAccountList.js";
++import { NativeCliAccounts } from "./NativeCliAccountList.js";
+ 
+-/**
+- * Claude/Codex sign-ins. One account keeps the compact allowance; several reuse the subscription
+- * account rows (default, allowance, remove) and automatic switching.
+- */
+-function NativeCliAccounts({
+-  providerId,
+-  kind,
+-  busy,
+-  adding,
+-  onAddAccount,
+-  onReconnect,
+-  onError,
+-}: {
+-  providerId: string;
+-  kind: "claude" | "openai-codex";
+-  busy: boolean;
+-  adding: boolean;
+-  onReconnect(accountId: string): void;
+-  onAddAccount(): void;
+-  onError(error: unknown): void;
+-}) {
+-  const { providerSettingsService } = useServices();
+-  const { intl } = useZCodeIntl();
+-  const accountList = useSubscriptionAccountList(
+-    providerSettingsService,
+-    providerId,
+-    () => {},
+-    onError,
+-  );
+-  const { accounts, reload } = accountList;
+-  const [updating, setUpdating] = useState(false);
+-  const update = async (change: { select?: string; remove?: string; autoSwitch?: boolean }) => {
+-    if (updating) return;
+-    setUpdating(true);
+-    try {
+-      // 切换要先由官方 CLI 验证目标账号；失败必须提示，不能被列表读取的过期判断吞掉。
+-      await providerSettingsService.updateSubscriptionAccounts(providerId, change);
+-    } catch (error) {
+-      onError(error);
+-    } finally {
+-      setUpdating(false);
+-      void reload();
+-    }
+-  };
+-  const list = accounts?.accounts ?? [];
+-  const account = list.find((entry) => entry.active);
+-  const addButton = (
+-    <Button
+-      type="button"
+-      variant="ghost"
+-      className="h-auto px-0 text-ui-sm"
+-      disabled={busy || updating || list.length >= 10}
+-      onClick={onAddAccount}
+-    >
+-      <Plus className="size-4" />
+-      {intl.formatMessage({ id: "settings.modelProvider.nativeCli.addAccount" })}
+-    </Button>
+-  );
+-  if (!accounts) return null;
+-  if (list.length < 2)
+-    return (
+-      <div className="space-y-2">
+-        {account ? (
+-          <SubscriptionUsageSection
+-            providerId={providerId}
+-            kind={kind}
+-            accountId={account.id}
+-            revision={accounts.revision}
+-            compact
+-            showReset={false}
+-            onScopeChanged={() => void reload()}
+-          />
+-        ) : null}
+-        {addButton}
+-      </div>
+-    );
+-  return (
+-    <NativeCliAccountList
+-      providerId={providerId}
+-      kind={kind}
+-      accounts={list}
+-      revision={accounts.revision}
+-      autoSwitch={accounts.autoSwitch}
+-      busy={busy || updating}
+-      adding={adding}
+-      onAdd={onAddAccount}
+-      onReconnect={onReconnect}
+-      onUpdate={(change) => void update(change)}
+-      onScopeChanged={() => void reload()}
+-    />
+-  );
+-}
++/** CLIs that advertise ACP sign-in methods Fleet can start. */
++const ACP_SIGN_IN: ReadonlySet<string> = new Set(["cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "qwen", "copilot", "grok"]);
+ 
+ /** Claude uses the base strings; other executors override only the fields whose wording differs. */
+ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], ReadonlySet<string>>> = {
+@@ -160,6 +68,9 @@ export function NativeCliConnectionSection({
+   const [busy, setBusy] = useState(false);
+   const [signingIn, setSigningIn] = useState(false);
+   const [addingAccount, setAddingAccount] = useState(false);
++  const [signInMethods, setSignInMethods] = useState<
++    { id: string; name: string; terminal?: { command: string; args: string[] } }[]
++  >();
+   const pending = useRef(false);
+   const loginFlow = useRef<string | undefined>(undefined);
+   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+@@ -218,7 +129,7 @@ export function NativeCliConnectionSection({
+    * `addAccount` signs a further account into a new CLI home; `accountId` signs a saved account in
+    * again inside its own home. Without either, the current account is checked first.
+    */
+-  const connect = useCallback(async (mode: { addAccount?: boolean; accountId?: string } = {}) => {
++  const connect = useCallback(async (mode: { addAccount?: boolean; accountId?: string; methodId?: string } = {}) => {
+     const addAccount = Boolean(mode.addAccount);
+     if (pending.current) return;
+     pending.current = true;
+@@ -238,7 +149,13 @@ export function NativeCliConnectionSection({
+       try {
+         const flow = await providerSettingsService.beginNativeCliLogin(
+           providerId,
+-          addAccount ? { addAccount: true } : mode.accountId ? { accountId: mode.accountId } : undefined,
++          addAccount
++            ? { addAccount: true }
++            : mode.methodId
++              ? { methodId: mode.methodId }
++              : mode.accountId
++                ? { accountId: mode.accountId }
++                : undefined,
+         );
+         if (!isCurrent()) {
+           await providerSettingsService.cancelNativeCliLogin(providerId, flow.flowId);
+@@ -275,7 +192,8 @@ export function NativeCliConnectionSection({
+         }
+       }
+     };
+-    if (addAccount || (mode.accountId && mode.accountId !== access.accountId)) {
++    if (addAccount || mode.methodId || (mode.accountId && mode.accountId !== access.accountId)) {
++      setSignInMethods(undefined);
+       await signIn();
+       return;
+     }
+@@ -286,6 +204,16 @@ export function NativeCliConnectionSection({
+     } catch (error) {
+       if (!isCurrent()) return;
+       const raw = error instanceof Error ? error.message : String(error);
++      if (/Sign in to the official/i.test(raw) && ACP_SIGN_IN.has(access.provider)) {
++        // 未登录的 ACP CLI：列出它自己提供的登录方式，由 CLI 打开厂商页面，不再只让用户去终端。
++        const methods = await providerSettingsService.nativeCliSignInMethods(providerId).catch(() => []);
++        if (!isCurrent()) return;
++        if (methods.length) {
++          setSignInMethods(methods);
++          finish();
++          return;
++        }
++      }
+       if (!/Sign in to the official (Claude|Codex) CLI/i.test(raw)) {
+         report(error);
+         finish();
+@@ -375,6 +303,38 @@ export function NativeCliConnectionSection({
+       }
+       usageContent={
+         <div className="space-y-3">
++          {signInMethods?.length && !signingIn ? (
++            <div className="space-y-2" data-slot="native-sign-in-methods">
++              <p className="text-ui-base text-foreground-subtle">
++                {intl.formatMessage({ id: "settings.modelProvider.nativeCli.signInMethods" })}
++              </p>
++              <div className="flex flex-wrap gap-2">
++                {signInMethods
++                  .filter((method) => !method.terminal)
++                  .map((method) => (
++                    <Button
++                      key={method.id}
++                      type="button"
++                      variant="outline"
++                      disabled={busy}
++                      onClick={() => void connect({ methodId: method.id })}
++                    >
++                      {method.name}
++                    </Button>
++                  ))}
++              </div>
++              {signInMethods
++                .filter((method) => method.terminal)
++                .map((method) => (
++                  <p key={method.id} className="text-ui-sm text-foreground-subtle">
++                    {intl.formatMessage(
++                      { id: "settings.modelProvider.nativeCli.signInTerminal" },
++                      { command: [method.terminal!.command, ...method.terminal!.args].join(" ") },
++                    )}
++                  </p>
++                ))}
++            </div>
++          ) : null}
+           {accounts}
+           {guide}
+         </div>
+diff --git a/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx b/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx
+index beb5e00..5357608 100644
+--- a/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx
++++ b/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx
+@@ -7,7 +7,6 @@ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ 
+ /** Official statements each restriction rests on (see packages/provider/src/route-policy.ts). */
+ const SOURCE: Record<ConnectionRouteRestriction, string> = {
+-  "anthropic-subscription": "https://code.claude.com/docs/en/legal-and-compliance",
+   "google-antigravity": "https://antigravity.google/terms/",
+   "impersonated-client": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server",
+ };
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index 26a08ff..f4ca1b7 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -260,6 +260,10 @@ async function run() {
+             "Missing shared quota meters",
+           );
+           check(!f.node.querySelector("input"), "Quota added credentials input");
++          check(
++            ![...f.node.querySelectorAll("button")].some((b) => /添加账号|Add account/u.test(b.textContent ?? "")),
++            "Claude must stay single-account (Anthropic plan limits assume individual use)",
++          );
+           const refresh = [...f.node.querySelectorAll("button")].find(
+             (button) =>
+               button.getAttribute("aria-label") ===

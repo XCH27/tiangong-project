@@ -1,0 +1,304 @@
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 668f29d386b48d8e7b39a16b97a96cdb8e0cd3b8..ace3cbf60a18c4bf8f45cfb480939a5a7f6aafbb 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -36,7 +36,12 @@ export function createNativeCliConnectionOperations(
+   facade: ProviderSettingsFacade,
+   ensureReady: () => Promise<void>,
+   native?: NativeCliConnectionAdapter,
++  registerDispose?: (cleanup: () => void) => void,
+ ) {
++  let disposed = false;
++  const assertActive = () => {
++    if (disposed) throw new Error("Native CLI connection runtime is disposed");
++  };
+   const flows = new Map<
+     string,
+     {
+@@ -49,13 +54,24 @@ export function createNativeCliConnectionOperations(
+       commit?: Promise<void>;
+     }
+   >();
++  // The existing Provider Host owns these login children. Teardown must also
++  // fence launches/inspection that are still awaiting network or SDK readiness.
++  registerDispose?.(() => {
++    if (disposed) return;
++    disposed = true;
++    const pending = [...flows.values()];
++    flows.clear();
++    for (const flow of pending) flow.cancel();
++  });
+   const connect = async (
+     id: string,
+     access: NonNullable<ProviderConfigObject["access"]>,
+     revision: number,
+   ) => {
++    assertActive();
+     if (access.type !== "native-cli") throw new Error("This is not a native CLI connection");
+     const result = await inspectNativeCliConnection({ ...access, accountId: undefined }, native);
++    assertActive();
+     await facade.mergeDiscoveredModels(
+       id as ProviderId,
+       result.catalog.models,
+@@ -70,14 +86,18 @@ export function createNativeCliConnectionOperations(
+   };
+   return {
+     async inspectNativeCli(id: string): Promise<NativeCliConnectionInspection> {
++      assertActive();
+       await ensureReady();
++      assertActive();
+       const access = facade.getView().providers.find((entry) => entry.providerId === id)
+         ?.effectiveConfig.access;
+       if (!access) throw new Error("Native CLI connection no longer exists");
+       return inspectNativeCliConnection(access, native);
+     },
+     async connectNativeCli(id: string) {
++      assertActive();
+       await ensureReady();
++      assertActive();
+       const snapshot = facade.getView();
+       const provider = snapshot.providers.find((entry) => entry.providerId === id);
+       const access = provider?.effectiveConfig.access;
+@@ -87,7 +107,9 @@ export function createNativeCliConnectionOperations(
+       return facade.getView();
+     },
+     async beginNativeCliLogin(id: string): Promise<{ flowId: string }> {
++      assertActive();
+       await ensureReady();
++      assertActive();
+       const snapshot = facade.getView();
+       const access = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
+         .access;
+@@ -136,6 +158,7 @@ export function createNativeCliConnectionOperations(
+       flowId: string,
+     ): Promise<{ status: "pending" | "connected" }> {
+       const flow = flows.get(id);
++      assertActive();
+       if (!flow || flow.id !== flowId) throw new Error("Native CLI login expired or cancelled");
+       if (flow.status === "pending") return { status: "pending" };
+       if (flow.status === "failed") {
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 4e4371a0d0a632bc66c4cd3c28efb3882c83e942..4a4c67abbc843f4e76a07196bc65b676d1d8373f 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -157,6 +157,7 @@ export function createProviderSettingsService(
+   ccSwitchImport?: CcSwitchImportAdapter,
+   nativeCli?: NativeCliConnectionAdapter,
+   assistantWorkspacePath?: () => string,
++  registerNativeCliDispose?: (cleanup: () => void) => void,
+ ): IProviderSettingsService {
+   const discoveries = new Map<string, { identity: string; request: Promise<ModelDiscoveryResult> }>();
+   return {
+@@ -173,7 +174,12 @@ export function createProviderSettingsService(
+       if (!ccSwitchImport) throw new Error("CC Switch import unavailable on this host");
+       return ccSwitchImport.import(input);
+     },
+-    ...createNativeCliConnectionOperations(facade, ensureReady, nativeCli),
++    ...createNativeCliConnectionOperations(
++      facade,
++      ensureReady,
++      nativeCli,
++      registerNativeCliDispose,
++    ),
+     async discoverModels(id) {
+       await ensureReady();
+       await facade.waitForProviderOperations(id);
+diff --git a/packages/services/src/model-provider/providerRuntime.ts b/packages/services/src/model-provider/providerRuntime.ts
+index 89ad37d53b3c59d65be816691955ff300bbe587e..262de1b4c496d6b2fe11d2031560c4d0fa4f5af6 100644
+--- a/packages/services/src/model-provider/providerRuntime.ts
++++ b/packages/services/src/model-provider/providerRuntime.ts
+@@ -83,6 +83,7 @@ export class ProviderRuntime {
+   readonly #disposeBuiltinRecovery: () => void;
+   readonly #modelSelectionRuntime: IModelSelectionService & { dispose(): void };
+   readonly #disposeModelSelectionConfiguredDefaultSource?: () => void;
++  #disposeNativeCliConnections: () => void = () => {};
+   #startPromise: ReturnType<ProviderRegistryService["start"]> | null = null;
+   #disposed = false;
+ 
+@@ -123,6 +124,9 @@ export class ProviderRuntime {
+       dependencies.ccSwitchImport ?? createCcSwitchImportAdapter(settingsFacade),
+       dependencies.nativeCli ?? createNativeCliConnectionAdapter(),
+       dependencies.assistantWorkspacePath,
++      (cleanup) => {
++        this.#disposeNativeCliConnections = cleanup;
++      },
+     );
+     this.#modelSelectionRuntime = createModelSelectionService(
+       createNodeModelSelectionFacade(this.registryService),
+@@ -149,6 +153,7 @@ export class ProviderRuntime {
+   dispose(): void {
+     if (this.#disposed) return;
+     this.#disposed = true;
++    this.#disposeNativeCliConnections();
+     this.#disposeBuiltinRecovery();
+     this.#modelSelectionRuntime.dispose();
+     this.registryService.dispose();
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index 89d4d0d13204bda70174bf86df3115f81c3bbbc4..ac9ab1835c192dfb53e53f9f815d3dba132e000c 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -78,6 +78,56 @@ test("native account connection publishes selectable models through the real reg
+   }
+ });
+ 
++test("disposing the Provider runtime cancels pending native login and prevents late account publication", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-dispose-"));
++  const personalFilePath = join(directory, "providers.json");
++  const completion = Promise.withResolvers<void>();
++  let cancellations = 0;
++  let inspections = 0;
++  const runtime = new ProviderRuntime({
++    configRuntime: createProviderConfigRuntime({
++      personalFilePath,
++      watch: false,
++      personalPollingIntervalMs: false,
++      zcodeBuiltinFilePath: fileURLToPath(
++        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++      ),
++    }),
++    nativeCli: {
++      inspect: async () => {
++        inspections++;
++        throw new Error("Disposed login must not inspect or publish");
++      },
++      login: () => ({
++        completion: completion.promise,
++        cancel: () => {
++          cancellations++;
++        },
++      }),
++    },
++  });
++  try {
++    await runtime.start();
++    const { providerId } = await runtime.providerSettings.createPersonalProvider({
++      templateId: "fleet-claude-native",
++    });
++    const { flowId } = await runtime.providerSettings.beginNativeCliLogin(providerId);
++    runtime.dispose();
++    runtime.dispose();
++    assert.equal(cancellations, 1, "The existing owner must stop its login child exactly once");
++    completion.resolve();
++    await Promise.resolve();
++    await assert.rejects(
++      runtime.providerSettings.pollNativeCliLogin(providerId, flowId),
++      /disposed|expired|cancelled/,
++    );
++    assert.equal(inspections, 0);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
+ test("Claude subscription binding refuses Console/API and third-party cloud authentication", () => {
+   const plan = {
+     email: "fixture@example.invalid",
+@@ -174,6 +224,107 @@ test("a stale login cannot overwrite a changed provider configuration", async ()
+   assert.equal(f.counts().writes, 0);
+ });
+ 
++test("Provider teardown fences readiness waits and asynchronous native launches", async () => {
++  for (const phase of ["readiness", "launch"] as const) {
++    let dispose = () => {};
++    let launches = 0;
++    let cancelled = 0;
++    const ready = Promise.withResolvers<void>();
++    const launched = Promise.withResolvers<ReturnType<typeof startClaudeNativeLogin>>();
++    const facade = {
++      getView: () => ({
++        revision: 1,
++        providers: [
++          {
++            providerId: "A",
++            effectiveConfig: { access: { type: "native-cli", provider: "claude" } },
++          },
++        ],
++      }),
++    } as unknown as ProviderSettingsFacade;
++    const operations = createNativeCliConnectionOperations(
++      facade,
++      phase === "readiness" ? () => ready.promise : async () => {},
++      {
++        inspect: async () => {
++          throw new Error("Not reached");
++        },
++        login: () => {
++          launches++;
++          return launched.promise;
++        },
++      },
++      (cleanup) => {
++        dispose = cleanup;
++      },
++    );
++    const beginning = operations.beginNativeCliLogin("A");
++    void beginning.catch(() => {});
++    await Promise.resolve();
++    dispose();
++    if (phase === "readiness") ready.resolve();
++    else
++      launched.resolve({
++        completion: new Promise<void>(() => {}),
++        cancel: () => {
++          cancelled++;
++        },
++      });
++    await assert.rejects(beginning, /disposed|cancelled/);
++    assert.equal(launches, phase === "readiness" ? 0 : 1);
++    assert.equal(cancelled, phase === "launch" ? 1 : 0);
++    await assert.rejects(operations.beginNativeCliLogin("A"), /disposed/);
++  }
++});
++
++test("a native inspection that returns after Provider teardown cannot commit its account", async () => {
++  let dispose = () => {};
++  let writes = 0;
++  const inspected = Promise.withResolvers<{
++    accountId: string;
++    accountName: string;
++    catalog: { source: "provider"; models: [] };
++  }>();
++  const facade = {
++    getView: () => ({
++      revision: 1,
++      providers: [
++        {
++          providerId: "A",
++          effectiveConfig: { access: { type: "native-cli", provider: "claude" } },
++        },
++      ],
++    }),
++    mergeDiscoveredModels: async () => {
++      writes++;
++    },
++  } as unknown as ProviderSettingsFacade;
++  const operations = createNativeCliConnectionOperations(
++    facade,
++    async () => {},
++    {
++      inspect: () => inspected.promise,
++      login: () => {
++        throw new Error("Already logged in");
++      },
++    },
++    (cleanup) => {
++      dispose = cleanup;
++    },
++  );
++  const connecting = operations.connectNativeCli("A");
++  void connecting.catch(() => {});
++  await Promise.resolve();
++  dispose();
++  inspected.resolve({
++    accountId: "fixture@example.invalid",
++    accountName: "Fixture",
++    catalog: { source: "provider", models: [] },
++  });
++  await assert.rejects(connecting, /disposed/);
++  assert.equal(writes, 0);
++});
++
+ test("overlapping asynchronous CLI launches cancel the superseded process before publication", async () => {
+   const access = { type: "native-cli", provider: "claude", connected: false };
+   const facade = {

@@ -1,0 +1,991 @@
+diff --git a/apps/zcode-cli/docs/workflow-world-effects.md b/apps/zcode-cli/docs/workflow-world-effects.md
+new file mode 100644
+index 0000000..cd5c4cd
+--- /dev/null
++++ b/apps/zcode-cli/docs/workflow-world-effects.md
+@@ -0,0 +1,32 @@
++# Workflow world effects and Stop
++
++WorkflowEngine and its existing run/node journal own outcomes. The production workflow driver
++owns one cancellation scope for its world commands; the shared ExecutionPort owns their OS
++processes. No new task store, executor, permission authority or migration is introduced.
++
++```text
++world.run → running node → owned ExecutionPort command → result → same node receipt
++Stop → seal engine admission + abort owned commands → bounded receipt wait → run-settled
++```
++
++Do not close the shared ExecutionPort when one run stops. A Stop waits for that run's world
++commands and their durable receipts before confirming cancellation. The driver bounds cleanup to
++the Host's 1.5-second late-effect grace;
++an unresponsive command settles the run as interrupted with an explicit unknown-outcome error,
++and the Stop caller receives that error rather than a successful cancellation receipt.
++
++A completed command result arriving during or after Stop still updates its original journal
++node. It never releases a new descendant or emits progress after run-settled. A terminated command
++may have partial effects: its node retains an Interrupted uncertainty barrier rather than being
++made retryable. Cold resume/amend must not repeat it. Known completed results retain existing
++same-run replay and amended-cache invalidation semantics.
++
++The DSL permits an un-awaited world.run. Returning from the script with such an uncertain
++command cannot publish a completed run; it reports interruption. A script failure remains a
++failure, with any interrupted command's uncertainty retained in its original node.
++
++The run and node identities, desktop continuous events and remote replay source stay unchanged.
++Acceptance uses compiled workflow scripts, the production driver, real local commands and SQLite:
++Stop prevents a delayed write while another run on the shared executor completes; late completion
++is retained; non-cooperative cancellation is bounded and remains unknown; cold reopen cannot
++repeat an uncertain effect. Model transport and paid services are unnecessary for these cases.
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-service.ts b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-service.ts
+index c4ec132..53dc3ef 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-service.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/dynamic-workflow-run-service.ts
+@@ -536,6 +536,14 @@ export function createDynamicWorkflowRunService(
+       // harness 读 `signal.reason` 决定 stopped(user) 还是 stopped(model)，从此原因落库，
+       // 不再只活在后台任务注册表里。
+       entry.controller.abort(initiator);
++      const settlement = await entry.settlement;
++      if (
++        settlement.status === "stopped" &&
++        settlement.reason === "interrupted" &&
++        settlement.error
++      ) {
++        throw settlement.error;
++      }
+       return true;
+     },
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/workflow-driver.ts b/apps/zcode-cli/packages/bootstrap/src/app/workflow-driver.ts
+index 3a53daa..dda9549 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/workflow-driver.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/workflow-driver.ts
+@@ -69,7 +69,7 @@ import {
+ import { executeArtifactPublish } from "./workflow-artifact-publish.js";
+ import { qualityEpilogue } from "./workflow-ask-epilogue.js";
+ import { ensureSubmitProfileFits } from "./workflow-driver-submit-profile.js";
+-import { executeWorldRead } from "./workflow-world-read.js";
++import { createWorkflowWorldLifecycle } from "./workflow-world-lifecycle.js";
+ import {
+   createActorModelActivity,
+   createRunStallClock,
+@@ -115,6 +115,7 @@ class AgentRuntimeWorkflowDriver implements WorkflowDriver {
+ 
+   private readonly sink: WorkflowReportSink;
+   private readonly deps: AgentRuntimeWorkflowDriverDeps;
++  private readonly world: ReturnType<typeof createWorkflowWorldLifecycle>;
+   private readonly sessions = new Map<string, SessionState>();
+   /** refToString(instance) → 其所属会话，供 respondToSubmit / cancelAsk 反查。 */
+   private readonly instanceToSession = new Map<string, SessionState>();
+@@ -145,6 +146,7 @@ class AgentRuntimeWorkflowDriver implements WorkflowDriver {
+ 
+   constructor(deps: AgentRuntimeWorkflowDriverDeps, sink: WorkflowReportSink) {
+     this.deps = deps;
++    this.world = createWorkflowWorldLifecycle(deps);
+     this.sink = sink;
+     this.journal = deps.journal;
+     // 引擎的 record() 对**每一条**事件都紧接着调 driver.emit（engine.ts），所以这里是 driver
+@@ -459,7 +461,11 @@ class AgentRuntimeWorkflowDriver implements WorkflowDriver {
+    * 只剩"会话与 turn 的编排"这一件事，而 op 元数、上限执行、git 的固定 argv 集中在一处。
+    */
+   async executeWorldRead(op: WorldReadOp, args: unknown[]): Promise<unknown> {
+-    return await executeWorldRead(this.deps, op, args);
++    return await this.world.execute(op, args);
++  }
++
++  stopWorldEffects(): Promise<boolean> {
++    return this.world.stop();
+   }
+ 
+   /**
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-input.ts b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-input.ts
+new file mode 100644
+index 0000000..f9e7292
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-input.ts
+@@ -0,0 +1,84 @@
++// World argument validation stays pure. Extracted from workflow-world-read to keep its effect path bounded.
++import { WORLD_READ_CAPS, WorkflowError, type WorldReadOp } from "@zcode/dynamic-workflow";
++
++/**
++ * `world.run` 的实参形状：`[cmd: string, args?: string[], opts?: { timeoutMs?: number }]`。
++ * 与 {@link worldReadStringArgs} 同一纪律（大声失败、绝不强转），但形状（数组 + 选项袋）
++ * 超出了 string 序列助手的表达面，所以单列。
++ */
++export function worldRunArgs(args: unknown[]): { cmd: string; argv: string[]; timeoutMs: number } {
++  if (args.length < 1 || args.length > 3) {
++    throw new WorkflowError(
++      "DriverError",
++      `world.run takes 1 to 3 arguments (cmd, args?, opts?), got ${args.length}.`,
++    );
++  }
++  const cmd = requireStringArg("run", args[0], "cmd", 0);
++
++  const rawArgv = args[1];
++  let argv: string[] = [];
++  if (rawArgv !== undefined) {
++    if (!Array.isArray(rawArgv)) {
++      throw new WorkflowError(
++        "DriverError",
++        `world.run: argument 2 (args) must be an array of strings, got ${describeArg(rawArgv)}.`,
++      );
++    }
++    argv = rawArgv.map((item, index) => {
++      if (typeof item !== "string") {
++        throw new WorkflowError(
++          "DriverError",
++          `world.run: args[${index}] must be a string, got ${describeArg(item)}. Stringify values.`,
++        );
++      }
++      return item;
++    });
++  }
++
++  const rawOpts = args[2];
++  let timeoutMs: number = WORLD_READ_CAPS.runDefaultTimeoutMs;
++  if (rawOpts !== undefined) {
++    if (typeof rawOpts !== "object" || rawOpts === null || Array.isArray(rawOpts)) {
++      throw new WorkflowError(
++        "DriverError",
++        `world.run: arg 3 (opts) must be an options object or omitted, got ${describeArg(rawOpts)}.`,
++      );
++    }
++    const rawTimeout = (rawOpts as { timeoutMs?: unknown }).timeoutMs;
++    if (rawTimeout !== undefined) {
++      if (typeof rawTimeout !== "number" || !Number.isInteger(rawTimeout) || rawTimeout < 1) {
++        throw new WorkflowError(
++          "DriverError",
++          `world.run: opts.timeoutMs must be an integer >= 1, got ${describeArg(rawTimeout)}.`,
++        );
++      }
++      // 刻意无上限钳制：为真正长跑的测试设计；cancel 是最后的控制。
++      timeoutMs = rawTimeout;
++    }
++  }
++
++  return { argv, cmd, timeoutMs };
++}
++
++/** 取一个必须是 string 的位置实参，否则结构化拒绝（绝不 `String(...)` 强转）。 */
++export function requireStringArg(
++  op: WorldReadOp,
++  value: unknown,
++  name: string,
++  index: number,
++): string {
++  if (typeof value !== "string") {
++    throw new WorkflowError(
++      "DriverError",
++      `world-read ${op}: arg ${index + 1} (${name}) must be a string, got ${describeArg(value)}.`,
++    );
++  }
++  return value;
++}
++
++/** 实参形状的简短描述（只用于错误消息，不回显完整内容）。 */
++export function describeArg(value: unknown): string {
++  if (value === undefined) return "undefined";
++  if (value === null) return "null";
++  return Array.isArray(value) ? "array" : typeof value;
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-lifecycle.ts b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-lifecycle.ts
+new file mode 100644
+index 0000000..ef59061
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-lifecycle.ts
+@@ -0,0 +1,44 @@
++import type { WorldReadOp } from "@zcode/dynamic-workflow";
++import { executeWorldRead, type WorldReadDeps } from "./workflow-world-read.js";
++
++/** Match the Host's bounded late-effect grace; timeout is uncertainty, never cancellation proof. */
++export const WORLD_EFFECT_STOP_GRACE_MS = 1_500;
++
++/** One driver's transient process scope; outcomes still belong to the engine's original journal. */
++export function createWorkflowWorldLifecycle(deps: WorldReadDeps) {
++  const controller = new AbortController();
++  const pending = new Set<Promise<unknown>>();
++  let stopping: Promise<boolean> | undefined;
++  return {
++    execute(op: WorldReadOp, args: unknown[]): Promise<unknown> {
++      const work = executeWorldRead({ ...deps, signal: controller.signal }, op, args);
++      if (op === "run") {
++        pending.add(work);
++        void work.then(
++          () => pending.delete(work),
++          () => pending.delete(work),
++        );
++      }
++      return work;
++    },
++    stop(): Promise<boolean> {
++      // abort 在任何等待之前发生，而且只属于本 run。并发 Stop 共用同一次清理。
++      controller.abort();
++      stopping ??= (async () => {
++        if (pending.size === 0) return true;
++        let timer: ReturnType<typeof setTimeout> | undefined;
++        try {
++          return await Promise.race([
++            Promise.allSettled(pending).then(() => true),
++            new Promise<boolean>((resolve) => {
++              timer = setTimeout(() => resolve(false), WORLD_EFFECT_STOP_GRACE_MS);
++            }),
++          ]);
++        } finally {
++          if (timer !== undefined) clearTimeout(timer);
++        }
++      })();
++      return stopping;
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-read.ts b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-read.ts
+index 63845f9..427d108 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-read.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/workflow-world-read.ts
+@@ -21,6 +21,7 @@ import {
+ } from "node:path";
+ import type { ExecutionPort, FileSystemPort } from "@zcode/contracts";
+ import { WORLD_READ_CAPS, WorkflowError, type WorldReadOp } from "@zcode/dynamic-workflow";
++import { worldRunArgs, requireStringArg, describeArg } from "./workflow-world-input.js";
+ import {
+   GIT_SHOW_PREFIX_ARGV,
+   GIT_STATUS_ARGV,
+@@ -49,6 +50,8 @@ export interface WorldReadDeps {
+    * 发生在编译期字面量 + 提交确认。
+    */
+   readonly declaredRunCommands?: ReadonlySet<string>;
++  /** Only this run's commands; the shared ExecutionPort is never closed by a workflow Stop. */
++  readonly signal?: AbortSignal;
+ }
+ 
+ /**
+@@ -212,6 +215,7 @@ async function runGit(
+     cwd: deps.cwd,
+     outputLimit: { maxInlineBytes },
+   });
++
+   if (result.status !== "completed" || (result.exitCode ?? 0) !== 0) {
+     // git 缺失、非仓库、坏 ref 都走这里。归一成**可 catch 的** DriverError 而不是 run 级
+     // 失败，使脚本可以通过 try/catch 改用 files.glob。
+@@ -320,12 +324,22 @@ async function worldRun(deps: WorldReadDeps, args: unknown[]): Promise<WorldRunR
+ 
+   const stdoutCap = WORLD_READ_CAPS.runStdoutMaxBytes;
+   const stderrCap = WORLD_READ_CAPS.runStderrMaxBytes;
+-  const result = await deps.executionPort.run({
+-    command: { mode: "argv", file: cmd, args: argv },
+-    cwd: deps.cwd,
+-    timeoutMs,
+-    outputLimit: { maxInlineBytes: Math.max(stdoutCap, stderrCap) + 1 },
+-  });
++  const result = await deps.executionPort.run(
++    {
++      command: { mode: "argv", file: cmd, args: argv },
++      cwd: deps.cwd,
++      timeoutMs,
++      outputLimit: { maxInlineBytes: Math.max(stdoutCap, stderrCap) + 1 },
++    },
++    { signal: deps.signal },
++  );
++
++  // 进程已停不等于副作用回滚；Interrupted 保留恢复屏障，不授权 amend 重做部分效果。
++  if (result.status === "cancelled")
++    throw new WorkflowError(
++      "Interrupted",
++      "world.run stopped; inspect partial effects before new work.",
++    );
+ 
+   if (result.status === "timed_out") {
+     throw new WorkflowError(
+@@ -368,65 +382,6 @@ async function worldRun(deps: WorldReadDeps, args: unknown[]): Promise<WorldRunR
+   };
+ }
+ 
+-/**
+- * `world.run` 的实参形状：`[cmd: string, args?: string[], opts?: { timeoutMs?: number }]`。
+- * 与 {@link worldReadStringArgs} 同一纪律（大声失败、绝不强转），但形状（数组 + 选项袋）
+- * 超出了 string 序列助手的表达面，所以单列。
+- */
+-function worldRunArgs(args: unknown[]): { cmd: string; argv: string[]; timeoutMs: number } {
+-  if (args.length < 1 || args.length > 3) {
+-    throw new WorkflowError(
+-      "DriverError",
+-      `world.run takes 1 to 3 arguments (cmd, args?, opts?), got ${args.length}.`,
+-    );
+-  }
+-  const cmd = requireStringArg("run", args[0], "cmd", 0);
+-
+-  const rawArgv = args[1];
+-  let argv: string[] = [];
+-  if (rawArgv !== undefined) {
+-    if (!Array.isArray(rawArgv)) {
+-      throw new WorkflowError(
+-        "DriverError",
+-        `world.run: argument 2 (args) must be an array of strings, got ${describeArg(rawArgv)}.`,
+-      );
+-    }
+-    argv = rawArgv.map((item, index) => {
+-      if (typeof item !== "string") {
+-        throw new WorkflowError(
+-          "DriverError",
+-          `world.run: args[${index}] must be a string, got ${describeArg(item)}. Stringify values.`,
+-        );
+-      }
+-      return item;
+-    });
+-  }
+-
+-  const rawOpts = args[2];
+-  let timeoutMs: number = WORLD_READ_CAPS.runDefaultTimeoutMs;
+-  if (rawOpts !== undefined) {
+-    if (typeof rawOpts !== "object" || rawOpts === null || Array.isArray(rawOpts)) {
+-      throw new WorkflowError(
+-        "DriverError",
+-        `world.run: arg 3 (opts) must be an options object or omitted, got ${describeArg(rawOpts)}.`,
+-      );
+-    }
+-    const rawTimeout = (rawOpts as { timeoutMs?: unknown }).timeoutMs;
+-    if (rawTimeout !== undefined) {
+-      if (typeof rawTimeout !== "number" || !Number.isInteger(rawTimeout) || rawTimeout < 1) {
+-        throw new WorkflowError(
+-          "DriverError",
+-          `world.run: opts.timeoutMs must be an integer >= 1, got ${describeArg(rawTimeout)}.`,
+-        );
+-      }
+-      // 刻意无上限钳制：为真正长跑的测试设计；cancel 是最后的控制。
+-      timeoutMs = rawTimeout;
+-    }
+-  }
+-
+-  return { argv, cmd, timeoutMs };
+-}
+-
+ // ——————————————————————————————— 纯辅助 ———————————————————————————————
+ 
+ /**
+@@ -534,17 +489,6 @@ function worldReadOptionalCount(op: WorldReadOp, args: unknown[], name: string):
+   return raw;
+ }
+ 
+-/** 取一个必须是 string 的位置实参，否则结构化拒绝（绝不 `String(...)` 强转）。 */
+-function requireStringArg(op: WorldReadOp, value: unknown, name: string, index: number): string {
+-  if (typeof value !== "string") {
+-    throw new WorkflowError(
+-      "DriverError",
+-      `world-read ${op}: arg ${index + 1} (${name}) must be a string, got ${describeArg(value)}.`,
+-    );
+-  }
+-  return value;
+-}
+-
+ /**
+  * 上限溢出的结构化拒绝。message 一律带**可操作的下一步**（"缩窄 pattern 或加一个 glob"）：
+  * 上限是脚本可以据以重写自己的契约，一条只说"超了"的错误把这一点浪费掉。
+@@ -620,10 +564,3 @@ interface GrepMatch {
+   line: number;
+   text: string;
+ }
+-
+-/** 实参形状的简短描述（只用于错误消息，不回显完整内容）。 */
+-function describeArg(value: unknown): string {
+-  if (value === undefined) return "undefined";
+-  if (value === null) return "null";
+-  return Array.isArray(value) ? "array" : typeof value;
+-}
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-settlement.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-settlement.ts
+index d23b798..7b284e3 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-settlement.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-settlement.ts
+@@ -7,7 +7,7 @@
+  * failRun 只是薄委托。first-wins 由 `isRunSettled()` 守在每条路径的第一行。
+  */
+ 
+-import type { EngineState } from "./engine-state.js";
++import type { EngineState, RunSettlement } from "./engine-state.js";
+ import type { RunSettlementRecord, RunStatus, RunStopReason } from "./types.js";
+ import { WorkflowError } from "./types.js";
+ 
+@@ -28,8 +28,7 @@ export function settleCompleted(state: EngineState, artifact: unknown): void {
+   );
+   // 产物随终态一笔落库。分两笔写会造出「completed 但产物丢失」的崩溃窗口，而 journal
+   // 行是产物唯一的持久化家（`run-settled` 事件刻意不加宽）。
+-  finishRun(state, "completed", { result: artifact });
+-  state.resolveSettled({ status: "completed", artifact });
++  finishRun(state, "completed", { result: artifact }, { status: "completed", artifact });
+ }
+ 
+ /**
+@@ -49,17 +48,21 @@ export function settleStopped(
+   state.abortInFlight(new WorkflowError("Cancelled", "Run stopped."), true);
+   // `superseded` 的后继 id 与原因**同一笔**落库：
+   // stopped 信封整体重写，分两笔写就有一个「已 superseded 却不知道被谁替代」的窗口。
+-  finishRun(state, "stopped", {
+-    stopReason: reason,
+-    ...(supersededBy === undefined ? {} : { supersededBy }),
+-    ...(error === undefined ? {} : { failure: error.toJSON() }),
+-  });
+-  state.resolveSettled({
+-    status: "stopped",
+-    reason,
+-    ...(supersededBy === undefined ? {} : { supersededBy }),
+-    ...(error === undefined ? {} : { error }),
+-  });
++  finishRun(
++    state,
++    "stopped",
++    {
++      stopReason: reason,
++      ...(supersededBy === undefined ? {} : { supersededBy }),
++      ...(error === undefined ? {} : { failure: error.toJSON() }),
++    },
++    {
++      status: "stopped",
++      reason,
++      ...(supersededBy === undefined ? {} : { supersededBy }),
++      ...(error === undefined ? {} : { error }),
++    },
++  );
+ }
+ 
+ /** run 级失败（脚本之错）：中止在飞 ask（以 run 错误 reject），run 结算 errored。 */
+@@ -67,8 +70,7 @@ export function settleFailed(state: EngineState, error: WorkflowError): void {
+   if (state.isRunSettled()) return;
+   state.markSettled(error);
+   state.abortInFlight(error, false);
+-  finishRun(state, "errored", { failure: error.toJSON() });
+-  state.resolveSettled({ status: "errored", error });
++  finishRun(state, "errored", { failure: error.toJSON() }, { status: "errored", error });
+ }
+ 
+ /**
+@@ -78,14 +80,103 @@ export function settleFailed(state: EngineState, error: WorkflowError): void {
+  * `run-settled` **之后**：dispose 是结算之后的资源释放（actor runtime 的关闭链），不是结算
+  * 的一部分，事件日志不因它多一条。
+  */
+-function finishRun(state: EngineState, status: RunStatus, settlement?: RunSettlementRecord): void {
+-  state.journal.updateRunStatus(state.runId, status, settlement);
+-  state.record({
+-    type: "run-settled",
+-    status,
+-    ...(settlement?.stopReason === undefined ? {} : { stopReason: settlement.stopReason }),
+-    ...(settlement?.supersededBy === undefined ? {} : { supersededBy: settlement.supersededBy }),
+-    ...(settlement?.failure === undefined ? {} : { error: settlement.failure }),
+-  });
+-  state.driver.dispose?.();
++function finishRun(
++  state: EngineState,
++  status: RunStatus,
++  settlement: RunSettlementRecord,
++  result: RunSettlement,
++): void {
++  const unknown = () => {
++    const error = new WorkflowError(
++      "Interrupted",
++      "Workflow stopped waiting for its world commands: termination or durable outcome is unknown. Inspect their effects before starting new work.",
++    );
++    commitSettlement(
++      state,
++      "stopped",
++      { stopReason: "interrupted", failure: error.toJSON() },
++      { status: "stopped", reason: "interrupted", error },
++    );
++  };
++  const finalize = () => {
++    // DSL 允许未 await 的 world.run；脚本 return 不证明遗留命令成功或副作用回滚。
++    try {
++      if (
++        status === "completed" &&
++        state.journal
++          .listNodes(state.runId)
++          .some((node) => node.kind === "world-run" && node.status === "running")
++      ) {
++        unknown();
++        return;
++      }
++    } catch {
++      unknown();
++      return;
++    }
++    commitSettlement(state, status, settlement, result);
++  };
++  // 核心不读时钟：driver 负责有界终止；确认进程结束后，等待同一节点的收据提交再发布终态。
++  let stopping: Promise<boolean> | undefined;
++  try {
++    stopping = state.driver.stopWorldEffects?.();
++  } catch {
++    unknown();
++    return;
++  }
++  if (!stopping) {
++    if (state.pendingWorldReceipts.size > 0) unknown();
++    else finalize();
++    return;
++  }
++  void stopping.then(async (stopped) => {
++    if (!stopped) {
++      unknown();
++      return;
++    }
++    try {
++      await Promise.all(state.pendingWorldReceipts);
++    } catch {
++      unknown();
++      return;
++    }
++    finalize();
++  }, unknown);
++}
++
++function commitSettlement(
++  state: EngineState,
++  status: RunStatus,
++  settlement: RunSettlementRecord,
++  result: RunSettlement,
++): void {
++  try {
++    state.journal.updateRunStatus(state.runId, status, settlement);
++    state.record({
++      type: "run-settled",
++      status,
++      ...(settlement.stopReason === undefined ? {} : { stopReason: settlement.stopReason }),
++      ...(settlement.supersededBy === undefined ? {} : { supersededBy: settlement.supersededBy }),
++      ...(settlement.failure === undefined ? {} : { error: settlement.failure }),
++    });
++  } catch (cause) {
++    // 异步收尾不能因存储故障永远不兑现 settled，也不能把没有提交的终态当成成功。
++    result = {
++      status: "stopped",
++      reason: "interrupted",
++      error: new WorkflowError(
++        "Interrupted",
++        "Could not persist the workflow settlement; inspect its journal before recovery.",
++        { cause },
++      ),
++    };
++  } finally {
++    try {
++      state.driver.dispose?.();
++    } catch {
++      // dispose 是已提交终态之后的资源清理，不能改写真实结果或悬挂调用者。
++      // 生产 driver 的资源诊断留在它的 logger；此处也防御第三方/测试 driver 抛错。
++    }
++    state.resolveSettled(result);
++  }
+ }
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-state.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-state.ts
+index d3d99c6..963d300 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-state.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-state.ts
+@@ -63,6 +63,8 @@ export interface EngineState {
+   readonly importedCache: ImportedRunCache | undefined;
+   /** world 导入队列的消费游标（第 n 次出现对第 n 条）。 */
+   readonly importedWorld: ImportedWorldQueue;
++  /** In-flight durable world-run receipts; process cancellation remains the driver's operation. */
++  readonly pendingWorldReceipts: Set<Promise<void>>;
+ 
+   isRunSettled(): boolean;
+   /** run 已结算时用于 reject / throw 的错误。 */
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
+index 027e91b..6ed3a8e 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine-world.ts
+@@ -143,24 +143,46 @@ export function readWorld(
+   });
+   state.record({ type: "node-queued", instance, kind });
+   state.record({ type: "node-dispatched", instance });
+-  return state.driver.executeWorldRead(op, args).then(
+-    (value) =>
+-      settleWorldRead(state, instance, kind, hash, input, { status: "completed", result: value }),
+-    (cause: unknown) => {
+-      const err =
+-        cause instanceof WorkflowError
+-          ? cause
+-          : new WorkflowError("DriverError", `World read failed: ${op} ${canonicalJson(args)}.`, {
+-              cause,
+-            });
+-      return settleWorldRead(state, instance, kind, hash, input, {
+-        status: "failed",
+-        error: err.toJSON(),
+-      });
+-    },
+-  );
++  const receipt = state.driver
++    .executeWorldRead(op, args)
++    .then(
++      (value): WorldReadOutcome => ({ status: "completed", result: value }),
++      (cause: unknown) => {
++        const err =
++          cause instanceof WorkflowError
++            ? cause
++            : new WorkflowError("DriverError", `World read failed: ${op} ${canonicalJson(args)}.`, {
++                cause,
++              });
++        return {
++          status: "failed",
++          error: err.toJSON(),
++        } satisfies WorldReadOutcome;
++      },
++    )
++    .then((outcome) => {
++      settleWorldRead(state, instance, kind, hash, input, outcome);
++      return outcome;
++    });
++  if (kind === "world-run") {
++    const persisted = receipt.then(() => undefined);
++    state.pendingWorldReceipts.add(persisted);
++    void persisted.then(
++      () => state.pendingWorldReceipts.delete(persisted),
++      () => undefined, // Keep a failed receipt visible to settlement; never claim it was committed.
++    );
++  }
++  return receipt.then((outcome) => {
++    if (state.isRunSettled()) throw state.runError();
++    if (outcome.status === "failed") throw WorkflowError.fromJSON(outcome.error);
++    return outcome.result;
++  });
+ }
+ 
++type WorldReadOutcome =
++  | { status: "completed"; result: unknown }
++  | { status: "failed"; error: WorkflowErrorJson };
++
+ function uncertainWorldRun(runId: string, instance: InstanceRef): WorkflowErrorJson {
+   return {
+     code: "Interrupted",
+@@ -180,11 +202,12 @@ function settleWorldRead(
+   hash: string,
+   // 同一条理由：准入写下的有界输入必须随结算的整条替换回来。
+   input: WorldReadInput,
+-  outcome:
+-    | { status: "completed"; result: unknown }
+-    | { status: "failed"; error: WorkflowErrorJson },
+-): unknown {
+-  if (state.isRunSettled()) throw state.runError();
++  outcome: WorldReadOutcome,
++): void {
++  if (state.isRunSettled() && kind !== "world-run") return;
++  // Stop 不能丢掉已知结果；中止的 opaque 命令可能已有部分效果，继续保留恢复屏障。
++  const uncertain =
++    kind === "world-run" && outcome.status === "failed" && outcome.error.code === "Interrupted";
+   state.journal.putNode({
+     runId: state.runId,
+     siteId: instance.siteId,
+@@ -192,15 +215,15 @@ function settleWorldRead(
+     kind,
+     inputHash: hash,
+     input,
+-    status: outcome.status,
++    status: uncertain ? "running" : outcome.status,
+     ...(outcome.status === "completed" ? { result: outcome.result } : { error: outcome.error }),
+   });
++  if (state.isRunSettled() || uncertain) return;
+   if (outcome.status === "completed") {
+     state.record({ type: "node-settled", instance, outcome: "ok" });
+-    return outcome.result;
++    return;
+   }
+   state.record({ type: "node-settled", instance, outcome: "failed", error: outcome.error });
+-  throw WorkflowError.fromJSON(outcome.error);
+ }
+ 
+ /**
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
+index 59f1a58..3385e1a 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/engine.ts
+@@ -248,6 +248,7 @@ export class WorkflowEngine implements WorkflowHostApi, WorkflowReportSink {
+       artifacts: this.artifacts,
+       importedCache: this.importedCache,
+       importedWorld: this.importedWorld,
++      pendingWorldReceipts: new Set(),
+       isRunSettled: () => this.runSettled,
+       runError: () => this.runError(),
+       failRun: (error) => this.failRun(error),
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts b/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
+index 2c5e7fd..b56f2e6 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/src/engine/types.ts
+@@ -305,6 +305,8 @@ export interface WorkflowDriver {
+    * 每个 op 的元数与实参校验归 driver（见 {@link WorkflowHostApi.worldRead}）。
+    */
+   executeWorldRead(op: WorldReadOp, args: unknown[]): Promise<unknown>;
++  /** Abort only this run's world commands. Bounded false means termination is still unknown. */
++  stopWorldEffects?(): Promise<boolean>;
+   /**
+    * 发布一个内容产物的字节：校验实参形状、
+    * 解析工作区相对路径（越界拒绝）、读字节（cap+1 探测，超限拒绝不截断）、按扩展名定
+diff --git a/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts
+index 7667c18..f1ef50c 100644
+--- a/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts
++++ b/apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts
+@@ -1,7 +1,15 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { readFile, writeFile } from "node:fs/promises";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { setTimeout as delay } from "node:timers/promises";
++import { runWorkflowScript } from "../../dynamic-workflow-runtime/src/harness.js";
++import { createAgentRuntimeWorkflowDriver } from "../../bootstrap/src/app/workflow-driver.js";
++import { createWorkflowEscalationRegistry } from "../../bootstrap/src/app/workflow-escalation-registry.js";
++import { createNodeExecutionAdapter } from "../../adapters/src/exec/node-execution-adapter.js";
++import { NodeFileSystemAdapter } from "../../adapters/src/fs/index.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+ import { WorkflowError } from "../src/engine/types.js";
+ import { fixture } from "./helpers/world-run-recovery-fixture.js";
+ import {
+@@ -10,6 +18,255 @@ import {
+ } from "../../bootstrap/src/app/dynamic-workflow-run-observation.js";
+ import { replayRunProgress } from "../../bootstrap/src/app/dynamic-workflow-run-replay.js";
+ 
++test("a driver cleanup exception cannot strand or replace a committed workflow result", async () => {
++  const f = await fixture();
++  try {
++    const engine = f.engine(undefined, {
++      driver: {
++        journal: f.store.workflowJournalStore(),
++        emit: () => {},
++        createActorSession: async () => {
++          throw new Error("No actor");
++        },
++        startAsk: () => {},
++        respondToSubmit: () => {},
++        cancelAsk: () => {},
++        executeWorldRead: async () => undefined,
++        dispose: () => {
++          throw new Error("injected cleanup failure");
++        },
++      },
++    });
++    engine.complete("committed");
++    assert.deepEqual(await engine.settled, { status: "completed", artifact: "committed" });
++    assert.equal(f.store.workflowJournalStore().getRun("proof")!.status, "completed");
++  } finally {
++    await f.close();
++  }
++});
++
++test(
++  "a script cannot report success while abandoning an uncertain world command",
++  { timeout: 10000 },
++  async () => {
++    const root = await mkdtemp(join(tmpdir(), "fleet-world-abandoned-"));
++    const store = new SqliteSessionStore({ dbPath: join(root, "session.sqlite") });
++    const executionPort = createNodeExecutionAdapter();
++    try {
++      const result = await runWorkflowScript({
++        scriptText: `world.run(${JSON.stringify(process.execPath)}, ["-e", "setTimeout(()=>{},1000)"]); return "finished";`,
++        runId: "abandoned",
++        cwd: root,
++        makeDriver: createAgentRuntimeWorkflowDriver({
++          cwd: root,
++          journal: store.workflowJournalStore(),
++          emit: () => {},
++          executionPort,
++          fileSystemPort: new NodeFileSystemAdapter(),
++          escalationRegistry: createWorkflowEscalationRegistry(),
++          declaredRunCommands: new Set([process.execPath]),
++          runtimeFactory: () => {
++            throw new Error("No actor in this workflow");
++          },
++        }),
++        caps: { maxConcurrency: 1 },
++        askSpecs: new Map(),
++        validate: () => true,
++      });
++      assert.equal(result.status, "stopped");
++      assert.equal(result.status === "stopped" && result.error?.code, "Interrupted");
++    } finally {
++      await executionPort.close?.();
++      store.close();
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
++
++test(
++  "Stop terminates a workflow command without cancelling another command on the shared executor",
++  { timeout: 10000 },
++  async () => {
++    const root = await mkdtemp(join(tmpdir(), "fleet-world-stop-"));
++    const effect = join(root, "effect.txt");
++    const ready = join(root, "ready.txt");
++    const otherEffect = join(root, "other.txt");
++    const store = new SqliteSessionStore({ dbPath: join(root, "session.sqlite") });
++    const executionPort = createNodeExecutionAdapter();
++    const controller = new AbortController();
++    const code = `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>fs.writeFileSync(${JSON.stringify(effect)},'late effect'),600)`;
++    let running: ReturnType<typeof runWorkflowScript> | undefined;
++    try {
++      running = runWorkflowScript({
++        scriptText: `return await world.run(${JSON.stringify(process.execPath)}, ["-e", ${JSON.stringify(code)}]);`,
++        runId: "stop-proof",
++        cwd: root,
++        signal: controller.signal,
++        makeDriver: createAgentRuntimeWorkflowDriver({
++          cwd: root,
++          journal: store.workflowJournalStore(),
++          emit: () => {},
++          executionPort,
++          fileSystemPort: new NodeFileSystemAdapter(),
++          escalationRegistry: createWorkflowEscalationRegistry(),
++          declaredRunCommands: new Set([process.execPath]),
++          runtimeFactory: () => {
++            throw new Error("No actor in this workflow");
++          },
++        }),
++        caps: { maxConcurrency: 1 },
++        askSpecs: new Map(),
++        validate: () => true,
++      });
++      for (let attempt = 0; attempt < 300; attempt++) {
++        if (await readFile(ready, "utf8").catch(() => null)) break;
++        await delay(10);
++      }
++      assert.equal(await readFile(ready, "utf8"), "ready");
++      const other = executionPort.run({
++        command: {
++          mode: "argv",
++          file: process.execPath,
++          args: [
++            "-e",
++            `setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(otherEffect)},'other completed'),200)`,
++          ],
++        },
++        cwd: root,
++      });
++      controller.abort("user");
++      assert.deepEqual(await running, { status: "stopped", reason: "user" });
++      assert.equal((await other).status, "completed");
++      assert.equal(await readFile(otherEffect, "utf8"), "other completed");
++      await delay(650);
++      assert.equal(
++        await readFile(effect, "utf8").catch(() => null),
++        null,
++        "Stop must prevent the delayed write",
++      );
++      const stoppedNode = store.workflowJournalStore().listNodes("stop-proof")[0]!;
++      assert.equal(
++        stoppedNode.status,
++        "running",
++        "termination does not establish rollback of opaque effects",
++      );
++      assert.equal(stoppedNode.error?.code, "Interrupted");
++    } finally {
++      controller.abort("user");
++      await executionPort.close?.();
++      await running?.catch(() => {});
++      store.close();
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
++
++for (const afterGrace of [false, true]) {
++  test(
++    `a command receipt arriving ${afterGrace ? "after the Stop grace" : "during Stop"} is retained and replayed without another effect`,
++    { timeout: 10000 },
++    async () => {
++      const root = await mkdtemp(join(tmpdir(), "fleet-world-late-receipt-"));
++      const dbPath = join(root, "session.sqlite");
++      const effect = join(root, "effect.txt");
++      let store = new SqliteSessionStore({ dbPath });
++      const execution = createNodeExecutionAdapter();
++      const effected = Promise.withResolvers<void>();
++      const releaseReceipt = Promise.withResolvers<void>();
++      const controller = new AbortController();
++      let dispatches = 0;
++      const scriptText = `return await world.run(${JSON.stringify(process.execPath)}, ["-e", ${JSON.stringify(`require('node:fs').appendFileSync(${JSON.stringify(effect)},'effect\\n')`)}]);`;
++      const run = (signal?: AbortSignal) =>
++        runWorkflowScript({
++          scriptText,
++          runId: "receipt-proof",
++          cwd: root,
++          signal,
++          makeDriver: createAgentRuntimeWorkflowDriver({
++            cwd: root,
++            journal: store.workflowJournalStore(),
++            emit: () => {},
++            executionPort: {
++              async run(request, options) {
++                dispatches++;
++                const result = await execution.run(request, options);
++                effected.resolve();
++                // Real process completed; only its response is held at the public ExecutionPort.
++                await releaseReceipt.promise;
++                return result;
++              },
++            },
++            fileSystemPort: new NodeFileSystemAdapter(),
++            escalationRegistry: createWorkflowEscalationRegistry(),
++            declaredRunCommands: new Set([process.execPath]),
++            runtimeFactory: () => {
++              throw new Error("No actor in this workflow");
++            },
++          }),
++          caps: { maxConcurrency: 1 },
++          askSpecs: new Map(),
++          validate: () => true,
++        });
++      let first: ReturnType<typeof run> | undefined;
++      try {
++        first = run(controller.signal);
++        await effected.promise;
++        controller.abort("user");
++        if (!afterGrace) releaseReceipt.resolve();
++        const result = await first;
++        assert.equal(result.status, "stopped");
++        assert.equal(
++          result.status === "stopped" && result.reason,
++          afterGrace ? "interrupted" : "user",
++        );
++        if (afterGrace) {
++          assert.equal(result.status === "stopped" && result.error?.code, "Interrupted");
++          assert.equal(
++            store.workflowJournalStore().listNodes("receipt-proof")[0]!.status,
++            "running",
++          );
++          const unknownReplay = await run();
++          assert.equal(
++            unknownReplay.status === "stopped" && unknownReplay.error?.code,
++            "Interrupted",
++          );
++          assert.equal(dispatches, 1, "unknown cancellation cannot repeat the effect");
++        }
++        const eventsBeforeLateReceipt = store
++          .workflowJournalStore()
++          .listEvents("receipt-proof").length;
++        releaseReceipt.resolve();
++        for (let attempt = 0; attempt < 100; attempt++) {
++          if (store.workflowJournalStore().listNodes("receipt-proof")[0]!.status === "completed")
++            break;
++          await delay(5);
++        }
++        assert.equal(
++          store.workflowJournalStore().listNodes("receipt-proof")[0]!.status,
++          "completed",
++        );
++        assert.equal(
++          store.workflowJournalStore().listEvents("receipt-proof").length,
++          eventsBeforeLateReceipt,
++          "late receipt cannot extend terminal progress",
++        );
++        store.close();
++        store = new SqliteSessionStore({ dbPath });
++        assert.equal((await run()).status, "completed");
++        assert.equal(dispatches, 1);
++        assert.equal(await readFile(effect, "utf8"), "effect\n");
++      } finally {
++        releaseReceipt.resolve();
++        controller.abort("user");
++        await first?.catch(() => {});
++        await execution.close?.();
++        store.close();
++        await rm(root, { recursive: true, force: true });
++      }
++    },
++  );
++}
++
+ test(
+   "an opaque command with an unknown outcome is not repeated after cold recovery",
+   { timeout: 10000 },

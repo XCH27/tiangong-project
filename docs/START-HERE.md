@@ -15,6 +15,11 @@ in `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md`.
 
 ---
 
+The owner-authorized existing-code rectification follows
+[ZCode lifecycle](modules/zcode-kernel-lifecycle.md) and
+[ZK-FIX packet](agent-packets/zcode-kernel-rectification.md), under D57.
+This opens only those corrective slices; historical downstream waves stay Locked.
+
 ## Current Delivery Spine
 
 The product path is the ZCode candidate at `.fleet/zcode` (D56). This branch's W0.1 Craft v0.11

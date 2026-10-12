@@ -1,0 +1,1899 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index 8faff04..dea1f03 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -34,9 +34,11 @@ function priceFacts(
+   // xAI bills Priority only when the response confirms it was served.
+   // Keep the requested mode in the ledger for activity counts, but do not
+   // turn a missing response tier into a twofold price estimate.
+-  const speed = facts.servedSpeedMode ??
++  const speed =
++    facts.servedSpeedMode ??
+     (billingProvider === "xai" && facts.requestedSpeedMode === "fast"
+-      ? undefined : facts.requestedSpeedMode);
++      ? undefined
++      : facts.requestedSpeedMode);
+   if (speed !== undefined && speed !== null && speed !== "fast" && speed !== "standard")
+     return { priceVersion: "unpriced", reason: "speed-mode-unavailable" };
+   return estimateUsagePrice({
+@@ -70,6 +72,20 @@ export function accountingSnapshot(input: ModelUsageRecord) {
+     cacheWrite1hTokens: count(object(anthropicUsage.cache_creation).ephemeral_1h_input_tokens),
+     reasoningTokens: count(usage.reasoningTokens),
+   };
++  const reportedMediaUsd = identity.reportedMediaUsd;
++  if (
++    input.querySource === "media_image" &&
++    typeof reportedMediaUsd === "number" &&
++    Number.isFinite(reportedMediaUsd) &&
++    reportedMediaUsd >= 0
++  ) {
++    return {
++      ...facts,
++      estimatedUsd: reportedMediaUsd,
++      priceVersion: "provider-reported:xai-media:v1",
++      sourceUrl: "https://docs.x.ai/developers/cost-tracking",
++    };
++  }
+   return {
+     ...facts,
+     ...priceFacts(facts, String(input.providerId), String(input.modelId), input.startedAt),
+@@ -93,10 +109,15 @@ export function queryAccounting(
+     if (typeof facts.estimatedUsd === "number" && Number.isFinite(facts.estimatedUsd))
+       return JSON.stringify(facts);
+     const price = priceFacts(facts, String(provider), String(model), Number(started));
+-    return JSON.stringify({ ...facts, ...price,
++    return JSON.stringify({
++      ...facts,
++      ...price,
+       // API 参考价补齐不能改掉请求时已记录的原生额度权重，否则会员分摊会随价目更新漂移。
+-      ...(typeof facts.estimatedCredits === "number" ? {estimatedCredits:facts.estimatedCredits} : {}),
+-      priceVersion: `current:${price.priceVersion}` });
++      ...(typeof facts.estimatedCredits === "number"
++        ? { estimatedCredits: facts.estimatedCredits }
++        : {}),
++      priceVersion: `current:${price.priceVersion}`,
++    });
+   });
+   return db
+     .prepare(`with repriced as materialized (
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 2ee1a51..735c1b0 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -115,6 +115,38 @@ test("accounting survives reopen and retention; same logical request is not coun
+   }
+ });
+ 
++test("provider-reported image price enters the existing model and project cost ledger without invented tokens", async () => {
++  const f = await fixture();
++  try {
++    await f.store.recordModelUsage({
++      id: "image-1",
++      logicalRequestId: "image-1",
++      sessionID: "session" as SessionId,
++      querySource: "media_image",
++      providerId: "xai-account",
++      modelId: "grok-imagine-image-2.0",
++      status: "completed",
++      startedAt: Date.UTC(2026, 7, 1),
++      providerMetadata: {
++        fleetAccounting: {
++          billingProvider: "xai",
++          workspacePath: "/project",
++          reportedMediaUsd: 0.04,
++        },
++      },
++    });
++    f.reopen();
++    const row = (await f.query()).accounting?.find((item) => item.querySource === "media_image");
++    assert.equal(row?.estimatedUsd, 0.04);
++    assert.equal(row?.pricedCount, 1);
++    assert.equal(row?.requestCount, 1);
++    assert.equal(row?.inputTokens, 0);
++    assert.match(row?.priceSources ?? "", /docs.x.ai\/developers\/cost-tracking/);
++  } finally {
++    await f.close();
++  }
++});
++
+ test("unknown speed/account and missing cache remain unknown and block a claimed complete allocation", async () => {
+   const f = await fixture();
+   try {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index c7903a8..dd7b8a1 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -82,6 +82,7 @@ import {
+ import { getWorkflowConcurrencyGovernor } from "./workflow-concurrency-governor.js";
+ import { createDynamicWorkflowSnippetService } from "./dynamic-workflow-snippet-service.js";
+ import { createModelCatalogPort } from "./model-catalog-port.js";
++import { createXaiMediaGenerationPort } from "./xai-media-generation-port.js";
+ import { createDynamicWorkflowRunProgressSink } from "./dynamic-workflow-run-progress-sink.js";
+ import { createScriptWorkflowAgentRuntime } from "./script-workflow-child-runtime.js";
+ import { workflowActorModelPolicy } from "./workflow-actor-model.js";
+@@ -538,7 +539,11 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+           // 仅查询现有 Registry 的密钥启用事实；不会改变已绑定 Model 的地址或协议。
+           isApiKeyEnabled: (providerId, key) => {
+             const access = options.providerRegistry.getProvider(providerId)?.config.access;
+-            return !!access && (access.type === "api-key" || access.type === "zhipu-coding-plan-api-key") && getEnabledApiKeys(access).includes(key.trim());
++            return (
++              !!access &&
++              (access.type === "api-key" || access.type === "zhipu-coding-plan-api-key") &&
++              getEnabledApiKeys(access).includes(key.trim())
++            );
+           },
+         },
+         statusSink: modelTelemetry.statusSink,
+@@ -731,6 +736,12 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       registry: options.providerRegistry,
+       currentSelection: () => getRuntime().getSessionModelSelection(),
+     });
++    const mediaGenerationPort = options.providerRegistry.getSnapshot
++      ? createXaiMediaGenerationPort({
++          registry: { getSnapshot: () => options.providerRegistry.getSnapshot?.() ?? null },
++          http: httpClientPort,
++        })
++      : undefined;
+     runtime = new AgentRuntime(sessionId, runtimeConfig, {
+       agentTelemetry: modelTelemetry.agentExecution,
+       // 主代理的模型请求过治理器的 observer：立即放行，但让治理器看见它的 429 / 成功。
+@@ -780,6 +791,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       dynamicWorkflowRunPort,
+       dynamicWorkflowSnippetPort,
+       modelCatalogPort,
++      mediaGenerationPort,
+       automationPort: options.automationPort,
+       offPeakPort: options.offPeakPort,
+       appVersion,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+index b234c57..888b1b8 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+@@ -7,12 +7,15 @@ import {
+   type Provider,
+   type ProviderModel,
+   type ProviderRegistryView,
++  type ProviderRegistryServiceSnapshot,
+ } from "@zcode/provider";
+ import { createRegistrySelectionProtocolError } from "./provider-registry-selection.js";
+ 
+ export type RuntimeModelFactory = NonNullable<AgentRuntimeDeps["modelFactory"]>;
+ 
+ export interface ProviderRegistryModelSource {
++  /** Same Provider owner also holds media-only models excluded from the chat Registry view. */
++  getSnapshot?(): ProviderRegistryServiceSnapshot | null;
+   getView(): ProviderRegistryView;
+   getProvider(providerId: string): Provider | undefined;
+   getModel(providerId: string, modelId: string): ProviderModel | undefined;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts
+new file mode 100644
+index 0000000..cde4609
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts
+@@ -0,0 +1,248 @@
++import { getEnabledApiKeys } from "@zcode/provider";
++import type { HttpClientPort, MediaGenerationModel, MediaGenerationPort } from "@zcode/contracts";
++import { createHash } from "node:crypto";
++
++interface MediaRegistrySource {
++  getSnapshot(): {
++    sourceRevisions: { config: string };
++    resolution: {
++      resolvedProviders: readonly {
++        providerId: string;
++        providerName?: string | null;
++        enabled: boolean;
++        providerIssues: readonly unknown[];
++        config: {
++          api?: { baseUrl?: string | null } | null;
++          access?: {
++            type: string;
++            apiKey?: string | null;
++            additionalApiKeys?: readonly string[] | null;
++            apiKeyEnabledFlags?: readonly boolean[] | null;
++          } | null;
++        };
++        models: readonly {
++          modelId: string;
++          enabled: boolean;
++          issues: readonly unknown[];
++          config: {
++            properties?: {
++              outputFormat?: {
++                supportsText?: boolean | null;
++                supportsImage?: boolean | null;
++                supportsVideo?: boolean | null;
++              } | null;
++            } | null;
++          };
++        }[];
++      }[];
++    };
++  } | null;
++}
++
++const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
++const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
++
++export function createXaiMediaGenerationPort(input: {
++  registry: MediaRegistrySource;
++  http: Pick<HttpClientPort, "request">;
++}): MediaGenerationPort {
++  const available = () =>
++    input.registry.getSnapshot()?.resolution.resolvedProviders.flatMap((provider) => {
++      if (
++        !provider.enabled ||
++        provider.providerIssues.length ||
++        !isGlobalXaiApi(provider.config.api?.baseUrl)
++      ) {
++        return [];
++      }
++      const access = provider.config.access;
++      if (access?.type !== "api-key" || getEnabledApiKeys(access).length === 0) return [];
++      return provider.models.flatMap((model): MediaGenerationModel[] => {
++        if (!model.enabled || model.issues.length) return [];
++        const output = model.config.properties?.outputFormat;
++        return [
++          ...(output?.supportsImage === true
++            ? [
++                {
++                  providerId: provider.providerId,
++                  providerLabel: provider.providerName?.trim() || provider.providerId,
++                  modelId: model.modelId,
++                  kind: "image" as const,
++                  status: "requires-check" as const,
++                },
++              ]
++            : []),
++          ...(output?.supportsVideo === true
++            ? [
++                {
++                  providerId: provider.providerId,
++                  providerLabel: provider.providerName?.trim() || provider.providerId,
++                  modelId: model.modelId,
++                  kind: "video" as const,
++                  status: "catalog-only" as const,
++                },
++              ]
++            : []),
++        ];
++      });
++    }) ?? [];
++  const imageBinding = (providerId: string, modelId: string, prompt: string) => {
++    const snapshot = input.registry.getSnapshot();
++    const provider = snapshot?.resolution.resolvedProviders.find(
++      (candidate) => candidate.providerId === providerId,
++    );
++    const model = provider?.models.find((candidate) => candidate.modelId === modelId);
++    const access = provider?.config.access;
++    const key = access?.type === "api-key" ? getEnabledApiKeys(access)[0] : undefined;
++    if (
++      !snapshot ||
++      !provider?.enabled ||
++      provider.providerIssues.length ||
++      !isGlobalXaiApi(provider.config.api?.baseUrl) ||
++      !model?.enabled ||
++      model.issues.length ||
++      model.config.properties?.outputFormat?.supportsImage !== true ||
++      !key
++    )
++      return null;
++    return {
++      key,
++      binding: createHash("sha256")
++        .update(JSON.stringify([snapshot.sourceRevisions.config, providerId, modelId, prompt, key]))
++        .digest("hex"),
++    };
++  };
++  return {
++    listModels: available,
++    async prepareImage({ providerId, modelId, prompt }) {
++      const selected = imageBinding(providerId, modelId, prompt);
++      if (!selected) throw new Error("Image generation model or connection is unavailable");
++      const response = await input.http.request(
++        {
++          url: `https://api.x.ai/v1/image-generation-models/${encodeURIComponent(modelId)}`,
++          method: "GET",
++          headers: { Authorization: `Bearer ${selected.key}`, Accept: "application/json" },
++          maxResponseBytes: 1024 * 1024,
++          timeoutMs: 10_000,
++          redirect: "manual",
++        },
++        { signal: AbortSignal.timeout(10_000) },
++      );
++      if (response.status !== 200) {
++        throw new Error(
++          `Image generation model is unavailable for this API key (HTTP ${response.status})`,
++        );
++      }
++      const detail = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
++        string,
++        unknown
++      >;
++      const matchesId =
++        detail.id === modelId ||
++        (Array.isArray(detail.aliases) && detail.aliases.includes(modelId));
++      if (
++        !matchesId ||
++        (Array.isArray(detail.output_modalities) && !detail.output_modalities.includes("image"))
++      ) {
++        throw new Error("Provider did not confirm image generation for this model");
++      }
++      return selected.binding;
++    },
++    async generateImage(request) {
++      // 每次执行重新读取同一 Provider owner；设置页停用或删掉模型后不能沿用旧目录。
++      if (
++        !available().some(
++          (model) =>
++            model.kind === "image" &&
++            model.status === "requires-check" &&
++            model.providerId === request.providerId &&
++            model.modelId === request.modelId,
++        )
++      ) {
++        throw new Error("Image generation model or connection is unavailable");
++      }
++      const selected = imageBinding(request.providerId, request.modelId, request.prompt);
++      if (!selected) throw new Error("Image generation connection is unavailable");
++      if (selected.binding !== request.binding) {
++        throw new Error("Image generation connection changed after confirmation");
++      }
++      const response = await input.http.request(
++        {
++          url: "https://api.x.ai/v1/images/generations",
++          method: "POST",
++          headers: {
++            Authorization: `Bearer ${selected.key}`,
++            "Content-Type": "application/json",
++            Accept: "application/json",
++          },
++          body: Buffer.from(
++            JSON.stringify({
++              model: request.modelId,
++              prompt: request.prompt,
++              response_format: "b64_json",
++            }),
++          ),
++          maxResponseBytes: MAX_RESPONSE_BYTES,
++          timeoutMs: 120_000,
++          redirect: "manual",
++        },
++        { signal: request.signal },
++      );
++      if (response.status !== 200) {
++        throw new Error(`Image generation request failed (HTTP ${response.status})`);
++      }
++      const payload = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
++        string,
++        unknown
++      >;
++      const image = Array.isArray(payload.data)
++        ? (payload.data[0] as Record<string, unknown> | undefined)
++        : undefined;
++      const encoded = typeof image?.b64_json === "string" ? image.b64_json : "";
++      if (
++        !encoded ||
++        encoded.length > MAX_IMAGE_BYTES * 2 ||
++        !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)
++      ) {
++        throw new Error("Image generation returned no valid base64 image");
++      }
++      const bytes = Buffer.from(encoded, "base64");
++      if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
++        throw new Error("Image generation returned an invalid image size");
++      }
++      const mimeType = sniffImageMime(bytes);
++      if (!mimeType) throw new Error("Image generation returned an unsupported image format");
++      const ticks = (payload.usage as Record<string, unknown> | undefined)?.cost_in_usd_ticks;
++      return {
++        bytes,
++        mimeType,
++        reportedModelId: typeof payload.model === "string" ? payload.model : request.modelId,
++        ...(typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0
++          ? { reportedCostUsd: ticks / 10_000_000_000 }
++          : {}),
++      };
++    },
++  };
++}
++
++function isGlobalXaiApi(value: string | null | undefined): boolean {
++  if (!value) return false;
++  try {
++    const url = new URL(value);
++    return url.origin === "https://api.x.ai" && url.pathname.replace(/\/+$/, "") === "/v1";
++  } catch {
++    return false;
++  }
++}
++
++function sniffImageMime(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
++  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
++  if (Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
++    return "image/png";
++  if (
++    Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "RIFF" &&
++    Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WEBP"
++  )
++    return "image/webp";
++  return null;
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+new file mode 100644
+index 0000000..f8a31bf
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+@@ -0,0 +1,206 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createXaiMediaGenerationPort } from "../src/app/xai-media-generation-port.js";
++
++const imageBytes = Buffer.from("/9j/4AAQSkZJRg==", "base64");
++
++function fixture() {
++  const requests: Array<{
++    url: string;
++    method?: string;
++    headers?: Record<string, string>;
++    body?: Uint8Array;
++  }> = [];
++  let imageDetailStatus = 200;
++  const provider = {
++    providerId: "xai-account",
++    providerName: "xAI API",
++    enabled: true,
++    providerIssues: [],
++    config: {
++      api: { baseUrl: "https://api.x.ai/v1", type: "openai-responses" },
++      access: { type: "api-key", apiKey: "synthetic-key" },
++    },
++    models: [
++      {
++        modelId: "grok-text",
++        enabled: true,
++        issues: [],
++        config: { properties: { outputFormat: { supportsText: true } } },
++      },
++      {
++        modelId: "grok-image",
++        enabled: true,
++        issues: [],
++        config: { properties: { outputFormat: { supportsText: false, supportsImage: true } } },
++      },
++      {
++        modelId: "grok-video",
++        enabled: true,
++        issues: [],
++        config: { properties: { outputFormat: { supportsText: false, supportsVideo: true } } },
++      },
++    ],
++  };
++  const registry = {
++    getSnapshot: () => ({
++      sourceRevisions: { config: "revision-1" },
++      resolution: { resolvedProviders: [provider] },
++    }),
++  };
++  const http = {
++    async request(request: {
++      url: string;
++      method?: string;
++      headers?: Record<string, string>;
++      body?: Uint8Array;
++    }) {
++      requests.push(request);
++      if (request.method === "GET") {
++        return {
++          url: request.url,
++          status: imageDetailStatus,
++          statusText: imageDetailStatus === 200 ? "OK" : "Forbidden",
++          headers: {},
++          body: Buffer.from(JSON.stringify({ id: "grok-image", output_modalities: ["image"] })),
++          bytes: 70,
++          durationMs: 1,
++        };
++      }
++      return {
++        url: request.url,
++        status: 200,
++        statusText: "OK",
++        headers: {},
++        body: Buffer.from(
++          JSON.stringify({
++            data: [{ b64_json: imageBytes.toString("base64") }],
++            model: "grok-image",
++            usage: { cost_in_usd_ticks: 400000000 },
++          }),
++        ),
++        bytes: 100,
++        durationMs: 1,
++      };
++    },
++  };
++  return {
++    provider,
++    requests,
++    port: createXaiMediaGenerationPort({ registry, http }),
++    setImageDetailStatus(value: number) {
++      imageDetailStatus = value;
++    },
++  };
++}
++
++test("media model list follows the saved connection and excludes chat-only models", () => {
++  const { port } = fixture();
++  assert.deepEqual(
++    port.listModels().map((item) => [item.modelId, item.kind, item.status]),
++    [
++      ["grok-image", "image", "requires-check"],
++      ["grok-video", "video", "catalog-only"],
++    ],
++  );
++});
++
++test("image generation uses the bound API key, exact model and official endpoint", async () => {
++  const { port, requests } = fixture();
++  const binding = await port.prepareImage({
++    providerId: "xai-account",
++    modelId: "grok-image",
++    prompt: "A blue square",
++  });
++  const result = await port.generateImage({
++    providerId: "xai-account",
++    modelId: "grok-image",
++    prompt: "A blue square",
++    binding,
++    signal: new AbortController().signal,
++  });
++  assert.equal(requests.length, 2);
++  assert.equal(requests[0]?.url, "https://api.x.ai/v1/image-generation-models/grok-image");
++  assert.equal(requests[1]?.url, "https://api.x.ai/v1/images/generations");
++  assert.equal(requests[1]?.headers?.Authorization, "Bearer synthetic-key");
++  assert.deepEqual(JSON.parse(Buffer.from(requests[1]!.body!).toString()), {
++    model: "grok-image",
++    prompt: "A blue square",
++    response_format: "b64_json",
++  });
++  assert.deepEqual(result.bytes, imageBytes);
++  assert.equal(result.mimeType, "image/jpeg");
++  assert.equal(result.reportedCostUsd, 0.04);
++});
++
++test("a removed media model rejects before making a paid request", async () => {
++  const { provider, port, requests } = fixture();
++  provider.models[1]!.enabled = false;
++  await assert.rejects(
++    port.generateImage({
++      providerId: "xai-account",
++      modelId: "grok-image",
++      prompt: "A blue square",
++      binding: "stale-binding",
++      signal: new AbortController().signal,
++    }),
++    /unavailable/,
++  );
++  assert.equal(requests.length, 0);
++});
++
++test("a key change after confirmation cannot spend against another credential", async () => {
++  const { provider, port, requests } = fixture();
++  const binding = await port.prepareImage({
++    providerId: "xai-account",
++    modelId: "grok-image",
++    prompt: "A blue square",
++  });
++  provider.config.access.apiKey = "another-key";
++  await assert.rejects(
++    port.generateImage({
++      providerId: "xai-account",
++      modelId: "grok-image",
++      prompt: "A blue square",
++      binding,
++      signal: new AbortController().signal,
++    }),
++    /changed/,
++  );
++  assert.equal(requests.length, 1, "the prior read-only model check was the only request");
++});
++
++test("a changed prompt after confirmation is rejected before the paid endpoint", async () => {
++  const { port, requests } = fixture();
++  const binding = await port.prepareImage({
++    providerId: "xai-account",
++    modelId: "grok-image",
++    prompt: "A blue square",
++  });
++  await assert.rejects(
++    port.generateImage({
++      providerId: "xai-account",
++      modelId: "grok-image",
++      prompt: "A red square",
++      binding,
++      signal: new AbortController().signal,
++    }),
++    /changed/,
++  );
++  assert.equal(requests.length, 1);
++});
++
++test("an unentitled image model fails the read-only check before approval or payment", async () => {
++  const { port, requests, setImageDetailStatus } = fixture();
++  setImageDetailStatus(403);
++  await assert.rejects(
++    port.prepareImage({
++      providerId: "xai-account",
++      modelId: "grok-image",
++      prompt: "A blue square",
++    }),
++    /403/,
++  );
++  assert.equal(requests.length, 1);
++  assert.equal(requests[0]?.method, "GET");
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/index.ts b/apps/zcode-cli/packages/contracts/src/index.ts
+index c2fe6db..333c0c5 100644
+--- a/apps/zcode-cli/packages/contracts/src/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/index.ts
+@@ -25,6 +25,7 @@ export * from "./interfaces/workflow-escalate.port.js";
+ export * from "./interfaces/dynamic-workflow-run.port.js";
+ export * from "./interfaces/dynamic-workflow-snippet.port.js";
+ export * from "./interfaces/model-catalog.port.js";
++export * from "./interfaces/media-generation.port.js";
+ export * from "./interfaces/automation.port.js";
+ export * from "./interfaces/off-peak.port.js";
+ export * from "./interfaces/mcp.port.js";
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/index.ts b/apps/zcode-cli/packages/contracts/src/interfaces/index.ts
+index 924777e..1b4006a 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/index.ts
+@@ -19,6 +19,7 @@ export * from "./dynamic-workflow-snippet.port.js";
+ // 宿主已配置模型的只读目录：ListModels 与 dwf 的
+ // `subagent_model` 解析都从这里拿「有哪些模型」。
+ export * from "./model-catalog.port.js";
++export * from "./media-generation.port.js";
+ export * from "./automation.port.js";
+ export * from "./mcp.port.js";
+ export * from "./browser-control.port.js";
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+new file mode 100644
+index 0000000..b9bc988
+--- /dev/null
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+@@ -0,0 +1,26 @@
++/** The Provider owner supplies only key-scoped, executable media models. */
++export interface MediaGenerationModel {
++  providerId: string;
++  providerLabel: string;
++  modelId: string;
++  kind: "image" | "video";
++  status: "requires-check" | "catalog-only";
++}
++
++export interface MediaGenerationPort {
++  listModels(): MediaGenerationModel[];
++  /** Opaque connection/model/key revision frozen before tool approval; never contains a credential. */
++  prepareImage(input: { providerId: string; modelId: string; prompt: string }): Promise<string>;
++  generateImage(input: {
++    providerId: string;
++    modelId: string;
++    prompt: string;
++    binding: string;
++    signal: AbortSignal;
++  }): Promise<{
++    bytes: Uint8Array;
++    mimeType: "image/jpeg" | "image/png" | "image/webp";
++    reportedModelId: string;
++    reportedCostUsd?: number;
++  }>;
++}
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/index.ts b/apps/zcode-cli/packages/contracts/src/tools/index.ts
+index 902390a..f5afffc 100644
+--- a/apps/zcode-cli/packages/contracts/src/tools/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/tools/index.ts
+@@ -41,6 +41,7 @@ export * from "./list-saved-workflows.js";
+ // bootstrap 的 actor 禁用名单读走，漏掉这行消费方拿不到 schema 与 LIST_MODELS_TOOL_NAME。
+ export * from "./list-models.js";
+ export * from "./read-usage-stats.js";
++export * from "./media-generation.js";
+ export * from "./eval-workflow-snippet.js";
+ export * from "./list-workflow-runs.js";
+ export * from "./get-workflow-run.js";
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+new file mode 100644
+index 0000000..26a8502
+--- /dev/null
++++ b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+@@ -0,0 +1,54 @@
++import { z } from "zod";
++import { toToolJsonSchema } from "./json-schema.js";
++
++export const LIST_MEDIA_MODELS_TOOL_NAME = "ListMediaModels";
++export const GENERATE_IMAGE_TOOL_NAME = "GenerateImage";
++
++export const ListMediaModelsInputSchema = z
++  .object({
++    kind: z.enum(["image", "video"]).optional(),
++  })
++  .strict();
++export const ListMediaModelsInputJsonSchema = toToolJsonSchema(ListMediaModelsInputSchema);
++
++export const ListMediaModelsOutputSchema = z
++  .object({
++    models: z.array(
++      z
++        .object({
++          providerId: z.string(),
++          providerLabel: z.string(),
++          modelId: z.string(),
++          kind: z.enum(["image", "video"]),
++          status: z.enum(["requires-check", "catalog-only"]),
++        })
++        .strict(),
++    ),
++  })
++  .strict();
++export const ListMediaModelsOutputJsonSchema = toToolJsonSchema(ListMediaModelsOutputSchema);
++
++export const GenerateImageInputSchema = z
++  .object({
++    providerId: z.string().trim().min(1),
++    modelId: z.string().trim().min(1),
++    prompt: z.string().trim().min(1).max(32_000),
++  })
++  .strict();
++export const GenerateImageInputJsonSchema = toToolJsonSchema(GenerateImageInputSchema);
++export const GenerateImageExecutionInputSchema = GenerateImageInputSchema.extend({
++  binding: z.string().min(1),
++}).strict();
++
++export const GenerateImageOutputSchema = z
++  .object({
++    artifactUri: z.string().startsWith("zcode-artifact://"),
++    providerId: z.string(),
++    requestedModelId: z.string(),
++    reportedModelId: z.string(),
++    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
++    reportedCostUsd: z.number().nonnegative().optional(),
++    usageRecorded: z.boolean(),
++  })
++  .strict();
++export const GenerateImageOutputJsonSchema = toToolJsonSchema(GenerateImageOutputSchema);
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+index 2c9f2ee..f229330 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+@@ -72,6 +72,7 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
+     // 这里不能用端口在场做判据——十个工具的端口在任何 CLI 里都装配齐全，灰度是 Host 的决定。
+     // 取值收在 tool-allowlist.ts，与分支刷新那个入口共用同一个推导。
+     includeDynamicWorkflow: resolveRuntimeDynamicWorkflowToolsIncluded(runtime.config),
++    mediaGenerationPort: deps.mediaGenerationPort,
+     // browserControlPort 只是宿主能力，不应隐式暴露高权限 node_repl。
+     // node_repl/browser-use 由 ZCode 官方 browser-use 插件启停推导出的 runtimeFeatures 控制。
+     includeNodeRepl: nodeReplEnabled,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 3965630..63f6964 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -1,4 +1,4 @@
+-import type { RuntimeInputPresentation } from "@zcode/contracts";
++import type { MediaGenerationPort, RuntimeInputPresentation } from "@zcode/contracts";
+ /* eslint-disable max-lines -- Runtime 类型集中承载 core/runtime 对外结构，拆分需要单独迁移。 */
+ import { PermissionService, ToolScheduler } from "./deps.js";
+ import type {
+@@ -363,6 +363,7 @@ export interface AgentRuntimeDeps {
+   dynamicWorkflowSnippetPort?: DynamicWorkflowSnippetPort;
+   /** 模型目录端口；缺席则 ListModels 报能力缺席，CreateWorkflow 的 subagent_model 被拒。 */
+   modelCatalogPort?: ModelCatalogPort;
++  mediaGenerationPort?: MediaGenerationPort;
+   runtimeTaskRegistry?: RuntimeTaskRegistry;
+   artifactStore?: ToolArtifactStorePort;
+   automationPort?: AutomationPort;
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+index 9719fe1..6496e88 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/index.ts
+@@ -15,6 +15,7 @@ import {
+   SAVE_WORKFLOW_TOOL_NAME,
+   SUBMIT_RESULT_TOOL_NAME,
+   type JsonSchema,
++  type MediaGenerationPort,
+ } from "@zcode/contracts";
+ import type { ToolEntry } from "../types.js";
+ import type { AgentProfile } from "../../subagent/profile.js";
+@@ -63,6 +64,7 @@ import { createWorkflowToolEntry } from "./create-workflow.js";
+ import { saveWorkflowToolEntry } from "./save-workflow.js";
+ import { listSavedWorkflowsToolEntry } from "./list-saved-workflows.js";
+ import { readUsageStatsToolEntry } from "./read-usage-stats.js";
++import { createMediaGenerationToolEntries } from "./media-generation.js";
+ import { listModelsToolEntry } from "./list-models.js";
+ import { evalWorkflowSnippetToolEntry } from "./eval-workflow-snippet.js";
+ import { listWorkflowRunsToolEntry } from "./list-workflow-runs.js";
+@@ -183,6 +185,7 @@ interface RegisterBuiltInToolsOptions {
+    * appRuntimePreferences，不在这一层。
+    */
+   includeDynamicWorkflow?: boolean;
++  mediaGenerationPort?: MediaGenerationPort;
+   /** node_repl（js）默认关闭，由官方 browser-use 插件启用。 */
+   includeNodeRepl?: boolean;
+   /** browser-use 说明和 agent.browsers 注入由官方 browser-use 插件 + 宿主 browser bridge 共同启用。 */
+@@ -203,7 +206,10 @@ export function registerBuiltInTools(
+   const allowedTools = options.allowedTools ? new Set(options.allowedTools) : undefined;
+   const disallowedTools = createToolRuleNameSet(options.disallowedTools);
+ 
+-  for (const entry of builtInTools) {
++  const entries = options.mediaGenerationPort
++    ? [...builtInTools, ...createMediaGenerationToolEntries(options.mediaGenerationPort)]
++    : builtInTools;
++  for (const entry of entries) {
+     if (
+       options.embeddedSearchEnabled === true &&
+       (entry.metadata.name === "Glob" || entry.metadata.name === "Grep")
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+new file mode 100644
+index 0000000..b19ce5c
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -0,0 +1,285 @@
++import {
++  GENERATE_IMAGE_TOOL_NAME,
++  GenerateImageInputJsonSchema,
++  GenerateImageInputSchema,
++  GenerateImageExecutionInputSchema,
++  GenerateImageOutputJsonSchema,
++  GenerateImageOutputSchema,
++  LIST_MEDIA_MODELS_TOOL_NAME,
++  ListMediaModelsInputJsonSchema,
++  ListMediaModelsInputSchema,
++  ListMediaModelsOutputJsonSchema,
++  ListMediaModelsOutputSchema,
++  createRootTraceContext,
++  type MediaGenerationPort,
++  type ModelMessageContent,
++  type UsageStorePort,
++} from "@zcode/contracts";
++import type { ToolEntry, ToolHandler } from "../types.js";
++
++const imageData = Symbol("generated-image-data");
++
++type PrivateImageOutput = ReturnType<typeof GenerateImageOutputSchema.parse> & {
++  [imageData]: string;
++};
++
++function imageModelContent(output: unknown): ModelMessageContent {
++  const result = output as PrivateImageOutput;
++  if (!result || typeof result !== "object" || typeof result[imageData] !== "string") {
++    return JSON.stringify(output);
++  }
++  return [
++    {
++      type: "text",
++      text: `Generated image saved as ${result.artifactUri} with ${result.reportedModelId}. ${result.reportedCostUsd === undefined ? "The provider did not report a cost." : `Provider-reported cost: US$${result.reportedCostUsd.toFixed(4)}.`}${result.usageRecorded ? "" : " Usage ledger write failed; tell the user that the Usage page may undercount this request."}`,
++    },
++    {
++      type: "image",
++      mediaType: result.mimeType,
++      dataUrl: result[imageData],
++      source: {
++        id: result.artifactUri,
++        kind: "inline",
++        uri: result.artifactUri,
++        mimeType: result.mimeType,
++        placeholder: "Generated image",
++      },
++    },
++  ];
++}
++
++export function createMediaGenerationToolEntries(
++  port: MediaGenerationPort,
++): [ToolEntry, ToolEntry] {
++  const listHandler: ToolHandler = async (input) => {
++    const { kind } = ListMediaModelsInputSchema.parse(input);
++    return ListMediaModelsOutputSchema.parse({
++      models: port.listModels().filter((model) => !kind || model.kind === kind),
++    });
++  };
++  const generateHandler: ToolHandler = async (input, context) => {
++    const request = GenerateImageExecutionInputSchema.parse(input);
++    if (!context.artifactStore) {
++      throw new Error("Generated image storage is unavailable; no provider request was made");
++    }
++    const usageStore = context.sessionStore as Partial<UsageStorePort> | undefined;
++    if (typeof usageStore?.recordModelUsage !== "function") {
++      throw new Error("Media usage ledger is unavailable; no paid provider request was made");
++    }
++    const startedAt = Date.now();
++    const usageBase = {
++      id: `media-image:${context.sessionId}:${context.toolCallId}`,
++      logicalRequestId: context.toolCallId,
++      sessionID: context.sessionId,
++      ...(context.turnId ? { turnID: context.turnId } : {}),
++      traceID: context.traceId,
++      querySource: "media_image",
++      providerId: request.providerId,
++      modelId: request.modelId,
++      startedAt,
++      providerMetadata: {
++        fleetAccounting: {
++          billingProvider: "xai",
++          workspacePath: context.workspaceRoot,
++        },
++      },
++    } as const;
++    let generated: Awaited<ReturnType<MediaGenerationPort["generateImage"]>>;
++    try {
++      generated = await port.generateImage({
++        ...request,
++        signal: context.abortSignal,
++      });
++    } catch (error) {
++      await usageStore
++        .recordModelUsage({
++          ...usageBase,
++          status: context.abortSignal.aborted ? "cancelled" : "error",
++          completedAt: Date.now(),
++          errorMessage: error instanceof Error ? error.message : String(error),
++        })
++        .catch(() => undefined);
++      throw error;
++    }
++    const completedAt = Date.now();
++    let usageRecorded = true;
++    try {
++      await usageStore.recordModelUsage({
++        ...usageBase,
++        modelId: generated.reportedModelId,
++        status: "completed",
++        completedAt,
++        durationMs: completedAt - startedAt,
++        providerMetadata: {
++          fleetAccounting: {
++            billingProvider: "xai",
++            workspacePath: context.workspaceRoot,
++            requestedModelId: request.modelId,
++            ...(generated.reportedCostUsd === undefined
++              ? {}
++              : { reportedMediaUsd: generated.reportedCostUsd }),
++          },
++        },
++      });
++    } catch {
++      usageRecorded = false;
++    }
++    const dataUrl = `data:${generated.mimeType};base64,${Buffer.from(generated.bytes).toString("base64")}`;
++    const artifact = await context.artifactStore.writeToolResultArtifact(
++      {
++        content: dataUrl,
++        contentType: "text/plain",
++        retention: "session",
++        sessionId: context.sessionId,
++        toolCallId: context.toolCallId,
++        toolName: GENERATE_IMAGE_TOOL_NAME,
++        trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
++        ...(context.turnId ? { turnId: context.turnId } : {}),
++      },
++      { signal: context.abortSignal },
++    );
++    const publicOutput = GenerateImageOutputSchema.parse({
++      artifactUri: artifact.uri,
++      providerId: request.providerId,
++      requestedModelId: request.modelId,
++      reportedModelId: generated.reportedModelId,
++      mimeType: generated.mimeType,
++      ...(generated.reportedCostUsd === undefined
++        ? {}
++        : { reportedCostUsd: generated.reportedCostUsd }),
++      usageRecorded,
++    });
++    // 原图只走 modelContent + Session artifact；工具 JSON 不复制一份 base64。
++    return Object.defineProperty(publicOutput, imageData, { value: dataUrl });
++  };
++  return [
++    {
++      capability: "List image/video generation models reported for connected API credentials",
++      metadata: {
++        name: LIST_MEDIA_MODELS_TOOL_NAME,
++        description:
++          "List media models reported for this host, separately from conversation models. Image status=requires-check means GenerateImage verifies the current key before payment. Video status=catalog-only means video generation is not yet executable in Fleet.",
++        readOnly: true,
++        destructive: false,
++        concurrentSafe: true,
++        timeoutMs: 10000,
++        maxOutputBytes: 16000,
++        sideEffectScope: "none",
++        riskLevel: "low",
++        needsApproval: false,
++      },
++      handler: listHandler,
++      inputSchema: ListMediaModelsInputJsonSchema,
++      outputSchema: ListMediaModelsOutputJsonSchema,
++      runtimeInputSchema: ListMediaModelsInputSchema,
++      runtimeOutputSchema: ListMediaModelsOutputSchema,
++      permission: {
++        permission: "media.models.read",
++        reason: "List only the connected media models on this host",
++        riskLevel: "low",
++        sideEffectScope: "none",
++        needsApproval: false,
++        patternSources: ["toolName"],
++        alwaysAllowPatternSources: ["toolName"],
++        denyPriority: "beforeAsk",
++      },
++      resultBudget: {
++        maxInlineBytes: 16000,
++        maxModelBytes: 16000,
++        strategy: "truncate",
++        preview: { maxBytes: 16000, direction: "head" },
++      },
++      timeout: { kind: "timed", defaultMs: 10000, maxMs: 10000, allowCallOverride: false },
++      cancellation: {
++        supported: false,
++        cleanup: "none",
++        userVisibleMessage: "Listing connected media models",
++      },
++      trace: {
++        required: true,
++        propagateToAdapters: false,
++        recordInput: "summary",
++        recordOutput: "summary",
++      },
++    },
++    {
++      capability:
++        "Generate one image using a selected paid API media model and save the result in this Session",
++      metadata: {
++        name: GENERATE_IMAGE_TOOL_NAME,
++        description:
++          "Generate one image from a text prompt using an exact providerId/modelId returned by ListMediaModels. This makes a paid provider request. It saves the image in this Session and reports provider cost when available. Never use a conversation-only model ID.",
++        readOnly: false,
++        destructive: false,
++        concurrentSafe: false,
++        timeoutMs: 150000,
++        maxOutputBytes: 16000,
++        sideEffectScope: "network",
++        riskLevel: "high",
++        needsApproval: true,
++      },
++      handler: generateHandler,
++      async resolveInput(input) {
++        const parsed = GenerateImageInputSchema.safeParse(input);
++        if (!parsed.success) {
++          return { result: false, errorCode: 4101, message: "Invalid image generation request" };
++        }
++        try {
++          return {
++            result: true,
++            input: {
++              ...parsed.data,
++              binding: await port.prepareImage({
++                providerId: parsed.data.providerId,
++                modelId: parsed.data.modelId,
++                prompt: parsed.data.prompt,
++              }),
++            },
++          };
++        } catch (error) {
++          return {
++            result: false,
++            errorCode: 4102,
++            message:
++              error instanceof Error
++                ? `Image model check failed: ${error.message}`
++                : "Image model check failed; refresh the model list",
++          };
++        }
++      },
++      formatModelContent: imageModelContent,
++      inputSchema: GenerateImageInputJsonSchema,
++      outputSchema: GenerateImageOutputJsonSchema,
++      runtimeInputSchema: GenerateImageExecutionInputSchema,
++      runtimeOutputSchema: GenerateImageOutputSchema,
++      permission: {
++        permission: "media.generate.image",
++        reason: "GenerateImage makes a paid API request and stores its output in this Session",
++        riskLevel: "high",
++        sideEffectScope: "network",
++        needsApproval: true,
++        patternSources: ["toolName"],
++        alwaysAllowPatternSources: [],
++        denyPriority: "beforeAsk",
++      },
++      resultBudget: {
++        maxInlineBytes: 16000,
++        maxModelBytes: 16000,
++        strategy: "truncate",
++        preview: { maxBytes: 16000, direction: "head" },
++      },
++      timeout: { kind: "timed", defaultMs: 150000, maxMs: 150000, allowCallOverride: false },
++      cancellation: {
++        supported: true,
++        cleanup: "none",
++        userVisibleMessage: "Image generation was cancelled",
++      },
++      trace: {
++        required: true,
++        propagateToAdapters: true,
++        recordInput: "summary",
++        recordOutput: "summary",
++      },
++    },
++  ];
++}
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+new file mode 100644
+index 0000000..b96b4a0
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -0,0 +1,135 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { MediaGenerationPort } from "@zcode/contracts";
++import type { ToolExecutionContext } from "../src/tool/types.js";
++import { createMediaGenerationToolEntries } from "../src/tool/handlers/media-generation.js";
++import { registerBuiltInTools } from "../src/tool/handlers/index.js";
++import { createToolRegistry } from "../src/tool/registry.js";
++import { persistToolResultMediaAttachments } from "../src/runtime/helpers/tool-result-media-persistence.js";
++
++test("image generation uses the Session artifact store and asks approval before a paid call", async () => {
++  const calls: string[] = [];
++  const port: MediaGenerationPort = {
++    listModels: () => [
++      {
++        providerId: "xai",
++        providerLabel: "xAI",
++        modelId: "grok-image",
++        kind: "image",
++        status: "requires-check",
++      },
++    ],
++    prepareImage: async () => "bound-connection",
++    async generateImage(input) {
++      calls.push(`${input.providerId}/${input.modelId}:${input.prompt}:${input.binding}`);
++      return {
++        bytes: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
++        mimeType: "image/jpeg",
++        reportedModelId: "grok-image",
++        reportedCostUsd: 0.04,
++      };
++    },
++  };
++  const writes: Array<{ content: string; toolCallId: string }> = [];
++  const usage: Array<{ querySource: string; modelId: string; providerMetadata?: unknown }> = [];
++  const context = {
++    abortSignal: new AbortController().signal,
++    sessionId: "session-1",
++    toolCallId: "call-1",
++    workspaceRoot: "/project",
++    sessionStore: {
++      recordModelUsage: async (value: (typeof usage)[number]) => {
++        usage.push(value);
++      },
++    },
++    artifactStore: {
++      async writeToolResultArtifact(input: { content: string; toolCallId: string }) {
++        writes.push(input);
++        return { uri: "zcode-artifact://session-1/generated-image" };
++      },
++    },
++  } as unknown as ToolExecutionContext;
++  const [list, generate] = createMediaGenerationToolEntries(port);
++  assert.equal(generate.metadata.needsApproval, true);
++  assert.deepEqual(await list.handler({}, context), { models: port.listModels() });
++  const submitted = {
++    providerId: "xai",
++    modelId: "grok-image",
++    prompt: "A blue square",
++  };
++  const resolved = await generate.resolveInput?.(submitted, {} as never);
++  assert.deepEqual(resolved, {
++    result: true,
++    input: { ...submitted, binding: "bound-connection" },
++  });
++  const result = await generate.handler((resolved as { input: unknown }).input, context);
++  assert.deepEqual(calls, ["xai/grok-image:A blue square:bound-connection"]);
++  assert.equal(writes.length, 1);
++  assert.equal(usage[0]?.querySource, "media_image");
++  assert.equal(usage[0]?.modelId, "grok-image");
++  assert.match(JSON.stringify(usage[0]?.providerMetadata), /reportedMediaUsd/);
++  assert.match(writes[0]!.content, /^data:image\/jpeg;base64,/);
++  assert.equal(JSON.stringify(result).includes("/9j/"), false);
++  const content = generate.formatModelContent?.(result);
++  assert.equal(Array.isArray(content), true);
++  assert.match(JSON.stringify(content), /zcode-artifact:\/\/session-1\/generated-image/);
++  assert.match(JSON.stringify(content), /data:image\/jpeg;base64,/);
++  const persisted = await persistToolResultMediaAttachments({
++    artifactStore: context.artifactStore,
++    assistantMessageId: "assistant-1" as never,
++    content: content!,
++    sessionId: context.sessionId,
++    sessionStore: context.sessionStore,
++    signal: context.abortSignal,
++    toolCallId: context.toolCallId,
++    toolName: "GenerateImage",
++    traceContext: { traceId: "trace-1" } as never,
++    turnId: "turn-1" as never,
++  });
++  assert.equal(persisted?.attachments[0]?.url, "zcode-artifact://session-1/generated-image");
++  assert.equal(writes.length, 1, "the persisted tool result reuses the original image artifact");
++});
++
++test("media tools use the existing runtime tool allow/deny registration gate", () => {
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => {
++      throw new Error("no media account");
++    },
++    generateImage: async () => {
++      throw new Error("must not call");
++    },
++  };
++  const allowed = createToolRegistry();
++  registerBuiltInTools(allowed, { mediaGenerationPort: port });
++  assert.ok(allowed.get("ListMediaModels"));
++  assert.ok(allowed.get("GenerateImage"));
++
++  const denied = createToolRegistry();
++  registerBuiltInTools(denied, { mediaGenerationPort: port, disallowedTools: ["GenerateImage"] });
++  assert.ok(denied.get("ListMediaModels"));
++  assert.equal(denied.get("GenerateImage"), undefined);
++});
++
++test("a denied media entitlement reaches the Agent with the actual status before approval", async () => {
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => {
++      throw new Error("Image generation model is unavailable for this API key (HTTP 403)");
++    },
++    generateImage: async () => {
++      throw new Error("paid request must not run");
++    },
++  };
++  const [, generate] = createMediaGenerationToolEntries(port);
++  const result = await generate.resolveInput?.(
++    {
++      providerId: "xai",
++      modelId: "grok-image",
++      prompt: "A blue square",
++    },
++    {} as never,
++  );
++  assert.equal(result?.result, false);
++  assert.match((result as { message: string }).message, /HTTP 403/);
++});
+diff --git a/package.json b/package.json
+index 9253632..ac4932e 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run lint && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index 303ee9a..c862446 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -156,6 +156,8 @@ export type ModelOutputFormatConfigInput = Readonly<z.infer<typeof modelOutputFo
+ 
+ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConfig> {
+   readonly supportsText?: ModelOutputFormatConfigInput["supportsText"];
++  readonly supportsImage?: ModelOutputFormatConfigInput["supportsImage"];
++  readonly supportsVideo?: ModelOutputFormatConfigInput["supportsVideo"];
+ 
+   constructor(input: ModelOutputFormatConfigInput = {}) {
+     super();
+@@ -166,6 +168,8 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+   overlay(next: ModelOutputFormatConfig): ModelOutputFormatConfig {
+     return new ModelOutputFormatConfig({
+       supportsText: this.overlayValue(this.supportsText, next.supportsText),
++      supportsImage: this.overlayValue(this.supportsImage, next.supportsImage),
++      supportsVideo: this.overlayValue(this.supportsVideo, next.supportsVideo),
+     });
+   }
+ 
+@@ -174,7 +178,11 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+   }
+ 
+   toJSON(): ModelOutputFormatConfigInput {
+-    return objectWithoutUndefined({ supportsText: this.supportsText });
++    return objectWithoutUndefined({
++      supportsText: this.supportsText,
++      supportsImage: this.supportsImage,
++      supportsVideo: this.supportsVideo,
++    });
+   }
+ }
+ 
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index bebce26..0c6db95 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -106,7 +106,15 @@ export function serializeRegistryModelConfig(
+         supportsAudio: config.properties.inputFormat.supportsAudio,
+         supportsPdf: config.properties.inputFormat.supportsPdf,
+       },
+-      outputFormat: { supportsText: config.properties.outputFormat.supportsText },
++      outputFormat: {
++        supportsText: config.properties.outputFormat.supportsText,
++        ...(config.properties.outputFormat.supportsImage !== undefined
++          ? { supportsImage: config.properties.outputFormat.supportsImage }
++          : {}),
++        ...(config.properties.outputFormat.supportsVideo !== undefined
++          ? { supportsVideo: config.properties.outputFormat.supportsVideo }
++          : {}),
++      },
+       supportsToolCall: config.properties.supportsToolCall,
+       supportsJsonSchemaOutput: config.properties.supportsJsonSchemaOutput,
+       supportsNativeWebSearch: config.properties.supportsNativeWebSearch,
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index d49a8c9..59d59ea 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -16,6 +16,7 @@ export interface DiscoveredModel {
+ export interface ModelDiscoveryResult {
+   source: "provider" | "catalog";
+   models: DiscoveredModel[];
++  warnings?: Array<{ kind: "text" | "image" | "video"; status: number }>;
+ }
+ 
+ const MAX_MODEL_LIST_PAGE_BYTES = 8 * 1024 * 1024;
+@@ -80,6 +81,9 @@ export async function discoverConnectionModels(
+     headers.delete("anthropic-version");
+     headers.set("Authorization", `Bearer ${apiKey}`);
+   }
++  if (base.hostname === "api.x.ai" && path === "/v1") {
++    return discoverXaiModels(base.origin, headers, fetch);
++  }
+   const url = new URL(`${base.origin}${path}/models`);
+   // Go 的统一目录混有 Messages/Chat/Responses 模型；只合并当前协议已声明的路由。
+   const goTemplate =
+@@ -132,3 +136,96 @@ export async function discoverConnectionModels(
+     "The model list exceeds the supported page limit; add the required models manually",
+   );
+ }
++
++/** xAI's generic /models has no output class; these key-scoped catalogs are the route authority. */
++async function discoverXaiModels(
++  origin: string,
++  headers: Headers,
++  fetch: typeof globalThis.fetch,
++): Promise<ModelDiscoveryResult> {
++  const models = new Map<string, DiscoveredModel>();
++  const warnings: NonNullable<ModelDiscoveryResult["warnings"]> = [];
++  const deadline = AbortSignal.timeout(20_000);
++  for (const [route, output, kind] of [
++    ["language-models", "text", "text"],
++    ["image-generation-models", "image", "image"],
++    ["video-generation-models", "video", "video"],
++  ] as const) {
++    const response = await fetch(`${origin}/v1/${route}`, {
++      headers,
++      signal: deadline,
++      redirect: "error",
++    });
++    if (!response.ok) {
++      await response.body?.cancel();
++      if (response.status === 403 || response.status === 404) {
++        warnings.push({ kind, status: response.status });
++        continue;
++      }
++      throw new Error(`Model list request failed (${response.status}) for ${route}`);
++    }
++    const body = (await readModelListPage(response)) as { models?: unknown };
++    if (!Array.isArray(body.models)) {
++      throw new Error(`The provider returned an unsupported ${route} catalog`);
++    }
++    for (const value of body.models) {
++      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
++      const item = value as Record<string, unknown>;
++      const id = typeof item.id === "string" ? item.id.trim() : "";
++      if (!id) continue;
++      const reportedOutputs = item.output_modalities;
++      if (Array.isArray(reportedOutputs) && !reportedOutputs.includes(output)) {
++        throw new Error(`The provider returned a conflicting ${route} output for ${id}`);
++      }
++      const config = readDiscoveredModelMetadata({
++        ...item,
++        output_modalities: reportedOutputs ?? [output],
++      });
++      const name =
++        typeof item.name === "string" && item.name.trim()
++          ? item.name
++          : typeof item.display_name === "string" && item.display_name.trim()
++            ? item.display_name
++            : id;
++      const existing = models.get(id);
++      models.set(
++        id,
++        existing ? mergeDiscoveredOutput(existing, { id, name, config }) : { id, name, config },
++      );
++      if (models.size > MAX_MODEL_LIST_ENTRIES) {
++        throw new Error("The model list exceeds the supported entry limit");
++      }
++    }
++  }
++  if (warnings.length === 3) {
++    throw new Error(
++      `Model list request failed (${warnings[0]!.status}) for all xAI media catalogs`,
++    );
++  }
++  return {
++    source: "provider",
++    models: [...models.values()],
++    ...(warnings.length ? { warnings } : {}),
++  };
++}
++
++function mergeDiscoveredOutput(existing: DiscoveredModel, next: DiscoveredModel): DiscoveredModel {
++  const earlier = existing.config.properties?.outputFormat;
++  const later = next.config.properties?.outputFormat;
++  return {
++    ...existing,
++    config: {
++      ...existing.config,
++      properties: {
++        ...existing.config.properties,
++        ...next.config.properties,
++        outputFormat: {
++          supportsText: earlier?.supportsText === true || later?.supportsText === true,
++          supportsImage: earlier?.supportsImage === true || later?.supportsImage === true,
++          supportsVideo: earlier?.supportsVideo === true || later?.supportsVideo === true,
++        },
++      },
++      optionSpecs: existing.config.optionSpecs ?? next.config.optionSpecs,
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/modelDiscoveryMetadata.ts b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+index 081f273..fa50fe4 100644
+--- a/packages/services/src/model-provider/modelDiscoveryMetadata.ts
++++ b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+@@ -45,7 +45,15 @@ export function readDiscoveredModelMetadata(value: unknown): ModelConfigObject {
+                   },
+                 }
+               : {}),
+-            ...(outputs ? { outputFormat: { supportsText: outputs.includes("text") } } : {}),
++            ...(outputs
++              ? {
++                  outputFormat: {
++                    supportsText: outputs.includes("text"),
++                    supportsImage: outputs.includes("image"),
++                    supportsVideo: outputs.includes("video"),
++                  },
++                }
++              : {}),
+             ...(tools !== undefined ? { supportsToolCall: tools } : {}),
+           },
+         }
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 0805a43..0e1afa2 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -605,6 +605,7 @@ test("explicit API modality and limits survive discovery, update, restart and ch
+     assert.equal(model.effectiveConfig.properties?.contextWindow, 8192);
+     assert.equal(model.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 2048);
+     assert.equal(model.effectiveConfig.properties?.supportsToolCall, false);
++    assert.equal(model.effectiveConfig.properties?.outputFormat?.supportsImage, true);
+     assert.equal(model.selectable, false, "media output cannot enter the chat picker");
+     assert.equal(
+       (await f.runtime.modelSelection.getView()).providers.flatMap((p) => p.models).length,
+@@ -636,6 +637,126 @@ test("explicit API modality and limits survive discovery, update, restart and ch
+   }
+ });
+ 
++test("xAI discovery keeps language, image and video catalogs separate for the saved API key", async () => {
++  const f = await fixture();
++  try {
++    const provider = (await f.service.getView()).providers.find(
++      (row) => row.providerId === f.providerId,
++    )!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...provider.personalConfig,
++      api: { type: "openai-responses", baseUrl: "https://api.x.ai/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    });
++    const paths: string[] = [];
++    f.setFetch(async (input) => {
++      const path = new URL(String(input)).pathname;
++      paths.push(path);
++      if (path === "/v1/language-models")
++        return Response.json({
++          models: [
++            {
++              id: "grok-text",
++              context_length: 131072,
++              input_modalities: ["text", "image"],
++              output_modalities: ["text"],
++            },
++          ],
++        });
++      if (path === "/v1/image-generation-models")
++        return Response.json({
++          models: [
++            {
++              id: "grok-image",
++              input_modalities: ["text", "image"],
++              output_modalities: ["image"],
++            },
++          ],
++        });
++      if (path === "/v1/video-generation-models")
++        return Response.json({
++          models: [
++            {
++              id: "grok-video",
++              input_modalities: ["text", "image"],
++              output_modalities: ["video"],
++            },
++          ],
++        });
++      throw new Error(`Unexpected model catalog ${path}`);
++    });
++    await f.service.discoverModels(f.providerId);
++    assert.deepEqual(paths, [
++      "/v1/language-models",
++      "/v1/image-generation-models",
++      "/v1/video-generation-models",
++    ]);
++    const models = await f.models();
++    assert.deepEqual(
++      models.map((model) => model.modelId),
++      ["grok-text", "grok-image", "grok-video"],
++    );
++    assert.equal(
++      models.find((model) => model.modelId === "grok-image")?.effectiveConfig.properties
++        ?.outputFormat?.supportsImage,
++      true,
++    );
++    assert.equal(
++      models.find((model) => model.modelId === "grok-video")?.effectiveConfig.properties
++        ?.outputFormat?.supportsVideo,
++      true,
++    );
++    assert.equal(models.find((model) => model.modelId === "grok-image")?.issues.length, 0);
++    assert.deepEqual(
++      (await f.runtime.modelSelection.getView()).providers.flatMap((row) =>
++        row.models.map((model) => model.modelId),
++      ),
++      ["grok-text"],
++    );
++    await f.restart();
++    assert.equal(
++      (await f.models()).find((model) => model.modelId === "grok-video")?.effectiveConfig.properties
++        ?.outputFormat?.supportsVideo,
++      true,
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("a video-only catalog denial does not hide the key's available image models", async () => {
++  const f = await fixture();
++  try {
++    const provider = (await f.service.getView()).providers.find(
++      (row) => row.providerId === f.providerId,
++    )!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...provider.personalConfig,
++      api: { type: "openai-responses", baseUrl: "https://api.x.ai/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    });
++    f.setFetch(async (input) => {
++      const path = new URL(String(input)).pathname;
++      if (path === "/v1/video-generation-models") return Response.json({}, { status: 403 });
++      if (path === "/v1/language-models") return Response.json({ models: [] });
++      if (path === "/v1/image-generation-models")
++        return Response.json({
++          models: [{ id: "grok-image", output_modalities: ["image"] }],
++        });
++      throw new Error(`Unexpected ${path}`);
++    });
++    const result = await f.service.discoverModels(f.providerId);
++    assert.deepEqual(result.warnings, [{ kind: "video", status: 403 }]);
++    assert.equal(
++      (await f.models()).find((model) => model.modelId === "grok-image")?.effectiveConfig.properties
++        ?.outputFormat?.supportsImage,
++      true,
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("OpenCode Go discovery only merges models declared for the saved wire protocol", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/shared/src/model-config.ts b/packages/shared/src/model-config.ts
+index e599621..caa0d4f 100644
+--- a/packages/shared/src/model-config.ts
++++ b/packages/shared/src/model-config.ts
+@@ -58,7 +58,13 @@ export const completeModelInputFormatDataSchema = z
+     supportsPdf: z.boolean(),
+   })
+   .strict();
+-export const completeModelOutputFormatDataSchema = z.object({ supportsText: z.boolean() }).strict();
++export const completeModelOutputFormatDataSchema = z
++  .object({
++    supportsText: z.boolean(),
++    supportsImage: z.boolean().optional(),
++    supportsVideo: z.boolean().optional(),
++  })
++  .strict();
+ export const modelInputFormatDataSchema = z
+   .object(sparseShape(completeModelInputFormatDataSchema.shape))
+   .strict();
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 56ed1e3..6c94250 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,16 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.discovery.partial":
++    "Some model catalogs were unavailable: {details}. Other available models were saved.",
++  "settings.modelProvider.discovery.kind.text": "Chat",
++  "settings.modelProvider.discovery.kind.image": "Image generation",
++  "settings.modelProvider.discovery.kind.video": "Video generation",
++  "model.capability.imageOutput": "Image generation",
++  "model.capability.videoOutput": "Video generation",
++  "model.capability.imageOutputHint":
++    "The provider reports image output; use still depends on the connection and generation endpoint.",
++  "model.capability.videoOutputHint":
++    "The provider reports video output; use still depends on the connection and generation endpoint.",
+   "chat.visionBridge.title": "Image recognition",
+   "chat.visionBridge.select": "Choose a vision model",
+   "chat.visionBridge.clear": "Do not use image recognition",
+@@ -7219,8 +7230,10 @@ const enUS: Record<string, string> = {
+     "Amounts use this app's recorded tokens and public API rates. Bar segments show which request path invoked the model; ordinary tool calls and outputs are not assigned a model cost. Missing prices are not guessed, and subscription fees are excluded.",
+   "settings.usage.apiEstimate.title": "Usage and cost",
+   "settings.usage.apiEstimate.apiReference": "At API list prices",
++  "settings.usage.apiEstimate.apiReferenceWithReported":
++    "API cost reference (includes provider-reported charges)",
+   "settings.usage.apiEstimate.source.conversation": "Main conversation",
+-  "settings.usage.apiEstimate.source.tool": "Tools and image recognition",
++  "settings.usage.apiEstimate.source.tool": "Tools and media models",
+   "settings.usage.apiEstimate.source.delegate": "Child tasks",
+   "settings.usage.apiEstimate.source.other": "Other model calls",
+   "settings.usage.apiEstimate.models": "By model",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6f500e0..f2ecd48 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,13 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.discovery.partial": "部分模型目录未读到：{details}；已保存其他可用模型。",
++  "settings.modelProvider.discovery.kind.text": "对话",
++  "settings.modelProvider.discovery.kind.image": "生图",
++  "settings.modelProvider.discovery.kind.video": "生视频",
++  "model.capability.imageOutput": "生图",
++  "model.capability.videoOutput": "生视频",
++  "model.capability.imageOutputHint": "上游目录声明此模型输出图片；使用仍取决于连接和生成端点。",
++  "model.capability.videoOutputHint": "上游目录声明此模型输出视频；使用仍取决于连接和生成端点。",
+   "chat.visionBridge.title": "图片识别",
+   "chat.visionBridge.select": "选择识图模型",
+   "chat.visionBridge.clear": "不使用图片识别",
+@@ -6845,8 +6853,9 @@ const zhCN: Record<string, string> = {
+     "金额按本软件记录的 Token 和公开 API 单价估算；色段只区分发起模型请求的来源，不把普通工具调用或工具输出摊入费用。缺价不补猜，也不包含会员费用。",
+   "settings.usage.apiEstimate.title": "用量与成本",
+   "settings.usage.apiEstimate.apiReference": "按 API 原价估算",
++  "settings.usage.apiEstimate.apiReferenceWithReported": "API 费用参考（含厂商实报）",
+   "settings.usage.apiEstimate.source.conversation": "主对话",
+-  "settings.usage.apiEstimate.source.tool": "工具与图片识别",
++  "settings.usage.apiEstimate.source.tool": "工具与媒体模型",
+   "settings.usage.apiEstimate.source.delegate": "子任务",
+   "settings.usage.apiEstimate.source.other": "其他模型调用",
+   "settings.usage.apiEstimate.models": "按模型",
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 5dead79..d606ec3 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -4,7 +4,11 @@ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { fetchSavedModelCatalog, modelCatalogFailureKind } from "./modelDiscoveryActions.js";
++import {
++  fetchSavedModelCatalog,
++  modelCatalogFailureKind,
++  type DiscoveredCatalog,
++} from "./modelDiscoveryActions.js";
+ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+ import { ModelDraftRows } from "./ModelDraftRows.js";
+ 
+@@ -34,6 +38,7 @@ export function ModelDiscoverySection({
+   const searchInputRef = useRef<HTMLInputElement>(null);
+   const [busy, setBusy] = useState<"fetch" | null>(null);
+   const [error, setError] = useState<string>();
++  const [warnings, setWarnings] = useState<DiscoveredCatalog["warnings"]>();
+   const errorKind = error ? modelCatalogFailureKind(error) : undefined;
+   const missingCatalog = errorKind === "noCatalog";
+   const errorMessage = errorKind ? t(errorKind) : undefined;
+@@ -46,12 +51,14 @@ export function ModelDiscoverySection({
+     const isCurrent = () => version === generation.current;
+     setBusy("fetch");
+     setError(undefined);
++    setWarnings(undefined);
+     try {
+-      await fetchSavedModelCatalog({
++      const catalog = await fetchSavedModelCatalog({
+         providerId,
+         service: providerSettingsService,
+         isCurrent,
+       });
++      if (isCurrent()) setWarnings(catalog?.warnings);
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+@@ -68,6 +75,7 @@ export function ModelDiscoverySection({
+     busyRef.current = false;
+     setBusy(null);
+     setError(undefined);
++    setWarnings(undefined);
+     void loadCatalog();
+     return () => {
+       generation.current++;
+@@ -160,6 +168,18 @@ export function ModelDiscoverySection({
+           </Button>
+         </div>
+       ) : null}
++      {warnings?.length ? (
++        <p role="status" className="text-ui-caption text-foreground-subtle">
++          {intl.formatMessage(
++            { id: "settings.modelProvider.discovery.partial" },
++            {
++              details: warnings
++                .map((warning) => `${t(`kind.${warning.kind}`)}（${warning.status}）`)
++                .join("、"),
++            },
++          )}
++        </p>
++      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 9f175e6..736b583 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -3,7 +3,10 @@ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.
+ import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
+ import { Loader2Icon, Unplug } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+-import { ModelInputCapabilityBadge } from "@/components/ModelInputCapabilityBadge.js";
++import {
++  ModelInputCapabilityBadge,
++  MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME,
++} from "@/components/ModelInputCapabilityBadge.js";
+ import { Switch } from "@/components/ui/switch.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { useProviderModelDraft } from "@/settings/model-provider-section/useProviderModelDraft.js";
+@@ -255,7 +258,13 @@ export function ModelRowInput({
+           id: `settings.modelProvider.modelMetadata.invalid.${draftErrorField}`,
+         })
+       : null);
+-  const shouldShowTestButton = Boolean(onTest);
++  const reportedOutput =
++    model.evidenceConfig?.properties?.outputFormat ?? model.config.properties?.outputFormat;
++  const mediaOnly =
++    reportedOutput?.supportsText === false &&
++    (reportedOutput.supportsImage === true || reportedOutput.supportsVideo === true);
++  // 文本连通性探针会让纯生图/视频端点必然报错；这不是账号认证失败。
++  const shouldShowTestButton = Boolean(onTest) && !mediaOnly;
+   const testDisabled = !providerEnabled || isTesting || !draft.idValue.trim() || !onTest;
+   const reportedContextWindow = model.evidenceConfig?.properties?.contextWindow;
+   const contextWindowLabel = reportedContextWindow
+@@ -280,20 +289,41 @@ export function ModelRowInput({
+           >
+             {model.modelId}
+           </span>
+-          <span
+-            className="inline-flex h-5 max-w-20 shrink-0 items-center truncate rounded-md border border-border bg-surface px-1.5 font-mono text-ui-sm text-foreground-subtle"
+-            aria-label={contextWindowAccessibleLabel}
+-            title={contextWindowAccessibleLabel}
+-          >
+-            {contextWindowLabel}
+-          </span>
+-          {shouldShowModelVisionBadge(
++          {!mediaOnly ? (
++            <span
++              className="inline-flex h-5 max-w-20 shrink-0 items-center truncate rounded-md border border-border bg-surface px-1.5 font-mono text-ui-sm text-foreground-subtle"
++              aria-label={contextWindowAccessibleLabel}
++              title={contextWindowAccessibleLabel}
++            >
++              {contextWindowLabel}
++            </span>
++          ) : null}
++          {!mediaOnly &&
++          shouldShowModelVisionBadge(
+             model.modelId,
+             model.evidenceConfig?.properties?.inputFormat?.supportsImage,
+             providerAccess,
+           ) ? (
+             <ModelInputCapabilityBadge />
+           ) : null}
++          {reportedOutput?.supportsImage === true ? (
++            <span
++              className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++              data-model-output-capability="image"
++              title={intl.formatMessage({ id: "model.capability.imageOutputHint" })}
++            >
++              {intl.formatMessage({ id: "model.capability.imageOutput" })}
++            </span>
++          ) : null}
++          {reportedOutput?.supportsVideo === true ? (
++            <span
++              className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++              data-model-output-capability="video"
++              title={intl.formatMessage({ id: "model.capability.videoOutputHint" })}
++            >
++              {intl.formatMessage({ id: "model.capability.videoOutput" })}
++            </span>
++          ) : null}
+         </div>
+         {shouldShowTestButton ? (
+           <Button
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 369b1b7..2591a52 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -64,6 +64,9 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+           maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
+         }).format(amount);
+   const partial = report.summary.pricedCount < report.summary.requests;
++  const hasReportedMediaCost = report.models.some((model) =>
++    model.priceVersions.some((version) => version.startsWith("provider-reported:")),
++  );
+   const sourceLabels = Object.fromEntries(
+     (["conversation", "tool", "delegate", "other"] as UsageCostSource[]).map((source) => [
+       source,
+@@ -86,7 +89,9 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+                 }))}
+             />
+           </div>
+-          <div className="text-ui-sm text-foreground-subtle">{t("apiReference")}</div>
++          <div className="text-ui-sm text-foreground-subtle">
++            {t(hasReportedMediaCost ? "apiReferenceWithReported" : "apiReference")}
++          </div>
+           <div className="font-mono text-ui-lg font-medium tabular-nums">
+             {partial && report.summary.apiUsd !== null ? "≥ " : ""}
+             {money(report.summary.apiUsd)}
+diff --git a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+index a7875c4..c66f35f 100644
+--- a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
++++ b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+@@ -17,9 +17,13 @@ export interface UsageCostSourceRow {
+ export function usageCostSource(querySource: string | undefined): UsageCostSource {
+   if (querySource === "main_turn") return "conversation";
+   if (
+-    ["web_search_tool", "web_fetch_processing", "read_session_context", "vision_bridge"].includes(
+-      querySource ?? "",
+-    )
++    [
++      "web_search_tool",
++      "web_fetch_processing",
++      "read_session_context",
++      "vision_bridge",
++      "media_image",
++    ].includes(querySource ?? "")
+   )
+     return "tool";
+   if (querySource === "subagent" || querySource === "workflow_child") return "delegate";
+diff --git a/packages/ui/test/usageCostSourceViewModel.test.ts b/packages/ui/test/usageCostSourceViewModel.test.ts
+index 3721b19..6093861 100644
+--- a/packages/ui/test/usageCostSourceViewModel.test.ts
++++ b/packages/ui/test/usageCostSourceViewModel.test.ts
+@@ -38,6 +38,7 @@ test("cost composition uses recorded model request sources rather than tool-call
+   assert.deepEqual([model.pricedCount, model.requestCount], [4, 5]);
+   assert.equal(usageCostSource("web_fetch_processing"), "tool");
+   assert.equal(usageCostSource("vision_bridge"), "tool");
++  assert.equal(usageCostSource("media_image"), "tool");
+   assert.equal(usageCostSource("unrecognized"), "other");
+ });
+ 

@@ -1,0 +1,217 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index 2157d1f..69b0378 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -138,12 +138,19 @@ export function queryAccounting(
+       priceVersion: `current:${price.priceVersion}`,
+     });
+   });
++  // 同名连接/账号可以先后走订阅与 API；必须按请求已冻结的身份分组，旧缺字段保持未知。
+   return db
+     .prepare(`with repriced as materialized (
+     select provider_id,model_id,query_source,started_at,fleet_usage_price(accounting_json,provider_id,model_id,started_at) as accounting_json
+     from model_usage where started_at >= ? and started_at < ?
+   ), facts as (
+     select provider_id as providerId, model_id as modelId, query_source as querySource, started_at,
++      case when json_type(accounting_json,'$.authKind') = 'text'
++        and length(json_extract(accounting_json,'$.authKind')) > 0
++        then json_extract(accounting_json,'$.authKind') end as authKind,
++      case when json_type(accounting_json,'$.billingProvider') = 'text'
++        and length(json_extract(accounting_json,'$.billingProvider')) > 0
++        then json_extract(accounting_json,'$.billingProvider') end as billingProvider,
+       json_extract(accounting_json,'$.accountId') as accountId,
+       json_extract(accounting_json,'$.workspacePath') as workspacePath,
+       json_extract(accounting_json,'$.requestedSpeedMode') as speedMode,
+@@ -155,7 +162,7 @@ export function queryAccounting(
+       json_extract(accounting_json,'$.priceVersion') as priceVersion,
+       json_extract(accounting_json,'$.sourceUrl') as sourceUrl
+     from repriced
+-  ) select providerId,accountId,workspacePath,modelId,querySource,speedMode,count(*) as requestCount,
++  ) select providerId,authKind,billingProvider,accountId,workspacePath,modelId,querySource,speedMode,count(*) as requestCount,
+     sum(case when inputTokens is not null and outputTokens is not null then 1 else 0 end) as reportedCount,
+     coalesce(sum(inputTokens),0) as inputTokens,coalesce(sum(outputTokens),0) as outputTokens,
+     coalesce(sum(case when cacheReadTokens between 0 and inputTokens then cacheReadTokens end),0) as cacheReadTokens,
+@@ -165,7 +172,7 @@ export function queryAccounting(
+     coalesce(sum(estimatedCredits),0) as estimatedCredits,count(estimatedCredits) as creditCount,
+     min(started_at) as firstAt,max(started_at) as lastAt,group_concat(distinct priceVersion) as priceVersions,
+     group_concat(distinct sourceUrl) as priceSources
+-    from facts group by providerId,accountId,workspacePath,modelId,querySource,speedMode order by inputTokens+outputTokens desc
++    from facts group by providerId,authKind,billingProvider,accountId,workspacePath,modelId,querySource,speedMode order by inputTokens+outputTokens desc
+   `)
+     .all(since, until) as unknown as UsageAccountingRow[];
+ }
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 79cad1b..b394440 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -6,7 +6,11 @@ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
+ import type { SessionId, ProjectId, ModelUsageRecord, TurnId } from "@zcode/contracts";
+-import { subscriptionPaymentsSchema } from "@zcode/shared";
++import {
++  buildUsageCostReport,
++  subscriptionPaymentsSchema,
++  usageAccountingRowSchema,
++} from "@zcode/shared";
+ import {
+   queryAccounting,
+   accountingSnapshot,
+@@ -101,6 +105,111 @@ test("accounting survives reopen and retention; same logical request is not coun
+   }
+ });
+ 
++test("recorded auth and billing identities survive reopen without merging otherwise identical usage", async () => {
++  const f = await fixture();
++  const metadata = (authKind?: string, billingProvider?: string) => ({
++    fleetAccounting: {
++      accountId: "a",
++      requestedSpeedMode: "standard",
++      ...(authKind === undefined ? {} : { authKind }),
++      ...(billingProvider === undefined ? {} : { billingProvider }),
++    },
++  });
++  const storedFacts = () => {
++    const db = new DatabaseSync(f.path, { readOnly: true });
++    try {
++      return db.prepare("select id, accounting_json from model_usage order by id").all();
++    } finally {
++      db.close();
++    }
++  };
++  try {
++    const subscription = { startedAt: 100, providerMetadata: metadata("subscription", "openai") };
++    await f.record("subscription", "a", "standard", subscription);
++    await f.record("subscription", "a", "standard", subscription);
++    await f.record("api", "a", "standard", {
++      startedAt: 101,
++      providerMetadata: metadata("api-key", "openai"),
++    });
++    await f.record("other-billing", "a", "standard", {
++      startedAt: 102,
++      providerMetadata: metadata("subscription", "anthropic"),
++    });
++    await f.record("legacy", "a", "standard", {
++      startedAt: 103,
++      providerMetadata: metadata(),
++    });
++    await f.record("outside-range", "a", "standard", {
++      startedAt: 104,
++      providerMetadata: metadata("subscription", "openai"),
++    });
++    const before = storedFacts();
++    f.reopen();
++    const result = await f.query(100, 104);
++    const rows = result.accounting!.map((row) => usageAccountingRowSchema.parse(row));
++    assert.equal(rows.length, 4);
++    assert.deepEqual(
++      new Set(rows.map((row) => JSON.stringify([row.authKind, row.billingProvider]))),
++      new Set([
++        '["subscription","openai"]',
++        '["api-key","openai"]',
++        '["subscription","anthropic"]',
++        "[null,null]",
++      ]),
++    );
++    assert.ok(rows.every((row) => row.requestCount === 1));
++    const legacy = rows.find((row) => row.authKind === null)!;
++    assert.equal(legacy.accountId, "a");
++    assert.equal(legacy.billingProvider, null);
++    assert.equal(legacy.pricedCount, 0);
++    const report = buildUsageCostReport(rows);
++    assert.equal(report.summary.requests, result.totals.modelRequestCount);
++    assert.equal(report.summary.requests, 4);
++    assert.equal(report.summary.totalTokens, 4400);
++    assert.equal(report.models.length, 1);
++    assert.equal(report.models[0]?.requests, 4);
++    assert.equal(report.summary.apiUsd, rows.reduce((sum, row) => sum + row.estimatedUsd, 0));
++    assert.equal((await f.query(104, 105)).accounting?.[0]?.requestCount, 1);
++    assert.deepEqual(storedFacts(), before);
++  } finally {
++    await f.close();
++  }
++});
++
++test("missing or non-string recorded auth identities stay unknown without modifying history", () => {
++  const db = new DatabaseSync(":memory:");
++  try {
++    db.exec(
++      "create table model_usage(provider_id text,model_id text,started_at integer,accounting_json text,query_source text default 'main_turn')",
++    );
++    const insert = db.prepare("insert into model_usage values(?,?,?,?,?)");
++    for (const [at, identity] of [
++      [100, {}],
++      [101, { authKind: null, billingProvider: null }],
++      [102, { authKind: true, billingProvider: 42 }],
++      [103, { authKind: "", billingProvider: "" }],
++    ] as const) {
++      insert.run(
++        "same-provider",
++        "same-model",
++        at,
++        JSON.stringify({ ...identity, estimatedUsd: 1, priceVersion: "frozen" }),
++        "main_turn",
++      );
++    }
++    const before = db.prepare("select * from model_usage order by started_at").all();
++    const rows = queryAccounting(db, 100, 104).map((row) => usageAccountingRowSchema.parse(row));
++    assert.equal(rows.length, 1);
++    assert.equal(rows[0]?.authKind, null);
++    assert.equal(rows[0]?.billingProvider, null);
++    assert.equal(rows[0]?.requestCount, 4);
++    assert.equal(buildUsageCostReport(rows).summary.apiUsd, 4);
++    assert.deepEqual(db.prepare("select * from model_usage order by started_at").all(), before);
++  } finally {
++    db.close();
++  }
++});
++
+ test("adjacent usage ranges count every boundary once across costs, models, tools, skills and days", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/services/test/usage-cost-report.test.ts b/packages/services/test/usage-cost-report.test.ts
+index 8798c21..3f98575 100644
+--- a/packages/services/test/usage-cost-report.test.ts
++++ b/packages/services/test/usage-cost-report.test.ts
+@@ -101,3 +101,27 @@ test("price provenance stays with the model and selected Project", () => {
+     [],
+   );
+ });
++
++test("subscription comparison can select recorded identity without changing the API-only total", () => {
++  const rows = [
++    row({ authKind: "subscription", billingProvider: "openai", estimatedUsd: 3 }),
++    row({ authKind: "api-key", billingProvider: "openai", estimatedUsd: 5 }),
++    row({ authKind: "subscription", billingProvider: "anthropic", estimatedUsd: 7 }),
++    row({ authKind: null, billingProvider: null, estimatedUsd: 11 }),
++    row({ estimatedUsd: 13 }),
++  ];
++  const report = buildUsageCostReport(rows);
++  assert.equal(report.summary.apiUsd, 39);
++  assert.equal(report.summary.requests, 5);
++  assert.equal(report.models[0]?.apiUsd, 39);
++  const selected = rows.filter(
++    (row) => row.authKind === "subscription" && row.billingProvider === "openai",
++  );
++  const subscription = buildUsageCostReport(selected);
++  assert.equal(subscription.summary.apiUsd, 3);
++  assert.equal(subscription.summary.requests, 1);
++  assert.equal("actualAmount" in subscription.summary, false);
++  assert.equal("allocationBasis" in subscription.summary, false);
++  assert.equal(rows[3]?.authKind, null);
++  assert.equal(rows[4]?.authKind, undefined);
++});
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+index 00d3cce..1546001 100644
+--- a/packages/shared/src/usage-accounting.ts
++++ b/packages/shared/src/usage-accounting.ts
+@@ -40,6 +40,9 @@ export const subscriptionPaymentsSchema = z
+ export type SubscriptionPayment = z.infer<typeof subscriptionPaymentSchema>;
+ export const usageAccountingRowSchema = z.object({
+   providerId: z.string(),
++  /** Recorded request identity; absent legacy fields are unknown, not the current connection. */
++  authKind: z.string().nullable().optional(),
++  billingProvider: z.string().nullable().optional(),
+   querySource: z.string().optional(),
+   accountId: z.string().nullable(),
+   workspacePath: z.string().nullable().optional(),

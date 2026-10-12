@@ -1,0 +1,290 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts b/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts
+index 553c41d..6c70e35 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts
+@@ -681,11 +681,13 @@ test(
+         (row): row is ToolCallRow => row.kind === "toolCall",
+       );
+       assert.equal(stoppedRows.length, 1);
+-      assert.equal(
+-        stoppedRows[0]!.output?.attachments,
+-        undefined,
+-        "an interrupted tool cannot advertise an uncommitted result part",
+-      );
++      // The generation finished inside the Stop grace (RECOVERY-01): the row reports the output
++      // that was actually committed, and the stored ToolPart agrees with it.
++      assert.equal(stoppedRows[0]!.output?.attachments?.[0]?.ref, saved.artifactUri);
++      const storedPart = (await f.store.messages({ sessionID: sessionId }))
++        .flatMap((message) => message.parts)
++        .find((part) => part.type === "tool" && part.tool === "GenerateImage");
++      assert.equal(storedPart?.type === "tool" ? storedPart.state.status : undefined, "completed");
+       assert.deepEqual(
+         Buffer.from(
+           (await artifacts.readToolResultBinaryArtifact({ uri: saved.artifactUri })).bytes,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index b38dd18..b82c8df 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -533,6 +533,18 @@ async function executeToolCallImpl(
+       deadline,
+       executionAbortController,
+       entry,
++      (late) => {
++        // 停止时结果未知的变更工具最终结算了：记录真实结局，不回滚、不重放。
++        deps.logger?.warn("Tool settled after its stop was reported", {
++          ...traceContextToLogContext(traceContext),
++          event: "tool.call.late_outcome",
++          module: "core.tool.executor",
++          status: late.status,
++          toolCallId: canonicalToolCall.id,
++          toolName: canonicalToolCall.name,
++          ...(late.error instanceof Error ? { error: late.error.message } : {}),
++        });
++      },
+     );
+     const durationMs = Date.now() - startTime;
+     if (isToolHandlerFailure(output)) {
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts b/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
+index 60b035d..805dd6d 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
+@@ -90,6 +90,18 @@ export function observeToolAdmissionClock(
+   else if (payload.type === "model_request_admitted") deadline.resume();
+ }
+ 
++/**
++ * Stop 后给可变更工具的结算宽限。handler 可能已越过自己的提交点（例如原子写的 rename），
++ * 此时立刻报「未完成」是假话：在宽限内结算就如实记录实际结果；仍未结算则记录结果未知，
++ * 并在 handler 最终结算时通过 onLateSettlement 交出迟到结果（RECOVERY-01）。
++ */
++export const STOP_SETTLE_GRACE_MS = 1500;
++
++export interface LateToolSettlement {
++  status: "completed" | "failed";
++  error?: unknown;
++}
++
+ export async function executeWithTimeout<TInput, TOutput>(
+   handler: (input: TInput, context: ToolExecutionContext) => Promise<TOutput>,
+   input: TInput,
+@@ -97,6 +109,7 @@ export async function executeWithTimeout<TInput, TOutput>(
+   deadline: ToolDeadline,
+   abortController: AbortController,
+   entry: ToolEntry,
++  onLateSettlement?: (settlement: LateToolSettlement) => void,
+ ): Promise<TOutput> {
+   return new Promise((resolve, reject) => {
+     if (context.abortSignal.aborted) {
+@@ -111,8 +124,10 @@ export async function executeWithTimeout<TInput, TOutput>(
+ 
+     let settled = false;
+     let timedOut = false;
++    let stopGrace: ReturnType<typeof setTimeout> | undefined;
+     const cleanup = () => {
+       deadline.clear();
++      if (stopGrace !== undefined) clearTimeout(stopGrace);
+       context.abortSignal.removeEventListener("abort", abortHandler);
+     };
+     const rejectOnce = (error: Error) => {
+@@ -149,31 +164,55 @@ export async function executeWithTimeout<TInput, TOutput>(
+       rejectOnce(error);
+     });
+ 
++    const cancelledError = () =>
++      createCoreError(
++        CoreErrorType.ToolCancelled,
++        entry.cancellation?.userVisibleMessage ?? "Tool execution cancelled",
++        {
++          context: {
++            cancellation: entry.cancellation?.cleanup ?? "none",
++            toolName: entry.metadata.name,
++          },
++          recoverable: true,
++        },
++      );
++    let outcomeUnknown = false;
+     const abortHandler = () => {
+       if (timedOut) return;
+-      rejectOnce(
+-        createCoreError(
+-          CoreErrorType.ToolCancelled,
+-          entry.cancellation?.userVisibleMessage ?? "Tool execution cancelled",
+-          {
+-            context: {
+-              cancellation: entry.cancellation?.cleanup ?? "none",
+-              toolName: entry.metadata.name,
++      if (entry.metadata.readOnly) {
++        rejectOnce(cancelledError());
++        return;
++      }
++      stopGrace = setTimeout(() => {
++        outcomeUnknown = true;
++        rejectOnce(
++          createCoreError(
++            CoreErrorType.ToolCancelled,
++            `${entry.metadata.name} was stopped while its operation was still running; it may still complete. Check the result before relying on it.`,
++            {
++              context: {
++                cancellation: entry.cancellation?.cleanup ?? "none",
++                outcome: "unknown",
++                toolName: entry.metadata.name,
++              },
++              recoverable: true,
+             },
+-            recoverable: true,
+-          },
+-        ),
+-      );
++          ),
++        );
++      }, STOP_SETTLE_GRACE_MS);
+     };
+ 
+     context.abortSignal.addEventListener("abort", abortHandler);
+ 
+     handler(input, context)
+       .then((result) => {
++        if (outcomeUnknown) onLateSettlement?.({ status: "completed" });
+         resolveOnce(result);
+       })
+       .catch((error) => {
+-        rejectOnce(error);
++        if (outcomeUnknown) onLateSettlement?.({ status: "failed", error });
++        // 已请求停止时 handler 自己报失败，说明它没有越过提交点：保留原「已取消」语义。
++        rejectOnce(context.abortSignal.aborted && !timedOut ? cancelledError() : error);
+       });
+   });
+ }
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index 115521a..33aebcb 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -296,11 +296,12 @@ test(
+         controller,
+         generate,
+       );
+-      await assert.rejects(pending, /cancelled/i);
++      // The paid result arrives inside the Stop grace (RECOVERY-01), so the call reports the
++      // saved output instead of claiming it was cancelled before completion.
++      const reported = (await pending) as { artifactUri: string };
+       await recorded.promise;
+-      // Stop returns before the paid-result recovery commit. Await that actual handler,
+-      // not just its earlier usage write, before inspecting or removing the fixture.
+       const completed = (await completion) as { artifactUri: string; usageRecorded: boolean };
++      assert.equal(reported.artifactUri, completed.artifactUri);
+       assert.equal(completed.usageRecorded, true);
+       assert.equal(calls, 1);
+       assert.equal(usage.length, 1);
+diff --git a/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts b/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts
+new file mode 100644
+index 0000000..09faba3
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts
+@@ -0,0 +1,94 @@
++import assert from "node:assert/strict";
++import fs from "node:fs/promises";
++import { syncBuiltinESMExports } from "node:module";
++import { join } from "node:path";
++import test from "node:test";
++import { NodeFileSystemAdapter } from "../../adapters/src/fs/index.js";
++import { readToolEntry } from "../src/tool/handlers/read.js";
++import { writeToolEntry } from "../src/tool/handlers/write.js";
++import { STOP_SETTLE_GRACE_MS } from "../src/tool/executor/timeout.js";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++// RECOVERY-01: Stop arrives while Write is inside its atomic rename. The file may still change, so
++// the record must report what happened, never "cancelled before the file operation completed".
++async function stopDuringRename(holdMs: number, streaming: boolean) {
++  const late: Array<Record<string, unknown>> = [];
++  const logger = {
++    info() {},
++    debug() {},
++    error() {},
++    warn(_message: string, data: any) {
++      if (data?.event === "tool.call.late_outcome") late.push(data);
++    },
++    child() {
++      return logger;
++    },
++  };
++  const f = await fixture(undefined, streaming, {
++    config: { toolAllowlist: ["Read", "Write"] },
++    deps: { fileSystemPort: new NodeFileSystemAdapter(), logger: logger as never },
++  });
++  const path = join(f.dir, "doc.txt");
++  await fs.writeFile(path, "original");
++  for (const entry of [readToolEntry, writeToolEntry]) f.runtime.getToolRegistry().register(entry);
++  f.runtime.invalidateToolCache();
++  const entered = Promise.withResolvers<void>();
++  const committed = Promise.withResolvers<void>();
++  const rename = fs.rename;
++  fs.rename = async (from, to) => {
++    if (to !== path) return rename(from, to);
++    entered.resolve();
++    await new Promise((resolve) => setTimeout(resolve, holdMs));
++    await rename(from, to);
++    committed.resolve();
++  };
++  syncBuiltinESMExports();
++  try {
++    f.steps.push(
++      () => reply("Read", [{ id: "read", name: "Read", input: { file_path: path } }]),
++      () => reply("Write", [{ id: "write", name: "Write", input: { file_path: path, content: "replacement" } }]),
++      () => reply("unexpected-after-stop"),
++    );
++    const turn = f.runtime.executeTurn("replace disposable document").then(
++      () => "completed",
++      (error: Error) => error.message,
++    );
++    await entered.promise;
++    f.runtime.stopActiveForegroundExecution();
++    const settled = await turn;
++    await committed.promise;
++    await new Promise((resolve) => setTimeout(resolve, 25));
++    const messages = await f.store.messages({ sessionID: "session" as never });
++    const write = messages.flatMap((m: any) => m.parts).find((p: any) => p.type === "tool" && p.callID === "write");
++    return { settled, file: await fs.readFile(path, "utf8"), write, late, requests: f.requests.length };
++  } finally {
++    fs.rename = rename;
++    syncBuiltinESMExports();
++    await f.close();
++  }
++}
++
++for (const streaming of [false, true]) {
++  test(`a write that commits after Stop is recorded as completed (streaming=${streaming})`, async () => {
++    const r = await stopDuringRename(100, streaming);
++    assert.equal(r.settled, "Turn was cancelled.");
++    assert.equal(r.file, "replacement");
++    assert.equal(r.write.state.status, "completed");
++    assert.equal(r.requests, 2, "no model step after Stop");
++    assert.deepEqual(r.late, []);
++  });
++}
++
++test("a write still running past the grace is recorded as unknown, and its late outcome is logged", async () => {
++  const r = await stopDuringRename(STOP_SETTLE_GRACE_MS + 400, false);
++  assert.equal(r.settled, "Turn was cancelled.");
++  assert.equal(r.write.state.status, "error");
++  assert.match(r.write.state.error, /may still complete/);
++  assert.doesNotMatch(r.write.state.error, /before the file operation completed/);
++  assert.equal(r.file, "replacement");
++  assert.equal(r.requests, 2);
++  assert.deepEqual(
++    r.late.map((entry) => [entry.toolName, entry.status]),
++    [["Write", "completed"]],
++  );
++});
+diff --git a/package.json b/package.json
+index d8aacab..f7b4a82 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

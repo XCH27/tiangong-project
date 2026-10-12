@@ -1,0 +1,1499 @@
+From 695d193c9f64c10bf1396b8355486cc08deb45d1 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:37:49 -0700
+Subject: [PATCH] Plugins contribute views: MCP Apps ui:// resources from their
+ own server, shown in the side pane (OV-100 phase 4)
+
+A plugin declares fleet.views[] naming one of its MCP servers and a ui://
+resource. The workspace runtime reads that resource and proxies tools/call
+only to that server, so a person in the view and an Agent in a conversation
+call the same operations; a disabled plugin or one awaiting approval has no
+runnable server and its view does not open. The renderer shows the view as
+a Project-wide side-pane tab in an opaque-origin iframe under the MCP Apps
+default CSP plus the domains the resource declared, answers ui/initialize
+with Fleet theme tokens and follows theme changes. Views appear in the side
+pane launcher and + menu. The MCP port gains readResource.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../packages/adapters/src/mcp/index.ts        |  37 +++
+ .../packages/adapters/src/mcp/pool.ts         |   5 +
+ .../packages/adapters/src/plugins/index.ts    |  55 ++++
+ .../src/zcode-protocol/plugin-views.ts        | 147 +++++++++
+ .../bootstrap/src/zcode-protocol/plugins.ts   |   1 +
+ .../bootstrap/src/zcode-protocol/server.ts    |   5 +
+ .../test/fixtures/plugin-view/server.mjs      |  50 +++
+ .../bootstrap/test/plugin-views.test.ts       |  61 ++++
+ .../contracts/src/interfaces/mcp.port.ts      |  16 +
+ .../packages/contracts/src/plugins/index.ts   |  22 ++
+ .../services/src/plugins/pluginManagement.ts  |   7 +
+ .../src/plugins/pluginManagementService.ts    |   4 +
+ .../services/src/zcode-agent/zcodeAgent.ts    |   6 +
+ .../src/zcode-agent/zcodeAgentPluginParams.ts |  10 +
+ .../src/zcode-agent/zcodeAgentService.ts      |  31 ++
+ packages/shared/src/zcode-protocol/index.ts   |  54 ++++
+ packages/ui/src/App.tsx                       |   2 +
+ .../src/app-shell/AnimatedSidePanePanel.tsx   |  47 +++
+ packages/ui/src/app-shell/PluginViewPane.tsx  | 300 ++++++++++++++++++
+ .../ui/src/app-shell/SidePaneTabTrigger.tsx   |   9 +
+ .../ui/src/app-shell/WorkspaceShellLayout.tsx |   2 +
+ .../src/app-shell/sidePaneTabPresentation.ts  |   2 +
+ packages/ui/src/app-shell/types.ts            |   1 +
+ packages/ui/src/hooks/useAppPanels.ts         |  13 +
+ packages/ui/src/lib/settingsNavigation.ts     |   4 +-
+ packages/ui/src/lib/workspaceSidePane.ts      |  31 ++
+ packages/ui/test/pluginSettingsViews.test.ts  |  15 +
+ 27 files changed, 936 insertions(+), 1 deletion(-)
+ create mode 100644 apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
+ create mode 100644 packages/ui/src/app-shell/PluginViewPane.tsx
+
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/index.ts b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+index 49ff5f9..c24aeee 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+@@ -29,6 +29,7 @@ import type {
+   McpServerConfig,
+   McpServerStatus,
+   McpToolCallResult,
++  McpReadResourceResult,
+   McpToolDescriptor,
+   OfficialMcpAuthFailureReason,
+   OfficialMcpAuthHeadersPort,
+@@ -524,6 +525,42 @@ class NodeMcpAdapter implements McpPort {
+     }
+   }
+ 
++  /**
++   * Reads one resource from a connected server (MCP Apps `ui://` views, OV-100 phase 4). A
++   * disconnected stdio server is reconnected once, as for tool calls.
++   */
++  async readResource(
++    serverName: string,
++    uri: string,
++    options: McpCallToolOptions = {},
++  ): Promise<McpReadResourceResult> {
++    const initialRecord = this.records.get(serverName);
++    const timeoutMs = options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
++    const deadline = createMcpDeadline(timeoutMs);
++    const timeoutMessage = `MCP resource ${serverName} ${uri} timed out after ${timeoutMs}ms`;
++    if (initialRecord?.connecting) {
++      await waitWithinMcpDeadline(initialRecord.connecting, deadline, timeoutMessage, options.signal);
++    }
++    const disconnected = this.records.get(serverName);
++    if (disconnected && disconnected.status.status === "disconnected") {
++      await waitWithinMcpDeadline(
++        this.reconnectForCall(serverName, disconnected.config),
++        deadline,
++        timeoutMessage,
++        options.signal,
++      );
++    }
++    const record = this.records.get(serverName);
++    if (!record?.client || record.status.status !== "connected") {
++      throw new Error(`MCP server is not connected: ${serverName}`);
++    }
++    const result = await record.client.readResource(
++      { uri },
++      { signal: options.signal, timeout: remainingMcpDeadlineMs(deadline, timeoutMessage) },
++    );
++    return { contents: (result.contents ?? []) as McpReadResourceResult["contents"] };
++  }
++
+   /** 连接期诊断按 server 保存；tool call request id 继续按 span 隔离。 */
+   private rememberServerResponse(
+     serverName: string,
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/pool.ts b/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
+index 1617399..31d75db 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
+@@ -339,6 +339,11 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
+       ): Promise<McpToolCallResult> {
+         return await requireEntry(request.serverName).adapter.callTool(request, callOptions);
+       },
++      async readResource(serverName: string, uri: string, callOptions?: McpCallToolOptions) {
++        const adapter = requireEntry(serverName).adapter;
++        if (!adapter.readResource) throw new Error(`MCP resources are not supported: ${serverName}`);
++        return await adapter.readResource(serverName, uri, callOptions);
++      },
+       async close(): Promise<void> {
+         if (leaseClosed) return;
+         leaseClosed = true;
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 6b956e9..e87fed7 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -259,6 +259,7 @@ export class NodePluginAdapter implements PluginPort {
+           Object.keys(mcpServerDefinitions),
+           request.config.options[loaded.id] ?? {},
+           grant,
++          parsePluginViews(loaded, mcpServerDefinitions, diagnostics),
+         ),
+       );
+     }
+@@ -343,6 +344,7 @@ function createPluginMetadata(
+   declaredMcpServerNames: string[],
+   configuredOptions: Record<string, string | number | boolean>,
+   grant?: PluginMetadata["grant"],
++  views: PluginMetadata["views"] = [],
+ ): PluginMetadata {
+   // manifest 的 author/homepage 作为详情页信息区的回退来源（商店 listing 优先）。
+   const author = normalizeAuthorValue(loaded.manifest.author);
+@@ -378,6 +380,7 @@ function createPluginMetadata(
+     source: loaded.source,
+     userConfig: loaded.manifest.userConfig,
+     ...(grant ? { grant } : {}),
++    ...(views.length > 0 ? { views } : {}),
+     version: loaded.manifest.version,
+   };
+ }
+@@ -412,6 +415,58 @@ function resolveEnabledComponents(input: {
+   };
+ }
+ 
++const VIEW_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
++
++/** `fleet.views[]` → validated view contributions; an invalid entry is dropped with a diagnostic. */
++function parsePluginViews(
++  loaded: LoadedPlugin,
++  mcpServerDefinitions: Record<string, unknown>,
++  diagnostics: PluginDiagnostic[],
++): NonNullable<PluginMetadata["views"]> {
++  const fleet = loaded.manifest.fleet;
++  const declared = isRecord(fleet) && Array.isArray(fleet.views) ? fleet.views : [];
++  const views: NonNullable<PluginMetadata["views"]> = [];
++  const invalid = (message: string) =>
++    diagnostics.push({
++      code: "plugin_view_invalid",
++      message: `${loaded.id}: ${message}`,
++      path: loaded.manifestPath,
++      pluginId: loaded.id,
++      severity: "warning",
++    });
++  for (const view of declared) {
++    if (!isRecord(view)) continue;
++    const id = typeof view.id === "string" ? view.id : "";
++    if (!VIEW_ID_PATTERN.test(id) || views.some((existing) => existing.id === id)) {
++      invalid(`view id must be unique lowercase words joined by hyphens: ${String(view.id)}`);
++      continue;
++    }
++    if (typeof view.server !== "string" || !(view.server in mcpServerDefinitions)) {
++      invalid(`view ${id} must name one of this plugin's MCP servers`);
++      continue;
++    }
++    if (typeof view.resource !== "string" || !view.resource.startsWith("ui://")) {
++      invalid(`view ${id} must name a ui:// resource`);
++      continue;
++    }
++    const titleI18n = isRecord(view.title_i18n)
++      ? Object.fromEntries(
++          Object.entries(view.title_i18n).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
++        )
++      : undefined;
++    views.push({
++      id,
++      title: typeof view.title === "string" && view.title.trim() ? view.title.trim() : id,
++      ...(titleI18n && Object.keys(titleI18n).length > 0 ? { titleI18n } : {}),
++      ...(typeof view.description === "string" ? { description: view.description } : {}),
++      server: view.server,
++      resource: view.resource,
++      placement: "side-pane",
++    });
++  }
++  return views;
++}
++
+ /**
+  * Grant state for a plugin that can run host code. Packages installed from a third-party
+  * marketplace need a grant; built-in, official and person-declared folders do not. Undefined when
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
+new file mode 100644
+index 0000000..33581e2
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
+@@ -0,0 +1,147 @@
++import { createConfig, resolvePath } from "@zcode/adapters/config";
++import type { Logger, McpServerConfig, PluginLoadOutcome } from "@zcode/contracts";
++import {
++  zcodePluginViewCallToolParamsSchema,
++  zcodePluginViewCallToolResultSchema,
++  zcodePluginViewReadParamsSchema,
++  zcodePluginViewReadResultSchema,
++  type ZCodePluginViewCallToolResult,
++  type ZCodePluginViewReadResult,
++} from "@zcode/shared";
++import { getCliStorageRoot } from "../app/paths.js";
++import { resolveStartupPlugins } from "../app/startup-marks.js";
++import { StartupTimer, startupNow } from "../startup-logging.js";
++import { parseParams, type ZCodeProtocolAgentServerContext } from "./server-types.js";
++
++/**
++ * Host side of plugin views (OV-100 phase 4). A view is an MCP Apps `ui://` resource served by one
++ * of the plugin's own MCP servers. The renderer reaches that server only through these two calls,
++ * which resolve the server from the current discovery: a disabled plugin or one whose MCP servers
++ * still wait for approval (phase 3) has no runnable server, so its view cannot run either.
++ */
++
++const MCP_APP_MIME = "text/html;profile=mcp-app";
++
++const noopLogger: Logger = {
++  debug: () => undefined,
++  info: () => undefined,
++  warn: () => undefined,
++  error: () => undefined,
++  child: () => noopLogger,
++};
++
++export async function readPluginView(
++  context: ZCodeProtocolAgentServerContext,
++  rawParams: unknown,
++): Promise<ZCodePluginViewReadResult> {
++  const params = parseParams(zcodePluginViewReadParamsSchema, rawParams);
++  const target = await connectViewServer(context, params.workspace, params.pluginId, params.viewId);
++  const readResource = target.port.readResource;
++  if (!readResource) throw new Error("This Fleet runtime cannot read MCP resources.");
++  const result = await readResource.call(target.port, target.serverName, target.resource);
++  const content = result.contents.find((item) => item.uri === target.resource) ?? result.contents[0];
++  if (!content) throw new Error(`The plugin returned no view for ${target.resource}.`);
++  if (content.mimeType && !content.mimeType.startsWith("text/html")) {
++    throw new Error(`The plugin view is ${content.mimeType}, not ${MCP_APP_MIME}.`);
++  }
++  const html =
++    typeof content.text === "string"
++      ? content.text
++      : typeof content.blob === "string"
++        ? Buffer.from(content.blob, "base64").toString("utf8")
++        : "";
++  if (!html) throw new Error(`The plugin view ${target.resource} is empty.`);
++  const ui = isRecord(content._meta) && isRecord(content._meta.ui) ? content._meta.ui : undefined;
++  const csp = ui && isRecord(ui.csp) ? ui.csp : undefined;
++  return zcodePluginViewReadResultSchema.parse({
++    html,
++    ...(csp
++      ? {
++          csp: {
++            ...(stringList(csp.connectDomains) ? { connectDomains: stringList(csp.connectDomains) } : {}),
++            ...(stringList(csp.resourceDomains) ? { resourceDomains: stringList(csp.resourceDomains) } : {}),
++          },
++        }
++      : {}),
++    ...(typeof ui?.prefersBorder === "boolean" ? { prefersBorder: ui.prefersBorder } : {}),
++  });
++}
++
++export async function callPluginViewTool(
++  context: ZCodeProtocolAgentServerContext,
++  rawParams: unknown,
++): Promise<ZCodePluginViewCallToolResult> {
++  const params = parseParams(zcodePluginViewCallToolParamsSchema, rawParams);
++  const target = await connectViewServer(context, params.workspace, params.pluginId, params.viewId);
++  const result = await target.port.callTool({
++    serverName: target.serverName,
++    toolName: params.tool,
++    arguments: params.arguments ?? {},
++    workspacePath: params.workspace.workspacePath,
++    ...(params.workspace.workspaceIdentity ? { workspaceIdentity: params.workspace.workspaceIdentity } : {}),
++  });
++  return zcodePluginViewCallToolResultSchema.parse({
++    content: result.content,
++    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
++    ...(result.isError !== undefined ? { isError: result.isError } : {}),
++  });
++}
++
++async function connectViewServer(
++  context: ZCodeProtocolAgentServerContext,
++  workspace: { workspacePath: string; workspaceKey?: string },
++  pluginId: string,
++  viewId: string,
++) {
++  const port = context.deps.mcpPort;
++  if (!port) throw new Error("Plugin views need the MCP runtime, which is not available here.");
++  const outcome = discover(context, workspace);
++  const plugin = outcome.plugins.find((candidate) => candidate.id === pluginId);
++  if (!plugin) throw new Error(`Plugin not found: ${pluginId}`);
++  const view = plugin.views?.find((candidate) => candidate.id === viewId);
++  if (!view) throw new Error(`Plugin ${pluginId} has no view ${viewId}.`);
++  if (!plugin.enabled) throw new Error(`Enable ${plugin.name} in Settings → Plugins to open this view.`);
++  if (plugin.grant && !plugin.grant.granted) {
++    throw new Error(`Allow ${plugin.name} in Settings → Plugins to open this view.`);
++  }
++  const serverName = `plugin:${plugin.name}:${view.server}`;
++  const config: McpServerConfig | undefined = outcome.mcpServers[serverName];
++  if (!config) throw new Error(`The view's server ${view.server} could not be started; see the plugin's diagnostics.`);
++  const status = (await port.status())[serverName];
++  if (status?.status !== "connected") {
++    const connected = await port.connectServer(serverName, config, { workingDirectory: workspace.workspacePath });
++    if (connected.status !== "connected") {
++      throw new Error(connected.error ?? `The view's server ${view.server} did not connect.`);
++    }
++  }
++  return { port, resource: view.resource, serverName };
++}
++
++function discover(
++  context: ZCodeProtocolAgentServerContext,
++  workspace: { workspacePath: string; workspaceKey?: string },
++): PluginLoadOutcome {
++  const configResult = createConfig({ env: context.deps.env, workingDirectory: workspace.workspacePath });
++  const cliStorageRoot = getCliStorageRoot(resolvePath(configResult.config.storage.dir));
++  return resolveStartupPlugins({
++    cliStorageRoot,
++    configResult,
++    env: context.deps.env,
++    logger: context.logger,
++    options: {},
++    startupTimer: new StartupTimer(
++      context.logger ?? noopLogger,
++      { module: "bootstrap.zcode_protocol.plugin_views", workspacePath: workspace.workspacePath },
++      startupNow(),
++    ),
++    workingDirectory: workspace.workspacePath,
++  });
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null && !Array.isArray(value);
++}
++
++function stringList(value: unknown): string[] | undefined {
++  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+index 03d9ee1..a60dde4 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+@@ -102,6 +102,7 @@ function toPluginInfo(plugin: PluginMetadata, configResult?: ConfigResult): ZCod
+     ...(plugin.userConfig ? { userConfig: plugin.userConfig } : {}),
+     ...(Object.keys(configuredOptions).length > 0 ? { configuredOptions } : {}),
+     ...(plugin.grant ? { grant: plugin.grant } : {}),
++    ...(plugin.views?.length ? { views: plugin.views } : {}),
+     ...(rootSource ? { rootSource } : {}),
+     ...(enabledSource ? { enabledSource } : {}),
+     ...(optionSources && Object.keys(optionSources).length > 0 ? { optionSources } : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+index 86e1f74..372cc65 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+@@ -1,3 +1,4 @@
++import { callPluginViewTool, readPluginView } from "./plugin-views.js";
+ import { querySessionDebug } from "./session-debug.js";
+ import {
+   zcodePluginsCancelOperationParamsSchema,
+@@ -709,6 +710,10 @@ export class ZCodeProtocolAgentServer {
+         return await grantPlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsRevokeGrant:
+         return await revokePluginGrant(this.context, request.params);
++      case zcodeProtocolMethods.pluginsViewRead:
++        return await readPluginView(this.context, request.params);
++      case zcodeProtocolMethods.pluginsViewCallTool:
++        return await callPluginViewTool(this.context, request.params);
+       case zcodeProtocolMethods.pluginsValidate:
+         return await validatePlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsDescribe:
+diff --git a/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs b/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
+new file mode 100644
+index 0000000..d2c9b59
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
+@@ -0,0 +1,50 @@
++// Minimal MCP Apps server over stdio for plugin-view tests: one ui:// view and one tool that both
++// the view and an Agent call. State lives in the plugin data folder, so every caller sees one owner.
++import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
++import { join } from "node:path";
++import { createInterface } from "node:readline";
++
++const dataDir = process.env.ZCODE_PLUGIN_DATA ?? process.cwd();
++mkdirSync(dataDir, { recursive: true });
++const counterPath = join(dataDir, "counter.json");
++const read = () => {
++  try {
++    return JSON.parse(readFileSync(counterPath, "utf8")).value;
++  } catch {
++    return 0;
++  }
++};
++const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
++const html = `<!doctype html><html><head><style>body{font:14px var(--font-sans,sans-serif);background:var(--color-background-primary);color:var(--color-text-primary);padding:16px}</style></head><body><button id="add">Add</button> <span id="value">-</span><script>
++let id = 0; const pending = new Map();
++addEventListener("message", (event) => { const m = event.data; if (m && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
++const request = (method, params) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); parent.postMessage({ jsonrpc: "2.0", id: i, method, params }, "*"); });
++request("ui/initialize", { appCapabilities: {}, protocolVersion: "2026-01-26" }).then((reply) => {
++  for (const [name, value] of Object.entries(reply.result?.hostContext?.styles?.variables ?? {})) document.documentElement.style.setProperty(name, value);
++  document.body.dataset.theme = reply.result?.hostContext?.theme ?? "";
++  parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized" }, "*");
++});
++document.getElementById("add").onclick = () => request("tools/call", { name: "increment", arguments: {} }).then((reply) => { document.getElementById("value").textContent = String(reply.result?.structuredContent?.value ?? reply.error?.message); });
++</script></body></html>`;
++
++createInterface({ input: process.stdin }).on("line", (line) => {
++  const message = JSON.parse(line);
++  if (message.id === undefined) return;
++  switch (message.method) {
++    case "initialize":
++      return send({ id: message.id, result: { protocolVersion: message.params.protocolVersion, capabilities: { tools: {}, resources: {} }, serverInfo: { name: "counter", version: "1.0.0" } } });
++    case "tools/list":
++      return send({ id: message.id, result: { tools: [{ name: "increment", description: "Add one", inputSchema: { type: "object", properties: {} } }] } });
++    case "resources/list":
++      return send({ id: message.id, result: { resources: [{ uri: "ui://counter/main", name: "Counter", mimeType: "text/html;profile=mcp-app" }] } });
++    case "resources/read":
++      return send({ id: message.id, result: { contents: [{ uri: message.params.uri, mimeType: "text/html;profile=mcp-app", text: html, _meta: { ui: { prefersBorder: false } } }] } });
++    case "tools/call": {
++      const value = read() + 1;
++      writeFileSync(counterPath, JSON.stringify({ value }));
++      return send({ id: message.id, result: { content: [{ type: "text", text: String(value) }], structuredContent: { value } } });
++    }
++    default:
++      return send({ id: message.id, error: { code: -32601, message: `Unknown method ${message.method}` } });
++  }
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
+new file mode 100644
+index 0000000..c9114b6
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
+@@ -0,0 +1,61 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join, resolve } from "node:path";
++import test from "node:test";
++import { createMcpAdapter } from "@zcode/adapters/mcp";
++import { callPluginViewTool, readPluginView } from "../src/zcode-protocol/plugin-views.js";
++import { resolveZCodePlugins, setZCodePluginEnabled } from "../src/plugins.js";
++
++// OV-100 phase 4: a plugin view is an MCP Apps ui:// resource of the plugin's own server; the view
++// reaches that server only through the host, and a disabled plugin's view does not run.
++test("a plugin view is read from its own MCP server and calls that server's tools", { timeout: 60000 }, async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-view-"));
++  const previousHome = process.env.HOME;
++  const mcpPort = createMcpAdapter();
++  try {
++    const home = join(root, "home");
++    const workspace = join(root, "workspace");
++    const plugin = join(root, "counter-plugin");
++    for (const dir of [workspace, join(home, ".zcode", "cli"), join(plugin, ".zcode-plugin")]) await mkdir(dir, { recursive: true });
++    const server = resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs");
++    await writeFile(
++      join(plugin, ".zcode-plugin", "plugin.json"),
++      JSON.stringify({
++        name: "counter",
++        version: "1.0.0",
++        mcpServers: { counter: { command: process.execPath, args: [server] } },
++        fleet: { views: [{ id: "main", title: "Counter", server: "counter", resource: "ui://counter/main" }, { id: "Bad View", server: "missing", resource: "x" }] },
++      }),
++    );
++    const userConfigPath = join(home, ".zcode", "cli", "config.json");
++    await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs: [plugin] } }));
++    process.env.HOME = home;
++
++    const paths = { env: {}, officialPluginRoots: [], userConfigPath, workingDirectory: workspace };
++    const discovered = resolveZCodePlugins(paths);
++    const info = discovered.plugins.find((entry) => entry.name === "counter")!;
++    assert.deepEqual(info.views?.map((view) => view.id), ["main"], "invalid views are dropped");
++    assert.ok(discovered.diagnostics.some((diagnostic) => diagnostic.code === "plugin_view_invalid"));
++
++    const context = { deps: { env: process.env, mcpPort }, logger: undefined } as never;
++    const ref = { workspacePath: workspace, workspaceKey: workspace };
++    const view = await readPluginView(context, { workspace: ref, pluginId: info.id, viewId: "main" });
++    assert.match(view.html, /ui\/initialize/);
++    assert.equal(view.prefersBorder, false);
++
++    const first = await callPluginViewTool(context, { workspace: ref, pluginId: info.id, viewId: "main", tool: "increment" });
++    const second = await callPluginViewTool(context, { workspace: ref, pluginId: info.id, viewId: "main", tool: "increment" });
++    assert.deepEqual([first.structuredContent, second.structuredContent], [{ value: 1 }, { value: 2 }]);
++
++    await setZCodePluginEnabled({ ...paths, enabled: false, plugin: info.id });
++    await assert.rejects(
++      readPluginView(context, { workspace: ref, pluginId: info.id, viewId: "main" }),
++      /Enable counter/,
++    );
++  } finally {
++    process.env.HOME = previousHome;
++    await mcpPort.close();
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+index 4287c79..c3b44cb 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+@@ -193,6 +193,16 @@ export interface McpToolCallResult {
+   _meta?: Record<string, unknown>;
+ }
+ 
++export interface McpReadResourceResult {
++  contents: Array<{
++    uri: string;
++    mimeType?: string;
++    text?: string;
++    blob?: string;
++    _meta?: Record<string, unknown>;
++  }>;
++}
++
+ export interface McpConnectionSnapshot {
+   statuses: Record<string, McpServerStatus>;
+   tools: McpToolDescriptor[];
+@@ -307,5 +317,11 @@ export interface McpPort {
+   status(): Promise<Record<string, McpServerStatus>>;
+   listTools(): Promise<McpToolDescriptor[]>;
+   callTool(request: McpCallToolRequest, options?: McpCallToolOptions): Promise<McpToolCallResult>;
++  /** Reads one resource, e.g. an MCP Apps `ui://` view (OV-100 phase 4). */
++  readResource?(
++    serverName: string,
++    uri: string,
++    options?: McpCallToolOptions,
++  ): Promise<McpReadResourceResult>;
+   close(): Promise<void>;
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/plugins/index.ts b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+index c20a959..d0002ce 100644
+--- a/apps/zcode-cli/packages/contracts/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+@@ -41,6 +41,7 @@ export type PluginDiagnosticCode =
+   | "plugin_hook_unsupported_event"
+   | "plugin_project_hooks_withheld"
+   | "plugin_grant_required"
++  | "plugin_view_invalid"
+   | "plugin_dependency_invalid"
+   | "plugin_dependency_missing"
+   | "plugin_dependency_cycle"
+@@ -147,6 +148,8 @@ export interface PluginManifest {
+   commands?: unknown;
+   dependencies?: unknown;
+   description?: string;
++  /** Fleet-native contributions (OV-100 phase 4); see PluginViewContribution. */
++  fleet?: unknown;
+   homepage?: string;
+   hooks?: unknown;
+   keywords?: unknown;
+@@ -202,6 +205,25 @@ export interface PluginMetadata {
+   version?: string;
+   /** Present when the plugin can run host code (MCP servers or hooks); see PluginDiscoverRequest. */
+   grant?: PluginGrantState;
++  /** Views this plugin contributes to the workspace (OV-100 phase 4). */
++  views?: PluginViewContribution[];
++}
++
++/**
++ * A plugin view: an MCP Apps `ui://` resource served by one of the plugin's own MCP servers and
++ * shown in a host surface. The view reaches only that server's tools, through the host bridge, so
++ * a person in the view and an Agent in a conversation call the same operations.
++ */
++export interface PluginViewContribution {
++  id: string;
++  title: string;
++  titleI18n?: Record<string, string>;
++  description?: string;
++  /** MCP server key inside this plugin's manifest. */
++  server: string;
++  /** `ui://` resource of that server. */
++  resource: string;
++  placement: "side-pane";
+ }
+ 
+ export interface PluginGrantState {
+diff --git a/packages/services/src/plugins/pluginManagement.ts b/packages/services/src/plugins/pluginManagement.ts
+index 01865ab..ead1e26 100644
+--- a/packages/services/src/plugins/pluginManagement.ts
++++ b/packages/services/src/plugins/pluginManagement.ts
+@@ -11,6 +11,8 @@ import type { Event } from "@zcode/rpc";
+ import type {
+   ZCodePluginOperationProgressNotification,
+   ZCodePluginsConfigureResult,
++  ZCodePluginViewReadResult,
++  ZCodePluginViewCallToolResult,
+   ZCodePluginsCancelOperationResult,
+   ZCodePluginsDescribeResult,
+   ZCodePluginsInstallResult,
+@@ -36,6 +38,8 @@ import type {
+   ZCodeAgentResetPluginConfigParams,
+   ZCodeAgentGrantPluginParams,
+   ZCodeAgentRevokePluginGrantParams,
++  ZCodeAgentPluginViewTargetParams,
++  ZCodeAgentPluginViewCallToolParams,
+   ZCodeAgentPluginViewParams,
+   ZCodeAgentRemovePluginMarketplaceParams,
+   ZCodeAgentRestoreBuiltinPluginParams,
+@@ -88,6 +92,9 @@ export interface IPluginManagementService {
+   /** Allows a third-party plugin's MCP servers and hooks for the surface the person reviewed. */
+   grantPlugin(params: ZCodeAgentGrantPluginParams): Promise<ZCodePluginsConfigureResult>;
+   revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
++  /** OV-100 phase 4: read a plugin view and call its own server's tools on the workspace runtime. */
++  readPluginView(params: ZCodeAgentPluginViewTargetParams): Promise<ZCodePluginViewReadResult>;
++  callPluginViewTool(params: ZCodeAgentPluginViewCallToolParams): Promise<ZCodePluginViewCallToolResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+   setPluginEnabled(params: ZCodeAgentSetPluginEnabledParams): Promise<ZCodePluginsSetEnabledResult>;
+diff --git a/packages/services/src/plugins/pluginManagementService.ts b/packages/services/src/plugins/pluginManagementService.ts
+index 23fc3c3..3d0d133 100644
+--- a/packages/services/src/plugins/pluginManagementService.ts
++++ b/packages/services/src/plugins/pluginManagementService.ts
+@@ -25,6 +25,8 @@ interface PluginManagementServiceDependencies {
+     | "resetPluginConfig"
+     | "grantPlugin"
+     | "revokePluginGrant"
++    | "readPluginView"
++    | "callPluginViewTool"
+     | "validatePlugin"
+     | "describePlugin"
+     | "setPluginEnabled"
+@@ -54,6 +56,8 @@ export function createPluginManagementService(
+     resetPluginConfig: (params) => agent.resetPluginConfig(params),
+     grantPlugin: (params) => agent.grantPlugin(params),
+     revokePluginGrant: (params) => agent.revokePluginGrant(params),
++    readPluginView: (params) => agent.readPluginView(params),
++    callPluginViewTool: (params) => agent.callPluginViewTool(params),
+     validatePlugin: (params) => agent.validatePlugin(params),
+     describePlugin: (params) => agent.describePlugin(params),
+     setPluginEnabled: (params) => agent.setPluginEnabled(params),
+diff --git a/packages/services/src/zcode-agent/zcodeAgent.ts b/packages/services/src/zcode-agent/zcodeAgent.ts
+index 3aa06c4..a6bed16 100644
+--- a/packages/services/src/zcode-agent/zcodeAgent.ts
++++ b/packages/services/src/zcode-agent/zcodeAgent.ts
+@@ -38,6 +38,8 @@ import type {
+   ZCodePluginsUninstallResult,
+   ZCodePluginsRestoreBuiltinResult,
+   ZCodePluginsConfigureResult,
++  ZCodePluginViewReadResult,
++  ZCodePluginViewCallToolResult,
+   ZCodePluginsDescribeResult,
+   ZCodePluginsValidateResult,
+   ZCodePluginsSetEnabledResult,
+@@ -114,6 +116,8 @@ import type {
+   ZCodeAgentResetPluginConfigParams,
+   ZCodeAgentGrantPluginParams,
+   ZCodeAgentRevokePluginGrantParams,
++  ZCodeAgentPluginViewTargetParams,
++  ZCodeAgentPluginViewCallToolParams,
+   ZCodeAgentCreateAutomationParams,
+   ZCodeAgentDeleteAutomationRunParams,
+   ZCodeAgentDescribePluginParams,
+@@ -677,6 +681,8 @@ export interface IZCodeAgentService {
+   ): Promise<ZCodePluginsConfigureResult>;
+   grantPlugin(params: ZCodeAgentGrantPluginParams): Promise<ZCodePluginsConfigureResult>;
+   revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
++  readPluginView(params: ZCodeAgentPluginViewTargetParams): Promise<ZCodePluginViewReadResult>;
++  callPluginViewTool(params: ZCodeAgentPluginViewCallToolParams): Promise<ZCodePluginViewCallToolResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+   setPluginEnabled(params: ZCodeAgentSetPluginEnabledParams): Promise<ZCodePluginsSetEnabledResult>;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+index 99747c5..04ca7eb 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+@@ -86,6 +86,16 @@ export interface ZCodeAgentRevokePluginGrantParams extends ZCodeAgentWorkspaceTa
+   pluginId: string;
+ }
+ 
++export interface ZCodeAgentPluginViewTargetParams extends ZCodeAgentWorkspaceTarget {
++  pluginId: string;
++  viewId: string;
++}
++
++export interface ZCodeAgentPluginViewCallToolParams extends ZCodeAgentPluginViewTargetParams {
++  tool: string;
++  arguments?: Record<string, unknown>;
++}
++
+ export interface ZCodeAgentValidatePluginParams extends ZCodeAgentWorkspaceTarget {
+   marketplace?: string;
+   pluginName?: string;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index 109f880..e71da4e 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -47,6 +47,8 @@ import {
+   zcodeBrowserListParamsSchema,
+   zcodeBrowserExecuteParamsSchema,
+   zcodePluginsConfigureResultSchema,
++  zcodePluginViewReadResultSchema,
++  zcodePluginViewCallToolResultSchema,
+   zcodePluginsInstallResultSchema,
+   zcodePluginsListResultSchema,
+   zcodePluginsMarketplaceMutationResultSchema,
+@@ -161,6 +163,8 @@ import type {
+   ZCodeAgentResetPluginConfigParams,
+   ZCodeAgentGrantPluginParams,
+   ZCodeAgentRevokePluginGrantParams,
++  ZCodeAgentPluginViewTargetParams,
++  ZCodeAgentPluginViewCallToolParams,
+   ZCodeAgentCreateSessionParams,
+   ZCodeAgentInstallPluginParams,
+   ZCodeAgentGenerateWorkspaceTextParams,
+@@ -4342,6 +4346,33 @@ export function createZCodeAgentService(
+       );
+     },
+ 
++    // Views run on the workspace runtime, whose MCP pool the conversations of that workspace share.
++    async readPluginView(params: ZCodeAgentPluginViewTargetParams) {
++      const { client } = await getOrStartReadOnlyClient(params);
++      return client.request(
++        zcodeProtocolMethods.pluginsViewRead,
++        { workspace: buildWorkspaceRef(params), pluginId: params.pluginId, viewId: params.viewId },
++        zcodePluginViewReadResultSchema,
++        { timeoutMs: PLUGIN_MANAGEMENT_REQUEST_TIMEOUT_MS },
++      );
++    },
++
++    async callPluginViewTool(params: ZCodeAgentPluginViewCallToolParams) {
++      const { client } = await getOrStartReadOnlyClient(params);
++      return client.request(
++        zcodeProtocolMethods.pluginsViewCallTool,
++        {
++          workspace: buildWorkspaceRef(params),
++          pluginId: params.pluginId,
++          viewId: params.viewId,
++          tool: params.tool,
++          ...(params.arguments ? { arguments: params.arguments } : {}),
++        },
++        zcodePluginViewCallToolResultSchema,
++        { timeoutMs: PLUGIN_MANAGEMENT_REQUEST_TIMEOUT_MS },
++      );
++    },
++
+     async validatePlugin(params: ZCodeAgentValidatePluginParams) {
+       const client = await getPluginManagementClient();
+       return client.request(
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 91be7e9..f620e81 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -2574,6 +2574,20 @@ export const zcodePluginComponentGroupSchema = z
+   .strict();
+ export type ZCodePluginComponentGroup = z.infer<typeof zcodePluginComponentGroupSchema>;
+ 
++// OV-100 phase 4: a view a plugin contributes, served as an MCP Apps ui:// resource by its own server.
++export const zcodePluginViewSchema = z
++  .object({
++    id: nonEmptyString,
++    title: nonEmptyString,
++    titleI18n: z.record(z.string(), z.string()).optional(),
++    description: z.string().optional(),
++    server: nonEmptyString,
++    resource: nonEmptyString,
++    placement: z.literal("side-pane"),
++  })
++  .strict();
++export type ZCodePluginView = z.infer<typeof zcodePluginViewSchema>;
++
+ export const zcodePluginInfoSchema = z
+   .object({
+     id: nonEmptyString,
+@@ -2610,6 +2624,7 @@ export const zcodePluginInfoSchema = z
+       .object({ required: z.boolean(), granted: z.boolean(), fingerprint: nonEmptyString })
+       .strict()
+       .optional(),
++    views: z.array(zcodePluginViewSchema).optional(),
+   })
+   .strict();
+ export type ZCodePluginInfo = z.infer<typeof zcodePluginInfoSchema>;
+@@ -3335,6 +3350,43 @@ export const zcodePluginsRevokeGrantParamsSchema = z
+   .strict();
+ export type ZCodePluginsRevokeGrantParams = z.infer<typeof zcodePluginsRevokeGrantParamsSchema>;
+ 
++export const zcodePluginViewReadParamsSchema = z
++  .object({ workspace: zcodeWorkspaceRefSchema, pluginId: nonEmptyString, viewId: nonEmptyString })
++  .strict();
++export type ZCodePluginViewReadParams = z.infer<typeof zcodePluginViewReadParamsSchema>;
++export const zcodePluginViewReadResultSchema = z
++  .object({
++    html: z.string(),
++    csp: z
++      .object({
++        connectDomains: z.array(z.string()).optional(),
++        resourceDomains: z.array(z.string()).optional(),
++      })
++      .optional(),
++    prefersBorder: z.boolean().optional(),
++  })
++  .strict();
++export type ZCodePluginViewReadResult = z.infer<typeof zcodePluginViewReadResultSchema>;
++
++export const zcodePluginViewCallToolParamsSchema = z
++  .object({
++    workspace: zcodeWorkspaceRefSchema,
++    pluginId: nonEmptyString,
++    viewId: nonEmptyString,
++    tool: nonEmptyString,
++    arguments: jsonObjectSchema.optional(),
++  })
++  .strict();
++export type ZCodePluginViewCallToolParams = z.infer<typeof zcodePluginViewCallToolParamsSchema>;
++export const zcodePluginViewCallToolResultSchema = z
++  .object({
++    content: z.array(z.unknown()),
++    structuredContent: z.unknown().optional(),
++    isError: z.boolean().optional(),
++  })
++  .strict();
++export type ZCodePluginViewCallToolResult = z.infer<typeof zcodePluginViewCallToolResultSchema>;
++
+ export const zcodePluginsValidateParamsSchema = z
+   .object({
+     workspace: zcodeWorkspaceRefSchema,
+@@ -3706,6 +3758,8 @@ export const zcodeProtocolMethods = {
+   pluginsResetConfig: "plugins/resetConfig",
+   pluginsGrant: "plugins/grant",
+   pluginsRevokeGrant: "plugins/revokeGrant",
++  pluginsViewRead: "plugins/view/read",
++  pluginsViewCallTool: "plugins/view/callTool",
+   pluginsValidate: "plugins/validate",
+   pluginsDescribe: "plugins/describe",
+   automationCreate: "automation/create",
+diff --git a/packages/ui/src/App.tsx b/packages/ui/src/App.tsx
+index 4c2de03..f871f67 100644
+--- a/packages/ui/src/App.tsx
++++ b/packages/ui/src/App.tsx
+@@ -231,6 +231,7 @@ export function App({
+     handleOpenGit,
+     handleOpenTreemapping,
+     handleOpenWhiteboard,
++    handleOpenPluginView,
+     handleOpenDeveloperTools,
+     handleOpenTerminalTab,
+     handleOpenSubagentSession,
+@@ -1260,6 +1261,7 @@ export function App({
+         handleOpenBrowserTab={handleOpenBrowserTab}
+         handleOpenTreemapping={handleOpenTreemappingIfWritable}
+         handleOpenWhiteboard={handleOpenWhiteboard}
++        handleOpenPluginView={handleOpenPluginView}
+         handleOpenDeveloperTools={handleOpenDeveloperTools}
+         handleOpenTerminalTab={handleOpenTerminalTabIfWritable}
+         handleToggleGit={handleToggleGitIfWritable}
+diff --git a/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx b/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+index be1a8a6..c7f5fe8 100644
+--- a/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
++++ b/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+@@ -29,6 +29,7 @@ import { TreemappingPane } from "@/TreemappingPane.js";
+ import { WhiteboardPane } from "@/WhiteboardPane.js";
+ import { ModelTrajectoryPane } from "@/ModelTrajectoryPane.js";
+ import { DeveloperToolsPane } from "@/DeveloperToolsPane.js";
++import { PluginViewMenuItems, PluginViewPane } from "@/app-shell/PluginViewPane.js";
+ import { cn } from "@/components/lib/utils.js";
+ import { Button } from "@/components/ui/button.js";
+ import {
+@@ -91,6 +92,7 @@ import { getVisibleSidePaneTabs } from "@/lib/workspaceSidePane.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import {
+   BugIcon,
++  PuzzleIcon,
+   FileDiffIcon,
+   GlobeIcon,
+   MessageSquareTextIcon,
+@@ -312,6 +314,7 @@ export function AnimatedSidePanePanel({
+   onReopenClosedTab,
+   onOpenBrowserTab,
+   onOpenWhiteboard: _onOpenWhiteboard,
++  onOpenPluginView,
+   onOpenDeveloperTools,
+   onOpenTerminalTab,
+   onOpenReviewTab,
+@@ -377,6 +380,7 @@ export function AnimatedSidePanePanel({
+   onReopenClosedTab: (tabId: string) => void;
+   onOpenBrowserTab: () => void;
+   onOpenWhiteboard: () => void;
++  onOpenPluginView: (view: { pluginId: string; viewId: string; title: string }) => void;
+   onOpenDeveloperTools: () => void;
+   onOpenTerminalTab: () => void;
+   onOpenReviewTab: () => void;
+@@ -757,6 +761,19 @@ export function AnimatedSidePanePanel({
+             <span>{intl.formatMessage({ id: "developerTools.title" })}</span>
+           </DropdownMenuItem>
+         ) : null}
++        {workspaceAbsPath ? (
++          <PluginViewMenuItems
++            workspacePath={workspaceAbsPath}
++            workspaceIdentity={workspaceIdentity}
++            onOpenPluginView={onOpenPluginView}
++            renderItem={(item) => (
++              <DropdownMenuItem key={item.key} data-side-pane-add-item={`plugin-view:${item.key}`} onSelect={item.onSelect}>
++                <PuzzleIcon className="size-4" />
++                <span className="truncate">{item.title}</span>
++              </DropdownMenuItem>
++            )}
++          />
++        ) : null}
+       </DropdownMenuContent>
+     </DropdownMenu>
+   );
+@@ -852,6 +869,27 @@ export function AnimatedSidePanePanel({
+                 </button>
+               );
+             })}
++            {workspaceAbsPath ? (
++              <PluginViewMenuItems
++                workspacePath={workspaceAbsPath}
++                workspaceIdentity={workspaceIdentity}
++                onOpenPluginView={onOpenPluginView}
++                renderItem={(item) => (
++                  <button
++                    key={item.key}
++                    type="button"
++                    data-side-pane-open-tab-item={`plugin-view:${item.key}`}
++                    className="side-pane-open-tab-button flex h-12 min-w-0 items-center gap-3 rounded-xl bg-surface px-3 text-ui-base font-medium text-foreground transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
++                    onClick={item.onSelect}
++                  >
++                    <PuzzleIcon className="size-4 text-foreground-subtle" />
++                    <span className="side-pane-open-tab-button-label min-w-0 flex-1 truncate text-left">
++                      {item.title}
++                    </span>
++                  </button>
++                )}
++              />
++            ) : null}
+           </div>
+         </div>
+       </div>
+@@ -1230,6 +1268,15 @@ export function AnimatedSidePanePanel({
+                             workspaceIdentity={workspaceIdentity}
+                             source={tab.source ?? { kind: "current" }}
+                           />
++                        ) : tab.type === "plugin-view" ? (
++                          <PluginViewPane
++                            workspacePath={workspaceAbsPath}
++                            workspaceIdentity={workspaceIdentity}
++                            pluginId={tab.pluginId}
++                            viewId={tab.viewId}
++                            title={tab.title}
++                            onOpenBrowserUrl={onOpenBrowserUrl}
++                          />
+                         ) : tab.type === "whiteboard" ? (
+                           <WhiteboardPane
+                             workspacePath={workspaceAbsPath}
+diff --git a/packages/ui/src/app-shell/PluginViewPane.tsx b/packages/ui/src/app-shell/PluginViewPane.tsx
+new file mode 100644
+index 0000000..c0e6912
+--- /dev/null
++++ b/packages/ui/src/app-shell/PluginViewPane.tsx
+@@ -0,0 +1,300 @@
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import { Loader2, RotateCcw } from "lucide-react";
++import type { ZCodePluginViewReadResult } from "@zcode/shared";
++import { Button } from "@/components/ui/button.js";
++import { useWorkspaceServicesResolution } from "@/hooks/useWorkspaceServices.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { logger } from "@/logger.js";
++
++/**
++ * Host surface for a plugin view (OV-100 phase 4).
++ *
++ * The view is an MCP Apps `ui://` HTML resource (SEP-1865, `mcp-apps` 2026-01-26) from the plugin's
++ * own MCP server. It runs in an opaque-origin iframe (`sandbox="allow-scripts"`, no same-origin)
++ * under a CSP built from the resource's declared domains, and talks JSON-RPC over postMessage.
++ * Fleet answers `ui/initialize` with its theme tokens and proxies `tools/call` only to that plugin's
++ * server, through the same runtime the workspace's conversations use.
++ */
++
++const PROTOCOL_VERSION = "2026-01-26";
++const DOMAIN_PATTERN = /^https?:\/\/[A-Za-z0-9.*:-]+$/;
++
++// MCP Apps standardized theme variables ← Fleet design tokens (DESIGN.md plugin UI contract).
++const THEME_VARIABLES: Record<string, string> = {
++  "--color-background-primary": "--color-background",
++  "--color-background-secondary": "--color-panel",
++  "--color-background-tertiary": "--color-card",
++  "--color-background-ghost": "--color-hover",
++  "--color-background-danger": "--color-destructive",
++  "--color-text-primary": "--color-foreground",
++  "--color-text-secondary": "--color-foreground-subtle",
++  "--color-text-tertiary": "--color-foreground-subtlest",
++  "--color-text-inverse": "--color-foreground-inverse",
++  "--color-text-danger": "--color-destructive",
++  "--color-border-primary": "--color-border",
++  "--color-border-secondary": "--color-border-hover",
++};
++
++interface JsonRpcMessage {
++  jsonrpc?: string;
++  id?: string | number;
++  method?: string;
++  params?: Record<string, unknown>;
++}
++
++function domainList(values: readonly string[] | undefined): string {
++  return (values ?? []).filter((value) => DOMAIN_PATTERN.test(value)).join(" ");
++}
++
++/** The view's CSP: the MCP Apps restrictive default plus only the domains the resource declared. */
++export function buildPluginViewDocument(view: ZCodePluginViewReadResult): string {
++  const resources = domainList(view.csp?.resourceDomains);
++  const connect = domainList(view.csp?.connectDomains);
++  const policy = [
++    "default-src 'none'",
++    `script-src 'unsafe-inline' ${resources}`.trim(),
++    `style-src 'unsafe-inline' ${resources}`.trim(),
++    `img-src data: blob: ${resources}`.trim(),
++    `font-src data: ${resources}`.trim(),
++    `media-src data: blob: ${resources}`.trim(),
++    `connect-src ${connect || "'none'"}`,
++    "frame-src 'none'",
++    "object-src 'none'",
++    "base-uri 'none'",
++    "form-action 'none'",
++  ].join("; ");
++  const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
++  return /<head[^>]*>/i.test(view.html)
++    ? view.html.replace(/<head[^>]*>/i, (head) => `${head}${meta}`)
++    : `${meta}${view.html}`;
++}
++
++function themeVariables(): Record<string, string> {
++  const style = getComputedStyle(document.documentElement);
++  const variables: Record<string, string> = {};
++  for (const [appVariable, fleetVariable] of Object.entries(THEME_VARIABLES)) {
++    const value = style.getPropertyValue(fleetVariable).trim();
++    if (value) variables[appVariable] = value;
++  }
++  const font = getComputedStyle(document.body).fontFamily;
++  if (font) variables["--font-sans"] = font;
++  return variables;
++}
++
++function currentTheme(): "light" | "dark" {
++  return document.documentElement.classList.contains("dark") ? "dark" : "light";
++}
++
++export function PluginViewPane({
++  workspacePath,
++  workspaceIdentity,
++  pluginId,
++  viewId,
++  title,
++  onOpenBrowserUrl,
++}: {
++  workspacePath: string;
++  workspaceIdentity?: string;
++  pluginId: string;
++  viewId: string;
++  title: string;
++  onOpenBrowserUrl: (url: string) => void;
++}) {
++  const { intl, locale } = useZCodeIntl();
++  const resolution = useWorkspaceServicesResolution(workspacePath, null, workspaceIdentity);
++  const { pluginManagementService } = resolution.services;
++  const frameRef = useRef<HTMLIFrameElement | null>(null);
++  const [view, setView] = useState<ZCodePluginViewReadResult | null>(null);
++  const [error, setError] = useState<string | null>(null);
++  const [attempt, setAttempt] = useState(0);
++  const target = useMemo(
++    () => ({ workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}), pluginId, viewId }),
++    [pluginId, viewId, workspaceIdentity, workspacePath],
++  );
++
++  useEffect(() => {
++    if (!resolution.rpcReady) return;
++    let cancelled = false;
++    setView(null);
++    setError(null);
++    pluginManagementService
++      .readPluginView(target)
++      .then((result) => {
++        if (!cancelled) setView(result);
++      })
++      .catch((reason: unknown) => {
++        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
++      });
++    return () => {
++      cancelled = true;
++    };
++  }, [attempt, pluginManagementService, resolution.rpcReady, target]);
++
++  const post = useCallback((message: Record<string, unknown>) => {
++    frameRef.current?.contentWindow?.postMessage({ jsonrpc: "2.0", ...message }, "*");
++  }, []);
++
++  useEffect(() => {
++    if (!view) return;
++    const respond = (id: string | number, result: unknown) => post({ id, result });
++    const fail = (id: string | number, message: string, code = -32603) =>
++      post({ id, error: { code, message } });
++    const handle = async (message: JsonRpcMessage) => {
++      const { id, method, params = {} } = message;
++      if (!method) return;
++      if (id === undefined) {
++        if (method === "notifications/message") logger.info("[plugin-view]", { pluginId, viewId, params });
++        return;
++      }
++      switch (method) {
++        case "ui/initialize":
++          return respond(id, {
++            protocolVersion: typeof params.protocolVersion === "string" ? params.protocolVersion : PROTOCOL_VERSION,
++            hostInfo: { name: "Fleet", version: "1" },
++            hostCapabilities: { openLinks: {}, serverTools: {}, logging: {} },
++            hostContext: {
++              theme: currentTheme(),
++              styles: { variables: themeVariables() },
++              displayMode: "inline",
++              availableDisplayModes: ["inline"],
++              locale,
++              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++              platform: "desktop",
++            },
++          });
++        case "ping":
++          return respond(id, {});
++        case "tools/call": {
++          const name = typeof params.name === "string" ? params.name : "";
++          if (!name) return fail(id, "tools/call needs a tool name", -32602);
++          try {
++            const args =
++              params.arguments && typeof params.arguments === "object"
++                ? (params.arguments as Record<string, unknown>)
++                : undefined;
++            return respond(
++              id,
++              await pluginManagementService.callPluginViewTool({ ...target, tool: name, ...(args ? { arguments: args } : {}) }),
++            );
++          } catch (reason) {
++            return fail(id, reason instanceof Error ? reason.message : String(reason));
++          }
++        }
++        case "ui/open-link": {
++          const url = typeof params.url === "string" ? params.url : "";
++          if (!/^https?:\/\//.test(url)) return fail(id, "Only http(s) links can be opened", -32602);
++          onOpenBrowserUrl(url);
++          return respond(id, {});
++        }
++        default:
++          return fail(id, `${method} is not supported by Fleet yet`, -32601);
++      }
++    };
++    const listener = (event: MessageEvent) => {
++      // Only the view's own frame may talk to the host bridge.
++      if (event.source !== frameRef.current?.contentWindow) return;
++      const data = event.data as JsonRpcMessage;
++      if (!data || typeof data !== "object" || data.jsonrpc !== "2.0") return;
++      void handle(data);
++    };
++    window.addEventListener("message", listener);
++    // Keep the view's theme in step with Fleet's.
++    const observer = new MutationObserver(() =>
++      post({
++        method: "ui/notifications/host-context-changed",
++        params: { theme: currentTheme(), styles: { variables: themeVariables() } },
++      }),
++    );
++    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
++    return () => {
++      window.removeEventListener("message", listener);
++      observer.disconnect();
++    };
++  }, [locale, onOpenBrowserUrl, pluginId, pluginManagementService, post, target, view, viewId]);
++
++  if (error) {
++    return (
++      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="plugin-view-error">
++        <p className="max-w-sm text-ui-base text-foreground-subtle">{error}</p>
++        <Button type="button" variant="outline" size="sm" onClick={() => setAttempt((value) => value + 1)}>
++          <RotateCcw data-icon="inline-start" aria-hidden="true" />
++          {intl.formatMessage({ id: "common.retry" })}
++        </Button>
++      </div>
++    );
++  }
++  if (!view) {
++    return (
++      <div className="flex h-full items-center justify-center text-foreground-subtle" data-testid="plugin-view-loading">
++        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
++      </div>
++    );
++  }
++  return (
++    <iframe
++      ref={frameRef}
++      title={title}
++      data-testid="plugin-view-frame"
++      data-plugin-id={pluginId}
++      sandbox="allow-scripts"
++      srcDoc={buildPluginViewDocument(view)}
++      className="h-full w-full border-0 bg-background"
++    />
++  );
++}
++
++/**
++ * "+" menu entries for views of enabled plugins whose servers may run. Loaded when the menu opens,
++ * so the side pane does not query plugins on every render.
++ */
++export function PluginViewMenuItems({
++  workspacePath,
++  workspaceIdentity,
++  onOpenPluginView,
++  renderItem,
++}: {
++  workspacePath: string;
++  workspaceIdentity?: string;
++  onOpenPluginView: (view: { pluginId: string; viewId: string; title: string }) => void;
++  renderItem: (item: { key: string; title: string; onSelect: () => void }) => React.ReactNode;
++}) {
++  const { locale } = useZCodeIntl();
++  const resolution = useWorkspaceServicesResolution(workspacePath, null, workspaceIdentity);
++  const { pluginManagementService } = resolution.services;
++  const [views, setViews] = useState<Array<{ pluginId: string; viewId: string; title: string }>>([]);
++  useEffect(() => {
++    if (!resolution.rpcReady) return;
++    let cancelled = false;
++    pluginManagementService
++      .listPlugins({ workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}) })
++      .then((result) => {
++        if (cancelled) return;
++        setViews(
++          result.plugins
++            .filter((plugin) => plugin.enabled && plugin.grant?.granted !== false)
++            .flatMap((plugin) =>
++              (plugin.views ?? []).map((view) => ({
++                pluginId: plugin.id,
++                viewId: view.id,
++                title: view.titleI18n?.[locale] ?? view.title,
++              })),
++            ),
++        );
++      })
++      .catch((reason: unknown) => logger.warn("[plugin-view] listing views failed", { reason: String(reason) }));
++    return () => {
++      cancelled = true;
++    };
++  }, [locale, pluginManagementService, resolution.rpcReady, workspaceIdentity, workspacePath]);
++  return (
++    <>
++      {views.map((view) =>
++        renderItem({
++          key: `${view.pluginId}:${view.viewId}`,
++          title: view.title,
++          onSelect: () => onOpenPluginView(view),
++        }),
++      )}
++    </>
++  );
++}
+diff --git a/packages/ui/src/app-shell/SidePaneTabTrigger.tsx b/packages/ui/src/app-shell/SidePaneTabTrigger.tsx
+index e7f6a10..ffcaec8 100644
+--- a/packages/ui/src/app-shell/SidePaneTabTrigger.tsx
++++ b/packages/ui/src/app-shell/SidePaneTabTrigger.tsx
+@@ -14,6 +14,7 @@ import {
+   NotepadTextIcon,
+   PackageIcon,
+   PaletteIcon,
++  PuzzleIcon,
+   SquareTerminalIcon,
+   TerminalIcon,
+   WaypointsIcon,
+@@ -320,6 +321,10 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
+     return <PaletteIcon className="size-3.5" />;
+   }
+ 
++  if (tab.type === "plugin-view") {
++    return <PuzzleIcon className="size-3.5" />;
++  }
++
+   if (tab.type === "model-trajectory") {
+     return <WaypointsIcon className="size-3.5" />;
+   }
+@@ -528,6 +533,10 @@ export function getSidePaneTabTitle(
+     return tab.title || formatMessage({ id: "whiteboard.title" });
+   }
+ 
++  if (tab.type === "plugin-view") {
++    return tab.title;
++  }
++
+   if (tab.type === "model-trajectory") {
+     return tab.title?.trim() || formatMessage({ id: "modelTrajectory.title" });
+   }
+diff --git a/packages/ui/src/app-shell/WorkspaceShellLayout.tsx b/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+index 48491fe..5a72724 100644
+--- a/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
++++ b/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+@@ -302,6 +302,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+   handleOpenBrowserTab,
+   handleOpenTreemapping,
+   handleOpenWhiteboard,
++  handleOpenPluginView,
+   handleOpenDeveloperTools,
+   handleOpenTerminalTab,
+   handleToggleGit,
+@@ -1462,6 +1463,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+       onReopenClosedTab={handleReopenClosedSidePaneTab}
+       onOpenBrowserTab={handleOpenBrowserTab}
+       onOpenWhiteboard={handleOpenWhiteboard}
++      onOpenPluginView={handleOpenPluginView}
+       onOpenDeveloperTools={handleOpenDeveloperTools}
+       onOpenTerminalTab={handleOpenTerminalTab}
+       onOpenReviewTab={handleToggleGit}
+diff --git a/packages/ui/src/app-shell/sidePaneTabPresentation.ts b/packages/ui/src/app-shell/sidePaneTabPresentation.ts
+index 3d73406..d47c3e9 100644
+--- a/packages/ui/src/app-shell/sidePaneTabPresentation.ts
++++ b/packages/ui/src/app-shell/sidePaneTabPresentation.ts
+@@ -58,6 +58,7 @@ export function getSidePaneTabSearchHint(tab: WorkspaceSidePaneTab): string {
+   if (tab.type === "git") return "git diff";
+   if (tab.type === "treemapping") return "file activity diff map treemapping";
+   if (tab.type === "whiteboard") return `${tab.title} whiteboard canvas draw sketch`;
++  if (tab.type === "plugin-view") return `${tab.title} ${tab.pluginId} plugin`;
+   if (tab.type === "model-trajectory") {
+     return `${tab.title ?? ""} ${tab.taskId} model trajectory call io`;
+   }
+@@ -115,6 +116,7 @@ export function getSidePaneTabTypeLabel(
+   if (tab.type === "git") return labels.reviewTitle;
+   if (tab.type === "treemapping") return labels.treemappingTitle;
+   if (tab.type === "whiteboard") return labels.whiteboardTitle;
++  if (tab.type === "plugin-view") return tab.title;
+   if (tab.type === "model-trajectory") return labels.modelTrajectoryTitle;
+   if (tab.type === "developer-tools") return labels.developerToolsTitle;
+   if (tab.type === "terminal" || tab.type === "bash-output") return labels.terminalTitle;
+diff --git a/packages/ui/src/app-shell/types.ts b/packages/ui/src/app-shell/types.ts
+index 22e1929..bee5ab2 100644
+--- a/packages/ui/src/app-shell/types.ts
++++ b/packages/ui/src/app-shell/types.ts
+@@ -236,6 +236,7 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
+   handleOpenBrowserTab: () => void;
+   handleOpenTreemapping: (source?: TreemappingSidePaneTab["source"]) => void;
+   handleOpenWhiteboard: () => void;
++  handleOpenPluginView: (view: { pluginId: string; viewId: string; title: string }) => void;
+   handleOpenDeveloperTools: () => void;
+   handleOpenTerminalTab: () => void;
+   handleToggleGit: () => void;
+diff --git a/packages/ui/src/hooks/useAppPanels.ts b/packages/ui/src/hooks/useAppPanels.ts
+index 53ba280..b87cfa7 100644
+--- a/packages/ui/src/hooks/useAppPanels.ts
++++ b/packages/ui/src/hooks/useAppPanels.ts
+@@ -19,6 +19,7 @@ import {
+   closeGitSidePane,
+   closeCodeViewerSidePane,
+   openWhiteboardSidePane,
++  openPluginViewSidePane,
+   openModelTrajectorySidePane,
+   openTerminalSidePane,
+   openSubagentSessionSidePane,
+@@ -825,6 +826,17 @@ export function useAppPanels(options: {
+     workspaceIdentity,
+   ]);
+ 
++  // OV-100 phase 4: a plugin's view opens as a Project-wide side-pane tab.
++  const handleOpenPluginView = useCallback(
++    (view: { pluginId: string; viewId: string; title: string }) => {
++      revealSidePaneForCurrentOwner();
++      commitOpenedSidePaneState((current) =>
++        openPluginViewSidePane(current, { ...view, workspaceKey: activeWorkspaceKey }),
++      );
++    },
++    [activeWorkspaceKey, commitOpenedSidePaneState, revealSidePaneForCurrentOwner],
++  );
++
+   const handleOpenDeveloperTools = useCallback(() => {
+     revealSidePaneForCurrentOwner();
+     commitOpenedSidePaneState((current) => {
+@@ -1649,6 +1661,7 @@ export function useAppPanels(options: {
+     handleOpenGit,
+     handleOpenTreemapping,
+     handleOpenWhiteboard,
++    handleOpenPluginView,
+     handleOpenDeveloperTools,
+     handleOpenTerminalTab,
+     handleOpenModelTrajectory,
+diff --git a/packages/ui/src/lib/settingsNavigation.ts b/packages/ui/src/lib/settingsNavigation.ts
+index ae2d3b6..f286a6d 100644
+--- a/packages/ui/src/lib/settingsNavigation.ts
++++ b/packages/ui/src/lib/settingsNavigation.ts
+@@ -204,7 +204,9 @@ export function setPendingSettingsPluginIntent(
+         ? "skill"
+         : tab === "commands"
+           ? "commands"
+-          : "plugin";
++          : tab === "hooks"
++            ? "hooks"
++            : "plugin";
+   setPendingSettingsSectionIntent(section, {
+     pluginTab: tab === "plugins" ? tab : undefined,
+     pluginOrigin: options.origin,
+diff --git a/packages/ui/src/lib/workspaceSidePane.ts b/packages/ui/src/lib/workspaceSidePane.ts
+index 2edb2de..b203b05 100644
+--- a/packages/ui/src/lib/workspaceSidePane.ts
++++ b/packages/ui/src/lib/workspaceSidePane.ts
+@@ -66,6 +66,19 @@ export interface WhiteboardSidePaneTab {
+   title: string;
+ }
+ 
++/** A view contributed by a plugin (OV-100 phase 4), served by the plugin's own MCP server. */
++export interface PluginViewSidePaneTab {
++  id: string;
++  type: "plugin-view";
++  ownerTaskId?: string | null;
++  workspaceKey?: string | null;
++  openedAt?: number;
++  pluginId: string;
++  viewId: string;
++  /** Title frozen at open; shown until the plugin list loads. */
++  title: string;
++}
++
+ export interface ModelTrajectorySidePaneTab {
+   id: string;
+   type: "model-trajectory";
+@@ -520,6 +533,7 @@ export type WorkspaceSidePaneTab =
+   | CodeViewerSidePaneTab
+   | TreemappingSidePaneTab
+   | WhiteboardSidePaneTab
++  | PluginViewSidePaneTab
+   | ModelTrajectorySidePaneTab
+   | DeveloperToolsSidePaneTab
+   | TerminalSidePaneTab
+@@ -1069,6 +1083,8 @@ const WORKSPACE_GLOBAL_SIDE_PANE_TAB_TYPES = new Set<WorkspaceSidePaneTab["type"
+   "git",
+   "developer-tools",
+   "treemapping",
++  // A plugin page belongs to the Project, not to one conversation.
++  "plugin-view",
+ ]);
+ 
+ function isWorkspaceGlobalSidePaneTab(tab: WorkspaceSidePaneTab): boolean {
+@@ -1584,6 +1600,21 @@ export function openWhiteboardSidePane(
+   return activateSidePaneTab(current, createWhiteboardSidePaneTab(options));
+ }
+ 
++export function openPluginViewSidePane(
++  current: WorkspaceSidePaneState | null,
++  options: { pluginId: string; viewId: string; title: string; workspaceKey: string | null },
++): WorkspaceSidePaneState {
++  return activateSidePaneTab(current, {
++    id: `plugin-view:${options.pluginId}:${options.viewId}`,
++    type: "plugin-view",
++    openedAt: Date.now(),
++    pluginId: options.pluginId,
++    viewId: options.viewId,
++    title: options.title,
++    workspaceKey: options.workspaceKey,
++  });
++}
++
+ export function openModelTrajectorySidePane(
+   current: WorkspaceSidePaneState | null,
+   options: {
+diff --git a/packages/ui/test/pluginSettingsViews.test.ts b/packages/ui/test/pluginSettingsViews.test.ts
+index 5dd0230..5cfcbca 100644
+--- a/packages/ui/test/pluginSettingsViews.test.ts
++++ b/packages/ui/test/pluginSettingsViews.test.ts
+@@ -41,3 +41,18 @@ test("Market content filters treat undescribed packages as unknown, not empty",
+   } as never);
+   assert.deepEqual([...(installed ?? [])], ["hook"], "empty groups do not count");
+ });
++
++test("a plugin view runs under the MCP Apps default CSP plus only the domains it declared", async () => {
++  const { buildPluginViewDocument } = await import("../src/app-shell/PluginViewPane.js");
++  const restricted = buildPluginViewDocument({ html: "<html><head></head><body>x</body></html>" });
++  assert.match(restricted, /<head><meta http-equiv="Content-Security-Policy"/);
++  assert.match(restricted, /connect-src 'none'/);
++  assert.match(restricted, /frame-src 'none'/);
++  const declared = buildPluginViewDocument({
++    html: "<body>x</body>",
++    csp: { connectDomains: ["https://api.example.com", "javascript:alert(1)"], resourceDomains: ["https://cdn.example.com"] },
++  });
++  assert.match(declared, /connect-src https:\/\/api\.example\.com;/);
++  assert.match(declared, /script-src 'unsafe-inline' https:\/\/cdn\.example\.com/);
++  assert.doesNotMatch(declared, /javascript:/, "only http(s) origins are accepted");
++});
+-- 
+2.54.0 (Apple Git-157)
+

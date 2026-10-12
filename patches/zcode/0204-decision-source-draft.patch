@@ -1,0 +1,136 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 81b1162..207e593 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -313,3 +313,14 @@ contracts document `jev-1.13.0` and finite rubric scores including fractions. Ne
+ use the pin while all previous alias records survive. Connection and model writes settle before
+ preference binding; an acknowledgement/preference failure retains the committed connection for
+ retry, with explicit inference still off. Navigation/unmount/service changes fence delayed binding.
++
++## Draft, accepted configuration and execution
++
++Source setup inspection is a Renderer draft; it must not remove an accepted selection or disable
++its purpose. Explicit save/clear commands retain their established meanings. The current editor's
++acknowledged create/save/model/bind steps are transitional, not an atomic source-save operation.
++The target compound command belongs on the existing Provider facade and Personal transaction,
++with exact revision, connection identity, stale-result handling and retained acknowledgement proof.
++The authoritative frontend/backend design is
++[the model decision contract](../../../../../docs/modules/model-decisions.md#frontend-and-backend-design).
++Do not create another settings/credential authority or treat a mounted UI callback as commit proof.
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 81cd219..a67ae00 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7577,6 +7577,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.apiKeyOptional": "API Key (optional)",
+   "settings.modelDefaults.decision.title": "Auxiliary decision model",
+   "settings.modelDefaults.decision.customSource": "Custom decision service",
++  "settings.modelDefaults.decision.unsavedSource": "Unsaved source. Save to apply.",
+   "settings.modelDefaults.decision.source": "Decision source",
+   "settings.modelDefaults.decision.setupSource": "Set up {name}",
+   "settings.modelDefaults.decision.addressHelp": "Enter the service base URL ending in /v1. This configures the System One classifier interface; saving does not install, start or test the service.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 85a5449..d23d281 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -7170,6 +7170,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.apiKeyOptional": "API Key（可选）",
+   "settings.modelDefaults.decision.title": "辅助决策模型",
+   "settings.modelDefaults.decision.customSource": "自定义决策服务",
++  "settings.modelDefaults.decision.unsavedSource": "来源未保存，保存后生效。",
+   "settings.modelDefaults.decision.source": "决策来源",
+   "settings.modelDefaults.decision.setupSource": "配置 {name}",
+   "settings.modelDefaults.decision.addressHelp": "填写服务的基地址，以 /v1 结尾。这里只配置 System One 分类接口；保存不会安装、启动或测试服务。",
+diff --git a/packages/ui/src/settings/DecisionModelDefaults.tsx b/packages/ui/src/settings/DecisionModelDefaults.tsx
+index 96609b6..5da5ed9 100644
+--- a/packages/ui/src/settings/DecisionModelDefaults.tsx
++++ b/packages/ui/src/settings/DecisionModelDefaults.tsx
+@@ -81,6 +81,16 @@ export function DecisionModelDefaults({
+     id;
+   const chooseSource = async (value: string) => {
+     if (sourceBusy || pending) return;
++    // Setup inspection belongs to the draft; keep the accepted source until Save commits.
++    if (
++      value.startsWith("template:") ||
++      value === decision.selection?.providerId ||
++      (value === "none" && !decision.selection)
++    ) {
++      sourceEpoch.current++;
++      setDraftSource(value);
++      return;
++    }
+     const current =
+       decision.selection?.providerId === value ? decision.selection : selectedForSource(value);
+     const { selection: _old, ...rest } = decision;
+@@ -117,6 +127,7 @@ export function DecisionModelDefaults({
+               aria-label={t("title")}
+               checked={decision.enabled}
+               disabled={
++                Boolean(template) ||
+                 sourceBusy ||
+                 pending ||
+                 !view?.preferencesRevision ||
+@@ -157,6 +168,11 @@ export function DecisionModelDefaults({
+             </Select>
+           }
+         />
++        {template ? (
++          <p role="status" className="px-4 py-2 text-ui-base text-foreground-subtle">
++            {t("unsavedSource")}
++          </p>
++        ) : null}
+         {decision.selection?.providerId === source && !available ? (
+           <p role="status" className="px-4 py-2 text-ui-base text-warning">
+             {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
+diff --git a/packages/ui/test/decisionSourceSettings.browser.test.tsx b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+index 5e6db6e..bba636f 100644
+--- a/packages/ui/test/decisionSourceSettings.browser.test.tsx
++++ b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+@@ -292,6 +292,47 @@ async function fixture(locale = "en-US") {
+         }
+       });
+     }
++  await test("previewing a new source keeps the enabled saved source intact until save", async () => {
++    const f = await fixture();
++    try {
++      await f.laya();
++      await f.save();
++      const toggle = f.node.querySelector<HTMLButtonElement>('[role="switch"]')!;
++      await act(async () => toggle.click());
++      check(f.view().decisionModelSettings.enabled, "Fixture source was not enabled");
++      const accepted = structuredClone(f.view().decisionModelSettings);
++      const writes = f.events.length;
++      await f.choose("Set up TypeSafe Jev");
++      check(
++        JSON.stringify(f.view().decisionModelSettings) === JSON.stringify(accepted),
++        "Previewing an unsaved source withdrew the running decision configuration",
++      );
++      check(f.events.length === writes, "Preview performed an accepted write");
++      check(
++        f.node.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled,
++        "An unsaved source exposed a misleading enable switch",
++      );
++      check(
++        f.node.textContent?.includes("Unsaved source"),
++        "Draft and active source were not distinguished",
++      );
++      await f.choose("Saved local source");
++      check(
++        JSON.stringify(f.view().decisionModelSettings) === JSON.stringify(accepted),
++        "Leaving preview lost the active selection",
++      );
++      check(
++        f.events.length === writes,
++        "Returning to the unchanged source rewrote its preferences",
++      );
++      check(
++        !f.node.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled,
++        "Returning to saved source left controls locked",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("source form retains two columns beside a scrollbar at 500px and stacks at 320px", async () => {
+     const f = await fixture();
+     try {

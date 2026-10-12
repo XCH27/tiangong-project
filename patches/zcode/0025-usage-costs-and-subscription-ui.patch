@@ -1,0 +1,3195 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 130233348fc0f5d3c65f5da1d676fb0ad1e1051c..c94b9126112be31a2d893c3486a222a28329f7e7 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -121,3 +121,23 @@ and a delayed restore seed cannot replace any newer live main-request report.
+ Keep the existing output reservation and token accounting. The default safety buffer is the smaller of 13K and 10% of the effective input window, so a small but positive window does not compact after a few tokens. Explicit buffer values (including zero) retain precedence. The 200K/1M defaults, disabled state and failure circuit breaker retain their behavior. A zero effective input budget is still a separate unresolved request-budget boundary; no artificial positive threshold is created. `packages/core/test/compact-policy.test.ts` covers the bounded change.
+ 
+ The context popup follows the upstream capacity → visible composition → compact allowance order. The owner rejected the added Tabs and ledger-first hierarchy. Request counters and cache rate stay accessible in a secondary disclosure; character-estimated composition is visible and marked as an estimate. A valid restored context sample may show its last recorded ratio with an explicit Last label. Quota remains reachable before the first message without an invented zero count. No account mutation occurs on this display path.
++
++## Usage costs and subscription payments (OV-047)
++
++The owner approved extending/migrating the existing usage ledger. Each model_usage row owns a
++compact accounting snapshot: reported counters, provider/account identity when actually resolved,
++requested/served speed, sourced price version and API-equivalent/native-credit estimates. Old rows
++migrate reported counters only; current settings never backfill historical account or speed. Keep
++small usage facts across months; explicit cleanup remains separate from automatic raw-I/O retention.
++The shared pure calculator accepts exact billing provider/model, request time, inclusive input/cache
++counters, output, speed and authentication kind. Unknown prices/tiers/counters remain unknown.
++
++App Settings owns user-entered payment records keyed by ID, with provider/account, [start,end),
++currency and paid amount. Its existing serialized write queue merges individual payment keys.
++The existing usage query accepts an explicit bounded period and returns account/model/mode groups;
++no second database, credential owner or billing service. Allocation uses native credit weights when
++all account-period rows support them, otherwise complete official API-value weights. Missing rows,
++no usage and unpriced models leave the payment unallocated. Only observed Fleet usage is covered;
++ongoing billing periods are provisional and mixed currencies are never summed. Display per-model
++cache ratio as summed reported cache reads divided by the corresponding reported total input.
++Token popup retains original context/allowance shape; request/cost analytics lives in Usage only.
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index f6eec17c6d6d58afdcc1ed22ef948e4f716da38d..cde785d284a97a0a3dbd9cc85ad90f08a22b4080 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -153,7 +153,7 @@ files are read. A pinned adapter model catalog remains labelled as such, not acc
+ Codex membership metadata uses the same saved OAuth account and network policy. Read the exact
+ workspace entitlement from account-check, then query `/subscriptions?account_id=…` when needed;
+ never select an unrelated default/first paid workspace. Both calls share an eight-second deadline.
+-The explicit account parameter and route headers are required by the verified live path. Membership
++The explicit account parameter and Cockpit's browser/route headers are required by the verified live path; these two metadata calls omit ChatGPT-Account-Id and bind identity by query/response instead. OAuth, quota and inference headers stay unchanged; no browser cookies are imported. Membership
+ metadata caches for fifteen minutes inside the same account/revision-scoped usage owner; explicit
+ refresh also rereads it. Validity and renewal are separate: `expires_at` is an entitlement term,
+ `active_until` plus `will_renew` describes the current billing term. Preserve dated last-good metadata
+@@ -391,8 +391,35 @@ The existing ModelOptionMap request owner applies the speed field and required p
+ Standard explicitly requests OpenAI's default tier; Anthropic standard omits its opt-in speed/header.
+ Native Codex uses its advertised service tiers and the same frozen choice. Account recovery must
+ also support the requested mode; it cannot silently substitute lower effort or standard service.
+-The owner rejected the icon + label + switch combination. The UI now uses one existing toolbar
+-icon button: filled lightning/pressed state when enabled, outline when disabled; its tooltip explains
+-increased allowance or API rates. It never automatically enables fast mode. Verification uses injected transports, not
++The owner rejected the standalone Fast control. The existing effort menu now has separate reasoning
++and speed radio groups; the selected model label contains no provider prefix. The speed group shows
++the sourced allowance/rate increase. It never automatically enables fast mode. Verification uses injected transports, not
+ live premium requests. Actual served tier and requested tier are distinct when the provider reports
+ a downgrade; do not label a request accelerated merely because the switch was on.
++
++## Usage costs and subscription payments (OV-047)
++
++Extend the existing model_usage ledger with one accounting_json snapshot per recorded request.
++The existing migration preserves valid raw historical counters without guessing old account,
++speed or price metadata. The request owner records the resolved account and requested speed;
++pricing uses a reported served tier when recognized. Unknown served tiers are not standard by
++default. Cache read/write and reasoning counters remain subsets, never additional total tokens.
++Freeze verified official price version and estimated API value/native credits with the request;
++the supported exact OpenAI and DeepSeek models do not imply other providers have verified prices.
++Automatic thirty-day pruning of lightweight usage facts stops; explicit deletion semantics remain.
++
++The existing usage query provides account/model/speed aggregates and requested date ranges.
++Usage Settings shows per-model cache hit rate, priced/reporting coverage and API-equivalent cost.
++The Token popup retains original capacity/composition/allowance presentation without the rejected
++request-detail disclosure. Actual payments belong to AppSettings.subscriptionPayments, keyed by
++record ID and merged through its serialized writer. Each record binds one saved account (or an
++explicit membership-key connection total), currency and absolute half-open billing period.
++Only providers in Model Settings's added-service scope may supply new payment choices; disabled
++saved plans remain eligible for recording their already-paid bill. Retired built-in offers do not.
++
++Within that period, use native-credit weights only with complete coverage, otherwise complete
++official API-value weights; missing legacy identity/price leaves the amount unallocated. Do not
++sum currencies, guess other-app usage, or claim an unfinished billing period is final. Edits that
++change only the amount preserve original absolute date boundaries after timezone changes.
++Overlap is rejected by both form and settings validation; deleting a payment uses a keyed
++tombstone without modifying the request ledger. Closing an unfinished form writes nothing.
+diff --git a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+index e6c87a407e240adcfb4399ee5d6974ef23f94679..750f52e323af9a152fee5fba0d8de6706a76eb44 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+@@ -48,6 +48,9 @@ export function createPiSubscriptionModel(
+   const access = options.providerConfig.access;
+   if (access.type !== "subscription") throw new Error("Expected a subscription connection");
+   const subscriptionKind = access.provider;
++  const accounting = (scope:SubscriptionReplayScope) => ({accountId:scope.accountId,authKind:"subscription",
++    billingProvider:subscriptionKind === "openai-codex" ? "openai" : subscriptionKind,
++  });
+   const provider =
+     providerOverride ??
+     (access.provider === "openai-codex" ? openaiCodexProvider() : access.provider === "xai" ? xaiProvider() : githubCopilotProvider());
+@@ -281,7 +284,7 @@ export function createPiSubscriptionModel(
+     executor: {
+       async generateText(request) {
+         for await (const event of events(request))
+-          if (event.type === "done") return toResult(event.message, event.replayScope);
++          if (event.type === "done") return {...toResult(event.message, event.replayScope), providerMetadata:{fleetAccounting:accounting(event.replayScope)}};
+         throw new Error("Subscription stream ended without a completed response");
+       },
+       async *streamText(request): AsyncGenerator<ModelStreamEvent> {
+@@ -344,6 +347,7 @@ export function createPiSubscriptionModel(
+             case "done":
+               yield {
+                 type: "finish",
++                providerMetadata: {fleetAccounting:accounting(event.replayScope)},
+                 finishReason: finishReason(event.message),
+                 usage: toUsage(event.message.usage),
+               };
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner.ts b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+index 65eb4773e727aec8c8fa6e0435346439574bdd4a..cd8b14fd671a483fb832cc1eac54be97ff6d7d11 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+@@ -270,6 +270,15 @@ export class AiSdkModelAdapter {
+               : {}),
+           });
+     };
++    const execution = this;
++    const billingHost = new URL(options.providerConfig.api.baseUrl).hostname;
++    const billingProvider = billingHost === "api.openai.com" ? "openai" : billingHost === "api.deepseek.com" ? "deepseek" : billingHost === "api.anthropic.com" ? "anthropic" : undefined;
++    const accountingMetadata = (metadata:Record<string,unknown> | undefined) => {
++      const openai = metadata?.openai as {serviceTier?:string} | undefined;
++      const tier=openai?.serviceTier;
++      const servedSpeedMode=tier === "priority" || tier === "fast" ? "fast" : tier === "default" ? "standard" : tier;
++      return {...metadata,fleetAccounting:{billingProvider,authKind:"api-key",servedSpeedMode}};
++    };
+     return createModel({
+       providerId: resolved.providerId,
+       modelId: resolved.modelId,
+@@ -282,21 +291,20 @@ export class AiSdkModelAdapter {
+       },
+       options: options.options,
+       executor: {
+-        generateText: (request) => {
++        generateText: async (request) => {
+           const legacyRequest = toLegacyRequest(request);
+-          return this.generateTextWithResolved(
++          const result = await this.generateTextWithResolved(
+             legacyRequest,
+             resolved,
+             resolveForRequest(legacyRequest, request.options),
+           );
++          return {...result,providerMetadata:accountingMetadata(result.providerMetadata)};
+         },
+-        streamText: (request) => {
++        streamText: async function* (request) {
+           const legacyRequest = toLegacyRequest(request);
+-          return this.streamTextWithResolved(
+-            legacyRequest,
+-            resolved,
+-            resolveForRequest(legacyRequest, request.options),
+-          );
++          for await (const event of execution.streamTextWithResolved(legacyRequest,resolved,resolveForRequest(legacyRequest,request.options))) {
++            yield event.type === "finish" ? {...event,providerMetadata:accountingMetadata(event.providerMetadata)} : event;
++          }
+         },
+       },
+     });
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
+index a6ccefc5fc438f0824ae2790f4b285dc4f86a6ee..bb56cca42e5bdab1c94645773af37c7f11184bc4 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/migrations.ts
+@@ -925,6 +925,18 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
+     id: "0022_backfilled_session_reasoning",
+     sql: BACKFILLED_SESSION_REASONING_MIGRATION_SQL,
+   },
++  {
++    appVersion: "0.16.9",
++    id: "0023_usage_accounting",
++    sql: `alter table model_usage add column accounting_json text;
++      update model_usage set accounting_json = json_object(
++        'inputTokens', case when json_type(raw_usage_json,'$.inputTokens') = 'integer' and json_extract(raw_usage_json,'$.inputTokens') >= 0 then json_extract(raw_usage_json,'$.inputTokens') end,
++        'outputTokens', case when json_type(raw_usage_json,'$.outputTokens') = 'integer' and json_extract(raw_usage_json,'$.outputTokens') >= 0 then json_extract(raw_usage_json,'$.outputTokens') end,
++        'cacheReadTokens', case when json_type(raw_usage_json,'$.cacheReadTokens') = 'integer' and json_extract(raw_usage_json,'$.cacheReadTokens') >= 0 then json_extract(raw_usage_json,'$.cacheReadTokens') end,
++        'cacheWriteTokens', case when json_type(raw_usage_json,'$.cacheWriteTokens') = 'integer' and json_extract(raw_usage_json,'$.cacheWriteTokens') >= 0 then json_extract(raw_usage_json,'$.cacheWriteTokens') end,
++        'requestedSpeedMode', json_extract(provider_metadata_json,'$.fleetAccounting.requestedSpeedMode')
++      ) where raw_usage_json is not null;`,
++  },
+ ];
+ import { OFFICIAL_GLM_SELECTION_MIGRATION_SQL } from "./migrations/0021-official-glm-selection.js";
+ import { BACKFILLED_SESSION_REASONING_MIGRATION_SQL } from "./migrations/0022-backfilled-session-reasoning.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d7e3b39ccf24a8cc8a37fdc101088fffc14712d
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -0,0 +1,53 @@
++import type { DatabaseSync } from "node:sqlite";
++import type { ModelUsageRecord } from "@zcode/contracts";
++import type { UsageAccountingRow } from "@zcode/shared";
++import { estimateUsagePrice } from "@zcode/shared";
++
++const object = (value:unknown): Record<string,unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string,unknown> : {};
++const count = (value:unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
++
++export function accountingSnapshot(input:ModelUsageRecord) {
++  const usage=object(input.rawUsage);
++  const metadata=object(input.providerMetadata);
++  const identity=object(metadata.fleetAccounting);
++  const speed=identity.servedSpeedMode ?? identity.requestedSpeedMode;
++  const price=estimateUsagePrice({
++    billingProvider: identity.billingProvider as "openai" | "anthropic" | "deepseek" | undefined,
++    modelId:String(input.modelId), startedAt:input.startedAt,
++    inputTokens:count(usage.inputTokens),outputTokens:count(usage.outputTokens),
++    cacheReadTokens:count(usage.cacheReadTokens),cacheWriteTokens:count(usage.cacheWriteTokens),
++    speedMode:speed === "fast" || speed === "standard" ? speed : undefined,
++    subscription:identity.authKind === "subscription",
++  });
++  return {
++    ...identity, ...price,
++    inputTokens:count(usage.inputTokens),outputTokens:count(usage.outputTokens),
++    cacheReadTokens:count(usage.cacheReadTokens),cacheWriteTokens:count(usage.cacheWriteTokens),
++  };
++}
++
++/** Existing ledger query: no inference from a provider's current account or model configuration. */
++export function queryAccounting(db:DatabaseSync,since:number,until:number):UsageAccountingRow[] {
++  return db.prepare(`with facts as (
++    select provider_id as providerId, model_id as modelId, started_at,
++      json_extract(accounting_json,'$.accountId') as accountId,
++      json_extract(accounting_json,'$.requestedSpeedMode') as speedMode,
++      json_extract(accounting_json,'$.inputTokens') as inputTokens,
++      json_extract(accounting_json,'$.outputTokens') as outputTokens,
++      json_extract(accounting_json,'$.cacheReadTokens') as cacheReadTokens,
++      json_extract(accounting_json,'$.estimatedUsd') as estimatedUsd,
++      json_extract(accounting_json,'$.estimatedCredits') as estimatedCredits,
++      json_extract(accounting_json,'$.priceVersion') as priceVersion
++    from model_usage where started_at >= ? and started_at < ?
++  ) select providerId,accountId,modelId,speedMode,count(*) as requestCount,
++    sum(case when inputTokens is not null and outputTokens is not null then 1 else 0 end) as reportedCount,
++    coalesce(sum(inputTokens),0) as inputTokens,coalesce(sum(outputTokens),0) as outputTokens,
++    coalesce(sum(case when cacheReadTokens between 0 and inputTokens then cacheReadTokens end),0) as cacheReadTokens,
++    coalesce(sum(case when cacheReadTokens between 0 and inputTokens then inputTokens end),0) as cacheInputTokens,
++    sum(case when cacheReadTokens between 0 and inputTokens then 1 else 0 end) as cacheReportedCount,
++    coalesce(sum(estimatedUsd),0) as estimatedUsd,count(estimatedUsd) as pricedCount,
++    coalesce(sum(estimatedCredits),0) as estimatedCredits,count(estimatedCredits) as creditCount,
++    min(started_at) as firstAt,max(started_at) as lastAt,group_concat(distinct priceVersion) as priceVersions
++    from facts group by providerId,accountId,modelId,speedMode order by inputTokens+outputTokens desc
++  `).all(since,until) as unknown as UsageAccountingRow[];
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index e4d6b9c97dfa9c838271c5a2123983a395f09e36..66f165e367d833714f7746d49f0c7152713548fd 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -1,3 +1,4 @@
++import { accountingSnapshot, queryAccounting } from "./usage-accounting.js";
+ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+ import type {
+   AppUsageDayModelRow,
+@@ -14,8 +15,6 @@ import type {
+ } from "@zcode/contracts";
+ import { encodeJson } from "../json.js";
+ 
+-const USAGE_RETENTION_DAYS = 30;
+-const USAGE_RETENTION_MS = USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+ 
+ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord): Promise<void> {
+   const computedTotalTokens =
+@@ -69,13 +68,13 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
+         error_code,
+         error_message,
+         raw_usage_json,
+-        provider_metadata_json
++        provider_metadata_json, accounting_json
+       )
+       values (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
++        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       )
+       on conflict(id) do update set
+         logical_request_id = excluded.logical_request_id,
+@@ -116,7 +115,8 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
+         error_code = excluded.error_code,
+         error_message = excluded.error_message,
+         raw_usage_json = excluded.raw_usage_json,
+-        provider_metadata_json = excluded.provider_metadata_json
++        provider_metadata_json = excluded.provider_metadata_json,
++        accounting_json = excluded.accounting_json
+       `,
+   ).run(
+     input.id,
+@@ -159,6 +159,7 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
+     input.errorMessage ?? null,
+     encodeJson(input.rawUsage),
+     encodeJson(input.providerMetadata),
++    JSON.stringify(accountingSnapshot(input)),
+   );
+   await pruneUsage(db);
+ }
+@@ -336,7 +337,9 @@ export async function pruneUsage(
+   db: DatabaseSync,
+   input: { beforeTime?: number } = {},
+ ): Promise<void> {
+-  const beforeTime = input.beforeTime ?? Date.now() - USAGE_RETENTION_MS;
++  // 会员账期可能长于 30 天；计数账本不是原始对话 I/O，不能自动删掉已付费月份。
++  if (input.beforeTime === undefined) return;
++  const beforeTime = input.beforeTime;
+   db.exec("begin immediate");
+   try {
+     db.prepare("delete from model_usage where started_at < ?").run(beforeTime);
+@@ -447,13 +450,28 @@ export async function queryAppUsage(
+          coalesce(sum(computed_total_tokens), 0) as totalTokens,
+          coalesce(sum(input_tokens), 0) as inputTokens,
+          coalesce(sum(output_tokens), 0) as outputTokens,
+-         count(*) as requestCount
++         count(*) as requestCount,
++         sum(case when json_extract(provider_metadata_json, '$.fleetAccounting.requestedSpeedMode') = 'fast' then 1 else 0 end) as fastRequestCount,
++         sum(case when json_extract(provider_metadata_json, '$.fleetAccounting.requestedSpeedMode') in ('standard','fast') then 1 else 0 end) as speedReportedRequestCount,
++         sum(case when json_type(raw_usage_json, '$.inputTokens') in ('integer','real')
++           and json_type(raw_usage_json, '$.cacheReadTokens') in ('integer','real')
++           and json_extract(raw_usage_json, '$.inputTokens') >= 0
++           and json_extract(raw_usage_json, '$.cacheReadTokens') between 0 and json_extract(raw_usage_json, '$.inputTokens')
++           then 1 else 0 end) as cacheReportedRequestCount,
++         sum(case when json_type(raw_usage_json, '$.inputTokens') in ('integer','real')
++           and json_type(raw_usage_json, '$.cacheReadTokens') in ('integer','real')
++           and json_extract(raw_usage_json, '$.cacheReadTokens') between 0 and json_extract(raw_usage_json, '$.inputTokens')
++           then json_extract(raw_usage_json, '$.cacheReadTokens') else 0 end) as cacheReadTokens,
++         sum(case when json_type(raw_usage_json, '$.inputTokens') in ('integer','real')
++           and json_type(raw_usage_json, '$.cacheReadTokens') in ('integer','real')
++           and json_extract(raw_usage_json, '$.cacheReadTokens') between 0 and json_extract(raw_usage_json, '$.inputTokens')
++           then json_extract(raw_usage_json, '$.inputTokens') else 0 end) as cacheInputTokens
+        from model_usage
+        where started_at >= ? and started_at <= ?
+        group by model_id
+        order by totalTokens desc`,
+     )
+-    .all(since, until) as unknown as AppUsageModelRow[];
++    .all(since, until) as unknown as (AppUsageModelRow & { cacheInputTokens: number })[];
+ 
+   const tools = db
+     .prepare(
+@@ -565,12 +583,18 @@ export async function queryAppUsage(
+       toolCallCount: Number(toolTotals.toolCallCount ?? 0),
+       toolErrorCount: Number(toolTotals.toolErrorCount ?? 0),
+     },
++    accounting: queryAccounting(db,since,until),
+     models: models.map((m) => ({
+       modelId: m.modelId ?? null,
+       totalTokens: Number(m.totalTokens),
+       inputTokens: Number(m.inputTokens),
+       outputTokens: Number(m.outputTokens),
+       requestCount: Number(m.requestCount),
++      cacheReadTokens: Number(m.cacheReadTokens ?? 0),
++      cacheReportedRequestCount: Number(m.cacheReportedRequestCount ?? 0),
++      cacheHitRate: m.cacheInputTokens > 0 ? Number(m.cacheReadTokens) / m.cacheInputTokens : null,
++      fastRequestCount: Number(m.fastRequestCount ?? 0),
++      speedReportedRequestCount: Number(m.speedReportedRequestCount ?? 0),
+     })),
+     tools: tools.map((t) => ({
+       toolName: t.toolName,
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b925bf3258199cd0252ecc54712aeebbb9c3e45
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -0,0 +1,81 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp,rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { DatabaseSync } from "node:sqlite";
++import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
++import type { SessionId,ProjectId,ModelUsageRecord } from "@zcode/contracts";
++import { allocateSubscriptionPayment,subscriptionPaymentsSchema } from "@zcode/shared";
++
++async function fixture(){
++ const dir=await mkdtemp(join(tmpdir(),"fleet-cost-test-"));const path=join(dir,"session.sqlite");let store=new SqliteSessionStore({dbPath:path});
++ const sessionID="session" as SessionId;
++ await store.createSession({id:sessionID,projectID:"project" as ProjectId,slug:"fixture",directory:dir,title:"fixture",version:"fixture"});
++ const record=async(id:string,accountId:string|undefined,speed:"standard"|"fast"|undefined,patch:Partial<ModelUsageRecord>={})=>store.recordModelUsage({
++  id,logicalRequestId:id,sessionID,querySource:"main_turn",providerId:"chat",modelId:"gpt-6-sol",status:"completed",startedAt:Date.UTC(2026,7,1),
++  inputTokens:1000,outputTokens:100,cacheReadInputTokens:800,
++  rawUsage:{inputTokens:1000,outputTokens:100,cacheReadTokens:800,cacheWriteTokens:0},
++  providerMetadata:{fleetAccounting:{accountId,billingProvider:accountId?"openai":undefined,authKind:"subscription",requestedSpeedMode:speed}},...patch,
++ });
++ return {path,record,query:(since=0,until=Date.UTC(2026,9,1))=>store.queryAppUsage({since,until,tzOffsetMs:0}),reopen(){store.close();store=new SqliteSessionStore({dbPath:path});},async close(){store.close();await rm(dir,{recursive:true,force:true});}};
++}
++
++test("accounting survives reopen and retention; same logical request is not counted twice",async()=>{
++ const f=await fixture();try{
++  await f.record("one","a","standard");await f.record("one","a","standard");await f.record("two","a","fast",{modelId:"gpt-6-astra"});await f.record("other","b","standard");
++  f.reopen();const result=await f.query();assert.equal(result.accounting?.reduce((n,r)=>n+r.requestCount,0),3);
++  const a=result.accounting!.filter(r=>r.accountId==="a");assert.equal(a.length,2);assert.equal(a[0]!.cacheReadTokens/a[0]!.cacheInputTokens,.8);
++  assert.ok(Math.abs(a.find(r=>r.modelId==="gpt-6-astra")!.estimatedCredits - a.find(r=>r.modelId==="gpt-6-sol")!.estimatedCredits*12.5)<1e-12);
++  const payment={id:"p",providerId:"chat",accountId:"a",accountLabel:"test",start:Date.UTC(2026,7,1),end:Date.UTC(2026,8,1),amount:100,currency:"USD" as const};
++  const allocation=allocateSubscriptionPayment(payment,result.accounting!);assert.equal(allocation.basis,"credits");assert.equal(allocation.models.length,2);assert.ok(Math.abs(allocation.models.reduce((n,r)=>n+r.amount,0)-100)<1e-10);
++  assert.equal((await f.query(Date.UTC(2026,8,1))).accounting?.length,0);
++ }finally{await f.close();}
++});
++
++test("unknown speed/account and missing cache remain unknown and block a claimed complete allocation",async()=>{
++ const f=await fixture();try{
++  await f.record("known","a","standard");await f.record("legacy",undefined,undefined,{rawUsage:{inputTokens:1000,outputTokens:100}});
++  const result=await f.query();const legacy=result.accounting!.find(r=>r.accountId===null)!;
++  assert.equal(legacy.pricedCount,0);assert.equal(legacy.cacheReportedCount,0);assert.equal(legacy.speedMode,null);
++  assert.equal(allocateSubscriptionPayment({id:"p",providerId:"chat",accountId:"a",accountLabel:"a",start:0,end:Date.UTC(2026,9,1),amount:20,currency:"USD"},result.accounting!).basis,"unavailable");
++ }finally{await f.close();}
++});
++
++test("legacy schema migration never invents account, price or speed",async()=>{
++ // A migration SQL fixture specifically exercises additive old-table conversion without using real data.
++ const db=new DatabaseSync(":memory:");try{
++  db.exec("create table model_usage(id text,raw_usage_json text,provider_metadata_json text)");
++  db.prepare("insert into model_usage values(?,?,?)").run("old",JSON.stringify({inputTokens:10,outputTokens:1}),null);
++  const {SQLITE_MIGRATIONS:migrations}=await import("../src/storage/session-store/migrations.js");
++  const migration=migrations.find(m=>m.id==="0023_usage_accounting")!;assert.ok(migration);db.exec(migration.sql);
++  const row=db.prepare("select accounting_json from model_usage").get() as {accounting_json:string};const fact=JSON.parse(row.accounting_json);
++  assert.equal(fact.inputTokens,10);assert.equal(fact.requestedSpeedMode,null);assert.equal(fact.accountId,undefined);assert.equal(fact.estimatedUsd,undefined);
++ }finally{db.close();}
++});
++
++test("payment identity and overlapping periods reject before saving; currencies remain independent",()=>{
++ const p={id:"one",providerId:"chat",accountId:"a",accountLabel:"a",start:10,end:20,amount:20,currency:"USD" as const};
++ assert.equal(subscriptionPaymentsSchema.safeParse({one:p,two:{...p,id:"two",start:15,end:25}}).success,false);
++ assert.equal(subscriptionPaymentsSchema.safeParse({one:p,two:{...p,id:"two",start:20,end:30,currency:"CNY"}}).success,true);
++ assert.equal(subscriptionPaymentsSchema.safeParse({wrong:p}).success,false);
++});
++
++test("membership-key connection payments use only their explicit period and never mix native accounts",async()=>{
++ const f=await fixture();try{
++  await f.record("key-record",undefined,"standard",{providerMetadata:{fleetAccounting:{billingProvider:"openai",authKind:"api-key",requestedSpeedMode:"standard"}}});
++  const rows=(await f.query()).accounting!;
++  const payment={id:"p",providerId:"chat",accountId:"connection",accountLabel:"connection",start:Date.UTC(2026,7,1),end:Date.UTC(2026,8,1),amount:25,currency:"CNY" as const};
++  const result=allocateSubscriptionPayment(payment,rows);assert.equal(result.basis,"api-value");assert.equal(result.models[0]?.amount,25);
++  assert.equal(allocateSubscriptionPayment({...payment,start:Date.UTC(2026,8,1),end:Date.UTC(2026,9,1)},rows).basis,"unavailable");
++ }finally{await f.close();}
++});
++
++test("requested Fast remains visible when the provider serves Standard, and cost uses the served tier",async()=>{
++ const f=await fixture();try{
++  await f.record("downgraded","a","fast",{providerMetadata:{fleetAccounting:{accountId:"a",billingProvider:"openai",authKind:"subscription",requestedSpeedMode:"fast",servedSpeedMode:"standard"}}});
++  await f.record("standard","a","standard");
++  const rows=(await f.query()).accounting!;const fast=rows.find(row=>row.speedMode==="fast")!;const standard=rows.find(row=>row.speedMode==="standard")!;
++  assert.equal(fast.requestCount,1);assert.equal(fast.estimatedUsd,standard.estimatedUsd);assert.equal(fast.estimatedCredits,standard.estimatedCredits);
++ }finally{await f.close();}
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts
+index 4f74cb7d25274dfb9716a99f4fb271347e71c598..21af7546a51c33d20145a744034540c36c091c0e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts
+@@ -1768,10 +1768,11 @@ const APP_USAGE_RANGE_DAYS: Record<string, number> = { "7d": 7, "30d": 30 };
+ export async function getUsageStats(context: ZCodeProtocolAgentServerContext, rawParams: unknown) {
+   const params = parseParams(zcodeUsageStatsParamsSchema, rawParams ?? {});
+   const timeZone = params.timeZone ?? "UTC";
+-  const until = Date.now();
++  const until = Math.min(params.until ?? Date.now(), Date.now());
+   const tzOffsetMs = resolveTzOffsetMs(timeZone, until);
+   const rangeDays = APP_USAGE_RANGE_DAYS[params.range] ?? 30;
+-  const since = params.range === "all" ? 0 : until - rangeDays * 86_400_000;
++  const since = params.since ?? (params.range === "all" ? 0 : until - rangeDays * 86_400_000);
++  if (since > until) throw new Error("Usage period start must not exceed end");
+   const buildOptions = {
+     range: params.range,
+     timeZone,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+index a219e973c68e1608a9f3bfc8027426bb8731c428..c8a0c894e75c3f00ae40493684624fb5bdf92c2f 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+@@ -191,6 +191,11 @@ export function buildAppUsageSnapshot(
+     inputTokens: m.inputTokens,
+     outputTokens: m.outputTokens,
+     requestCount: m.requestCount,
++    cacheReadTokens: m.cacheReadTokens,
++    cacheHitRate: m.cacheHitRate,
++    cacheReportedRequestCount: m.cacheReportedRequestCount,
++    fastRequestCount: m.fastRequestCount,
++    speedReportedRequestCount: m.speedReportedRequestCount,
+     share: totalModelTokens > 0 ? m.totalTokens / totalModelTokens : 0,
+   }));
+   const favoriteModel =
+@@ -211,6 +216,7 @@ export function buildAppUsageSnapshot(
+     generatedAt: opts.generatedAt,
+     timeZone: opts.timeZone,
+     source: "agent-db",
++    accounting: result.accounting,
+     summary: {
+       totalTokens: totals.totalTokens,
+       inputTokens: totals.inputTokens,
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index 5a1daaf8c79a585a444bbbcaf84b3f31544ac1e3..1cb0785aee11d8852ad3d994cda2f94a282b7c42 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -1018,6 +1018,11 @@ export interface AppUsageModelRow {
+   inputTokens: number;
+   outputTokens: number;
+   requestCount: number;
++  cacheReadTokens?: number;
++  cacheHitRate?: number | null;
++  cacheReportedRequestCount?: number;
++  fastRequestCount?: number;
++  speedReportedRequestCount?: number;
+ }
+ 
+ export interface AppUsageToolRow {
+@@ -1041,6 +1046,7 @@ export interface AppUsageDayModelRow {
+ }
+ 
+ export interface AppUsageQueryResult {
++  accounting?: import("@zcode/shared").UsageAccountingRow[];
+   totals: AppUsageTotalsRow;
+   turnTotals: AppUsageTurnTotalsRow;
+   toolTotals: AppUsageToolTotalsRow;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index ccecd001c0c5d511cf1aab05a4f1ae946b8d1c6a..bf6a6d38693216b52dde7f1ffcda87e9abc7e66a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -115,7 +115,10 @@ export async function recordModelUsageFact(
+       errorCode: errorInfo.code,
+       errorMessage: errorInfo.message,
+       rawUsage: usage,
+-      providerMetadata: input.result?.providerMetadata,
++      providerMetadata: {
++        ...input.result?.providerMetadata,
++        fleetAccounting: { ...(input.result?.providerMetadata?.fleetAccounting as Record<string,unknown> | undefined), requestedSpeedMode: input.model.options.speedMode ?? "standard" },
++      },
+     });
+   } catch (error) {
+     runtime.logger?.warn("Usage model fact write failed", {
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index d3b8404bc61bfff528d043c6093dda94c7273e49..0821c382f07ed6abcb08304586f9802fb2508259 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -980,8 +980,8 @@
+         {
+           "templateId": "fleet-openai-codex",
+           "templateNameMap": {
+-            "zh-CN": "ChatGPT / Codex",
+-            "en-US": "ChatGPT / Codex"
++            "zh-CN": "ChatGPT",
++            "en-US": "ChatGPT"
+           },
+           "config": {
+             "access": {
+@@ -1007,8 +1007,8 @@
+             },
+             "serviceId": "chatgpt",
+             "serviceNameMap": {
+-              "zh-CN": "ChatGPT / Codex 订阅",
+-              "en-US": "ChatGPT / Codex subscription"
++              "zh-CN": "ChatGPT 订阅",
++              "en-US": "ChatGPT subscription"
+             }
+           }
+         },
+diff --git a/package.json b/package.json
+index 9d42bffef3a1f993339395fe1fa36de4cf16a1ec..874f7d5d12d22ef37006c93d24e4fe05b2040a95 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run lint && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run lint && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -49,7 +49,8 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/contextTokenDetails.test.tsx packages/ui/test/subscriptionAllowanceDetails.test.tsx"
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-price.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index f7c0bfc9283b64c146bf6086c992c2c37089acbe..02af465f0858cb19bbecf910f020534b26dcb30f 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -240,7 +240,8 @@ export class ProviderConfigResolver {
+ 
+     for (const providerId of resolveProviderOrder(input, effectiveProviders)) {
+       const rule = effectiveProviders.getRule(providerId)!;
+-      const { config, providerName } = rule;
++      const { config } = rule;
++      const providerName = rule.providerName === "ChatGPT / Codex" ? "ChatGPT" : rule.providerName;
+       // 账号不再支持总禁用；旧覆盖值不能让无开关的账号永久失效，其他资格仍正常校验。
+       const enabled = config.access?.type === "zhipu-account" || (rule.enabled ?? true);
+       const providerPath = ["providers", providerId];
+diff --git a/packages/services/src/model-provider/codexSubscriptionMetadata.ts b/packages/services/src/model-provider/codexSubscriptionMetadata.ts
+index 724c4c35805401ddb2b6fcc5fd2da6c112a681c2..8e2a9bf35b905f9a02f551b4bb4858e8514b9819 100644
+--- a/packages/services/src/model-provider/codexSubscriptionMetadata.ts
++++ b/packages/services/src/model-provider/codexSubscriptionMetadata.ts
+@@ -108,7 +108,10 @@ export async function readCodexMembership(
+       headers: {
+         Authorization: `Bearer ${credential.access}`,
+         Accept: "application/json",
+-        "ChatGPT-Account-Id": accountId,
++        // Cockpit a24199f: 这两个 Web 元数据接口使用浏览器请求头；账号通过查询参数/响应精确匹配。
++        // 只在这里兼容该契约，不改推理/OAuth 的客户端标识，也不引入浏览器 Cookie。
++        "User-Agent":
++          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+         Referer: "https://chatgpt.com/",
+         "x-openai-target-path": path,
+         "x-openai-target-route": path,
+diff --git a/packages/services/src/setting/settingService.ts b/packages/services/src/setting/settingService.ts
+index f2520254b794be6b8b3c6da8ecf3abc7c0821fd4..21340a7699ca60cdb87c2000156471953b3f6e1f 100644
+--- a/packages/services/src/setting/settingService.ts
++++ b/packages/services/src/setting/settingService.ts
+@@ -315,6 +315,7 @@ export function createSettingServiceWithMigrations(): {
+         const merged = appSettingsSchema.parse({
+           ...current,
+           ...validatedPatch,
++          ...(validatedPatch.subscriptionPayments ? {subscriptionPayments:{...current.subscriptionPayments,...validatedPatch.subscriptionPayments}} : {}),
+         });
+ 
+         // 打开工作区后会几乎同时写 recentProjects 和 lastWorkspaceSession。
+diff --git a/packages/services/src/usage-stats/usageStatsService.ts b/packages/services/src/usage-stats/usageStatsService.ts
+index 7e77fe74047063902c77b5bc65c9ac154ed60be8..4d72f166d1042d03453593e58c70ee31b4c906e5 100644
+--- a/packages/services/src/usage-stats/usageStatsService.ts
++++ b/packages/services/src/usage-stats/usageStatsService.ts
+@@ -71,6 +71,8 @@ export function createUsageStatsService(
+       // 经 ZCode Protocol usage/stats 取回。不再读本地 session JSON 估算。
+       return dependencies.zcodeAgentService.getAppUsageStats({
+         range: request.range,
++        since: request.since,
++        until: request.until,
+         timeZone: request.timeZone,
+       });
+     },
+diff --git a/packages/services/src/zcode-agent/zcodeAgent.ts b/packages/services/src/zcode-agent/zcodeAgent.ts
+index 719985af1d6834f86ae1b330f5a5058be71007f7..886a72c9742d3aede670ed69fe6ed4b8255ccd62 100644
+--- a/packages/services/src/zcode-agent/zcodeAgent.ts
++++ b/packages/services/src/zcode-agent/zcodeAgent.ts
+@@ -220,6 +220,8 @@ export interface ZCodeAgentListSessionSubagentsParams extends ZCodeAgentSessionT
+ }
+ 
+ export interface ZCodeAgentAppUsageParams {
++  since?: number;
++  until?: number;
+   range: AppUsageRange;
+   timeZone?: string;
+ }
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index 4283cd8b1983a74d62b1820badff40acc0966f18..be0a5149824bf34d40fc58e82142c0fe170453fb 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -3678,7 +3678,7 @@ export function createZCodeAgentService(
+       // 载荷同形；旧词消费清零，CLI 旧 case 留到旧词删除之时）。
+       return active.client.request(
+         V4_METHODS.usageStats,
+-        { range: params.range, timeZone: params.timeZone },
++        { range: params.range, timeZone: params.timeZone, since:params.since, until:params.until },
+         v4UsageStatsResultSchema,
+       );
+     },
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 9f6c1d0e1a363ea908327aa4567ad5e3c149f78d..e707a19c117f7e26dc373d5f825c83e5c7c4f5f0 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -1355,8 +1355,11 @@ test("membership shares account ownership but refreshes less often than quota, r
+     },
+     async (url, init) => {
+       membershipReads++;
+-      const account = new Headers(init?.headers).get("chatgpt-account-id")!;
+-      assert.equal(new URL(String(url)).searchParams.get("account_id"), account);
++      const headers = new Headers(init?.headers);
++      const account = new URL(String(url)).searchParams.get("account_id");
++      assert.equal(account, "bob");
++      assert.equal(headers.has("chatgpt-account-id"), false);
++      assert.match(headers.get("user-agent") ?? "", /Chrome\/147/);
+       if (fail) return new Response(null, { status: 503 });
+       return Response.json({
+         account_id: account,
+@@ -1385,13 +1388,24 @@ test("membership shares account ownership but refreshes less often than quota, r
+   assert.equal(f.credentials.get("model-subscription:one"), before);
+ });
+ 
+-test("a pinned turn keeps its account after a default change and cannot follow a removed account to another", async()=>{
+- const f=fixture();
+- await loginCredential(f,token("alice"));await loginCredential(f,token("bob"));
+- const [a,b]=(await f.owner.accounts("one")).accounts;
+- await f.owner.updateAccounts("one",{select:b!.id});
+- assert.equal((await f.owner.resolve("one","openai-codex",undefined,undefined,{accountId:a!.id})).apiKey,"alice");
+- assert.equal((await f.owner.accounts("one")).accounts.find(account=>account.active)?.id,b!.id);
+- await f.owner.updateAccounts("one",{remove:a!.id});
+- await assert.rejects(f.owner.resolve("one","openai-codex",undefined,undefined,{accountId:a!.id}),/no longer available/i);
++test("a pinned turn keeps its account after a default change and cannot follow a removed account to another", async () => {
++  const f = fixture();
++  await loginCredential(f, token("alice"));
++  await loginCredential(f, token("bob"));
++  const [a, b] = (await f.owner.accounts("one")).accounts;
++  await f.owner.updateAccounts("one", { select: b!.id });
++  assert.equal(
++    (await f.owner.resolve("one", "openai-codex", undefined, undefined, { accountId: a!.id }))
++      .apiKey,
++    "alice",
++  );
++  assert.equal(
++    (await f.owner.accounts("one")).accounts.find((account) => account.active)?.id,
++    b!.id,
++  );
++  await f.owner.updateAccounts("one", { remove: a!.id });
++  await assert.rejects(
++    f.owner.resolve("one", "openai-codex", undefined, undefined, { accountId: a!.id }),
++    /no longer available/i,
++  );
+ });
+diff --git a/packages/services/test/subscription-payment-settings.test.ts b/packages/services/test/subscription-payment-settings.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b67d0e23aa43babb24d34381faea89aa207f25f2
+--- /dev/null
++++ b/packages/services/test/subscription-payment-settings.test.ts
+@@ -0,0 +1,20 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import {mkdtemp,rm} from "node:fs/promises";
++import {tmpdir} from "node:os";
++import {join} from "node:path";
++import {createSettingService} from "../src/setting/settingService.js";
++
++test("payment records persist/reopen and concurrent per-key updates cannot erase another account",async()=>{
++ const dir=await mkdtemp(join(tmpdir(),"fleet-payments-"));const previous=process.env.ZCODE_DESKTOP_HOME_DIR;process.env.ZCODE_DESKTOP_HOME_DIR=dir;
++ try{
++  const service=createSettingService();const one={id:"one",providerId:"chat",accountId:"a",accountLabel:"A",start:1,end:20,amount:20,currency:"USD" as const};
++  const two={...one,id:"two",accountId:"b",currency:"CNY" as const,amount:100};
++  await Promise.all([service.update({subscriptionPayments:{one}}),service.update({subscriptionPayments:{two}})]);
++  assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one,two});
++  await assert.rejects(service.update({subscriptionPayments:{overlap:{...one,id:"overlap",start:10,end:30}}}),/overlap/);
++  assert.deepEqual((await service.get()).subscriptionPayments,{one,two});
++  await service.update({subscriptionPayments:{one:null}});
++  assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one:null,two});
++ }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
++});
+diff --git a/packages/services/test/subscription-usage.test.ts b/packages/services/test/subscription-usage.test.ts
+index 75e4285088d9a1a3f9c06b96b8917ed793d0b34d..082a6ebaa037e295524d38aff1b5efd6f906bed0 100644
+--- a/packages/services/test/subscription-usage.test.ts
++++ b/packages/services/test/subscription-usage.test.ts
+@@ -287,7 +287,11 @@ test("account-scoped membership uses the provider subscription route and disting
+       assert.equal(target.origin, "https://chatgpt.com");
+       assert.equal(target.pathname, "/backend-api/subscriptions");
+       assert.equal(target.searchParams.get("account_id"), "account-a");
+-      assert.equal(new Headers(init?.headers).get("x-openai-target-path"), target.pathname);
++      const headers = new Headers(init?.headers);
++      assert.equal(headers.get("x-openai-target-path"), target.pathname);
++      assert.match(headers.get("user-agent") ?? "", /Chrome\/147/);
++      assert.equal(headers.get("chatgpt-account-id"), null);
++      assert.equal(headers.get("cookie"), null);
+       assert.equal(init?.redirect, "error");
+       assert.ok(init?.signal);
+       return Response.json({
+diff --git a/packages/services/test/usage-price.test.ts b/packages/services/test/usage-price.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..48b9620942d42177f7bae4178f030131d47adca1
+--- /dev/null
++++ b/packages/services/test/usage-price.test.ts
+@@ -0,0 +1,192 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { estimateUsagePrice, type UsagePriceInput } from "../../shared/src/usage-price.js";
++
++const request: UsagePriceInput = {
++  billingProvider: "openai",
++  modelId: "gpt-6-astra",
++  startedAt: Date.parse("2026-09-28T02:00:00Z"),
++  inputTokens: 10_000,
++  outputTokens: 1_000,
++  cacheReadTokens: 6_000,
++  cacheWriteTokens: 2_000,
++  speedMode: "standard",
++};
++
++function close(actual: number | undefined, expected: number) {
++  assert.ok(actual !== undefined);
++  assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`);
++}
++
++test("API pricing subtracts inclusive cache subsets before applying their own rates", () => {
++  const price = estimateUsagePrice(request);
++  close(price.estimatedUsd, 0.101);
++  assert.equal(price.estimatedCredits, undefined);
++  assert.equal(price.priceVersion, "official-2026-09-27");
++  assert.equal(price.sourceUrl, "https://developers.openai.com/api/docs/pricing");
++  assert.equal(price.reason, undefined);
++});
++
++test("exact catalog supports the configured OpenAI models and their Fast API rates", () => {
++  for (const [modelId, standard, fast] of [
++    ["gpt-6-astra", 0.101, 0.202],
++    ["gpt-6-sol", 0.0202, 0.0404],
++    ["gpt-6-luna", 0.00101, 0.00202],
++    ["gpt-5.6-sol", 0.0404, 0.0808],
++    ["gpt-5.6-terra", 0.0222, 0.0444],
++    ["gpt-5.6-luna", 0.00222, 0.00444],
++    ["gpt-5.5", 0.053, 0.1325],
++  ] as const) {
++    close(estimateUsagePrice({ ...request, modelId }).estimatedUsd, standard);
++    close(estimateUsagePrice({ ...request, modelId, speedMode: "fast" }).estimatedUsd, fast);
++  }
++});
++
++test("OpenAI long tier starts strictly above 272K inclusive input, affecting the full request", () => {
++  const short = { ...request, inputTokens: 272_000 };
++  close(estimateUsagePrice(short).estimatedUsd, 2.721);
++  close(estimateUsagePrice({ ...short, inputTokens: 272_001 }).estimatedUsd, 5.41702);
++  close(
++    estimateUsagePrice({ ...short, inputTokens: 272_001, speedMode: "fast" }).estimatedUsd,
++    10.83404,
++  );
++  assert.equal(
++    estimateUsagePrice({ ...short, modelId: "gpt-5.5", inputTokens: 272_001, speedMode: "fast" })
++      .reason,
++    "long-context-fast-price-unavailable",
++  );
++});
++
++test("subscription credits have no write surcharge and use their own Fast multiplier", () => {
++  const standard = estimateUsagePrice({ ...request, subscription: true });
++  const fast = estimateUsagePrice({ ...request, subscription: true, speedMode: "fast" });
++  close(standard.estimatedUsd, 0.101);
++  close(standard.estimatedCredits, 2.4);
++  close(fast.estimatedUsd, 0.202);
++  close(fast.estimatedCredits, 6);
++  const missingWrites = estimateUsagePrice({
++    ...request,
++    subscription: true,
++    cacheWriteTokens: undefined,
++  });
++  close(missingWrites.estimatedCredits, 2.4);
++  assert.equal(missingWrites.estimatedUsd, undefined);
++  assert.equal(missingWrites.reason, "api-cache-write-tokens-missing");
++  close(
++    estimateUsagePrice({ ...request, subscription: true, cacheWriteTokens: 0 }).estimatedUsd,
++    0.096,
++  );
++});
++
++test("missing usage or speed is unknown, explicit zero remains a priced zero", () => {
++  for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "speedMode"] as const) {
++    const result = estimateUsagePrice({ ...request, [field]: undefined });
++    assert.equal(result.estimatedUsd, undefined);
++    assert.ok(result.reason?.includes("missing"));
++  }
++  assert.equal(
++    estimateUsagePrice({ ...request, cacheWriteTokens: undefined }).estimatedUsd,
++    undefined,
++  );
++  close(
++    estimateUsagePrice({ ...request, modelId: "gpt-5.5", cacheWriteTokens: undefined })
++      .estimatedUsd,
++    0.053,
++  );
++  const zero = estimateUsagePrice({
++    ...request,
++    inputTokens: 0,
++    outputTokens: 0,
++    cacheReadTokens: 0,
++    cacheWriteTokens: 0,
++    subscription: true,
++  });
++  assert.equal(zero.estimatedUsd, 0);
++  assert.equal(zero.estimatedCredits, 0);
++});
++
++test("invalid counters, overlapping subsets, identities and dates never produce a price", () => {
++  const badInputs: UsagePriceInput[] = [
++    ...[-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1].map((inputTokens) => ({
++      ...request,
++      inputTokens,
++    })),
++    { ...request, cacheReadTokens: 9_000 },
++    { ...request, cacheWriteTokens: 20_000 },
++    { ...request, outputTokens: -1 },
++    { ...request, cacheWriteTokens: -1 },
++    { ...request, startedAt: NaN },
++    { ...request, startedAt: Number.MAX_SAFE_INTEGER },
++    { ...request, billingProvider: undefined },
++    { ...request, billingProvider: "anthropic" },
++    { ...request, modelId: "gpt-6-astra-2026-09-01" },
++    { ...request, modelId: "vendor/gpt-6-astra" },
++    { ...request, modelId: "GPT-6-ASTRA" },
++    { ...request, modelId: "toString" },
++  ];
++  for (const input of badInputs) {
++    const result = estimateUsagePrice(input);
++    assert.equal(result.estimatedUsd, undefined);
++    assert.equal(result.estimatedCredits, undefined);
++    assert.ok(result.reason);
++  }
++});
++
++test("DeepSeek prices exact models with inclusive cache reads and no separate write charge", () => {
++  for (const [modelId, peak, offPeak] of [
++    ["deepseek-flash", 0.002436, 0.001218],
++    ["deepseek-v4-pro", 0.009504, 0.004752],
++  ] as const) {
++    const input = {
++      ...request,
++      modelId,
++      billingProvider: "deepseek" as const,
++      cacheWriteTokens: undefined,
++    };
++    close(estimateUsagePrice(input).estimatedUsd, peak);
++    close(
++      estimateUsagePrice({ ...input, startedAt: Date.parse("2026-09-28T12:00:00Z") }).estimatedUsd,
++      offPeak,
++    );
++    close(
++      estimateUsagePrice({ ...input, startedAt: Date.parse("2026-09-26T02:00:00Z") }).estimatedUsd,
++      offPeak,
++    );
++    close(
++      estimateUsagePrice({ ...input, startedAt: Date.parse("2026-09-25T02:00:00Z") }).estimatedUsd,
++      offPeak,
++    );
++    assert.equal(estimateUsagePrice({ ...input, speedMode: "fast" }).estimatedUsd, undefined);
++  }
++});
++
++test("DeepSeek peak boundaries, weekend workdays and unverified holiday years remain explicit", () => {
++  const input = { ...request, billingProvider: "deepseek" as const, modelId: "deepseek-flash" };
++  for (const [time, peak] of [
++    ["00:59:59.999", false],
++    ["01:00:00", true],
++    ["03:59:59.999", true],
++    ["04:00:00", false],
++    ["05:59:59.999", false],
++    ["06:00:00", true],
++    ["09:59:59.999", true],
++    ["10:00:00", false],
++  ] as const) {
++    close(
++      estimateUsagePrice({ ...input, startedAt: Date.parse(`2026-09-28T${time}Z`) }).estimatedUsd,
++      peak ? 0.002436 : 0.001218,
++    );
++  }
++  close(
++    estimateUsagePrice({ ...input, startedAt: Date.parse("2026-09-20T02:00:00Z") }).estimatedUsd,
++    0.001218,
++  );
++  assert.equal(
++    estimateUsagePrice({ ...input, startedAt: Date.parse("2027-09-27T02:00:00Z") }).reason,
++    "deepseek-holiday-calendar-unavailable",
++  );
++  close(
++    estimateUsagePrice({ ...input, startedAt: Date.parse("2027-09-27T12:00:00Z") }).estimatedUsd,
++    0.001218,
++  );
++});
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 9f14f28aa252ef69dc5816b2dfde653318194d63..2531a366d565e89585a36177139e4f706b960acd 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -307,3 +307,6 @@ export * from "./pluginStoreOrdering.js";
+ export * from "./session-debug.js";
+ export { redactFeedbackText } from "./feedbackPrivacy.js";
+ export * from "./credential-health.js";
++
++export * from "./usage-accounting.js";
++export * from "./usage-price.js";
+diff --git a/packages/shared/src/protocol.ts b/packages/shared/src/protocol.ts
+index 734c0ace36c05104865715dc18f7b85ee8491e15..0ad808a143ab717d2ff88d67f11b1d7219c31ab3 100644
+--- a/packages/shared/src/protocol.ts
++++ b/packages/shared/src/protocol.ts
+@@ -235,6 +235,7 @@ export interface ResourceUsageSnapshot {
+ }
+ 
+ export interface AppSettings {
++  subscriptionPayments?: Record<string, import("./usage-accounting.js").SubscriptionPayment | null>;
+   /** Local display preferences; never an authenticated account or Agent permission. */
+   localProfileName?: string;
+   localProfileAvatar?: string;
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ecf4d3dd99648b85a94a04f6adfc21694c35aa7
+--- /dev/null
++++ b/packages/shared/src/usage-accounting.ts
+@@ -0,0 +1,118 @@
++import { z } from "zod";
++
++export const subscriptionPaymentSchema = z
++  .object({
++    id: z.string().min(1),
++    providerId: z.string().min(1),
++    accountId: z.string().min(1),
++    accountLabel: z.string().max(256),
++    start: z.number().int().nonnegative(),
++    end: z.number().int().positive(),
++    amount: z.number().finite().nonnegative(),
++    currency: z.enum(["USD", "CNY", "EUR", "GBP", "JPY"]),
++  })
++  .refine((value) => value.end > value.start, "End must follow start");
++export const subscriptionPaymentsSchema = z
++  .record(z.string(), subscriptionPaymentSchema.nullable())
++  .superRefine((records, ctx) => {
++    const values = Object.entries(records).filter(
++      (entry): entry is [string, SubscriptionPayment] => entry[1] !== null,
++    );
++    for (let i = 0; i < values.length; i++) {
++      const [key, payment] = values[i]!;
++      if (key !== payment.id)
++        ctx.addIssue({ code: "custom", path: [key], message: "Payment identity mismatch" });
++      for (const [, other] of values.slice(i + 1))
++        if (
++          payment.providerId === other.providerId &&
++          payment.accountId === other.accountId &&
++          payment.start < other.end &&
++          other.start < payment.end
++        )
++          ctx.addIssue({
++            code: "custom",
++            path: [key],
++            message: "Billing periods for the same account must not overlap",
++          });
++    }
++  });
++export type SubscriptionPayment = z.infer<typeof subscriptionPaymentSchema>;
++export const usageAccountingRowSchema = z.object({
++  providerId: z.string(),
++  accountId: z.string().nullable(),
++  modelId: z.string(),
++  speedMode: z.string().nullable(),
++  requestCount: z.number(),
++  reportedCount: z.number(),
++  inputTokens: z.number(),
++  outputTokens: z.number(),
++  cacheReadTokens: z.number(),
++  cacheInputTokens: z.number(),
++  cacheReportedCount: z.number(),
++  estimatedUsd: z.number(),
++  pricedCount: z.number(),
++  estimatedCredits: z.number(),
++  creditCount: z.number(),
++  firstAt: z.number(),
++  lastAt: z.number(),
++  priceVersions: z.string().nullable(),
++});
++export type UsageAccountingRow = z.infer<typeof usageAccountingRowSchema>;
++
++/** Allocate one account-period payment; unrelated accounts and currencies never share a denominator. */
++export function allocateSubscriptionPayment(
++  payment: SubscriptionPayment,
++  rows: readonly UsageAccountingRow[],
++) {
++  if (rows.some((row) => row.firstAt < payment.start || row.lastAt >= payment.end))
++    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
++  const eligible = rows.filter(
++    (row) =>
++      row.providerId === payment.providerId &&
++      (payment.accountId === "connection"
++        ? row.accountId === null
++        : row.accountId === payment.accountId),
++  );
++  // 已知同服务存在无账号归属的记录时，不能声称当前账号账期完整。
++  if (
++    payment.accountId !== "connection" &&
++    rows.some((row) => row.providerId === payment.providerId && row.accountId === null)
++  )
++    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
++  const requests = eligible.reduce((sum, row) => sum + row.requestCount, 0);
++  const native = requests > 0 && eligible.every((row) => row.creditCount === row.requestCount);
++  const api = requests > 0 && eligible.every((row) => row.pricedCount === row.requestCount);
++  const basis = native ? "credits" : api ? "api-value" : "unavailable";
++  const weight = (row: UsageAccountingRow) => (native ? row.estimatedCredits : row.estimatedUsd);
++  const total = eligible.reduce((sum, row) => sum + weight(row), 0);
++  if (basis === "unavailable" || total <= 0)
++    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
++  const grouped = new Map<
++    string,
++    { modelId: string; weight: number; tokens: number; requests: number }
++  >();
++  for (const row of eligible) {
++    const value = grouped.get(row.modelId) ?? {
++      modelId: row.modelId,
++      weight: 0,
++      tokens: 0,
++      requests: 0,
++    };
++    value.weight += weight(row);
++    value.tokens += row.inputTokens + row.outputTokens;
++    value.requests += row.requestCount;
++    grouped.set(row.modelId, value);
++  }
++  return {
++    basis,
++    unallocated: 0,
++    models: [...grouped.values()].map((row) => {
++      const amount = (payment.amount * row.weight) / total;
++      return {
++        ...row,
++        amount,
++        perMillionTokens: row.tokens > 0 ? (amount * 1_000_000) / row.tokens : null,
++      };
++    }),
++  };
++}
+diff --git a/packages/shared/src/usage-price.ts b/packages/shared/src/usage-price.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..730ff532492b186b5058a3045c61779348ab4fc2
+--- /dev/null
++++ b/packages/shared/src/usage-price.ts
+@@ -0,0 +1,257 @@
++/**
++ * Pure current-rate estimates over a single normalized request, never a provider bill.
++ * Rates were checked on 2026-09-27; request time selects DeepSeek's time band only.
++ * No account allowance, taxes, regional premiums, tool fees or historical rate lookup.
++ */
++export interface UsagePriceInput {
++  billingProvider: "openai" | "deepseek" | "anthropic" | undefined;
++  modelId: string;
++  /** Unix milliseconds. */
++  startedAt: number;
++  /** Total input, including the disjoint cache-read and cache-write subsets. */
++  inputTokens?: number;
++  outputTokens?: number;
++  cacheReadTokens?: number;
++  cacheWriteTokens?: number;
++  /** Must be recorded for this request; absence is not Standard. */
++  speedMode?: "standard" | "fast";
++  subscription?: boolean;
++}
++
++export interface UsagePriceEstimate {
++  estimatedUsd?: number;
++  /** Native credit-rate estimate; not included subscription allowance or a USD conversion. */
++  estimatedCredits?: number;
++  priceVersion: string;
++  sourceUrl?: string;
++  /** A stable reason for missing/partial estimates, not a provider error message. */
++  reason?: string;
++}
++
++const PRICE_VERSION = "official-2026-09-27";
++const OPENAI_PRICE_URL = "https://developers.openai.com/api/docs/pricing";
++const CHATGPT_PRICE_URL = "https://learn.chatgpt.com/docs/pricing";
++const DEEPSEEK_PRICE_URL = "https://api-docs.deepseek.com/quick_start/pricing";
++const MILLION = 1_000_000;
++const LONG_INPUT_THRESHOLD = 272_000;
++
++type Rates = readonly [input: number, cacheRead: number, cacheWrite: number, output: number];
++interface OpenAIPrice {
++  short: Rates;
++  long: Rates;
++  separateCacheWrite: boolean;
++  apiFastMultiplier: number;
++  longFast: boolean;
++  credits: readonly [input: number, cacheRead: number, output: number];
++}
++
++// Exact official model IDs only. Do not strip suffixes or infer a model family.
++// Every model's /api/docs/models/<id> page verifies >272K input as the long tier.
++// Fast API values come from the API table; credit Fast = 2.5x is independently
++// documented at https://learn.chatgpt.com/docs/agent-configuration/speed.
++const OPENAI_PRICES = new Map<string, OpenAIPrice>([
++  [
++    "gpt-6-astra",
++    {
++      short: [10, 1, 12.5, 50],
++      long: [20, 2, 25, 75],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [250, 25, 1250],
++    },
++  ],
++  [
++    "gpt-6-sol",
++    {
++      short: [2, 0.2, 2.5, 10],
++      long: [4, 0.4, 5, 15],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [50, 5, 250],
++    },
++  ],
++  [
++    "gpt-6-luna",
++    {
++      short: [0.1, 0.01, 0.125, 0.5],
++      long: [0.2, 0.02, 0.25, 0.75],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [2.5, 0.25, 12.5],
++    },
++  ],
++  [
++    "gpt-5.6-sol",
++    {
++      short: [4, 0.4, 5, 20],
++      long: [8, 0.8, 10, 30],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [100, 10, 500],
++    },
++  ],
++  [
++    "gpt-5.6-terra",
++    {
++      short: [2, 0.2, 2.5, 12],
++      long: [4, 0.4, 5, 18],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [50, 5, 300],
++    },
++  ],
++  [
++    "gpt-5.6-luna",
++    {
++      short: [0.2, 0.02, 0.25, 1.2],
++      long: [0.4, 0.04, 0.5, 1.8],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [5, 0.5, 30],
++    },
++  ],
++  // No separately billed writes; any reported write tokens keep the ordinary input rate.
++  [
++    "gpt-5.5",
++    {
++      short: [5, 0.5, 5, 30],
++      long: [10, 1, 10, 45],
++      separateCacheWrite: false,
++      apiFastMultiplier: 2.5,
++      longFast: false,
++      credits: [125, 12.5, 750],
++    },
++  ],
++]);
++
++// Peak USD per million; the official table defines off-peak as exactly half.
++// Cache misses include writes, with no separately priced write category.
++const DEEPSEEK_PRICES = new Map<string, Rates>([
++  ["deepseek-flash", [0.3, 0.006, 0.3, 1.2]],
++  ["deepseek-v4-pro", [1.32, 0.044, 1.32, 3.96]],
++]);
++
++// State Council 2026 holiday schedule (including the announced days off):
++// https://en.bjhd.gov.cn/workinginhaidian/supportingservices/publicholidays/202512/t20251211_4797062.shtml
++// These dates are only consulted during potential peak hours (09:00–18:00 China
++// time), where the UTC and China calendar date are identical. DeepSeek explicitly
++// keeps ALL weekends off-peak, including adjusted weekend workdays.
++const CHINA_HOLIDAYS_2026: ReadonlyArray<readonly [from: string, through: string]> = [
++  ["01-01", "01-03"],
++  ["02-15", "02-23"],
++  ["04-04", "04-06"],
++  ["05-01", "05-05"],
++  ["06-19", "06-21"],
++  ["09-25", "09-27"],
++  ["10-01", "10-07"],
++];
++
++function deepseekPeak(startedAt: number): boolean | undefined {
++  const date = new Date(startedAt);
++  const weekday = date.getUTCDay();
++  const hour = date.getUTCHours();
++  if (weekday === 0 || weekday === 6 || !((hour >= 1 && hour < 4) || (hour >= 6 && hour < 10)))
++    return false;
++  if (date.getUTCFullYear() !== 2026) return undefined;
++  const monthDay = date.toISOString().slice(5, 10);
++  return !CHINA_HOLIDAYS_2026.some(([from, through]) => monthDay >= from && monthDay <= through);
++}
++
++function unknown(reason: string, sourceUrl?: string): UsagePriceEstimate {
++  return { priceVersion: PRICE_VERSION, ...(sourceUrl ? { sourceUrl } : {}), reason };
++}
++
++function validCounter(value: number | undefined): boolean {
++  return value === undefined || (Number.isSafeInteger(value) && value >= 0);
++}
++
++/**
++ * API USD and subscription credits are independent estimates. Missing API writes
++ * can leave USD unknown while credits remain known: native credits explicitly do
++ * not separately bill writes. The listed credit rate has no API context multiplier.
++ */
++export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
++  const { billingProvider, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = input;
++  const sourceUrl =
++    billingProvider === "openai"
++      ? OPENAI_PRICE_URL
++      : billingProvider === "deepseek"
++        ? DEEPSEEK_PRICE_URL
++        : undefined;
++  if (!billingProvider) return unknown("billing-provider-missing");
++  if (billingProvider !== "openai" && billingProvider !== "deepseek")
++    return unknown("provider-price-unavailable");
++  if (
++    !Number.isSafeInteger(input.startedAt) ||
++    input.startedAt < 0 ||
++    !Number.isFinite(new Date(input.startedAt).getTime())
++  )
++    return unknown("invalid-request-time", sourceUrl);
++  if (![inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens].every(validCounter))
++    return unknown("invalid-token-counter", sourceUrl);
++  if (inputTokens === undefined || outputTokens === undefined || cacheReadTokens === undefined)
++    return unknown("required-token-counters-missing", sourceUrl);
++  if (
++    cacheReadTokens > inputTokens ||
++    (cacheWriteTokens !== undefined && cacheWriteTokens > inputTokens - cacheReadTokens)
++  )
++    return unknown("cache-subsets-exceed-input", sourceUrl);
++  if (input.speedMode === undefined) return unknown("speed-mode-missing", sourceUrl);
++  if (input.speedMode !== "standard" && input.speedMode !== "fast")
++    return unknown("speed-mode-unavailable", sourceUrl);
++
++  if (billingProvider === "deepseek") {
++    const rates = DEEPSEEK_PRICES.get(input.modelId);
++    if (!rates) return unknown("model-price-unavailable", sourceUrl);
++    if (input.speedMode === "fast") return unknown("fast-price-unavailable", sourceUrl);
++    const peak = deepseekPeak(input.startedAt);
++    if (peak === undefined) return unknown("deepseek-holiday-calendar-unavailable", sourceUrl);
++    const estimatedUsd =
++      (((inputTokens - cacheReadTokens) * rates[0] +
++        cacheReadTokens * rates[1] +
++        outputTokens * rates[3]) /
++        MILLION) *
++      (peak ? 1 : 0.5);
++    return { estimatedUsd, priceVersion: PRICE_VERSION, sourceUrl };
++  }
++
++  const price = OPENAI_PRICES.get(input.modelId);
++  if (!price) return unknown("model-price-unavailable", sourceUrl);
++  const result: UsagePriceEstimate = { priceVersion: PRICE_VERSION, sourceUrl };
++  if (input.subscription === true) {
++    const [ordinaryInput, read, output] = price.credits;
++    result.estimatedCredits =
++      (((inputTokens - cacheReadTokens) * ordinaryInput +
++        cacheReadTokens * read +
++        outputTokens * output) /
++        MILLION) *
++      (input.speedMode === "fast" ? 2.5 : 1);
++  }
++
++  const long = inputTokens > LONG_INPUT_THRESHOLD;
++  if (long && input.speedMode === "fast" && !price.longFast)
++    result.reason = "long-context-fast-price-unavailable";
++  else if (price.separateCacheWrite && cacheWriteTokens === undefined)
++    result.reason = "api-cache-write-tokens-missing";
++  else {
++    const [ordinaryInput, read, write, output] = long ? price.long : price.short;
++    // 未报告不能当作零；这里只对官方无独立写入计价的模型合并到普通输入。
++    const writes = price.separateCacheWrite ? cacheWriteTokens! : 0;
++    result.estimatedUsd =
++      (((inputTokens - cacheReadTokens - writes) * ordinaryInput +
++        cacheReadTokens * read +
++        writes * write +
++        outputTokens * output) /
++        MILLION) *
++      (input.speedMode === "fast" ? price.apiFastMultiplier : 1);
++  }
++  if (result.estimatedUsd === undefined && result.estimatedCredits !== undefined)
++    result.sourceUrl = CHATGPT_PRICE_URL;
++  return result;
++}
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index 4e4785a092302800f9edf358c7192d8918b28113..cac22e6add8467519dacb2044585ac3474fb40aa 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- Usage、Entitlement 与 Reset 的跨进程协议需要共享同一组 Account Access 字段和运行时 schema，暂时集中维护。 */
++import { usageAccountingRowSchema } from "./usage-accounting.js";
+ import { z } from "zod";
+ 
+ // 额度类型拆在 usage-quota.ts，见该文件头部说明；这里 re-export 保持既有 import 路径不变。
+@@ -228,6 +229,11 @@ export const appUsageModelUsageSchema = z.object({
+   outputTokens: z.number(),
+   requestCount: z.number(),
+   share: z.number(),
++  cacheReadTokens: z.number().optional(),
++  cacheHitRate: z.number().nullable().optional(),
++  cacheReportedRequestCount: z.number().optional(),
++  fastRequestCount: z.number().optional(),
++  speedReportedRequestCount: z.number().optional(),
+ });
+ 
+ export const appUsageToolUsageSchema = z.object({
+@@ -243,6 +249,7 @@ export const appUsageSnapshotSchema = z.object({
+   generatedAt: z.number(),
+   timeZone: z.string(),
+   source: z.literal("agent-db"),
++  accounting: z.array(usageAccountingRowSchema).optional(),
+   summary: appUsageSummarySchema,
+   heatmap: appUsageHeatmapSchema,
+   dailyModelUsage: z.array(appUsageDailyModelUsageSchema),
+@@ -262,6 +269,8 @@ export type AppUsageFavoriteModel = z.infer<typeof appUsageFavoriteModelSchema>;
+ export type AppUsageSnapshot = z.infer<typeof appUsageSnapshotSchema>;
+ 
+ export interface AppUsageRequest {
++  since?: number;
++  until?: number;
+   range: AppUsageRange;
+   timeZone?: string;
+ }
+diff --git a/packages/shared/src/validationAppSettings.ts b/packages/shared/src/validationAppSettings.ts
+index 5ec2f739f1e72b24efc18da4c526a5299e749bd1..fe4b790be6dc2104bd1ec4586b0efe8e598647f1 100644
+--- a/packages/shared/src/validationAppSettings.ts
++++ b/packages/shared/src/validationAppSettings.ts
+@@ -1,4 +1,5 @@
+ /* oxlint-disable eslint(max-lines) -- AppSettings schema 聚合历史迁移、默认值和 patch 校验，拆分会削弱设置迁移的单一入口。 */
++import { subscriptionPaymentsSchema } from "./usage-accounting.js";
+ import { z } from "zod";
+ import type { AppSettings } from "./protocol.js";
+ import { REMOTE_ASSET_INSTALL_MODES } from "./remoteAssetInstallMode.js";
+@@ -427,6 +428,7 @@ const localProfileAvatarSchema = z.union([
+ ]);
+ 
+ const appSettingsObjectSchema = z.object({
++  subscriptionPayments: subscriptionPaymentsSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).default([]),
+@@ -502,6 +504,7 @@ export const appSettingsSchema = z.preprocess(
+ );
+ 
+ export const appSettingsPatchSchema = z.object({
++  subscriptionPayments: subscriptionPaymentsSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).optional(),
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 1178966410befe80bfb06163ee77de61fa5e7288..cde2fe730c7678e186ccd3f4e40a2944d87f68b3 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -1620,6 +1620,8 @@ export type ZCodeSessionSubagentsParams = z.infer<typeof zcodeSessionSubagentsPa
+ 
+ export const zcodeUsageStatsParamsSchema = z
+   .object({
++    since: z.number().int().nonnegative().optional(),
++    until: z.number().int().nonnegative().optional(),
+     range: z.enum(APP_USAGE_RANGES),
+     timeZone: z.string().optional(),
+   })
+diff --git a/packages/ui/src/chat-input-toolbar/ContextTokenDetails.tsx b/packages/ui/src/chat-input-toolbar/ContextTokenDetails.tsx
+deleted file mode 100644
+index f20c6407fd27153446c8ac622865ec74734c8b7c..0000000000000000000000000000000000000000
+--- a/packages/ui/src/chat-input-toolbar/ContextTokenDetails.tsx
++++ /dev/null
+@@ -1,57 +0,0 @@
+-import type { SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-
+-/** Provider counters describe consumption; cache and reasoning are subsets, not extra totals. */
+-export function ContextTokenDetails({ usage }: { usage?: SessionUsageState }) {
+-  const { intl, locale } = useZCodeIntl();
+-  if (!usage) return null;
+-  const last = usage.lastRequest;
+-  const total = usage.cumulative.inputTokens + usage.cumulative.outputTokens;
+-  if (!last && total <= 0) return null;
+-  const count = (value?: number) =>
+-    typeof value === "number" && Number.isFinite(value) && value >= 0
+-      ? new Intl.NumberFormat(locale).format(value)
+-      : "—";
+-  const rows = last
+-    ? ([
+-        ["input", last.inputTokens],
+-        ["cacheRead", last.cacheReadTokens],
+-        ["cacheWrite", last.cacheWriteTokens],
+-        ["output", last.outputTokens],
+-        ["reasoning", last.reasoningTokens],
+-      ] as const)
+-    : [];
+-  return (
+-    <section className="space-y-2 border-t border-border pt-3">
+-      {last ? (
+-        <>
+-          <div className="flex items-center justify-between gap-3 text-ui-base font-medium">
+-            <span>{intl.formatMessage({ id: "chat.tokens.lastRequest" })}</span>
+-            <span className="text-ui-sm font-normal text-foreground-subtle">Tokens</span>
+-          </div>
+-          {last.modelId ? (
+-            <div className="truncate text-ui-sm text-foreground-subtle" title={last.modelId}>
+-              {last.modelId}
+-            </div>
+-          ) : null}
+-          <dl className="space-y-1.5">
+-            {rows.map(([key, value]) => (
+-              <div key={key} className="flex items-center justify-between gap-3 text-ui-sm">
+-                <dt className="text-foreground-subtle">
+-                  {intl.formatMessage({ id: `chat.tokens.${key}` })}
+-                </dt>
+-                <dd className="font-mono tabular-nums">{count(value)}</dd>
+-              </div>
+-            ))}
+-          </dl>
+-        </>
+-      ) : null}
+-      <div className="flex items-center justify-between gap-3 border-t border-border pt-2 text-ui-sm">
+-        <span className="text-foreground-subtle">
+-          {intl.formatMessage({ id: "chat.tokens.cumulative" })}
+-        </span>
+-        <span className="font-mono tabular-nums">{count(total)}</span>
+-      </div>
+-    </section>
+-  );
+-}
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..904b26f9a5ecb61adb19cedfa0154f486e4276ab
+--- /dev/null
++++ b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+@@ -0,0 +1,118 @@
++import type { ReactNode, RefObject } from "react";
++import { ChevronDownIcon } from "lucide-react";
++import { TID_CHAT_THOUGHT_LEVEL_SELECT_TRIGGER } from "@zcode/shared";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { Button } from "@/components/ui/button.js";
++import {
++  DropdownMenu,
++  DropdownMenuContent,
++  DropdownMenuTrigger,
++  DropdownMenuLabel,
++  DropdownMenuRadioGroup,
++  DropdownMenuRadioItem,
++  DropdownMenuSeparator,
++} from "@/components/ui/dropdown-menu.js";
++import { isCoarseTouchDevice } from "@/lib/pickerFocus.js";
++import type { useZCodeIntl } from "@/i18n/IntlProvider.js";
++
++// Same radio-group menu primitives as the original model picker; both values remain composer-owned.
++export function ThoughtAndSpeedMenu({
++  open,
++  onOpenChange,
++  disabled,
++  title,
++  shortcut,
++  triggerRef,
++  triggerClassName,
++  label,
++  restoreFocusSelector,
++  value,
++  onValueChange,
++  speed,
++  entries,
++  intl,
++  children,
++}: {
++  open?: boolean;
++  onOpenChange?: (open: boolean) => void;
++  disabled?: boolean;
++  title: string;
++  shortcut?: string;
++  triggerRef: RefObject<HTMLSpanElement | null>;
++  triggerClassName: string;
++  label: string;
++  restoreFocusSelector?: string | null;
++  value: string;
++  onValueChange: (value: string) => void;
++  entries: { value: string; label: string }[];
++  children: ReactNode;
++  speed: {
++    value: "standard" | "fast";
++    note: string;
++    onChange: (value: "standard" | "fast") => void;
++  };
++  intl: ReturnType<typeof useZCodeIntl>["intl"];
++}) {
++  return (
++    <DropdownMenu open={open} onOpenChange={onOpenChange}>
++      <ControlHintTooltip title={title} shortcut={shortcut} triggerRef={triggerRef}>
++        <DropdownMenuTrigger asChild>
++          <Button
++            variant="ghost"
++            disabled={disabled}
++            className={triggerClassName}
++            aria-label={label}
++            data-testid={TID_CHAT_THOUGHT_LEVEL_SELECT_TRIGGER}
++          >
++            {children}
++            <ChevronDownIcon className="size-3.5 text-foreground-subtle" />
++          </Button>
++        </DropdownMenuTrigger>
++      </ControlHintTooltip>
++      <DropdownMenuContent
++        side="top"
++        align="start"
++        sideOffset={4}
++        onCloseAutoFocus={(event) => {
++          if (!restoreFocusSelector || isCoarseTouchDevice()) return;
++          event.preventDefault();
++          document.querySelector<HTMLElement>(restoreFocusSelector)?.focus();
++        }}
++      >
++        <DropdownMenuLabel>
++          {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
++        </DropdownMenuLabel>
++        <DropdownMenuRadioGroup
++          value={value}
++          onValueChange={(next) => {
++            if (entries.some((entry) => entry.value === next)) onValueChange(next);
++          }}
++        >
++          {entries.map((entry) => (
++            <DropdownMenuRadioItem key={entry.value} value={entry.value}>
++              {entry.label}
++            </DropdownMenuRadioItem>
++          ))}
++        </DropdownMenuRadioGroup>
++        <DropdownMenuSeparator />
++        <DropdownMenuLabel>
++          {intl.formatMessage({ id: "chat.toolbar.options.speed" })}
++        </DropdownMenuLabel>
++        <DropdownMenuRadioGroup
++          value={speed.value}
++          onValueChange={(next) => {
++            if (next === "standard" || next === "fast") speed.onChange(next);
++          }}
++        >
++          <DropdownMenuRadioItem value="standard">
++            {intl.formatMessage({ id: "chat.toolbar.speed.standard" })}
++          </DropdownMenuRadioItem>
++          <DropdownMenuRadioItem value="fast">
++            {intl.formatMessage({ id: "chat.toolbar.speed.label" })}
++          </DropdownMenuRadioItem>
++        </DropdownMenuRadioGroup>
++        <p className="max-w-64 px-2 py-1 text-ui-xs text-foreground-subtle">{speed.note}</p>
++      </DropdownMenuContent>
++    </DropdownMenu>
++  );
++}
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+index 378b2a9d6f2c28679ae2a598c7d099661d0f1ddd..8f68d4f79f4f596e9b3417042caeedadd33ab380 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+@@ -22,9 +22,12 @@ import {
+ } from "@/chat-input-toolbar/thoughtLevelOptions.js";
+ import { RollingToolbarLabel } from "@/chat-input-toolbar/RollingToolbarLabel.js";
+ 
++import { ThoughtAndSpeedMenu } from "./ThoughtAndSpeedMenu.js";
++
+ type ThoughtLevelInteractionMode = "select" | "cycle";
+ 
+ export function ThoughtLevelCycleControl({
++  speed,
+   disabled,
+   disabledReason,
+   composerCollapsePriority,
+@@ -44,6 +47,11 @@ export function ThoughtLevelCycleControl({
+   onCurrentValueCommit,
+   onValueChange,
+ }: {
++  speed?: {
++    value: "standard" | "fast";
++    note: string;
++    onChange: (value: "standard" | "fast") => void;
++  };
+   disabled?: boolean;
+   disabledReason?: string;
+   /** 聊天输入框由统一布局 owner 收起文字，其他调用方保留原断点规则。 */
+@@ -196,12 +204,7 @@ export function ThoughtLevelCycleControl({
+ 
+   const triggerContent = (
+     <>
+-      <BrainIcon
+-        className={cn(
+-          "pointer-events-none size-4 text-current",
+-          // "inline-flex @lg/composer:hidden",
+-        )}
+-      />
++      <BrainIcon className="pointer-events-none size-4 text-current" />
+       <span
+         className={cn(
+           "relative w-1 self-stretch overflow-hidden rounded-full bg-current/10",
+@@ -227,11 +230,46 @@ export function ThoughtLevelCycleControl({
+           composerCollapsePriority !== undefined && "group-data-[composer-compact]/thought:hidden",
+         )}
+       >
+-        <RollingToolbarLabel label={currentLabel} />
++        <RollingToolbarLabel
++          label={
++            speed?.value === "fast"
++              ? `${currentLabel} · ${intl.formatMessage({ id: "chat.toolbar.speed.label" })}`
++              : currentLabel
++          }
++        />
+       </span>
+     </>
+   );
+ 
++  if (speed)
++    return (
++      <ThoughtAndSpeedMenu
++        open={open}
++        onOpenChange={onOpenChange}
++        disabled={disabled}
++        title={effectiveTooltipTitle}
++        shortcut={shortcutLabel}
++        triggerRef={triggerRef}
++        triggerClassName={cn(
++          "gap-1 rounded-lg px-1.5 py-1.5",
++          composerTriggerClassName,
++          triggerClassName,
++        )}
++        label={currentLabel}
++        restoreFocusSelector={restoreFocusSelector}
++        value={String(option.currentValue)}
++        onValueChange={onValueChange}
++        speed={speed}
++        entries={entries.map((entry) => ({
++          value: entry.value,
++          label: getThoughtLevelLabel(intl, provider, option, entry),
++        }))}
++        intl={intl}
++      >
++        {triggerContent}
++      </ThoughtAndSpeedMenu>
++    );
++
+   if (isFixedThoughtLevel) {
+     return (
+       <ControlHintTooltip title={effectiveTooltipTitle} triggerRef={triggerRef}>
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index a023c3c2681fe3c539a4f084d8c3b5a27278595e..48f4b56bf80613cc8ba78fce49d272e455a5bdfd 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -1,10 +1,9 @@
+ /* eslint-disable max-lines -- context 面板聚合 Context windows、Coding Plan 和 Start Plan 三段紧耦合展示；后续拆分需要单独梳理弹层状态边界。 */
+-import type { ContextWindowMeasurement, SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
++import type { ContextWindowMeasurement } from "@zcode/shared/zcode-protocol-v4";
+ import {
+   ConversationSubscriptionUsage,
+   type ConversationSubscriptionConnection,
+ } from "./ConversationSubscriptionUsage.js";
+-import { ContextTokenDetails } from "./ContextTokenDetails.js";
+ import {
+   useCallback,
+   useEffect,
+@@ -119,26 +118,6 @@ function formatContextUsageSummary({
+   )} (${percentageFormatter.format(percent)})`;
+ }
+ 
+-function formatContextCacheHitRateLabel(
+-  hitRate: number | null | undefined,
+-  locale: string,
+-): string | null {
+-  if (
+-    hitRate === null ||
+-    hitRate === undefined ||
+-    !Number.isFinite(hitRate) ||
+-    hitRate < 0 ||
+-    hitRate > 1
+-  ) {
+-    return null;
+-  }
+-
+-  return new Intl.NumberFormat(locale, {
+-    maximumFractionDigits: 1,
+-    style: "percent",
+-  }).format(Math.max(0, hitRate));
+-}
+-
+ function getBreakdownToneStyle(index: number): CSSProperties {
+   return {
+     backgroundColor:
+@@ -236,7 +215,6 @@ export function ChatContextUsage({
+   codingPlanUsageRemaining,
+   startPlanBalance,
+   taskUsage,
+-  sessionUsage,
+   subscription,
+   selectedProvider: _selectedProvider,
+   intl,
+@@ -251,7 +229,6 @@ export function ChatContextUsage({
+     breakdown?: ZCodeContextUsageBreakdownItem[];
+     measurement?: ContextWindowMeasurement;
+   } | null;
+-  sessionUsage?: SessionUsageState;
+   subscription?: ConversationSubscriptionConnection;
+   selectedProvider: ZCodeProvider;
+   intl: ReturnType<typeof useZCodeIntl>["intl"];
+@@ -324,11 +301,6 @@ export function ChatContextUsage({
+   }, []);
+   const staleMeasurement = taskUsage?.measurement?.state === "stale";
+   const renderableTaskUsage = getRenderableTaskUsage(taskUsage);
+-  const hasTokenDetails = Boolean(
+-    sessionUsage?.lastRequest ||
+-    (sessionUsage &&
+-      sessionUsage.cumulative.inputTokens + sessionUsage.cumulative.outputTokens > 0),
+-  );
+   useEffect(() => {
+     pinnedRef.current = false;
+     accountPickerOpenRef.current = false;
+@@ -857,12 +829,6 @@ export function ChatContextUsage({
+       },
+     );
+   }, [intl, numberFormatter, renderableTaskUsage]);
+-  const cacheHitRateLabel = useMemo(() => {
+-    // 旧累计值把未报告缓存的请求也按零计入；这里只计算可核实的上次请求。
+-    const last = sessionUsage?.lastRequest;
+-    if (!last?.inputTokens || last.cacheReadTokens === undefined) return null;
+-    return formatContextCacheHitRateLabel(last.cacheReadTokens / last.inputTokens, locale);
+-  }, [locale, sessionUsage?.lastRequest]);
+   const breakdownSegments = useMemo(
+     () => buildContextUsageBreakdownSegments(renderableTaskUsage?.breakdown),
+     [renderableTaskUsage?.breakdown],
+@@ -898,14 +864,12 @@ export function ChatContextUsage({
+   if (
+     !renderableTaskUsage &&
+     !staleMeasurement &&
+-    !hasTokenDetails &&
+     !subscription &&
+     !hasCodingPlanUsageRemaining &&
+     !hasStartPlanBalance
+   )
+     return null;
+-  const hasContextInformation = Boolean(renderableTaskUsage || staleMeasurement || hasTokenDetails);
+-  const historicalUsage = staleMeasurement ? getRenderableTaskUsage(taskUsage) : null;
++  const hasContextInformation = Boolean(renderableTaskUsage || staleMeasurement);
+   const contextUsedTokens = renderableTaskUsage?.used ?? 0;
+   const contextMaxTokens = renderableTaskUsage?.size ?? 1;
+ 
+@@ -997,22 +961,11 @@ export function ChatContextUsage({
+         sideOffset={2}
+       >
+         <ContextContentBody className="space-y-3">
+-          {!renderableTaskUsage && (staleMeasurement || hasTokenDetails) ? (
++          {!renderableTaskUsage && staleMeasurement ? (
+             <div className="space-y-2">
+               <div className="text-ui-base font-medium">
+                 {intl.formatMessage({ id: "chat.contextUsage.title" })}
+               </div>
+-              {historicalUsage ? (
+-                <div className="font-mono text-ui-sm tabular-nums">
+-                  {intl.formatMessage(
+-                    { id: "chat.contextUsage.previousCapacity" },
+-                    {
+-                      used: numberFormatter.format(historicalUsage.used),
+-                      total: numberFormatter.format(historicalUsage.size),
+-                    },
+-                  )}
+-                </div>
+-              ) : null}
+               <p className="text-ui-sm text-foreground-subtle">
+                 {intl.formatMessage({
+                   id: staleMeasurement
+@@ -1045,12 +998,12 @@ export function ChatContextUsage({
+               <Progress
+                 className="h-2 bg-surface"
+                 indicatorClassName="min-w-2"
+-                segments={[{ id: "context", percent: 1, style: getBreakdownToneStyle(0) }]}
++                segments={breakdownSegments.map((segment,index)=>({id:segment.source,percent:segment.percent,style:getBreakdownToneStyle(index)}))}
+                 value={usagePercent * PERCENT_MAX}
+               />
+             </div>
+           ) : null}
+-          {renderableTaskUsage && (breakdownSegments.length > 0 || cacheHitRateLabel) ? (
++          {renderableTaskUsage && breakdownSegments.length > 0 ? (
+             <>
+               {breakdownSegments.length > 0 ? (
+                 <div
+@@ -1058,13 +1011,8 @@ export function ChatContextUsage({
+                     id: "chat.contextUsage.breakdown",
+                   })}
+                   className="space-y-1.5"
++                  title={intl.formatMessage({id:"chat.contextUsage.compositionEstimate"})}
+                 >
+-                  <div
+-                    className="text-ui-xs text-foreground-subtlest"
+-                    title={intl.formatMessage({ id: "chat.contextUsage.compositionEstimate" })}
+-                  >
+-                    {intl.formatMessage({ id: "chat.contextUsage.compositionShort" })}
+-                  </div>
+                   <div className="grid gap-1.5">
+                     {breakdownSegments.map((segment, index) => (
+                       <div
+@@ -1093,29 +1041,6 @@ export function ChatContextUsage({
+             </>
+           ) : null}
+ 
+-          {hasTokenDetails ? (
+-            <details className="border-t border-border pt-2">
+-              <summary className="cursor-pointer text-ui-sm text-foreground-subtle">
+-                {intl.formatMessage({ id: "chat.tokens.details" })}
+-              </summary>
+-              <ContextTokenDetails usage={sessionUsage} />
+-              {cacheHitRateLabel ? (
+-                <div
+-                  className={cn(
+-                    "flex items-center justify-between gap-3 text-ui-sm",
+-                    breakdownSegments.length > 0 && "border-t border-border pt-3",
+-                  )}
+-                >
+-                  <span className="text-foreground-subtle">
+-                    {intl.formatMessage({
+-                      id: "chat.contextUsage.cacheHitRate",
+-                    })}
+-                  </span>
+-                  <span className="font-mono text-ui-sm text-foreground">{cacheHitRateLabel}</span>
+-                </div>
+-              ) : null}
+-            </details>
+-          ) : null}
+           {subscription ? (
+             <div className={hasContextInformation ? "border-t border-border pt-3" : undefined}>
+               <ConversationSubscriptionUsage
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 1a6487a9a9f4108aa5e8902e6787d33917449b72..456e51f0a2d5089fb46f4065ee7211f5f168b6d9 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -56,18 +56,10 @@ const enUS: Record<string, string> = {
+   "chat.contextUsage.previous": "Last recorded: {tokens} tokens.",
+   "chat.contextUsage.compositionShort": "Context composition · estimated",
+   "chat.contextUsage.previousCapacity": "Last recorded: {used} / {total} tokens",
+-  "chat.tokens.details": "Request usage details",
+   "chat.toolbar.thoughtLevel.value.auto": "Auto",
+   "chat.contextUsage.lastRecorded": "Last",
+   "chat.contextUsage.estimated": "Estimate",
+   "chat.contextUsage.compositionEstimate": "Context composition (character estimate)",
+-  "chat.tokens.lastRequest": "Last request",
+-  "chat.tokens.input": "Input",
+-  "chat.tokens.output": "Output",
+-  "chat.tokens.cacheRead": "Cache read (part of input)",
+-  "chat.tokens.cacheWrite": "Cache write (part of input)",
+-  "chat.tokens.reasoning": "Reasoning (part of output)",
+-  "chat.tokens.cumulative": "Recorded requests total",
+   "settings.modelProvider.allowance.title": "Plan allowance",
+   "settings.modelProvider.allowance.refresh": "Refresh plan allowance",
+   "settings.modelProvider.allowance.window": "Usage window",
+@@ -2929,9 +2921,9 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.help.apiFormat":
+     "This selects an API interface, not a model brand. For example, DeepSeek still provides the model when you choose OpenAI format.",
+   "settings.modelProvider.subscription.info.guide": "About this subscription",
+-  "settings.modelProvider.subscription.info.openai-codex.title": "ChatGPT / Codex",
++  "settings.modelProvider.subscription.info.openai-codex.title": "ChatGPT",
+   "settings.modelProvider.subscription.info.openai-codex.description":
+-    "Use the Codex models available to your ChatGPT account.",
++    "Use models available through your ChatGPT subscription.",
+   "settings.modelProvider.subscription.info.openai-codex.flow":
+     "Sign in on OpenAI’s official page to use your ChatGPT subscription allowance.",
+   "settings.modelProvider.subscription.info.openai-codex.scope":
+@@ -3654,6 +3646,38 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.modelsPlaceholder": "One model name per line",
+   "settings.modelProvider.modelsCount": "{count} models",
+   "settings.modelProvider.presetTitle": "Providers",
++  "settings.usage.accounting.verified": "Official rates checked: 2026-09-27",
++  "settings.usage.accounting.title": "Model usage and estimated cost",
++  "settings.usage.accounting.model": "Model",
++  "settings.usage.accounting.input": "Input tokens",
++  "settings.usage.accounting.output": "Output tokens",
++  "settings.usage.accounting.cache": "Cache hit rate",
++  "settings.usage.accounting.fast": "Fast / known requests",
++  "settings.usage.accounting.estimate": "API-equivalent estimate",
++  "settings.usage.accounting.partial": "Reported",
++  "settings.usage.accounting.priced": "Priced",
++  "settings.usage.accounting.empty": "No recorded usage",
++  "settings.usage.accounting.note": "Official-rate estimate, not a bill. Cache is included in input. Reported speed takes precedence; otherwise selected speed is estimated. Missing facts are unpriced, not free.",
++  "settings.usage.payments.noAccounts": "Connect a subscription account in Model settings first.",
++  "settings.usage.payments.connection": "Entire connection",
++  "settings.usage.payments.title": "Actual subscription spend",
++  "settings.usage.payments.add": "Record payment",
++  "settings.usage.payments.edit": "Edit payment",
++  "settings.usage.payments.remove": "Remove payment record",
++  "settings.usage.payments.description": "Enter the actual payment for an account billing period. Allocation covers usage recorded by this app only.",
++  "settings.usage.payments.required": "Select an account and enter the amount paid.",
++  "settings.usage.payments.overlap": "This account already has an overlapping period. Edit its existing payment.",
++  "settings.usage.payments.invalid": "Check the billing period and amount.",
++  "settings.usage.payments.loading": "Loading billing-period usage…",
++  "settings.usage.payments.credits": "Allocated by official credit consumption",
++  "settings.usage.payments.api": "Allocated by official API-equivalent value",
++  "settings.usage.payments.unavailable": "Usage or pricing is incomplete for this period; payment is not allocated.",
++  "settings.usage.payments.provisional": "Period in progress; allocation changes with usage",
++  "settings.usage.payments.account": "Subscription account",
++  "settings.usage.payments.start": "Period starts",
++  "settings.usage.payments.end": "Period ends (inclusive)",
++  "settings.usage.payments.amount": "Amount paid",
++  "settings.usage.payments.currency": "Currency",
+   "settings.usage.sectionTitle": "Usage stats",
+   "settings.usage.sectionDescription": "Built from local app session history.",
+   "settings.usage.tab.appUsage": "App usage",
+@@ -5089,6 +5113,10 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.speed.unavailable": "This model no longer supports Fast. Turn it off to send.",
+   "chat.toolbar.speed.enable": "Enable Fast mode",
+   "chat.toolbar.speed.disable": "Disable Fast mode",
++  "chat.toolbar.speed.codexMultiplier": "Fast uses 2.5× the Standard subscription credits. Reasoning is unchanged.",
++  "chat.toolbar.speed.standard": "Standard",
++  "chat.toolbar.options.thinking": "Reasoning",
++  "chat.toolbar.options.speed": "Speed",
+   "chat.toolbar.speed.label": "Fast",
+   "chat.toolbar.speed.description": "Request a faster service tier for the next message. Uses more subscription allowance or higher API rates; reasoning stays unchanged.",
+   "chat.toolbar.thoughtLevel.placeholder": "Select reasoning level",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 040f75cf2efa811a0e2d5c11ea2305593678de01..5fcc366a3ae3c94dbdd4f2d9acb6dc4494e718db 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -49,18 +49,10 @@ const zhCN: Record<string, string> = {
+   "chat.contextUsage.previous": "上次记录 {tokens} Tokens。",
+   "chat.contextUsage.compositionShort": "上下文构成 · 估算",
+   "chat.contextUsage.previousCapacity": "上次占用 {used} / {total} Tokens",
+-  "chat.tokens.details": "请求用量明细",
+   "chat.toolbar.thoughtLevel.value.auto": "自动",
+   "chat.contextUsage.lastRecorded": "上次",
+   "chat.contextUsage.estimated": "估算",
+   "chat.contextUsage.compositionEstimate": "上下文构成（按字符估算）",
+-  "chat.tokens.lastRequest": "上次请求",
+-  "chat.tokens.input": "输入",
+-  "chat.tokens.output": "输出",
+-  "chat.tokens.cacheRead": "缓存读取（计入输入）",
+-  "chat.tokens.cacheWrite": "缓存写入（计入输入）",
+-  "chat.tokens.reasoning": "思考（计入输出）",
+-  "chat.tokens.cumulative": "已记录请求累计",
+   "settings.modelProvider.allowance.title": "订阅额度",
+   "settings.modelProvider.allowance.refresh": "刷新订阅额度",
+   "settings.modelProvider.allowance.window": "用量窗口",
+@@ -2734,9 +2726,9 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.help.apiFormat":
+     "这里选择的是接入方式，不是模型品牌。例如，DeepSeek 选 OpenAI 格式，调用的仍是 DeepSeek。",
+   "settings.modelProvider.subscription.info.guide": "查看订阅说明",
+-  "settings.modelProvider.subscription.info.openai-codex.title": "ChatGPT / Codex",
++  "settings.modelProvider.subscription.info.openai-codex.title": "ChatGPT",
+   "settings.modelProvider.subscription.info.openai-codex.description":
+-    "通过 ChatGPT 账号使用可用的 Codex 模型。",
++    "通过 ChatGPT 账号使用订阅提供的模型。",
+   "settings.modelProvider.subscription.info.openai-codex.flow":
+     "在 OpenAI 官方页面登录，使用 ChatGPT 订阅额度。",
+   "settings.modelProvider.subscription.info.openai-codex.scope": "与 OpenAI API 余额分开计算。",
+@@ -3428,6 +3420,38 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testModel.failedWithIdentity": "{provider} / {model} 连接失败：{reason}",
+   "settings.modelProvider.testModel.localWorkspaceUnavailable":
+     "本地工作区不可用，无法测试模型连通性。",
++  "settings.usage.accounting.verified": "官方价格核对：2026-09-27",
++  "settings.usage.accounting.title": "模型用量与估算费用",
++  "settings.usage.accounting.model": "模型",
++  "settings.usage.accounting.input": "输入 Tokens",
++  "settings.usage.accounting.output": "输出 Tokens",
++  "settings.usage.accounting.cache": "缓存命中率",
++  "settings.usage.accounting.fast": "快速 / 已知请求",
++  "settings.usage.accounting.estimate": "API 等价估算",
++  "settings.usage.accounting.partial": "已报告",
++  "settings.usage.accounting.priced": "已计价",
++  "settings.usage.accounting.empty": "暂无记录",
++  "settings.usage.accounting.note": "按已核实的官方价格估算，不是账单。缓存包含在输入内；快速费用优先用返回档位，否则按所选模式估算。缺失信息的请求不按零费用计算。",
++  "settings.usage.payments.noAccounts": "请先在模型设置中连接订阅账号。",
++  "settings.usage.payments.connection": "连接合计",
++  "settings.usage.payments.title": "订阅实际花费",
++  "settings.usage.payments.add": "记录花费",
++  "settings.usage.payments.edit": "修改花费",
++  "settings.usage.payments.remove": "移除花费记录",
++  "settings.usage.payments.description": "填写该账号一个账期的实际支付金额，按本软件记录的模型用量分摊；不含其他软件的使用。",
++  "settings.usage.payments.required": "请选择账号并填写实付金额。",
++  "settings.usage.payments.overlap": "该账号已有重叠账期，请修改现有记录。",
++  "settings.usage.payments.invalid": "请检查账期和金额。",
++  "settings.usage.payments.loading": "正在读取账期用量…",
++  "settings.usage.payments.credits": "按官方额度消耗比例分摊",
++  "settings.usage.payments.api": "按官方 API 等价费用比例分摊",
++  "settings.usage.payments.unavailable": "该账期用量或计价信息不完整，暂不分摊。",
++  "settings.usage.payments.provisional": "本期未结束，分摊结果会随用量变化",
++  "settings.usage.payments.account": "订阅账号",
++  "settings.usage.payments.start": "账期开始",
++  "settings.usage.payments.end": "账期结束（含当天）",
++  "settings.usage.payments.amount": "实际支付",
++  "settings.usage.payments.currency": "币种",
+   "settings.usage.sectionTitle": "使用统计",
+   "settings.usage.sectionDescription": "来自本地应用会话历史。",
+   "settings.usage.tab.appUsage": "应用用量",
+@@ -4759,6 +4783,10 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.speed.unavailable": "当前模型不支持快速模式，关闭后即可发送。",
+   "chat.toolbar.speed.enable": "开启快速模式",
+   "chat.toolbar.speed.disable": "关闭快速模式",
++  "chat.toolbar.speed.codexMultiplier": "快速模式消耗普通模式 2.5 倍订阅额度，思考等级不变。",
++  "chat.toolbar.speed.standard": "普通",
++  "chat.toolbar.options.thinking": "思考等级",
++  "chat.toolbar.options.speed": "速度",
+   "chat.toolbar.speed.label": "快速",
+   "chat.toolbar.speed.description": "下次发送使用快速通道，会增加订阅额度消耗或 API 费用，思考等级保持不变。",
+   "chat.toolbar.thoughtLevel.placeholder": "选择思考档位",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index 59d392451ab7e25ec34f11908b0326aacf6bd94d..5fef7094600f5bd06ef939856d210398cf1824f9 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -7,7 +7,10 @@ import {
+ } from "@/components/ui/collapsible.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { CredentialDefaultControl } from "./ProviderDraftControls.js";
+-import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
++import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
++import { Badge } from "@/components/ui/badge.js";
++import { SubscriptionUsageSection, subscriptionPlanName } from "./SubscriptionUsageSection.js";
+ 
+ export function SubscriptionAccountRow({
+   account,
+@@ -37,6 +40,24 @@ export function SubscriptionAccountRow({
+   onScopeChanged(): void;
+ }) {
+   const { intl } = useZCodeIntl();
++  const reading = useSubscriptionUsage({
++    providerId,
++    revision,
++    accountId: account.id,
++    enabled: true,
++    onScopeChanged,
++  });
++  const result = reading.result;
++  const plan = result?.status === "available" ? result.plan : undefined;
++  const tier = plan ? subscriptionPlanName(plan) : undefined;
++  const color =
++    tier === "Plus"
++      ? "bg-success/15 text-foreground border-success/30"
++      : tier === "Pro"
++        ? "bg-warning/15 text-foreground border-warning/30"
++        : tier === "Team" || tier === "Business"
++          ? "bg-usage-chart-3/15 text-foreground border-usage-chart-3/30"
++          : "bg-muted text-foreground-subtle";
+   const label =
+     displayLabel ||
+     account.label ||
+@@ -46,53 +67,74 @@ export function SubscriptionAccountRow({
+     );
+   return (
+     <Collapsible open={open} onOpenChange={onOpenChange} role="group" aria-label={label}>
+-      <div className="flex items-center gap-2 px-3 py-2">
+-        <CollapsibleTrigger asChild>
++      <PlanStatusCardSurface
++        planTitle={label}
++        titleAccessory={
++          tier ? (
++            <Badge variant="secondary" className={color}>
++              {tier}
++            </Badge>
++          ) : undefined
++        }
++        statusMeta={
++          <>
++            <CredentialDefaultControl
++              selected={account.active}
++              disabled={busy}
++              onSelect={onDefault}
++            />
++            <CollapsibleTrigger asChild>
++              <Button
++                variant="link"
++                className="p-0 text-ui-sm"
++                aria-label={intl.formatMessage(
++                  { id: "settings.modelProvider.credentials.viewAccountAllowance" },
++                  { account: label },
++                )}
++              >
++                {intl.formatMessage({ id: "settings.modelProvider.allowance.title" })}
++                {open ? (
++                  <ChevronDown className="size-3.5" />
++                ) : (
++                  <ChevronRight className="size-3.5" />
++                )}
++              </Button>
++            </CollapsibleTrigger>
++          </>
++        }
++        trailingAction={
+           <Button
+-            type="button"
+             variant="ghost"
+-            className="min-w-0 flex-1 justify-start px-0"
+-            aria-label={intl.formatMessage(
+-              { id: "settings.modelProvider.credentials.viewAccountAllowance" },
+-              { account: label },
+-            )}
++            size="icon-sm"
++            disabled={busy}
++            aria-label={intl.formatMessage({
++              id: "settings.modelProvider.credentials.removeAccount",
++            })}
++            onClick={onRemove}
+           >
+-            {open ? (
+-              <ChevronDown className="size-4 shrink-0" />
+-            ) : (
+-              <ChevronRight className="size-4 shrink-0" />
+-            )}
+-            <span className="min-w-0 truncate text-ui-base">{label}</span>
++            <Trash2 className="size-4" />
+           </Button>
+-        </CollapsibleTrigger>
+-        <CredentialDefaultControl selected={account.active} disabled={busy} onSelect={onDefault} />
+-        <Button
+-          type="button"
+-          variant="ghost"
+-          size="icon-sm"
+-          disabled={busy}
+-          aria-label={intl.formatMessage({
+-            id: "settings.modelProvider.credentials.removeAccount",
+-          })}
+-          onClick={onRemove}
+-        >
+-          <Trash2 className="size-4" />
+-        </Button>
+-      </div>
+-      <CollapsibleContent>
+-        <div className="px-3 pb-3">
+-          <SubscriptionUsageSection
+-            providerId={providerId}
+-            revision={revision}
+-            kind={kind}
+-            accountId={account.id}
+-            enabled={open}
+-            compact
+-            onScopeChanged={onScopeChanged}
+-            showReset={account.active}
+-          />
+-        </div>
+-      </CollapsibleContent>
++        }
++        usageContent={
++          open ? (
++            <CollapsibleContent>
++              <div>
++                <SubscriptionUsageSection
++                  providerId={providerId}
++                  revision={revision}
++                  kind={kind}
++                  accountId={account.id}
++                  enabled={open}
++                  compact
++                  reading={reading}
++                  onScopeChanged={onScopeChanged}
++                  showReset={account.active}
++                />
++              </div>
++            </CollapsibleContent>
++          ) : undefined
++        }
++      />
+     </Collapsible>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 0bc1096e8cf4816e0b1f6415b397ccb0800f6239..68d38d57365ef76e9d18c90d4578cd9b7cdf3fc2 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -223,7 +223,7 @@ export function SubscriptionConnectionSection({
+         <span>{intl.formatMessage({ id: "settings.modelProvider.credentials.accounts" })}</span>
+       </div>
+       {accounts?.accounts.length ? (
+-        <div className="divide-y divide-border rounded-lg border border-border">
++        <div className="space-y-3">
+           {accounts.accounts.map((account, index) => (
+             <SubscriptionAccountRow
+               key={account.id}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 88cfdba547d221edc9312b8ef3e63f10efa61508..a63d83fbec9c4c00bdf2fdaee46a2b6f5262c247 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -17,6 +17,8 @@ const PLAN_NAMES: Record<string, string> = {
+   chatgptproplan: "Pro",
+ };
+ 
++export const subscriptionPlanName = (plan: string) => PLAN_NAMES[plan.toLowerCase()] ?? plan;
++
+ // 沿用 ZCode 状态卡的标题/动作/内容布局，额度属于账号，不属于上下文 Token 环。
+ export function SubscriptionUsageSection({
+   providerId,
+@@ -29,6 +31,7 @@ export function SubscriptionUsageSection({
+   onScopeChanged,
+   accountControl,
+   condensed = false,
++  reading,
+ }: {
+   providerId: string;
+   revision: string;
+@@ -40,14 +43,16 @@ export function SubscriptionUsageSection({
+   onScopeChanged?: () => void;
+   accountControl?: ReactNode;
+   condensed?: boolean;
++  reading?: ReturnType<typeof useSubscriptionUsage>;
+ }) {
+-  const { result, busy, paused, refresh, now } = useSubscriptionUsage({
++  const ownReading = useSubscriptionUsage({
+     providerId,
+     revision,
+     accountId,
+-    enabled,
++    enabled: enabled && !reading,
+     onScopeChanged,
+   });
++  const { result, busy, paused, refresh, now } = reading ?? ownReading;
+   const { intl, locale } = useZCodeIntl();
+   const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.allowance.${key}` });
+   return (
+@@ -60,8 +65,8 @@ export function SubscriptionUsageSection({
+       <div className="flex items-center justify-between gap-3">
+         <span className="text-ui-base font-medium">
+           {t("title")}
+-          {result?.status === "available" && result.plan
+-            ? ` · ${PLAN_NAMES[result.plan] ?? result.plan}`
++          {result?.status === "available" && result.plan && !reading
++            ? ` · ${subscriptionPlanName(result.plan)}`
+             : ""}
+         </span>
+         <Button
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index e81049d22131d9260ee944c4e5fd8bbdf10dc1f7..8bb9c535ca57559d76f848b79b20d2e305ab8eb5 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -1,3 +1,5 @@
++import { UsageAccountingPanel } from "./UsageAccountingPanel.js";
++import { SubscriptionPaymentsPanel } from "./SubscriptionPaymentsPanel.js";
+ import { RefreshCcw } from "lucide-react";
+ import { Fragment, lazy, useState } from "react";
+ import { APP_USAGE_RANGES } from "@zcode/shared";
+@@ -41,6 +43,7 @@ export function AppUsagePanel() {
+     return (
+       <div className="space-y-5">
+         <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} />
++        <SubscriptionPaymentsPanel />
+         <div className="flex flex-wrap items-center justify-between gap-2">
+           <div className="text-ui-base font-medium text-foreground">
+             {intl.formatMessage({ id: "settings.usage.appUsageRangeTitle" })}
+@@ -62,6 +65,7 @@ export function AppUsagePanel() {
+     return (
+       <div className="space-y-5">
+         <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} />
++        <SubscriptionPaymentsPanel />
+         <div className="flex flex-wrap items-center justify-between gap-2">
+           <div className="text-ui-base font-medium text-foreground">
+             {intl.formatMessage({ id: "settings.usage.appUsageRangeTitle" })}
+@@ -93,6 +97,8 @@ export function AppUsagePanel() {
+       </div>
+       {error ? <UsageStatsErrorNotice error={error} /> : null}
+ 
++      <UsageAccountingPanel snapshot={snapshot} />
++      <SubscriptionPaymentsPanel />
+       <UsageChartLoadBoundary
+         scope="settings.usage.app-daily-model-chart"
+         resetKeys={[snapshot.range, snapshot.generatedAt]}
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..391eef36389c3413f6901d41319a509d0c8ae0d9
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/SubscriptionPaymentsPanel.tsx
+@@ -0,0 +1,398 @@
++import { useEffect, useMemo, useState } from "react";
++import { Plus, Pencil, Trash2 } from "lucide-react";
++import {
++  allocateSubscriptionPayment,
++  subscriptionPaymentSchema,
++  type SubscriptionPayment,
++  type UsageAccountingRow,
++} from "@zcode/shared";
++import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
++import { useServices } from "@/hooks/useServices.js";
++import { useSettings } from "@/hooks/useSettingService.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++  DialogFooter,
++  DialogDescription,
++} from "@/components/ui/dialog.js";
++import {
++  Select,
++  SelectTrigger,
++  SelectContent,
++  SelectItem,
++  SelectValue,
++} from "@/components/ui/select.js";
++
++const dateText = (time: number) => {
++  const d = new Date(time);
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
++};
++const nextDay = (text: string) => {
++  const d = new Date(`${text}T00:00:00`);
++  d.setDate(d.getDate() + 1);
++  return d.getTime();
++};
++
++export function SubscriptionPaymentsPanel() {
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.payments.${key}` });
++  const { settings, update } = useSettings();
++  const { providerSettingsService, usageStatsService } = useServices();
++  const payments = useMemo(
++    () =>
++      Object.values(settings?.subscriptionPayments ?? {})
++        .filter((p): p is SubscriptionPayment => p !== null)
++        .sort((a, b) => b.start - a.start),
++    [settings?.subscriptionPayments],
++  );
++  const [open, setOpen] = useState(false);
++  const [accounts, setAccounts] = useState<PaymentAccount[]>();
++  const [accountKey, setAccountKey] = useState("");
++  const [amount, setAmount] = useState("");
++  const [currency, setCurrency] = useState<SubscriptionPayment["currency"]>("CNY");
++  const [start, setStart] = useState(() =>
++    dateText(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()),
++  );
++  const [end, setEnd] = useState(() =>
++    dateText(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime()),
++  );
++  const [editing, setEditing] = useState<SubscriptionPayment>();
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string>();
++  const [selected, setSelected] = useState<string>();
++  const [readingSnapshot, setReadingSnapshot] = useState<{
++    scope: string;
++    rows: UsageAccountingRow[];
++  }>();
++  const [reading, setReading] = useState(false);
++  const payment = payments.find((p) => p.id === selected);
++  const scope = payment
++    ? JSON.stringify([
++        payment.id,
++        payment.providerId,
++        payment.accountId,
++        payment.start,
++        payment.end,
++      ])
++    : "";
++  const rows = readingSnapshot?.scope === scope ? readingSnapshot.rows : undefined;
++  useEffect(() => {
++    if (!open) return;
++    let active = true;
++    setError(undefined);
++    setAccounts(undefined);
++    void readPaymentAccounts(
++      providerSettingsService,
++      intl.formatMessage({ id: "settings.usage.payments.connection" }),
++    )
++      .then((result) => {
++        if (active) setAccounts(result);
++      })
++      .catch((reason) => {
++        if (active) {
++          setAccounts([]);
++          setError(String(reason));
++        }
++      });
++    return () => {
++      active = false;
++    };
++  }, [open, providerSettingsService, intl]);
++  useEffect(() => {
++    setReadingSnapshot(undefined);
++    if (!payment) return;
++    if (payment.start > Date.now()) {
++      setReadingSnapshot({ scope, rows: [] });
++      setReading(false);
++      return;
++    }
++    let active = true;
++    setReading(true);
++    setError(undefined);
++    void usageStatsService
++      .getAppUsageSnapshot({
++        range: "all",
++        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++        since: payment.start,
++        until: payment.end,
++      })
++      .then((snapshot) => {
++        if (active) setReadingSnapshot({ scope, rows: snapshot.accounting ?? [] });
++      })
++      .catch((reason) => {
++        if (active) setError(String(reason));
++      })
++      .finally(() => {
++        if (active) setReading(false);
++      });
++    return () => {
++      active = false;
++    };
++  }, [payment, scope, usageStatsService]);
++  const allocation = payment && rows ? allocateSubscriptionPayment(payment, rows) : undefined;
++  const money = (value: number, unit: SubscriptionPayment["currency"]) =>
++    new Intl.NumberFormat(locale, {
++      style: "currency",
++      currency: unit,
++      maximumFractionDigits: 4,
++    }).format(value);
++  const edit = (item?: SubscriptionPayment) => {
++    setEditing(item);
++    setError(undefined);
++    setAmount(item ? String(item.amount) : "");
++    setCurrency(item?.currency ?? "CNY");
++    setAccountKey(item ? JSON.stringify([item.providerId, item.accountId]) : "");
++    if (item) {
++      setStart(dateText(item.start));
++      setEnd(dateText(item.end - 1));
++    }
++    setOpen(true);
++  };
++  const options = [...(accounts ?? [])];
++  if (
++    editing &&
++    !options.some((a) => a.providerId === editing.providerId && a.accountId === editing.accountId)
++  )
++    options.push({
++      providerId: editing.providerId,
++      accountId: editing.accountId,
++      label: editing.accountLabel,
++    });
++  const save = async () => {
++    const account = options.find((a) => JSON.stringify([a.providerId, a.accountId]) === accountKey);
++    if (!account || !amount.trim()) {
++      setError(t("required"));
++      return;
++    }
++    const parsed = subscriptionPaymentSchema.safeParse({
++      id: editing?.id ?? crypto.randomUUID(),
++      providerId: account.providerId,
++      accountId: account.accountId,
++      accountLabel: account.label,
++      // 只修改金额时保留原来的绝对账期边界，不能因设备时区改变悄悄改写旧账。
++      start:
++        editing && start === dateText(editing.start)
++          ? editing.start
++          : new Date(`${start}T00:00:00`).getTime(),
++      end: editing && end === dateText(editing.end - 1) ? editing.end : nextDay(end),
++      amount: Number(amount),
++      currency,
++    });
++    if (!parsed.success) {
++      setError(t("invalid"));
++      return;
++    }
++    if (
++      payments.some(
++        (p) =>
++          p.id !== parsed.data.id &&
++          p.providerId === parsed.data.providerId &&
++          p.accountId === parsed.data.accountId &&
++          p.start < parsed.data.end &&
++          parsed.data.start < p.end,
++      )
++    ) {
++      setError(t("overlap"));
++      return;
++    }
++    setBusy(true);
++    try {
++      await update({ subscriptionPayments: { [parsed.data.id]: parsed.data } });
++      setSelected(parsed.data.id);
++      setOpen(false);
++    } catch (reason) {
++      setError(String(reason));
++    } finally {
++      setBusy(false);
++    }
++  };
++  return (
++    <section className="space-y-3 rounded-xl bg-surface p-4">
++      <div className="flex items-center justify-between gap-2">
++        <h3 className="text-ui-base font-medium">{t("title")}</h3>
++        <Button variant="outline" onClick={() => edit()}>
++          <Plus className="size-3.5" />
++          {t("add")}
++        </Button>
++      </div>
++      <p className="text-ui-sm text-foreground-subtle">{t("description")}</p>
++      {payments.map((item) => (
++        <div
++          key={item.id}
++          className="flex flex-wrap items-center gap-2 border-t border-border pt-3"
++        >
++          <Button
++            variant="ghost"
++            className="min-w-0 flex-1 justify-start text-left"
++            onClick={() => setSelected(item.id)}
++          >
++            <span className="truncate">{item.accountLabel}</span>
++          </Button>
++          <span className="text-ui-sm text-foreground-subtle">
++            {dateText(item.start)} — {dateText(item.end - 1)}
++          </span>
++          <span className="text-ui-sm font-medium tabular-nums">
++            {money(item.amount, item.currency)}
++          </span>
++          <Button variant="ghost" size="icon-sm" aria-label={t("edit")} onClick={() => edit(item)}>
++            <Pencil className="size-3.5" />
++          </Button>
++          <Button
++            variant="ghost"
++            size="icon-sm"
++            aria-label={t("remove")}
++            onClick={() =>
++              void update({ subscriptionPayments: { [item.id]: null } }).catch((reason) =>
++                setError(String(reason)),
++              )
++            }
++          >
++            <Trash2 className="size-3.5" />
++          </Button>
++        </div>
++      ))}
++      {reading ? <p className="text-ui-sm text-foreground-subtle">{t("loading")}</p> : null}
++      {payment && allocation ? (
++        <div className="space-y-2 border-t border-border pt-3">
++          <p className="text-ui-sm text-foreground-subtle">
++            {t(
++              allocation.basis === "credits"
++                ? "credits"
++                : allocation.basis === "api-value"
++                  ? "api"
++                  : "unavailable",
++            )}
++            {payment.end > Date.now() ? ` · ${t("provisional")}` : ""}
++          </p>
++          {allocation.models.map((model) => (
++            <div key={model.modelId} className="flex flex-wrap justify-between gap-2 text-ui-sm">
++              <span className="font-mono">{model.modelId}</span>
++              <span>
++                {money(model.amount, payment.currency)}
++                {model.perMillionTokens !== null
++                  ? ` · ${money(model.perMillionTokens, payment.currency)} / 1M Tokens`
++                  : ""}
++              </span>
++            </div>
++          ))}
++        </div>
++      ) : null}
++      {error && !open ? (
++        <p role="alert" className="text-ui-sm text-destructive">
++          {error}
++        </p>
++      ) : null}
++      <Dialog
++        open={open}
++        onOpenChange={(value) => {
++          if (!busy) setOpen(value);
++        }}
++      >
++        <DialogContent className="sm:max-w-[480px]">
++          <DialogHeader>
++            <DialogTitle>{t(editing ? "edit" : "add")}</DialogTitle>
++            <DialogDescription>{t("description")}</DialogDescription>
++          </DialogHeader>
++          <div className="space-y-3">
++            <label className="block space-y-1 text-ui-sm">
++              <span>{t("account")}</span>
++              <Select
++                value={accountKey}
++                onValueChange={setAccountKey}
++                disabled={accounts === undefined}
++              >
++                <SelectTrigger className="w-full">
++                  <SelectValue
++                    placeholder={
++                      accounts === undefined
++                        ? intl.formatMessage({ id: "common.loading" })
++                        : t("account")
++                    }
++                  />
++                </SelectTrigger>
++                <SelectContent>
++                  {options.map((a) => (
++                    <SelectItem
++                      key={JSON.stringify([a.providerId, a.accountId])}
++                      value={JSON.stringify([a.providerId, a.accountId])}
++                    >
++                      {a.label}
++                    </SelectItem>
++                  ))}
++                </SelectContent>
++              </Select>
++              {accounts?.length === 0 && !editing && !error ? (
++                <span className="text-foreground-subtle">{t("noAccounts")}</span>
++              ) : null}
++            </label>
++            <div className="grid grid-cols-2 gap-3">
++              <label className="space-y-1 text-ui-sm">
++                {t("start")}
++                <Input
++                  className="[color-scheme:light] dark:[color-scheme:dark]"
++                  type="date"
++                  value={start}
++                  onChange={(e) => setStart(e.target.value)}
++                />
++              </label>
++              <label className="space-y-1 text-ui-sm">
++                {t("end")}
++                <Input
++                  className="[color-scheme:light] dark:[color-scheme:dark]"
++                  type="date"
++                  value={end}
++                  onChange={(e) => setEnd(e.target.value)}
++                />
++              </label>
++            </div>
++            <div className="flex items-end gap-3">
++              <label className="min-w-0 flex-1 space-y-1 text-ui-sm">
++                {t("amount")}
++                <Input
++                  type="number"
++                  min="0"
++                  step="0.01"
++                  value={amount}
++                  onChange={(e) => setAmount(e.target.value)}
++                />
++              </label>
++              <Select
++                value={currency}
++                onValueChange={(v) => setCurrency(v as SubscriptionPayment["currency"])}
++              >
++                <SelectTrigger className="w-24" aria-label={t("currency")}>
++                  <SelectValue />
++                </SelectTrigger>
++                <SelectContent>
++                  {["CNY", "USD", "EUR", "GBP", "JPY"].map((c) => (
++                    <SelectItem key={c} value={c}>
++                      {c}
++                    </SelectItem>
++                  ))}
++                </SelectContent>
++              </Select>
++            </div>
++            {error ? (
++              <p role="alert" className="text-ui-sm text-destructive">
++                {error}
++              </p>
++            ) : null}
++          </div>
++          <DialogFooter>
++            <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
++              {intl.formatMessage({ id: "common.cancel" })}
++            </Button>
++            <Button disabled={busy} onClick={() => void save()}>
++              {intl.formatMessage({ id: "common.save" })}
++            </Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..39145cc3f6106a17cb10cecc8b438596f3818313
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingPanel.tsx
+@@ -0,0 +1,152 @@
++import { useMemo } from "react";
++import type { AppUsageSnapshot } from "@zcode/shared";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { Button } from "@/components/ui/button.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++
++export function UsageAccountingPanel({ snapshot }: { snapshot: AppUsageSnapshot }) {
++  const { intl, locale } = useZCodeIntl();
++  const platform = usePlatform();
++  const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
++  const rows = useMemo(() => {
++    const groups = new Map<
++      string,
++      {
++        modelId: string;
++        requests: number;
++        reports: number;
++        input: number;
++        output: number;
++        cache: number;
++        cacheInput: number;
++        cacheReports: number;
++        usd: number;
++        priced: number;
++        fast: number;
++        speedReports: number;
++      }
++    >();
++    for (const row of snapshot.accounting ?? []) {
++      const item = groups.get(row.modelId) ?? {
++        modelId: row.modelId,
++        requests: 0,
++        reports: 0,
++        input: 0,
++        output: 0,
++        cache: 0,
++        cacheInput: 0,
++        cacheReports: 0,
++        usd: 0,
++        priced: 0,
++        fast: 0,
++        speedReports: 0,
++      };
++      item.requests += row.requestCount;
++      item.reports += row.reportedCount;
++      item.input += row.inputTokens;
++      item.output += row.outputTokens;
++      item.cache += row.cacheReadTokens;
++      item.cacheInput += row.cacheInputTokens;
++      item.cacheReports += row.cacheReportedCount;
++      item.usd += row.estimatedUsd;
++      item.priced += row.pricedCount;
++      if (row.speedMode === "fast") item.fast += row.requestCount;
++      if (row.speedMode) item.speedReports += row.requestCount;
++      groups.set(row.modelId, item);
++    }
++    return [...groups.values()];
++  }, [snapshot.accounting]);
++  const number = (value: number) =>
++    new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value);
++  const money = (value: number) =>
++    new Intl.NumberFormat(locale, {
++      style: "currency",
++      currency: "USD",
++      maximumFractionDigits: 4,
++    }).format(value);
++  return (
++    <section className="space-y-3 rounded-xl bg-surface p-4">
++      <h3 className="text-ui-base font-medium">{t("title")}</h3>
++      <div className="overflow-x-auto">
++        <table className="w-full text-left text-ui-sm">
++          <thead className="text-foreground-subtle">
++            <tr>
++              {["model", "input", "output", "cache", "fast", "estimate"].map((key) => (
++                <th key={key} className="whitespace-nowrap px-2 py-2 font-medium">
++                  {t(key)}
++                </th>
++              ))}
++            </tr>
++          </thead>
++          <tbody>
++            {rows.map((row) => (
++              <tr key={row.modelId} className="border-t border-border">
++                <td className="px-2 py-3 font-mono">{row.modelId}</td>
++                <td className="px-2 py-3 tabular-nums">
++                  {row.reports > 0 ? number(row.input) : "—"}
++                </td>
++                <td className="px-2 py-3 tabular-nums">
++                  {row.reports > 0 ? number(row.output) : "—"}
++                </td>
++                <td className="px-2 py-3 tabular-nums">
++                  {row.cacheInput > 0
++                    ? new Intl.NumberFormat(locale, {
++                        style: "percent",
++                        maximumFractionDigits: 1,
++                      }).format(row.cache / row.cacheInput)
++                    : "—"}
++                  {row.cacheReports < row.requests ? (
++                    <div className="text-ui-xs text-foreground-subtle">
++                      {t("partial")}: {row.cacheReports}/{row.requests}
++                    </div>
++                  ) : null}
++                </td>
++                <td className="px-2 py-3 tabular-nums">
++                  {row.speedReports > 0 ? `${row.fast}/${row.speedReports}` : "—"}
++                </td>
++                <td className="px-2 py-3 tabular-nums">
++                  {row.priced > 0 ? money(row.usd) : "—"}
++                  {row.priced < row.requests ? (
++                    <div className="text-ui-xs text-foreground-subtle">
++                      {t("priced")}: {row.priced}/{row.requests}
++                    </div>
++                  ) : null}
++                </td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++      {!rows.length ? <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p> : null}
++      <p className="text-ui-xs text-foreground-subtle">{t("note")}</p>
++      <div className="flex flex-wrap items-center gap-2 text-ui-xs text-foreground-subtle">
++        <span>{t("verified")}</span>
++        <Button
++          variant="link"
++          className="h-auto p-0 text-ui-xs"
++          onClick={() =>
++            void platform.openExternal("https://developers.openai.com/api/docs/pricing")
++          }
++        >
++          OpenAI
++        </Button>
++        <Button
++          variant="link"
++          className="h-auto p-0 text-ui-xs"
++          onClick={() => void platform.openExternal("https://learn.chatgpt.com/docs/pricing")}
++        >
++          ChatGPT
++        </Button>
++        <Button
++          variant="link"
++          className="h-auto p-0 text-ui-xs"
++          onClick={() =>
++            void platform.openExternal("https://api-docs.deepseek.com/quick_start/pricing")
++          }
++        >
++          DeepSeek
++        </Button>
++      </div>
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts b/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3472eff13b1e0fb49bbb57b17bdba8f0a70c2533
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
+@@ -0,0 +1,45 @@
++import type { IProviderSettingsService } from "@zcode/services";
++import { readProviderSettings } from "@/lib/providerSettingsRead.js";
++
++export type PaymentAccount = { providerId: string; accountId: string; label: string };
++
++/** Read existing account identities; membership-key plans have one explicit connection total. */
++export async function readPaymentAccounts(
++  service: IProviderSettingsService,
++  connectionLabel: string,
++): Promise<PaymentAccount[]> {
++  const view = await readProviderSettings(() => service.getView());
++  const groups = await Promise.all(
++    view.providers.map(async (provider) => {
++      // 与模型设置的已添加服务保持同一范围，不能把原版隐藏套餐当成用户已绑定的会员。
++      if (provider.effectiveConfig.group !== "standard-personal") return [];
++      const label = provider.providerName ?? provider.providerId;
++      if (provider.effectiveConfig.access?.type === "subscription") {
++        const saved = await readProviderSettings(() =>
++          service.getSubscriptionAccounts(provider.providerId),
++        );
++        return saved.accounts.map((account) => ({
++          providerId: provider.providerId,
++          accountId: account.id,
++          label: `${label} · ${account.label ?? account.id}`,
++        }));
++      }
++      const template = view.providerTemplates.find(
++        (item) => item.templateId === provider.templateId,
++      );
++      if (
++        template?.category === "subscription-plan" ||
++        provider.effectiveConfig.access?.type === "zhipu-account"
++      )
++        return [
++          {
++            providerId: provider.providerId,
++            accountId: "connection",
++            label: `${label} · ${connectionLabel}`,
++          },
++        ];
++      return [];
++    }),
++  );
++  return groups.flat();
++}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 0e04eb24b7e9ee4dcf124eee4a9b6a494538f655..5a374edc1eb296e223ef77160cce0bbc776a1392 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -39,8 +39,6 @@ import type {
+ } from "@zcode/shared/zcode-protocol-v4";
+ import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
+ import { Button } from "@/components/ui/button.js";
+-import { Zap } from "lucide-react";
+-import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
+ import {
+   hasChatCodingPlanUsageRemaining,
+@@ -1009,7 +1007,6 @@ function V4ComposerModelControlsImpl({
+       <ChatContextUsage
+         codingPlanUsageRemaining={codingPlanUsageRemaining}
+         taskUsage={taskUsage}
+-        sessionUsage={usage ?? undefined}
+         subscription={subscriptionConnection}
+         startPlanBalance={contextStartPlanBalance}
+         selectedProvider={displayProvider}
+@@ -1041,10 +1038,8 @@ function V4ComposerModelControlsImpl({
+         <ModelConfigSelect
+           modelGroups={modelSelectGroups}
+           normalizedValue={normalizedModelValue}
+-          triggerLabel={modelTriggerDisplay.fullLabel}
+-          triggerLabelPrefix={modelTriggerDisplay.providerPrefix}
++          triggerLabel={modelTriggerDisplay.modelLabel}
+           triggerLabelValue={modelTriggerDisplay.modelLabel}
+-          triggerLabelPrefixClassName="composer-provider-prefix inline group-data-[composer-provider-compact=true]/toolbar:hidden"
+           showManageModelsAction={showManageModelsAction}
+           manageModelsLabel={manageModelsLabel}
+           onManageModels={handleOpenModelProviderSettings}
+@@ -1069,31 +1064,32 @@ function V4ComposerModelControlsImpl({
+           providerSubmenuClassName={providerSubmenuClassName}
+         />
+       ) : null}
+-      {supportsFast || fastEnabled ? (
+-        <ControlHintTooltip
+-          title={intl.formatMessage({
+-            id: fastEnabled ? "chat.toolbar.speed.disable" : "chat.toolbar.speed.enable",
+-          })}
+-          description={intl.formatMessage({
+-            id: supportsFast ? "chat.toolbar.speed.description" : "chat.toolbar.speed.unavailable",
+-          })}
+-        >
+-          <Button
+-            type="button"
+-            variant="ghost"
+-            size="icon-md"
+-            aria-label={intl.formatMessage({ id: "chat.toolbar.speed.label" })}
+-            aria-pressed={fastEnabled}
+-            className="text-foreground-subtle aria-pressed:bg-hover aria-pressed:text-foreground"
+-            disabled={disabled || recoveryPending}
+-            onClick={() => onSelectSpeed(fastEnabled ? "standard" : "fast")}
+-          >
+-            <Zap className={fastEnabled ? "size-3.5 fill-current" : "size-3.5"} />
+-          </Button>
+-        </ControlHintTooltip>
+-      ) : null}
+       {thoughtOption ? (
+         <ThoughtLevelCycleControl
++          speed={
++            supportsFast || fastEnabled
++              ? {
++                  value: fastEnabled ? "fast" : "standard",
++                  note: intl.formatMessage({
++                    id:
++                      selectedSubscription?.type === "subscription" &&
++                      selectedSubscription.provider === "openai-codex" &&
++                      [
++                        "gpt-6-sol",
++                        "gpt-6-astra",
++                        "gpt-6-luna",
++                        "gpt-5.6-sol",
++                        "gpt-5.6-terra",
++                        "gpt-5.6-luna",
++                        "gpt-5.5",
++                      ].includes(effectiveConfig?.model ?? "")
++                        ? "chat.toolbar.speed.codexMultiplier"
++                        : "chat.toolbar.speed.description",
++                  }),
++                  onChange: onSelectSpeed,
++                }
++              : undefined
++          }
+           composerCollapsePriority={3}
+           labelVisibilityClassName="inline-flex"
+           indicatorClassName="block"
+diff --git a/packages/ui/test/contextTokenDetails.test.tsx b/packages/ui/test/contextTokenDetails.test.tsx
+deleted file mode 100644
+index 83ea773c909c483e55ada134f01a5da90cdcac52..0000000000000000000000000000000000000000
+--- a/packages/ui/test/contextTokenDetails.test.tsx
++++ /dev/null
+@@ -1,80 +0,0 @@
+-import assert from "node:assert/strict";
+-import test from "node:test";
+-import React from "react";
+-import { renderToStaticMarkup } from "react-dom/server";
+-import type { SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
+-import { ContextTokenDetails } from "../src/chat-input-toolbar/ContextTokenDetails.js";
+-import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+-
+-const emptyUsage: SessionUsageState = {
+-  contextWindow: null,
+-  cumulative: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+-};
+-
+-function render(usage?: SessionUsageState): string {
+-  // Standalone tsx uses classic JSX outside the UI build; provide its runtime only during SSR.
+-  const previous = Object.getOwnPropertyDescriptor(globalThis, "React");
+-  Object.defineProperty(globalThis, "React", { configurable: true, value: React });
+-  try {
+-    return renderToStaticMarkup(
+-      <ZCodeIntlProvider initialLocale="en-US">
+-        <ContextTokenDetails usage={usage} />
+-      </ZCodeIntlProvider>,
+-    );
+-  } finally {
+-    if (previous) Object.defineProperty(globalThis, "React", previous);
+-    else Reflect.deleteProperty(globalThis, "React");
+-  }
+-}
+-
+-function detail(html: string, label: string): string | undefined {
+-  return [...html.matchAll(/<dt[^>]*>(.*?)<\/dt><dd[^>]*>(.*?)<\/dd>/g)].find(
+-    ([, actualLabel]) => actualLabel === label,
+-  )?.[2];
+-}
+-
+-test("token details retain reported zeros and unknowns without adding cache or reasoning subsets to consumption", () => {
+-  assert.equal(render(), "");
+-  assert.equal(render(emptyUsage), "", "no report must not fabricate a zero-usage table");
+-
+-  const zero = render({
+-    ...emptyUsage,
+-    lastRequest: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 },
+-  });
+-  assert.match(zero, /Last request/);
+-  assert.equal(detail(zero, "Input"), "0");
+-  assert.equal(detail(zero, "Output"), "0");
+-  assert.equal(detail(zero, "Cache read (part of input)"), "0");
+-  assert.equal(detail(zero, "Cache write (part of input)"), "—");
+-  assert.equal(detail(zero, "Reasoning (part of output)"), "—");
+-
+-  const measured = render({
+-    contextWindow: null,
+-    lastRequest: {
+-      modelId: "synthetic-model",
+-      inputTokens: 100,
+-      outputTokens: 20,
+-      cacheReadTokens: 70,
+-      cacheWriteTokens: 10,
+-      reasoningTokens: 5,
+-    },
+-    cumulative: {
+-      inputTokens: 1_000,
+-      outputTokens: 200,
+-      cacheReadTokens: 700,
+-      cacheWriteTokens: 100,
+-    },
+-  });
+-  assert.match(
+-    measured,
+-    /synthetic-model/,
+-    "last-request data remains visible without known context capacity",
+-  );
+-  assert.equal(detail(measured, "Input"), "100");
+-  assert.equal(detail(measured, "Cache read (part of input)"), "70");
+-  assert.equal(detail(measured, "Cache write (part of input)"), "10");
+-  assert.equal(detail(measured, "Output"), "20");
+-  assert.equal(detail(measured, "Reasoning (part of output)"), "5");
+-  assert.match(measured, /Recorded requests total<\/span><span[^>]*>1,200<\/span>/);
+-  assert.doesNotMatch(measured, />2,000<|>1,205</);
+-});
+diff --git a/packages/ui/test/subscriptionPaymentAccounts.test.ts b/packages/ui/test/subscriptionPaymentAccounts.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8cb503c5730eef39186428b2fd266682861321c1
+--- /dev/null
++++ b/packages/ui/test/subscriptionPaymentAccounts.test.ts
+@@ -0,0 +1,50 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { IProviderSettingsService, ProviderSettingsView } from "@zcode/services";
++import { readPaymentAccounts } from "../src/settings/usage-stats/subscriptionPaymentAccounts.js";
++
++test("payment choices share the added-service scope, retaining distinct saved accounts and paused plans", async () => {
++  const providers = [
++    {
++      providerId: "hidden",
++      effectiveConfig: { group: "zai-family", access: { type: "zhipu-account" } },
++    },
++    {
++      providerId: "chat",
++      providerName: "ChatGPT",
++      effectiveConfig: { group: "standard-personal", access: { type: "subscription" } },
++    },
++    {
++      providerId: "plan",
++      providerName: "Plan",
++      templateId: "plan-template",
++      enabled: false,
++      effectiveConfig: { group: "standard-personal", access: { type: "api-key" } },
++    },
++    {
++      providerId: "api",
++      effectiveConfig: { group: "standard-personal", access: { type: "api-key" } },
++    },
++  ];
++  const view = {
++    providers,
++    providerTemplates: [{ templateId: "plan-template", category: "subscription-plan" }],
++  } as unknown as ProviderSettingsView;
++  const service = {
++    getView: async () => view,
++    getSubscriptionAccounts: async (providerId: string) => {
++      assert.equal(providerId, "chat");
++      return {
++        accounts: [
++          { id: "a", label: "Account A" },
++          { id: "b", label: "Account B" },
++        ],
++      };
++    },
++  } as unknown as IProviderSettingsService;
++  assert.deepEqual(await readPaymentAccounts(service, "Entire connection"), [
++    { providerId: "chat", accountId: "a", label: "ChatGPT · Account A" },
++    { providerId: "chat", accountId: "b", label: "ChatGPT · Account B" },
++    { providerId: "plan", accountId: "connection", label: "Plan · Entire connection" },
++  ]);
++});
+diff --git a/scripts/provider-catalog-metadata.mjs b/scripts/provider-catalog-metadata.mjs
+index 73ca379b2b9c4570a837f8c7ccac715ec7cfb180..55c626294a7a8b568096d72e68a107857f346bd8 100644
+--- a/scripts/provider-catalog-metadata.mjs
++++ b/scripts/provider-catalog-metadata.mjs
+@@ -5,7 +5,7 @@ const services = {
+   coding: ["Coding Plan", "Coding Plan"],
+   token: ["Token Plan", "Token Plan"],
+   kimi: ["Kimi Code", "Kimi Code"],
+-  chatgpt: ["ChatGPT / Codex 订阅", "ChatGPT / Codex subscription"],
++  chatgpt: ["ChatGPT 订阅", "ChatGPT subscription"],
+   copilot: ["GitHub Copilot 订阅", "GitHub Copilot subscription"],
+   go: ["OpenCode Go", "OpenCode Go"],
+   zen: ["OpenCode Zen", "OpenCode Zen"],
+diff --git a/scripts/sync-fleet-provider-catalog.mjs b/scripts/sync-fleet-provider-catalog.mjs
+index ee6e445996a85b700254c0dda6011a17b529a4ad..d819d6c7da17584a91fb56acdcfb3e1ca1cc656c 100644
+--- a/scripts/sync-fleet-provider-catalog.mjs
++++ b/scripts/sync-fleet-provider-catalog.mjs
+@@ -8,7 +8,7 @@ data.config.providerConfigRules.templateRules =
+   data.config.providerConfigRules.templateRules.filter((t) => t.templateId !== "fleet-minimax-cn");
+ const providers = new Map(builtinProviders().map((p) => [p.id, p]));
+ const entries = [
+-  ["openai-codex", "ChatGPT / Codex", "https://chatgpt.com", "openai"],
++  ["openai-codex", "ChatGPT", "https://chatgpt.com", "openai"],
+   ["xai", "Grok 订阅", "https://grok.com", "xai"],
+   ["github-copilot", "GitHub Copilot", "https://github.com/settings/copilot", "github"],
+   ["groq", "Groq", "https://console.groq.com/keys", "groq"],

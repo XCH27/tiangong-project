@@ -1,0 +1,1185 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/dispatch-availability.ts b/apps/zcode-cli/packages/adapters/src/mcp/dispatch-availability.ts
+new file mode 100644
+index 0000000..0b25d8f
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/mcp/dispatch-availability.ts
+@@ -0,0 +1,35 @@
++import { AsyncLocalStorage } from "node:async_hooks";
++
++// 只传播当前调用的 Host 检查，不保存授权或插件状态、不进入协议消息。
++const dispatchAvailability = new AsyncLocalStorage<() => void>();
++export function withMcpDispatchAvailability<T>(check: (() => void) | undefined, run: () => T): T {
++  return check ? dispatchAvailability.run(check, run) : run();
++}
++export function assertMcpDispatchAvailable(): void {
++  dispatchAvailability.getStore()?.();
++}
++export function withMcpDispatchFetch(fetch: typeof globalThis.fetch): typeof globalThis.fetch {
++  return (resource, options) => {
++    let body: unknown;
++    if (typeof options?.body === "string") {
++      try {
++        body = JSON.parse(options.body);
++      } catch {
++        /* SDK owns malformed payload errors. */
++      }
++    }
++    const messages = Array.isArray(body) ? body : [body];
++    if (
++      messages.some(
++        (message) =>
++          message &&
++          typeof message === "object" &&
++          "method" in message &&
++          (message.method === "tools/call" || message.method === "resources/read"),
++      )
++    ) {
++      assertMcpDispatchAvailable();
++    }
++    return fetch(resource, options);
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/index.ts b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+index 2631fb5..dd20b75 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+@@ -1,6 +1,7 @@
+ import { randomUUID } from "node:crypto";
+ import { resolve } from "node:path";
+ import { isDeepStrictEqual } from "node:util";
++import { withMcpDispatchAvailability, withMcpDispatchFetch } from "./dispatch-availability.js";
+ import { mcpConfigIdentity } from "./config-identity.js";
+ import {
+   Client,
+@@ -447,6 +448,7 @@ class NodeMcpAdapter implements McpPort {
+   ): Promise<McpToolCallResult> {
+     const initialRecord = this.records.get(request.serverName);
+     this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     const timeoutMs =
+       options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+     const deadline = createMcpDeadline(timeoutMs);
+@@ -465,6 +467,7 @@ class NodeMcpAdapter implements McpPort {
+     // 但工具本身恢复可用。
+     const disconnected = this.records.get(request.serverName);
+     this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     if (disconnected && disconnected.status.status === "disconnected") {
+       await waitWithinMcpDeadline(
+         this.reconnectForCall(request.serverName, disconnected.config),
+@@ -476,6 +479,7 @@ class NodeMcpAdapter implements McpPort {
+ 
+     const record = this.records.get(request.serverName);
+     this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     if (!record?.client || record.status.status !== "connected") {
+       throw new Error(`MCP server is not connected: ${request.serverName}`);
+     }
+@@ -486,6 +490,7 @@ class NodeMcpAdapter implements McpPort {
+         request,
+         remainingMcpDeadlineMs(deadline, timeoutMessage),
+         options.signal,
++        options.assertAvailable,
+       );
+     } catch (error) {
+       // 请求已发出时保留它本来的错误；配置变更只阻止后续重试，不能改写成“从未派发”。
+@@ -508,6 +513,7 @@ class NodeMcpAdapter implements McpPort {
+           timeoutMessage,
+           trigger,
+           expectedServerConfig: options.expectedServerConfig,
++          assertAvailable: options.assertAvailable,
+           ...(options.signal ? { signal: options.signal } : {}),
+         });
+       }
+@@ -532,12 +538,14 @@ class NodeMcpAdapter implements McpPort {
+       }
+       const revived = this.records.get(request.serverName);
+       this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
++      options.assertAvailable?.();
+       if (!revived?.client || revived.status.status !== "connected") throw error;
+       return await this.callToolOnClient(
+         revived.client,
+         request,
+         remainingMcpDeadlineMs(deadline, timeoutMessage),
+         options.signal,
++        options.assertAvailable,
+       );
+     }
+   }
+@@ -553,6 +561,7 @@ class NodeMcpAdapter implements McpPort {
+   ): Promise<McpReadResourceResult> {
+     const initialRecord = this.records.get(serverName);
+     this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     const timeoutMs =
+       options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+     const deadline = createMcpDeadline(timeoutMs);
+@@ -567,6 +576,7 @@ class NodeMcpAdapter implements McpPort {
+     }
+     const disconnected = this.records.get(serverName);
+     this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     if (disconnected && disconnected.status.status === "disconnected") {
+       await waitWithinMcpDeadline(
+         this.reconnectForCall(serverName, disconnected.config),
+@@ -577,12 +587,16 @@ class NodeMcpAdapter implements McpPort {
+     }
+     const record = this.records.get(serverName);
+     this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
++    options.assertAvailable?.();
+     if (!record?.client || record.status.status !== "connected") {
+       throw new Error(`MCP server is not connected: ${serverName}`);
+     }
+-    const result = await record.client.readResource(
+-      { uri },
+-      { signal: options.signal, timeout: remainingMcpDeadlineMs(deadline, timeoutMessage) },
++    const client = record.client;
++    const result = await withMcpDispatchAvailability(options.assertAvailable, () =>
++      client.readResource(
++        { uri },
++        { signal: options.signal, timeout: remainingMcpDeadlineMs(deadline, timeoutMessage) },
++      ),
+     );
+     return { contents: (result.contents ?? []) as McpReadResourceResult["contents"] };
+   }
+@@ -739,6 +753,7 @@ class NodeMcpAdapter implements McpPort {
+     request: McpCallToolRequest,
+     timeoutMs: number,
+     signal: AbortSignal | undefined,
++    assertAvailable?: () => void,
+   ): Promise<McpToolCallResult> {
+     // 工具调用此前完全无日志：超时时既看不到预算是多少，也无法区分"服务端慢"与
+     // "客户端预算太小"。这里记录预算与耗时，但只记参数的 key（值可能是用户输入）。
+@@ -758,19 +773,24 @@ class NodeMcpAdapter implements McpPort {
+ 
+     const startedAt = Date.now();
+     try {
+-      const result = await client.callTool(
+-        {
+-          name: request.toolName,
+-          arguments: request.arguments ?? {},
+-          ...(request.trace || request.runtimeScope || request.workspaceKey || request.workspacePath
+-            ? { _meta: mcpRequestMeta(request) }
+-            : {}),
+-        },
+-        {
+-          signal,
+-          timeout: timeoutMs,
+-          resetTimeoutOnProgress: true,
+-        },
++      const result = await withMcpDispatchAvailability(assertAvailable, () =>
++        client.callTool(
++          {
++            name: request.toolName,
++            arguments: request.arguments ?? {},
++            ...(request.trace ||
++            request.runtimeScope ||
++            request.workspaceKey ||
++            request.workspacePath
++              ? { _meta: mcpRequestMeta(request) }
++              : {}),
++          },
++          {
++            signal,
++            timeout: timeoutMs,
++            resetTimeoutOnProgress: true,
++          },
++        ),
+       );
+ 
+       const durationMs = Date.now() - startedAt;
+@@ -858,6 +878,7 @@ class NodeMcpAdapter implements McpPort {
+     timeoutMessage: string;
+     trigger: InteractiveAuthorizationTrigger;
+     expectedServerConfig?: McpServerConfig;
++    assertAvailable?: () => void;
+   }): Promise<McpToolCallResult> {
+     const { record, request } = input;
+     const config = record.config;
+@@ -892,12 +913,14 @@ class NodeMcpAdapter implements McpPort {
+ 
+     const revived = this.records.get(request.serverName);
+     this.assertExpectedConfiguration(request.serverName, input.expectedServerConfig);
++    input.assertAvailable?.();
+     if (!revived?.client || revived.status.status !== "connected") throw input.error;
+     return await this.callToolOnClient(
+       revived.client,
+       request,
+       remainingMcpDeadlineMs(input.deadline, input.timeoutMessage),
+       input.signal,
++      input.assertAvailable,
+     );
+   }
+ 
+@@ -1520,10 +1543,12 @@ class NodeMcpAdapter implements McpPort {
+       };
+     }
+ 
+-    const fetch = createMcpTransportFetch({
+-      env: this.env,
+-      network: this.network,
+-    });
++    const fetch = withMcpDispatchFetch(
++      createMcpTransportFetch({
++        env: this.env,
++        network: this.network,
++      }),
++    );
+     if (config.type === "http") {
+       const officialAuthFetch = this.createOfficialAuthFetch(config, serverName, generation);
+       return {
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/official-auth.ts b/apps/zcode-cli/packages/adapters/src/mcp/official-auth.ts
+index c33888e..aed402f 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/official-auth.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/official-auth.ts
+@@ -1,3 +1,4 @@
++import { assertMcpDispatchAvailable } from "./dispatch-availability.js";
+ /* 官方 Server MCP 的逐请求动态身份头注入与失败分类。
+  *
+  * 这里是唯一的凭证出口：包裹 createMcpTransportFetch 得到的 fetch，在 SDK 组装完
+@@ -220,6 +221,8 @@ export function createOfficialMcpAuthFetch(
+ 
+       const sendStartedAt = Date.now();
+       try {
++        if (rpc.method === "tools/call" || rpc.method === "resources/read")
++          assertMcpDispatchAvailable();
+         const response = await input.baseFetch(resource, {
+           ...init,
+           headers,
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/stdio-transport.ts b/apps/zcode-cli/packages/adapters/src/mcp/stdio-transport.ts
+index 954bcd1..c1a99f6 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/stdio-transport.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/stdio-transport.ts
+@@ -4,6 +4,7 @@ import {
+ } from "@modelcontextprotocol/client/stdio";
+ import type { JSONRPCMessage } from "@modelcontextprotocol/client";
+ import type { ChildProcess } from "node:child_process";
++import { assertMcpDispatchAvailable } from "./dispatch-availability.js";
+ import { terminateMcpStdioProcessTree } from "./process-tree.js";
+ import {
+   attachProcessToWindowsJobObject,
+@@ -80,6 +81,12 @@ export class ProcessTreeStdioClientTransport extends StdioClientTransport {
+ 
+   override async send(message: JSONRPCMessage): Promise<void> {
+     const requestMeta = await this.requestMetaProvider?.();
++    // 身份头 await 后再查撤销；已发出的请求不受结果阶段检查影响。
++    if (
++      "method" in message &&
++      (message.method === "tools/call" || message.method === "resources/read")
++    )
++      assertMcpDispatchAvailable();
+     await super.send(mergeRequestMeta(message, requestMeta));
+   }
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index 9d379ab..7692be6 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -68,6 +68,7 @@ import {
+   readSessionModelSelection,
+ } from "./session-store.js";
+ import { createWorkflowFacade } from "./workflow-facade.js";
++import { withResidentPluginMcp, withResidentPluginSkills } from "./resident-plugin-ports.js";
+ import { createPluginAvailability } from "./plugin-availability.js";
+ import { createInputFacade } from "./input-facade.js";
+ import { createPluginFacadeForApp } from "./plugin-facade.js";
+@@ -228,6 +229,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+     });
+     const pluginStorageRoot = startupPluginStorageRoot({ cliStorageRoot, options });
+     const pluginAvailability = createPluginAvailability({
++      initialOutcome: pluginOutcome,
+       discover: () =>
+         discoverAppPlugins({
+           configResult: resolveEffectiveConfigResult(
+@@ -411,7 +413,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       startupTimer,
+       storageRoot,
+     });
+-    const mcpPort =
++    const rawMcpPort =
+       options.mcpPort ??
+       (runtimeConfig.mcp?.enabled === false
+         ? undefined
+@@ -427,6 +429,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+             },
+             workingDirectory,
+           })));
++    const mcpPort = rawMcpPort
++      ? withResidentPluginMcp(rawMcpPort, pluginOutcome, pluginAvailability, workingDirectory)
++      : undefined;
+     const ownsMcpPort = options.mcpPort === undefined && mcpPort !== undefined;
+     const executionPort =
+       options.executionPort ??
+@@ -812,19 +817,23 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+         options.contextSourcePort ?? createNodeContextSourceAdapter({ env: options.env }),
+       skillPort:
+         configResult.config.features.skill && configResult.config.skills.enabled
+-          ? (options.skillPort ??
+-            createNodeSkillAdapter({
+-              extraRoots: configResult.config.skills.roots,
+-              extraResolvedRoots: [...pluginOutcome.skillRoots, ...bundledSkillRoots],
+-              disabledPaths: [
+-                ...collectDisabledPaths(configResult.config.skillOverrides),
+-                // 动态工作流关闭时不提供 dynamic-workflows 技能：
+-                // 十个工具都不在场，再让模型读到「怎么写工作流脚本」只会诱导它去调不存在的工具。
+-                ...(runtimeConfig.dynamicWorkflowEnabled === false
+-                  ? collectDynamicWorkflowDisabledSkillPaths(bundledSkillRoots)
+-                  : []),
+-              ],
+-            }))
++          ? withResidentPluginSkills(
++              options.skillPort ??
++                createNodeSkillAdapter({
++                  extraRoots: configResult.config.skills.roots,
++                  extraResolvedRoots: [...pluginOutcome.skillRoots, ...bundledSkillRoots],
++                  disabledPaths: [
++                    ...collectDisabledPaths(configResult.config.skillOverrides),
++                    // 动态工作流关闭时不提供 dynamic-workflows 技能：
++                    // 十个工具都不在场，再让模型读到「怎么写工作流脚本」只会诱导它去调不存在的工具。
++                    ...(runtimeConfig.dynamicWorkflowEnabled === false
++                      ? collectDynamicWorkflowDisabledSkillPaths(bundledSkillRoots)
++                      : []),
++                  ],
++                }),
++              pluginAvailability,
++              workingDirectory,
++            )
+           : undefined,
+       mcpPort,
+       eventSink: options.eventSink,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+index 6c0275a..a441b58 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+@@ -1,22 +1,29 @@
+ import { statSync } from "node:fs";
+ import { join } from "node:path";
+ import type { PluginAvailabilityPort } from "@zcode/core";
+-import type { Logger, PluginLoadOutcome } from "@zcode/contracts";
++import type { Logger, PluginLoadOutcome, PluginMetadata } from "@zcode/contracts";
+ import { pluginGrantsPath } from "./plugin-grants.js";
+ 
+ /**
+  * Whether a plugin a resident Session started with has since been disabled or uninstalled (DOM-02).
+  * Plugin settings are written by a separate management process, so the shared owner is the plugin
+  * configuration on disk. Each check compares the user/Project configuration and the install record;
+- * only when one changed does it rerun the app's own discovery. A running turn is not interrupted,
+- * nothing is added back to the Session, and a failed rediscovery withholds plugin hooks.
++ * only when one changed does it rerun the app's own discovery. Already dispatched calls are not
++ * interrupted; failed rediscovery withholds contributions. Re-enable restores retained startup
++ * contributions without adding newly installed packages to the Session.
+  */
++export interface ResidentPluginAvailability extends PluginAvailabilityPort {
++  isSkillWithdrawn(pluginId: string): boolean;
++  isMcpWithdrawn(pluginId: string, serverName: string): boolean;
++}
++
+ export function createPluginAvailability(input: {
++  initialOutcome?: Pick<PluginLoadOutcome, "plugins">;
+   discover: () => PluginLoadOutcome;
+   logger?: Logger;
+   pluginStorageRoot: string;
+   watchedConfigPaths: Array<string | undefined>;
+-}): PluginAvailabilityPort {
++}): ResidentPluginAvailability {
+   const watched = [
+     ...input.watchedConfigPaths.filter((path): path is string => Boolean(path)),
+     join(input.pluginStorageRoot, "installed_plugins.json"),
+@@ -28,36 +35,46 @@ export function createPluginAvailability(input: {
+       .map((path) => {
+         try {
+           const stat = statSync(path);
+-          return `${stat.mtimeMs}:${stat.size}`;
++          return `${stat.ino}:${stat.ctimeMs}:${stat.mtimeMs}:${stat.size}`;
+         } catch {
+           return "missing";
+         }
+       })
+       .join("|");
+   let seen = signature();
+-  let enabled: Set<string> | undefined;
++  let plugins: Map<string, PluginMetadata> | undefined = input.initialOutcome
++    ? new Map(input.initialOutcome.plugins.map((plugin) => [plugin.id, plugin]))
++    : undefined;
++  const refresh = () => {
++    const current = signature();
++    if (current === seen) return;
++    seen = current;
++    try {
++      plugins = new Map(input.discover().plugins.map((plugin) => [plugin.id, plugin]));
++    } catch (error) {
++      plugins = new Map();
++      input.logger?.warn("Plugin rediscovery failed; plugin contributions are withheld", {
++        error: error instanceof Error ? error.message : String(error),
++        event: "plugin.availability.rediscovery_failed",
++        module: "bootstrap.plugins",
++      });
++    }
++  };
+   return {
+     isWithdrawn(pluginId) {
+-      const current = signature();
+-      if (current !== seen) {
+-        seen = current;
+-        try {
+-          enabled = new Set(
+-            input
+-              .discover()
+-              .plugins.filter((plugin) => plugin.enabled && plugin.grant?.granted !== false)
+-              .map((plugin) => plugin.id),
+-          );
+-        } catch (error) {
+-          enabled = new Set();
+-          input.logger?.warn("Plugin rediscovery failed; plugin hooks are withheld", {
+-            error: error instanceof Error ? error.message : String(error),
+-            event: "plugin.availability.rediscovery_failed",
+-            module: "bootstrap.plugins",
+-          });
+-        }
+-      }
+-      return enabled ? !enabled.has(pluginId) : false;
++      refresh();
++      const plugin = plugins?.get(pluginId);
++      return plugins ? !plugin?.enabled || plugin.grant?.granted === false : false;
++    },
++    isSkillWithdrawn(pluginId) {
++      refresh();
++      // 授权只管可执行 MCP/hooks；Skills 保持既有无需 grant 的语义。
++      return plugins ? !plugins.get(pluginId)?.enabled : false;
++    },
++    isMcpWithdrawn(pluginId, serverName) {
++      refresh();
++      const plugin = plugins?.get(pluginId);
++      return plugins ? !plugin?.enabled || !plugin.mcpServerNames.includes(serverName) : false;
+     },
+   };
+ }
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/resident-plugin-ports.ts b/apps/zcode-cli/packages/bootstrap/src/app/resident-plugin-ports.ts
+new file mode 100644
+index 0000000..0418c4e
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/resident-plugin-ports.ts
+@@ -0,0 +1,104 @@
++import type { McpPort, PluginLoadOutcome, SkillPort } from "@zcode/contracts";
++import type { ResidentPluginAvailability } from "./plugin-availability.js";
++
++/** Read-only projections over the existing package owner; never activate a new contribution. */
++export function withResidentPluginMcp(
++  port: McpPort,
++  startup: PluginLoadOutcome,
++  availability: ResidentPluginAvailability,
++  _workingDirectory: string,
++): McpPort {
++  const owners = new Map(
++    startup.plugins.flatMap((plugin) =>
++      plugin.mcpServerNames.map((name) => [name, plugin.id] as const),
++    ),
++  );
++  const isServerAvailable = (name: string) => {
++    const owner = owners.get(name);
++    return (
++      (!owner || !availability.isMcpWithdrawn(owner, name)) &&
++      port.isServerAvailable?.(name) !== false
++    );
++  };
++  const assertAvailable = (name: string) => {
++    if (!isServerAvailable(name)) throw new Error(`Plugin MCP server is unavailable: ${name}`);
++  };
++  return {
++    isServerAvailable,
++    async connectConfiguredServers(servers, options) {
++      const filtered = Object.fromEntries(
++        Object.entries(servers).filter(([name]) => isServerAvailable(name)),
++      );
++      const snapshot = await port.connectConfiguredServers(filtered, options);
++      return {
++        ...snapshot,
++        tools: snapshot.tools.filter((tool) => isServerAvailable(tool.serverName)),
++      };
++    },
++    connectServer(name, config, options) {
++      assertAvailable(name);
++      return port.connectServer(name, config, options);
++    },
++    disconnectServer: (name) => port.disconnectServer(name),
++    ...(port.pingServer
++      ? {
++          pingServer: (name: string, options?: { timeoutMs?: number }) =>
++            port.pingServer!(name, options),
++        }
++      : {}),
++    status: () => port.status(),
++    async listTools() {
++      return (await port.listTools()).filter((tool) => isServerAvailable(tool.serverName));
++    },
++    callTool(request, options) {
++      const check = () => {
++        assertAvailable(request.serverName);
++        options?.assertAvailable?.();
++      };
++      check();
++      // 原因：旧描述和权限/重连等待不能冻结授权；adapter 在真正派发前重查同一 owner。
++      return port.callTool(request, { ...options, assertAvailable: check });
++    },
++    ...(port.readResource
++      ? {
++          readResource: (
++            name: string,
++            uri: string,
++            options?: Parameters<NonNullable<McpPort["readResource"]>>[2],
++          ) => {
++            const check = () => {
++              assertAvailable(name);
++              options?.assertAvailable?.();
++            };
++            check();
++            return port.readResource!(name, uri, { ...options, assertAvailable: check });
++          },
++        }
++      : {}),
++    close: () => port.close(),
++  };
++}
++
++export function withResidentPluginSkills(
++  port: SkillPort,
++  availability: ResidentPluginAvailability,
++  _workingDirectory: string,
++): SkillPort {
++  const isSkillAvailable: NonNullable<SkillPort["isSkillAvailable"]> = (skill) =>
++    (!skill.pluginId || !availability.isSkillWithdrawn(skill.pluginId)) &&
++    port.isSkillAvailable?.(skill) !== false;
++  return {
++    isSkillAvailable,
++    async discoverSkills(request, options) {
++      const outcome = await port.discoverSkills(request, options);
++      const skills = outcome.skills.filter(isSkillAvailable);
++      return { ...outcome, skills, totalDiscovered: skills.length };
++    },
++    async loadSkill(request, options) {
++      const loaded = await port.loadSkill(request, options);
++      if (!isSkillAvailable(loaded.metadata))
++        throw new Error(`Plugin Skill is unavailable: ${request.name}`);
++      return loaded;
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs b/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
+index d2c9b59..2e7f0b9 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
++++ b/apps/zcode-cli/packages/bootstrap/test/fixtures/plugin-view/server.mjs
+@@ -42,7 +42,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
+     case "tools/call": {
+       const value = read() + 1;
+       writeFileSync(counterPath, JSON.stringify({ value }));
+-      return send({ id: message.id, result: { content: [{ type: "text", text: String(value) }], structuredContent: { value } } });
++      const respond = () => send({ id: message.id, result: { content: [{ type: "text", text: String(value) }], structuredContent: { value } } });
++      if (message.params.arguments?.delayMs) return setTimeout(respond, message.params.arguments.delayMs);
++      return respond();
+     }
+     default:
+       return send({ id: message.id, error: { code: -32601, message: `Unknown method ${message.method}` } });
+diff --git a/apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts b/apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts
+new file mode 100644
+index 0000000..2392f08
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts
+@@ -0,0 +1,355 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import test from "node:test";
++import { createMcpAdapter } from "@zcode/adapters/mcp";
++import { createNodeSkillAdapter } from "@zcode/adapters/skills";
++import { addMarketplace } from "@zcode/adapters/plugins";
++import { createRootTraceContext } from "@zcode/contracts";
++import { projectDeferredTools } from "../../core/src/runtime/methods/deferred-tools.js";
++import { fixture, reply } from "../../core/test/helpers/pi-runtime-fixture.js";
++import { createPluginAvailability } from "../src/app/plugin-availability.js";
++import {
++  withResidentPluginMcp,
++  withResidentPluginSkills,
++} from "../src/app/resident-plugin-ports.js";
++import {
++  grantZCodePlugin,
++  installZCodeMarketplacePlugin,
++  resolveZCodePlugins,
++  revokeZCodePluginGrant,
++  setZCodePluginEnabled,
++  uninstallZCodeMarketplacePlugin,
++} from "../src/plugins.js";
++
++test(
++  "resident Session withdraws MCP/Skill descriptions and queued calls through existing writers",
++  { timeout: 60000 },
++  async () => {
++    const root = await mkdtemp(join(tmpdir(), "fleet-resident-plugins-"));
++    const previous = Object.fromEntries(
++      ["ZCODE_HOME", "ZCODE_STORAGE_DIR"].map((key) => [key, process.env[key]]),
++    );
++    const transport = createMcpAdapter({ env: {} });
++    let f: Awaited<ReturnType<typeof fixture>> | undefined;
++    try {
++      process.env.ZCODE_HOME = join(root, "home");
++      process.env.ZCODE_STORAGE_DIR = join(root, "storage");
++      const workspace = join(root, "workspace");
++      const market = join(root, "market");
++      const plugin = join(market, "plugins", "counter");
++      const userConfigPath = join(root, "home", "config.json");
++      const pluginStorageRoot = join(root, "storage", "cli", "plugins");
++      for (const dir of [
++        workspace,
++        join(root, "home"),
++        join(market, ".claude-plugin"),
++        join(plugin, ".claude-plugin"),
++        join(plugin, "skills", "notes"),
++      ])
++        await mkdir(dir, { recursive: true });
++      await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") } }));
++      await writeFile(
++        join(market, ".claude-plugin", "marketplace.json"),
++        JSON.stringify({
++          name: "local-fixture",
++          plugins: [{ name: "counter", source: "./plugins/counter" }],
++        }),
++      );
++      await writeFile(
++        join(plugin, ".claude-plugin", "plugin.json"),
++        JSON.stringify({
++          name: "counter",
++          version: "1.0.0",
++          mcpServers: {
++            counter: {
++              command: process.execPath,
++              args: [resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs")],
++            },
++          },
++        }),
++      );
++      await writeFile(
++        join(plugin, "skills", "notes", "SKILL.md"),
++        "---\nname: notes\ndescription: Resident notes fixture\n---\nRESIDENT_SKILL_BODY",
++      );
++      const paths = {
++        env: {
++          ZCODE_HOME: process.env.ZCODE_HOME!,
++          ZCODE_STORAGE_DIR: process.env.ZCODE_STORAGE_DIR!,
++        },
++        officialPluginRoots: [],
++        userConfigPath,
++        pluginStorageRoot,
++        workingDirectory: workspace,
++      };
++      resolveZCodePlugins(paths);
++      await addMarketplace({
++        source: { source: "directory", path: market },
++        storageRoot: pluginStorageRoot,
++      });
++      await installZCodeMarketplacePlugin({
++        ...paths,
++        marketplace: "local-fixture",
++        pluginName: "counter",
++      });
++      const id = "counter@local-fixture";
++      await setZCodePluginEnabled({ ...paths, plugin: id, enabled: true });
++      grantZCodePlugin({
++        ...paths,
++        plugin: id,
++        fingerprint: resolveZCodePlugins(paths).plugins.find((entry) => entry.id === id)!.grant!
++          .fingerprint,
++      });
++      const startup = resolveZCodePlugins(paths);
++      const availability = createPluginAvailability({
++        discover: () => resolveZCodePlugins(paths),
++        initialOutcome: startup,
++        pluginStorageRoot,
++        watchedConfigPaths: [userConfigPath, join(workspace, ".zcode", "config.json")],
++      });
++      const mcp = withResidentPluginMcp(transport, startup, availability, workspace);
++      const skills = withResidentPluginSkills(
++        createNodeSkillAdapter({
++          homeDirectory: join(root, "empty-home"),
++          extraResolvedRoots: startup.skillRoots,
++        }),
++        availability,
++        workspace,
++      );
++      f = await fixture("pi", false, {
++        config: {
++          workingDirectory: workspace,
++          toolAllowlist: ["Skill", "SearchTools", "mcp__plugin_counter_counter__increment"],
++          mcp: { servers: startup.mcpServers },
++        },
++        deps: { mcpPort: mcp, skillPort: skills },
++      });
++      const runtime = f.runtime;
++      const isolatedSkills = await skills.discoverSkills({ workingDirectory: workspace });
++      assert.ok(
++        isolatedSkills.skills.every((entry) => entry.path.startsWith(root)),
++        JSON.stringify(isolatedSkills.skills.map((entry) => entry.path)),
++      );
++      const tool = "mcp__plugin_counter_counter__increment";
++      const invoke = async (name: string, input: object = {}) => {
++        f!.steps.push(
++          () => reply("", [{ id: `call-${f!.requests.length}`, name, input }]),
++          () => reply("done"),
++        );
++        await runtime.executeTurn("Use fixture");
++        return (await f!.store.messages({ sessionID: runtime.sessionId }))
++          .flatMap((message) => message.parts)
++          .filter((part) => part.type === "tool")
++          .at(-1) as any;
++      };
++      assert.equal((await invoke(tool)).state.status, "completed");
++      assert.equal((await invoke("Skill", { skill: "counter:notes" })).state.status, "completed");
++      assert.match(JSON.stringify(f.requests.at(-1)?.messages), /RESIDENT_SKILL_BODY/);
++      assert.ok(
++        (
++          await runtime.getSkillCatalog(createRootTraceContext({ sessionId: runtime.sessionId }))
++        ).skills.some((entry) => entry.qualifiedName === "counter:notes"),
++      );
++
++      runtime.getToolRegistry().getMetadata(tool)!.description = "resident fixture ".repeat(800);
++      runtime.invalidateToolCache();
++      const discovery: any = {};
++      projectDeferredTools(runtime as any, discovery, runtime.getTools(), false);
++      assert.ok(
++        discovery
++          .searchAvailableTools("resident", 5)
++          .tools.some((entry: any) => entry.name === tool),
++      );
++      await setZCodePluginEnabled({ ...paths, plugin: id, enabled: false });
++      assert.deepEqual(
++        discovery.searchAvailableTools("resident", 5).tools,
++        [],
++        "a queued search cannot republish withdrawn descriptions",
++      );
++      assert.ok(
++        !runtime.getTools().some((entry) => entry.name === tool),
++        "cached Host tools withdraw immediately",
++      );
++      assert.ok(
++        !(
++          await runtime.getSkillCatalog(createRootTraceContext({ sessionId: runtime.sessionId }))
++        ).skills.some((entry) => entry.pluginId === id),
++      );
++      assert.equal((await invoke(tool)).state.status, "error", "a stale model tool call fails");
++      assert.equal((await invoke("Skill", { skill: "counter:notes" })).state.status, "error");
++      assert.ok(
++        !JSON.stringify(f.requests.at(-1)?.messages).includes("Resident notes fixture"),
++        "next request withdraws Skill catalog metadata",
++      );
++      assert.match(
++        JSON.stringify(f.requests.at(-1)?.messages),
++        /RESIDENT_SKILL_BODY/,
++        "loaded Skill history remains",
++      );
++      const counterData = startup.plugins.find((entry) => entry.id === id)!.dataPath!;
++      assert.equal(JSON.parse(await readFile(join(counterData, "counter.json"), "utf8")).value, 1);
++      runtime.getToolRegistry().getMetadata(tool)!.description = "Add one";
++      runtime.invalidateToolCache();
++      await setZCodePluginEnabled({ ...paths, plugin: id, enabled: true });
++      assert.ok(runtime.getTools().some((entry) => entry.name === tool));
++
++      const entered = Promise.withResolvers<void>();
++      const release = Promise.withResolvers<void>();
++      f.permissionWith(async () => {
++        entered.resolve();
++        await release.promise;
++        return { decision: "allow" };
++      });
++      const pending = invoke(tool);
++      await entered.promise;
++      revokeZCodePluginGrant({ ...paths, plugin: id });
++      release.resolve();
++      assert.equal(
++        (await pending).state.status,
++        "error",
++        "permission-waiting call cannot use revoked grant",
++      );
++      f.permissionWith(async () => ({ decision: "allow" }));
++      assert.ok(!runtime.getTools().some((entry) => entry.name === tool));
++      assert.equal(
++        (await invoke("Skill", { skill: "counter:notes" })).state.status,
++        "completed",
++        "grant does not govern Skill instructions",
++      );
++      grantZCodePlugin({
++        ...paths,
++        plugin: id,
++        fingerprint: resolveZCodePlugins(paths).plugins.find((entry) => entry.id === id)!.grant!
++          .fingerprint,
++      });
++      assert.equal((await invoke(tool)).state.status, "completed");
++      await f.reopen();
++      f.steps.push(() => reply("cold"));
++      await f.runtime.executeTurn("Cold reopen");
++      assert.ok(f.runtime.getTools().some((entry) => entry.name === tool));
++      assert.match(
++        JSON.stringify(await f.store.messages({ sessionID: f.runtime.sessionId })),
++        /RESIDENT_SKILL_BODY/,
++      );
++      await uninstallZCodeMarketplacePlugin({ ...paths, pluginId: id, keepData: true });
++      assert.ok(!f.runtime.getTools().some((entry) => entry.name === tool));
++      assert.ok(
++        !(
++          await f.runtime.getSkillCatalog(
++            createRootTraceContext({ sessionId: f.runtime.sessionId }),
++          )
++        ).skills.some((entry) => entry.pluginId === id),
++      );
++      await assert.rejects(
++        async () => mcp.callTool({ serverName: "plugin:counter:counter", toolName: "increment" }),
++        /unavailable|withdrawn/,
++      );
++      assert.equal(
++        JSON.parse(await readFile(join(counterData, "counter.json"), "utf8")).value,
++        2,
++        "data and executed effects survive uninstall",
++      );
++      await f.reopen();
++      f.steps.push(() => reply("cold after uninstall"));
++      await f.runtime.executeTurn("Reopen removed plugin");
++      assert.ok(!f.runtime.getTools().some((entry) => entry.name === tool));
++      assert.match(
++        JSON.stringify(await f.store.messages({ sessionID: f.runtime.sessionId })),
++        /RESIDENT_SKILL_BODY/,
++      );
++    } finally {
++      await transport.close();
++      await f?.close();
++      for (const [key, value] of Object.entries(previous)) {
++        if (value === undefined) delete process.env[key];
++        else process.env[key] = value;
++      }
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
++
++// Real stdio send waits for a synthetic Host identity provider. Withdrawal during that await
++// must refuse before the local server effect; withdrawal after send must retain its result.
++test(
++  "final stdio dispatch rechecks availability after async request metadata",
++  { timeout: 15000 },
++  async () => {
++    const root = await mkdtemp(join(tmpdir(), "fleet-resident-meta-"));
++    const entered = Promise.withResolvers<void>();
++    const release = Promise.withResolvers<void>();
++    let blocked = false;
++    let available = true;
++    const port = createMcpAdapter({
++      officialMcpAuth: {
++        trustedOrigins: { isTrusted: async () => ({ trusted: true }) },
++        resolveZCodeApiOrigin: () => "https://fixture.invalid",
++        authHeadersPort: {
++          async resolveHeaders() {
++            if (blocked) {
++              entered.resolve();
++              await release.promise;
++            }
++            return { ok: true, headers: {} };
++          },
++        },
++      },
++    });
++    try {
++      await port.connectServer("fixture", {
++        type: "stdio",
++        command: process.execPath,
++        args: [resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs")],
++        env: { ZCODE_PLUGIN_DATA: root },
++        auth: { type: "zcode_official", provider: "jwt_token" },
++        official: { pluginId: "fixture", mcpKey: "fixture", source: "plugin" },
++      });
++      blocked = true;
++      const pending = port.callTool(
++        { serverName: "fixture", toolName: "increment" },
++        {
++          assertAvailable: () => {
++            if (!available) throw new Error("withdrawn during metadata");
++          },
++        },
++      );
++      await entered.promise;
++      available = false;
++      release.resolve();
++      await assert.rejects(pending, /withdrawn during metadata/);
++      await assert.rejects(readFile(join(root, "counter.json")), { code: "ENOENT" });
++      blocked = false;
++      available = true;
++      const dispatched = port.callTool(
++        { serverName: "fixture", toolName: "increment", arguments: { delayMs: 100 } },
++        {
++          assertAvailable: () => {
++            if (!available) throw new Error("withdrawn");
++          },
++        },
++      );
++      // The server has written its effect but deliberately retains the response briefly.
++      for (let attempt = 0; attempt < 100; attempt++) {
++        if (
++          await readFile(join(root, "counter.json")).then(
++            () => true,
++            () => false,
++          )
++        )
++          break;
++        await new Promise((resolve) => setTimeout(resolve, 5));
++      }
++      assert.equal(JSON.parse(await readFile(join(root, "counter.json"), "utf8")).value, 1);
++      available = false;
++      const completed = await dispatched;
++      assert.deepEqual(completed.structuredContent, { value: 1 });
++      assert.equal(JSON.parse(await readFile(join(root, "counter.json"), "utf8")).value, 1);
++    } finally {
++      release.resolve();
++      await port.close();
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+index 5b8aede..ae01878 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+@@ -249,6 +249,8 @@ export interface McpCallToolOptions {
+   timeoutMs?: number;
+   /** Host-only dispatch binding; never serialize this configuration into MCP requests or UI events. */
+   expectedServerConfig?: McpServerConfig;
++  /** Host-only current availability check; invoke just before transport dispatch, never serialize. */
++  assertAvailable?: () => void;
+ }
+ 
+ /**
+@@ -300,6 +302,8 @@ export interface OfficialMcpTrustedOriginRegistry {
+ }
+ 
+ export interface McpPort {
++  /** Synchronous derived availability for resident Host projections; not an MCP wire method. */
++  isServerAvailable?(serverName: string): boolean;
+   connectConfiguredServers(
+     servers: Record<string, McpServerConfig>,
+     options?: McpConnectOptions,
+diff --git a/apps/zcode-cli/packages/contracts/src/skills/index.ts b/apps/zcode-cli/packages/contracts/src/skills/index.ts
+index 4d8e24c..101c80c 100644
+--- a/apps/zcode-cli/packages/contracts/src/skills/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/skills/index.ts
+@@ -106,6 +106,8 @@ export interface SkillOperationOptions {
+ }
+ 
+ export interface SkillPort {
++  /** Current availability of retained metadata; leaves already loaded history unchanged. */
++  isSkillAvailable?(metadata: SkillMetadata): boolean;
+   discoverSkills(
+     request: SkillDiscoverRequest,
+     options?: SkillOperationOptions,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+index bec11f6..510d03c 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+@@ -140,6 +140,10 @@ export function getTools(this: AgentRuntimeInternal, model?: Model): ModelToolCo
+     this.cachedTools = filterRuntimeVisibleTools.call(this, this.registry.toContracts());
+   }
+   return this.cachedTools
++    .filter((tool) => {
++      const server = this.registry.getMetadata(tool.name)?.mcpPresentation?.serverName;
++      return !server || this.mcpPort?.isServerAvailable?.(server) !== false;
++    })
+     .filter(
+       (tool) =>
+         !(this.config.modelSettingsAssistant ?? this.config.pageAssistantTarget) ||
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
+index 43733c3..7abd43d 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts
+@@ -8,10 +8,20 @@ export function projectContextPrefixForTools(
+   runtime: AgentRuntimeInternal,
+   turnRequestEntries: readonly RuntimeMessageEntry[],
+   toolNames: readonly string[],
++  model?: Model,
+ ): readonly RuntimeMessageEntry[] {
+   if (!runtime.contextBuilder || !runtime.contextInitialized) return turnRequestEntries;
+   // 当次工具交集在 request preparation 才最终确定；仅从已构造的 Context
+   // 派生目录和指引，不重读文件、不改 canonical history，也不采样下一轮设置。
++  // 插件撤销后下一请求必须更新 Skill 描述；已加载的历史内容仍保留。
++  if (runtime.skillPort?.isSkillAvailable) {
++    runtime.contextBuilder = runtime.createContextBuilderFromSnapshot(
++      runtime.contextSourceSnapshot ??
++        runtime.createConfigOnlyContextSnapshot(runtime.workingDirectory),
++      runtime.memoryRoot,
++      { memoryIndexContent: runtime.memoryIndexContent, model },
++    );
++  }
+   const contextResult = runtime.contextBuilder.build({ guidanceToolNames: toolNames });
+   runtime.latestContextBuildResult = contextResult;
+   return [
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
+index c95ec95..e8f42f7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
+@@ -81,7 +81,7 @@ export async function getSkillCatalog(
+   // 尚未加载的新 Skill。先经过 runtime 唯一的 context 初始化门，再返回防御性副本，
+   // 让 UI 与本 Session 实际可用的 Skill 保持同一快照；新 runtime 会自然重新发现。
+   await this.ensureContextInitialized(traceContext);
+-  const outcome = this.skillLoadOutcome ?? {
++  const outcome = currentSkillOutcome(this) ?? {
+     skills: [],
+     diagnostics: [],
+     totalDiscovered: 0,
+@@ -116,7 +116,7 @@ export function createContextBuilderFromSnapshot(
+       skillMetadataBudget: this.config.skillMetadataBudget,
+       // A child can retain the installed catalog while its profile excludes the Skill tool.
+       skills: this.getTools(options.model).some((tool) => tool.name === "Skill")
+-        ? this.skillLoadOutcome
++        ? currentSkillOutcome(this)
+         : undefined,
+       userInstructions: this.config.subagentContext.userInstructions,
+     });
+@@ -132,7 +132,7 @@ export function createContextBuilderFromSnapshot(
+     projectContext: snapshot.projectContext,
+     memoryIndexContent: options.memoryIndexContent,
+     memoryRoot,
+-    skills: this.skillLoadOutcome,
++    skills: currentSkillOutcome(this),
+     agentProfiles: this.config.subagents?.profiles,
+     embeddedSearchEnabled: resolveRuntimeEmbeddedSearchEnabled(this),
+     skillMetadataBudget: this.config.skillMetadataBudget,
+@@ -348,3 +348,10 @@ export function extractToolCallsFromResult(
+ export function shouldStreamModelText(this: AgentRuntimeInternal): boolean {
+   return this.config.modelStreaming === "on";
+ }
++
++function currentSkillOutcome(runtime: AgentRuntimeInternal): SkillLoadOutcome | undefined {
++  const outcome = runtime.skillLoadOutcome;
++  if (!outcome || !runtime.skillPort?.isSkillAvailable) return outcome;
++  const skills = outcome.skills.filter((skill) => runtime.skillPort!.isSkillAvailable!(skill));
++  return { ...outcome, skills, totalDiscovered: skills.length };
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts
+index 53e66ed..adcb603 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/deferred-tools.ts
+@@ -76,7 +76,9 @@ export function projectDeferredTools(
+   }));
+   state.searchAvailableTools = (query, limit) => {
+     const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
++    const available = new Set(runtime.getTools(state.model).map((tool) => tool.name));
+     const ranked = snapshot
++      .filter((tool) => available.has(tool.name))
+       .map((tool) => {
+         const text = `${tool.name} ${tool.description}`.toLocaleLowerCase();
+         const score = terms.reduce(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts b/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
+index 65f83a3..5b09fd0 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
+@@ -723,6 +723,9 @@ function resolveSubagentSkillPort(
+ }
+ 
+ class FilteredSkillPort implements SkillPort {
++  isSkillAvailable(metadata: Parameters<NonNullable<SkillPort["isSkillAvailable"]>>[0]): boolean {
++    return this.isAllowedSkill(metadata) && this.parent.isSkillAvailable?.(metadata) !== false;
++  }
+   constructor(
+     private readonly parent: SkillPort,
+     private readonly allowedSkills: ReadonlySet<string> | undefined,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+index 956aa6e..904b33b 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+@@ -132,6 +132,7 @@ export async function prepareRegularModelStep(
+     runtime,
+     state.turnRequestState.entries,
+     state.modelStepToolNames,
++    state.model,
+   );
+   finishTools();
+   if (!outputTokenRecoveryActive && runtime.needsPlanModeExitReminder) {
+diff --git a/apps/zcode-cli/packages/core/src/subagent/borrowed-mcp-port.ts b/apps/zcode-cli/packages/core/src/subagent/borrowed-mcp-port.ts
+index 716a59a..f0cd43b 100644
+--- a/apps/zcode-cli/packages/core/src/subagent/borrowed-mcp-port.ts
++++ b/apps/zcode-cli/packages/core/src/subagent/borrowed-mcp-port.ts
+@@ -39,6 +39,10 @@ export function createBorrowedSubagentMcpAccess(
+   return {
+     snapshot,
+     port: {
++      isServerAvailable: (name) =>
++        isInScope(name) &&
++        connectedServerNames.has(name) &&
++        parentPort.isServerAvailable?.(name) !== false,
+       async callTool(request, options) {
+         if (isDenied(request.serverName)) {
+           throw new Error(SUBAGENT_COMPUTER_USE_UNAVAILABLE_MESSAGE);
+@@ -61,7 +65,9 @@ export function createBorrowedSubagentMcpAccess(
+         return rejectLifecycleMutation();
+       },
+       async listTools() {
+-        return [...snapshot.tools];
++        return snapshot.tools.filter(
++          (tool) => parentPort.isServerAvailable?.(tool.serverName) !== false,
++        );
+       },
+       async status() {
+         return { ...snapshot.statuses };
+diff --git a/apps/zcode-cli/specs/plugin-boundaries.md b/apps/zcode-cli/specs/plugin-boundaries.md
+index d538810..312d429 100644
+--- a/apps/zcode-cli/specs/plugin-boundaries.md
++++ b/apps/zcode-cli/specs/plugin-boundaries.md
+@@ -70,8 +70,7 @@ Acceptance installs two real local-market packages with the same plugin name and
+ both calls refuse without writing either data directory, including A connected before B is enabled.
+ Disable/remove the conflict and verify each remaining owner can recover under its original name.
+ Distinct server keys coexist and modify only their owning package's data. Existing official server
+-names and ordinary one-plugin flows remain unchanged. Resident Agent MCP/Skill withdrawal remains
+-the separately recorded lifecycle gap; this correction covers discovery and the view dispatch path.
++names and ordinary one-plugin flows remain unchanged. Resident Agent MCP/Skill withdrawal follows the contract below in addition to the view dispatch path.
+ 
+ ## Source basis
+ 
+@@ -80,3 +79,45 @@ Plugins 1.0.0 / HarnessRouter `protocol/versions/2026-09-28/plugins.md` supplies
+ and credential-omission contract. Its latest inspected HEAD `822550ea8847d056ca789a2bb6977890a4276c5c`
+ has the same contract bytes as retained latest-source `6e05aef5dc2bb25faf202130398e1509a880e166`.
+ No reference checkout or pin is changed.
++
++## Resident Session withdrawal (DOM-02)
++
++The existing installation/configuration and grant writers remain the only owners. A resident Host
++keeps its startup package identities and names, but reads current availability before publishing
++plugin tool/Skill descriptions and before dispatch. Disable/uninstall withdraw MCP and Skills;
++revoking an executable-surface grant withdraws MCP/hooks while preserving Skills and commands,
++as the existing grant contract requires. Re-enable/re-approval restores only that Session's
++original contributions. New packages or changed declarations require normal fresh discovery.
++
++```text
++existing settings writer → configuration/install/grant files → existing availability projection
++                                                    → current descriptions / final dispatch gate
++```
++
++MCP connection/recovery and permission waits do not freeze permission to execute. A Host-only
++callback rechecks availability immediately before transport dispatch, including recovery retries.
++No callback crosses MCP/UI wire formats. Already dispatched effects and their durable results
++remain unchanged; withdrawal neither undoes nor replays them. Tool names, rule names, shared
++connections, credentials, Session history and plugin data retain their existing owners.
++
++Skill discovery, catalog and prompt metadata filter the retained startup catalog. Load checks
++again before returning instructions, so an old description or queued Skill call is no grant.
++Previously loaded instructions remain historical evidence; this mechanism cannot erase text
++already delivered to a model, and it does not widen permissions for operations named by Skills.
++
++Acceptance uses public Session execution with a synthetic model and a real local stdio MCP,
++under temporary profile/storage paths. Disable, executable grant revoke, uninstall, re-enable,
++re-approval, waiting calls, cold reopen and persisted tool/Skill results are covered. No paid
++provider or real profile/credential is used.
++
++The original ZCode startup path (`core/runtime/methods/mcp.ts`, `context.ts`) registers MCP
++and stores Skill metadata once. The correction reuses those retained identities, existing
++configuration signature/discovery and per-request context prefix projection. Latest retained
++HarnessRouter `protocol/versions/2026-09-28/plugins.md:343` withholds disabled materialization;
++Kimi's `packages/agent-core-v2/src/agent/plugin/agentPluginService.ts:43,168` instead keeps a Session
++snapshot until `/new` or `/reload`. Fleet's DOM-02 requires resident withdrawal, so those snapshot
++semantics are evidence rather than the selected behavior. MCP SDK stdio `send` waits for request
++metadata and HTTP official-auth waits for headers; a private adapter AsyncLocalStorage carries
++only the current call's callback across those awaits. It checks outbound tool/resource requests,
++never responses, cancellation notifications or other required protocol messages. No available
++MCP request context previously carried a callback outside the wire metadata.

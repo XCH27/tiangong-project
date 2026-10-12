@@ -1,0 +1,717 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 9d6f30f..8a6a905 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2602,6 +2602,71 @@
+             }
+           }
+         },
++        {
++          "modelMatch": "(?:.*[/_-])?(?:veo-?\\d.*|sora(?:-\\d.*)?|kling.*|seedance.*|hailuo.*|wan(?:x|\\d)[\\w.-]*-(?:t2v|i2v|vace|r2v|s2v)[\\w.-]*|vidu.*|runway.*|gen-?4.*|ray-?\\d.*|ltx-?(?:video|\\d).*|hunyuan-?video.*|cogvideox?.*|pixverse.*|grok-imagine-video.*|.*-t2v-.*|.*-i2v-.*)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": false,
++                "supportsVideo": true
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:.*[/_-])?(?:gpt-image.*|chatgpt-image.*|dall-e.*|imagen-?\\d.*|flux.*|seedream.*|seededit.*|qwen-image.*|recraft.*|ideogram.*|stable-diffusion.*|sd(?:xl|3)[\\w.-]*|kolors.*|cogview.*|hidream.*|grok-imagine-image.*|mai-image.*|wan(?:x|\\d)[\\w.-]*-t2i[\\w.-]*|jimeng.*|hunyuan-?image.*|riverflow.*|krea-.*)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": false,
++                "supportsImage": true
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:.*/)?(?:gemini-[\\w.-]*-image(?:-preview)?|gpt-[\\w.-]*-image(?:-mini)?)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": true,
++                "supportsImage": true
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:.*/)?(?:tts-.*|.*-tts(?:-.*)?|speech-[\\d.]+.*|cosyvoice.*|.*-speech(?:-.*)?)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": false,
++                "supportsSpeech": true
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:.*/)?(?:whisper.*|.*-transcribe.*|paraformer.*|sensevoice.*|.*-asr(?:-.*)?)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": false,
++                "supportsTranscription": true
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:.*/)?(?:.*embedding.*|.*-embed(?:-.*)?|text-embed.*|bge-.*|.*rerank.*|jina-(?:embeddings|reranker).*)",
++          "config": {
++            "properties": {
++              "outputFormat": {
++                "supportsText": false
++              }
++            }
++          }
++        },
+         {
+           "modelMatch": ".*\\[1m\\]",
+           "config": {
+diff --git a/package.json b/package.json
+index 27997ae..0b2d8e2 100644
+--- a/package.json
++++ b/package.json
+@@ -49,7 +49,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/model-knowledge.test.ts packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index 940cc17..aa5e9e5 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -383,7 +383,14 @@ export type ModelConfigRule =
+   | (ProviderModelConfigRule & { readonly type: "discovered-provider-model" })
+   | (ManualProviderModelConfigRule & { readonly type: "manual-provider-model" })
+   | (TemplateModelConfigRule & { readonly type: "template-model" })
+-  | (ModelMatchConfigRule & { readonly type: "model" })
++  | (ModelMatchConfigRule & {
++      readonly type: "model";
++      /**
++       * Catalog layer: computes facts for the model identity instead of carrying static config.
++       * Sits directly above the catch-all, so curated rules, provider facts and user corrections win.
++       */
++      readonly knowledge?: (input: ModelConfigRuleResolutionInput) => ModelConfig | undefined;
++    })
+   | (ModelApiMatchConfigRule & { readonly type: "model-api" })
+   | (ProviderSiteMatchConfigRule & { readonly type: "provider-site" });
+ type ExactModelConfigRule = Extract<
+@@ -437,7 +444,11 @@ export class ModelConfigRules {
+     return this.#resolve(input, false);
+   }
+ 
+-  #resolve(input: ModelConfigRuleResolutionInput, evidenceOnly: boolean): ModelConfig {
++  #resolve(
++    input: ModelConfigRuleResolutionInput,
++    evidenceOnly: boolean,
++    options: { skipKnowledge?: boolean } = {},
++  ): ModelConfig {
+     let result = ModelConfig.empty();
+     const baseUrl = input.baseUrl == null ? undefined : normalizeBaseURLForRuleMatch(input.baseUrl);
+     for (const rule of this.#rules) {
+@@ -457,6 +468,12 @@ export class ModelConfigRules {
+           result = result.overlay(rule.config);
+         continue;
+       }
++      if (rule.type === "model" && rule.knowledge) {
++        if (options.skipKnowledge) continue;
++        const known = rule.knowledge(input);
++        if (known) result = result.overlay(known);
++        continue;
++      }
+       if (evidenceOnly && !hasModelFacts(rule.config)) continue;
+       if (rule.evidenceModelIds !== undefined) {
+         if (!rule.evidenceModelIds.includes(input.modelId)) continue;
+@@ -486,6 +503,11 @@ export class ModelConfigRules {
+     return this.#resolve(input, true);
+   }
+ 
++  /** Declared evidence without the catalog layer, to tell curated facts from catalog facts. */
++  resolveCuratedEvidence(input: ModelConfigRuleResolutionInput): ModelConfig {
++    return this.#resolve(input, true, { skipKnowledge: true });
++  }
++
+   setExact(
+     providerId: string,
+     modelId: string,
+@@ -681,7 +703,10 @@ export class ModelConfigRules {
+ 
+   #collect<T extends ModelConfigRule["type"]>(type: T) {
+     return this.#rules
+-      .filter((rule): rule is Extract<ModelConfigRule, { type: T }> => rule.type === type)
++      .filter(
++        (rule): rule is Extract<ModelConfigRule, { type: T }> =>
++          rule.type === type && !("knowledge" in rule && rule.knowledge),
++      )
+       .map(({ type: _type, config, ...identity }) => ({ ...identity, config: config.toJSON() }));
+   }
+ }
+diff --git a/packages/provider/src/config/schema.ts b/packages/provider/src/config/schema.ts
+index 71b06c2..2ef1978 100644
+--- a/packages/provider/src/config/schema.ts
++++ b/packages/provider/src/config/schema.ts
+@@ -2,6 +2,7 @@ import { z } from "zod";
+ import { modelConfigDataSchema } from "@zcode/shared/model-config";
+ import { providerConfigDataSchema, zhipuAccountAccessDataSchema } from "./provider-data-schema.js";
+ import { ModelConfig, ModelConfigRules } from "./model-config.js";
++import { modelKnowledgeConfig } from "../model-knowledge.js";
+ import {
+   ApiKeyAccessConfig,
+   SubscriptionAccessConfig,
+@@ -79,12 +80,30 @@ export function parseModelConfig(input: unknown): ModelConfig {
+ 
+ export function parseZCodeBuiltinModelConfigRules(input: unknown): ModelConfigRules {
+   const parsed = builtinModelConfigRulesSchema.parse(input);
++  const modelRules = parsed.modelRules.map((rule) => ({
++    ...rule,
++    type: "model" as const,
++    config: createModelConfig(rule.config),
++  }));
++  // 目录事实替换兜底占位（200K、仅文本），排在其后、所有人工规则之前，故人工规则仍可覆盖。
++  const catchAll = modelRules.findIndex((rule) => rule.modelMatch === ".*");
++  const knowledge = {
++    type: "model" as const,
++    modelMatch: ".*",
++    config: ModelConfig.empty(),
++    knowledge: (identity: { providerId: string; templateId?: string | null; modelId: string; baseUrl?: string | null }) => {
++      const known = modelKnowledgeConfig({
++        providerId: identity.providerId,
++        templateId: identity.templateId ?? undefined,
++        modelId: identity.modelId,
++        baseUrl: identity.baseUrl,
++      });
++      return known ? ModelConfig.fromData(known) : undefined;
++    },
++  };
++  modelRules.splice(catchAll + 1, 0, knowledge);
+   return new ModelConfigRules([
+-    ...parsed.modelRules.map((rule) => ({
+-      ...rule,
+-      type: "model" as const,
+-      config: createModelConfig(rule.config),
+-    })),
++    ...modelRules,
+     ...parsed.modelApiRules.map((rule) => ({
+       ...rule,
+       type: "model-api" as const,
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 5c0df03..f8b79d1 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -129,7 +129,7 @@ export interface ProviderSettingsModelCandidateView {
+   readonly builtin: boolean;
+   readonly effectiveBuiltinConfig: ModelConfigObject;
+   readonly evidenceConfig?: ModelConfigObject;
+-  readonly contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "unknown";
++  readonly contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "catalog" | "unknown";
+   readonly personalExactConfig?: ModelConfigObject;
+   readonly useRecommendedConfig?: boolean;
+   readonly effectiveConfig: RegistryModelConfigObject | ModelConfigObject;
+diff --git a/packages/provider/src/model-knowledge.generated.ts b/packages/provider/src/model-knowledge.generated.ts
+new file mode 100644
+index 0000000..d02df12
+--- /dev/null
++++ b/packages/provider/src/model-knowledge.generated.ts
+@@ -0,0 +1,6 @@
++// Generated by scripts/generate-model-knowledge.mjs from @earendil-works/pi-ai 1.0.2; do not edit.
++// Entry: [host, contextWindow, maxOutputTokens, flags, reasoningLevels]; flags 1 image-in · 2 reasoning ·
++// 4 image-out · 8 text-out. Zero means the source did not state the value.
++export const MODEL_KNOWLEDGE_SOURCE = "@earendil-works/pi-ai 1.0.2";
++export const MODEL_KNOWLEDGE_HOSTS: Readonly<Record<string, readonly string[]>> = JSON.parse("{\"amazon-bedrock\":[\"https://bedrock-runtime.eu-central-1.amazonaws.com\",\"https://bedrock-runtime.us-east-1.amazonaws.com\"],\"ant-ling\":[\"https://api.ant-ling.com/v1\"],\"anthropic\":[\"https://api.anthropic.com\"],\"baseten\":[\"https://inference.baseten.co/v1\"],\"cerebras\":[\"https://api.cerebras.ai/v1\"],\"cloudflare-ai-gateway\":[],\"cloudflare-workers-ai\":[],\"deepseek\":[\"https://api.deepseek.com\"],\"fireworks\":[\"https://api.fireworks.ai/inference\",\"https://api.fireworks.ai/inference/v1\"],\"github-copilot\":[\"https://api.individual.githubcopilot.com\"],\"google\":[\"https://generativelanguage.googleapis.com/v1beta\"],\"google-vertex\":[],\"groq\":[\"https://api.groq.com/openai/v1\"],\"huggingface\":[\"https://router.huggingface.co/v1\"],\"kimi-coding\":[\"https://api.kimi.com/coding\"],\"meta\":[\"https://api.meta.ai/v1\"],\"minimax\":[\"https://api.minimax.io/anthropic\"],\"minimax-cn\":[\"https://api.minimaxi.com/anthropic\"],\"mistral\":[\"https://api.mistral.ai\"],\"moonshotai\":[\"https://api.moonshot.ai/v1\"],\"moonshotai-cn\":[\"https://api.moonshot.cn/v1\"],\"nvidia\":[\"https://integrate.api.nvidia.com/v1\"],\"openai\":[\"https://api.openai.com/v1\"],\"openai-codex\":[\"https://chatgpt.com/backend-api\"],\"opencode\":[\"https://opencode.ai/zen\",\"https://opencode.ai/zen/v1\"],\"opencode-go\":[\"https://opencode.ai/zen/go\",\"https://opencode.ai/zen/go/v1\"],\"openrouter\":[\"https://openrouter.ai/api\",\"https://openrouter.ai/api/v1\"],\"qwen-token-plan\":[\"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1\"],\"qwen-token-plan-cn\":[\"https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1\"],\"qwen-token-plan-individual\":[\"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1\"],\"radius\":[\"https://radius.pi.dev/v1\"],\"together\":[\"https://api.together.ai/v1\"],\"vercel-ai-gateway\":[\"https://ai-gateway.vercel.sh\"],\"xai\":[\"https://api.x.ai/v1\"],\"xiaomi\":[\"https://api.xiaomimimo.com/v1\"],\"xiaomi-token-plan-ams\":[\"https://token-plan-ams.xiaomimimo.com/v1\"],\"xiaomi-token-plan-cn\":[\"https://token-plan-cn.xiaomimimo.com/v1\"],\"xiaomi-token-plan-sgp\":[\"https://token-plan-sgp.xiaomimimo.com/v1\"],\"zai\":[\"https://api.z.ai/api/coding/paas/v4\"],\"zai-coding-cn\":[\"https://open.bigmodel.cn/api/coding/paas/v4\"]}");
++export const MODEL_KNOWLEDGE: Readonly<Record<string, readonly (readonly [string, number, number, number, string])[]>> = JSON.parse("{\"aion-2-0\":[[\"openrouter\",131072,32768,10,\"\"]],\"aion-3-0\":[[\"openrouter\",131072,32768,10,\"\"]],\"aion-3-0-mini\":[[\"openrouter\",131072,32768,10,\"\"]],\"aion-3-5\":[[\"openrouter\",262144,32768,10,\"low,high,max\"]],\"aion-3-5-mini\":[[\"openrouter\",262144,32768,10,\"low,high,max\"]],\"amazon-nova-2-lite-v1:0\":[[\"amazon-bedrock\",1000000,65535,11,\"\"]],\"amazon-nova-lite-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"amazon-nova-micro-v1:0\":[[\"amazon-bedrock\",128000,10000,8,\"\"]],\"amazon-nova-pro-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"anthropic-claude-fable-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-fable-5-1\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"anthropic-claude-opus-4-1-20250805-v1:0\":[[\"amazon-bedrock\",200000,32000,11,\"\"]],\"anthropic-claude-opus-4-5-20251101-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"anthropic-claude-opus-4-6-v1\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"anthropic-claude-sonnet-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"apac-amazon-nova-lite-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"apac-amazon-nova-micro-v1:0\":[[\"amazon-bedrock\",128000,10000,8,\"\"]],\"apac-amazon-nova-pro-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"apac-anthropic-claude-sonnet-4-20250514-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"apodex-1-1-mini:free\":[[\"openrouter\",262144,235929,10,\"\"]],\"arrow-2\":[[\"vercel-ai-gateway\",131072,131072,11,\"\"]],\"arrow-2-telos\":[[\"vercel-ai-gateway\",131072,131072,11,\"\"]],\"au-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"au-anthropic-claude-opus-4-6-v1\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"au-anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"au-anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"au-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"au-anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"au-anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"au-anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"au-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"auto\":[[\"openrouter\",2000000,30000,11,\"\"]],\"auto-beta\":[[\"openrouter\",2000000,4096,11,\"\"]],\"balanced\":[[\"radius\",1048576,131072,11,\"low,high,max\"]],\"big-pickle\":[[\"opencode\",200000,32000,10,\"\"]],\"ca-amazon-nova-lite-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"cheap\":[[\"radius\",1000000,32768,11,\"low,high,max\"]],\"claude-3-haiku\":[[\"vercel-ai-gateway\",200000,4096,9,\"\"]],\"claude-fable-5\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-fable-5-1\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-fable-5-1:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-fable-5:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-fable-latest\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-haiku-4-5\":[[\"anthropic\",200000,64000,11,\"\"],[\"cloudflare-ai-gateway\",200000,64000,11,\"\"],[\"github-copilot\",200000,64000,11,\"\"],[\"opencode\",200000,64000,11,\"\"],[\"openrouter\",200000,64000,11,\"\"],[\"radius\",200000,64000,11,\"\"],[\"vercel-ai-gateway\",200000,64000,11,\"\"]],\"claude-haiku-4-5-20251001\":[[\"anthropic\",200000,64000,11,\"\"]],\"claude-haiku-4-5:batch\":[[\"openrouter\",200000,64000,11,\"\"]],\"claude-haiku-latest\":[[\"openrouter\",200000,64000,11,\"\"]],\"claude-opus-4\":[[\"vercel-ai-gateway\",200000,32000,11,\"\"]],\"claude-opus-4-1\":[[\"openrouter\",200000,32000,11,\"\"]],\"claude-opus-4-1:batch\":[[\"openrouter\",200000,32000,11,\"\"]],\"claude-opus-4-5\":[[\"anthropic\",200000,64000,11,\"\"],[\"cloudflare-ai-gateway\",200000,64000,11,\"\"],[\"opencode\",200000,64000,11,\"\"],[\"openrouter\",200000,64000,11,\"\"],[\"radius\",200000,64000,11,\"\"],[\"vercel-ai-gateway\",200000,64000,11,\"\"]],\"claude-opus-4-5-20251101\":[[\"anthropic\",200000,64000,11,\"\"]],\"claude-opus-4-5:batch\":[[\"openrouter\",200000,64000,11,\"\"]],\"claude-opus-4-6\":[[\"anthropic\",1000000,128000,11,\"max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"max\"],[\"opencode\",1000000,128000,11,\"max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"max\"]],\"claude-opus-4-6:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,max\"]],\"claude-opus-4-7\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,32000,11,\"minimal,xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-4-7:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-opus-4-8\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,64000,11,\"minimal,xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-4-8-fast\":[[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-4-8:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-opus-5\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,64000,11,\"minimal,xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-5-5\":[[\"anthropic\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-5-5-fast\":[[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-5-5:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-opus-5-fast\":[[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-opus-5:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-opus-latest\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-sonnet-4\":[[\"opencode\",200000,64000,11,\"\"],[\"openrouter\",200000,64000,11,\"\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"claude-sonnet-4-5\":[[\"anthropic\",1000000,64000,11,\"\"],[\"cloudflare-ai-gateway\",200000,64000,11,\"\"],[\"opencode\",200000,64000,11,\"\"],[\"openrouter\",1000000,64000,11,\"\"],[\"radius\",1000000,64000,11,\"\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"claude-sonnet-4-5-20250929\":[[\"anthropic\",1000000,64000,11,\"\"]],\"claude-sonnet-4-5:batch\":[[\"openrouter\",1000000,64000,11,\"\"]],\"claude-sonnet-4-6\":[[\"anthropic\",1000000,128000,11,\"max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"max\"],[\"github-copilot\",1000000,32000,11,\"minimal,max\"],[\"opencode\",1000000,64000,11,\"max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"max\"]],\"claude-sonnet-4-6:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,max\"]],\"claude-sonnet-5\":[[\"anthropic\",1000000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-sonnet-5-5\":[[\"anthropic\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"xhigh,max\"],[\"opencode\",1000000,128000,11,\"xhigh,max\"],[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh,max\"]],\"claude-sonnet-5-5:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-sonnet-5:batch\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"claude-sonnet-latest\":[[\"openrouter\",1000000,128000,11,\"low,medium,high,xhigh,max\"]],\"codestral\":[[\"vercel-ai-gateway\",128000,4000,8,\"\"]],\"codestral-2508\":[[\"openrouter\",256000,204800,8,\"\"]],\"codestral-2508:batch\":[[\"openrouter\",256000,204800,8,\"\"]],\"codestral-latest\":[[\"mistral\",256000,4096,8,\"\"]],\"command-a\":[[\"vercel-ai-gateway\",256000,8000,8,\"\"]],\"command-a-plus\":[[\"openrouter\",192000,64000,11,\"\"]],\"command-r-08-2024\":[[\"openrouter\",128000,4000,8,\"\"]],\"command-r-plus-08-2024\":[[\"openrouter\",128000,4000,8,\"\"]],\"cosmos-reason2-8b\":[[\"nvidia\",131072,16384,11,\"\"]],\"deep-research-max-preview-04-2026\":[[\"google\",131072,65536,11,\"\"]],\"deep-research-preview-04-2026\":[[\"google\",131072,65536,11,\"\"]],\"deepseek-chat\":[[\"openrouter\",128000,16000,8,\"\"]],\"deepseek-chat-v3-0324\":[[\"openrouter\",163840,147456,8,\"\"]],\"deepseek-chat-v3-1\":[[\"openrouter\",163840,32768,10,\"\"]],\"deepseek-flash\":[[\"deepseek\",1000000,384000,11,\"low,high,max\"]],\"deepseek-flash-latest\":[[\"fireworks\",1000000,384000,11,\"low,high,max\"],[\"openrouter\",1048576,943718,11,\"low,high,max\"]],\"deepseek-pro-latest\":[[\"openrouter\",1048576,393216,10,\"low,high,max\"]],\"deepseek-r1\":[[\"huggingface\",64000,32768,10,\"\"],[\"openrouter\",64000,16000,10,\"\"],[\"vercel-ai-gateway\",128000,8192,10,\"\"]],\"deepseek-r1-0528\":[[\"huggingface\",163840,163840,10,\"\"],[\"openrouter\",163840,32768,10,\"\"]],\"deepseek-v3\":[[\"huggingface\",64000,8192,8,\"\"]],\"deepseek-v3-0324\":[[\"huggingface\",163840,163840,8,\"\"]],\"deepseek-v3-1\":[[\"huggingface\",131072,8192,10,\"\"],[\"vercel-ai-gateway\",163840,128000,10,\"\"]],\"deepseek-v3-1-terminus\":[[\"openrouter\",163840,147456,10,\"\"],[\"vercel-ai-gateway\",131072,65536,10,\"\"]],\"deepseek-v3-2\":[[\"amazon-bedrock\",163840,81920,10,\"\"],[\"huggingface\",163840,65536,10,\"\"],[\"openrouter\",131072,65536,10,\"\"],[\"qwen-token-plan\",131072,65536,10,\"\"],[\"qwen-token-plan-cn\",131072,65536,10,\"\"],[\"vercel-ai-gateway\",128000,8000,8,\"\"]],\"deepseek-v3-2-exp\":[[\"openrouter\",163840,147456,10,\"\"]],\"deepseek-v3-2-thinking\":[[\"vercel-ai-gateway\",128000,8000,8,\"\"]],\"deepseek-v3-v1:0\":[[\"amazon-bedrock\",163840,81920,10,\"\"]],\"deepseek-v4-1-flash\":[[\"baseten\",1048576,32768,11,\"low,high,max\"],[\"huggingface\",1048576,384000,11,\"low,high,xhigh,max\"],[\"nvidia\",1000000,384000,11,\"high,max\"],[\"opencode\",1000000,384000,11,\"low,high,max\"],[\"opencode-go\",1000000,384000,11,\"low,high,max\"],[\"openrouter\",1048576,943718,11,\"low,high,max\"],[\"qwen-token-plan\",1000000,384000,11,\"low,high,max\"],[\"qwen-token-plan-cn\",1000000,384000,11,\"low,high,max\"],[\"radius\",1000000,32768,11,\"low,high,max\"],[\"together\",1048576,384000,11,\"\"],[\"vercel-ai-gateway\",1048576,32768,11,\"\"]],\"deepseek-v4-1-flash-fast\":[[\"baseten\",1048576,32768,11,\"low,high,max\"],[\"vercel-ai-gateway\",1048576,1000000,11,\"\"]],\"deepseek-v4-1-flash:batch\":[[\"openrouter\",1048576,131072,11,\"low,high,max\"]],\"deepseek-v4-flash\":[[\"huggingface\",1048576,384000,10,\"\"],[\"opencode\",1000000,384000,10,\"low,high,max\"],[\"opencode-go\",1000000,384000,10,\"low,high,max\"],[\"openrouter\",1024000,384000,10,\"high,xhigh\"],[\"qwen-token-plan\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-cn\",1000000,384000,10,\"high,max\"],[\"vercel-ai-gateway\",1000000,384000,10,\"\"]],\"deepseek-v4-flash-0731\":[[\"baseten\",1048576,384000,10,\"minimal,low,medium,high,xhigh,max\"],[\"cloudflare-ai-gateway\",1048576,1048576,10,\"high,max\"],[\"cloudflare-workers-ai\",1048576,1048576,10,\"high,max\"],[\"huggingface\",1048576,384000,10,\"high,max\"],[\"openrouter\",1048576,943718,10,\"low,high,max\"],[\"qwen-token-plan\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-cn\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-individual\",1000000,384000,10,\"high,max\"],[\"together\",1048576,384000,10,\"\"],[\"vercel-ai-gateway\",1000000,384000,10,\"\"]],\"deepseek-v4-flash-latest\":[[\"openrouter\",1048576,943718,10,\"low,high,max\"]],\"deepseek-v4-flash-vision-exp\":[[\"huggingface\",1048576,384000,11,\"low,high,max\"],[\"opencode\",1000000,384000,11,\"low,high,max\"],[\"opencode-go\",1000000,384000,11,\"low,high,max\"],[\"openrouter\",1048576,262144,11,\"low,high,max\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"deepseek-v4-pro\":[[\"baseten\",1048576,262144,10,\"minimal,low,medium,high,xhigh,max\"],[\"deepseek\",1000000,384000,10,\"high,max\"],[\"huggingface\",1048576,393216,10,\"high\"],[\"opencode\",1000000,384000,10,\"high,max\"],[\"opencode-go\",1000000,384000,10,\"high,max\"],[\"openrouter\",1024000,384000,10,\"high,xhigh\"],[\"qwen-token-plan\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-cn\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-individual\",1000000,384000,10,\"high,max\"],[\"vercel-ai-gateway\",1000000,384000,10,\"\"]],\"deepseek-v4-pro-0813\":[[\"baseten\",1048576,262144,10,\"low,high,max\"],[\"cloudflare-ai-gateway\",1048576,1048576,10,\"high,max\"],[\"cloudflare-workers-ai\",1048576,1048576,10,\"high,max\"],[\"huggingface\",1000000,384000,10,\"low,high,max\"],[\"openrouter\",1048576,943718,10,\"low,high,max\"],[\"qwen-token-plan\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-cn\",1000000,384000,10,\"high,max\"],[\"qwen-token-plan-individual\",1000000,384000,10,\"high,max\"],[\"together\",1048576,384000,10,\"high\"],[\"vercel-ai-gateway\",1000000,384000,10,\"\"]],\"deepseek-v4p1-flash\":[[\"fireworks\",1000000,384000,11,\"low,high,max\"]],\"devstral-2512\":[[\"mistral\",262144,262144,8,\"\"],[\"openrouter\",262144,209715,8,\"\"]],\"devstral-latest\":[[\"mistral\",262144,262144,8,\"\"]],\"devstral-medium-2507\":[[\"mistral\",128000,128000,8,\"\"]],\"devstral-medium-latest\":[[\"mistral\",262144,262144,8,\"\"]],\"devstral-small-2505\":[[\"mistral\",128000,128000,8,\"\"]],\"devstral-small-2507\":[[\"mistral\",128000,128000,8,\"\"]],\"diffusiongemma-26b-a4b-it\":[[\"nvidia\",250000,32768,11,\"\"]],\"dots-3-note-preview:free\":[[\"openrouter\",512000,460800,11,\"\"]],\"ember-1\":[[\"fireworks\",1048576,131072,11,\"low,medium,high,max\"],[\"openrouter\",1048576,943718,11,\"low,high,max\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"eu-amazon-nova-2-lite-v1:0\":[[\"amazon-bedrock\",1000000,65535,11,\"\"]],\"eu-amazon-nova-lite-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"eu-amazon-nova-micro-v1:0\":[[\"amazon-bedrock\",128000,10000,8,\"\"]],\"eu-amazon-nova-pro-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"eu-anthropic-claude-fable-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"eu-anthropic-claude-opus-4-5-20251101-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"eu-anthropic-claude-opus-4-6-v1\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"eu-anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-anthropic-claude-sonnet-4-20250514-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"eu-anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"eu-anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"eu-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"eu-mistral-pixtral-large-2502-v1:0\":[[\"amazon-bedrock\",128000,8192,9,\"\"]],\"fledge-alpha-free\":[[\"opencode\",1048576,131072,11,\"low,high,max\"]],\"flux-2-flex\":[[\"openrouter\",0,0,5,\"\"]],\"flux-2-klein-4b\":[[\"openrouter\",0,0,5,\"\"]],\"flux-2-max\":[[\"openrouter\",0,0,5,\"\"]],\"flux-2-pro\":[[\"openrouter\",0,0,5,\"\"]],\"flux-3-image\":[[\"openrouter\",0,0,5,\"\"]],\"free\":[[\"openrouter\",200000,4096,11,\"\"]],\"fugu-max\":[[\"openrouter\",1000000,128000,11,\"high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"fugu-ultra\":[[\"openrouter\",1000000,128000,11,\"high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"fugu-ultra-v2\":[[\"openrouter\",1000000,128000,11,\"high,xhigh,max\"],[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"fusion\":[[\"openrouter\",1000000,30000,10,\"\"]],\"gemini-2-5-computer-use-preview-10-2025\":[[\"google\",128000,64000,11,\"\"]],\"gemini-2-5-flash\":[[\"google\",1048576,65536,11,\"\"],[\"google-vertex\",1048576,65536,11,\"\"],[\"openrouter\",1048576,65535,11,\"\"],[\"vercel-ai-gateway\",1000000,65535,11,\"\"]],\"gemini-2-5-flash-image\":[[\"openrouter\",0,0,13,\"\"]],\"gemini-2-5-flash-lite\":[[\"google\",1048576,65536,11,\"\"],[\"google-vertex\",1048576,65535,11,\"\"],[\"openrouter\",1048576,65535,11,\"\"],[\"vercel-ai-gateway\",1048576,65535,11,\"\"]],\"gemini-2-5-flash-lite:batch\":[[\"openrouter\",1048576,65535,11,\"\"]],\"gemini-2-5-flash:batch\":[[\"openrouter\",1048576,65535,11,\"\"]],\"gemini-2-5-pro\":[[\"google\",1048576,65536,11,\"\"],[\"google-vertex\",1048576,65536,11,\"\"],[\"openrouter\",1048576,65536,11,\"\"],[\"vercel-ai-gateway\",1048576,65535,11,\"\"]],\"gemini-2-5-pro-preview\":[[\"openrouter\",1048576,65536,11,\"\"]],\"gemini-2-5-pro:batch\":[[\"openrouter\",1048576,65536,11,\"\"]],\"gemini-3-1-flash-image\":[[\"openrouter\",0,0,13,\"\"]],\"gemini-3-1-flash-image-preview\":[[\"openrouter\",0,0,13,\"\"]],\"gemini-3-1-flash-lite\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",1000000,65000,11,\"\"]],\"gemini-3-1-flash-lite-image\":[[\"google\",65536,4096,11,\"minimal,high\"],[\"openrouter\",0,0,13,\"\"]],\"gemini-3-1-flash-lite-preview\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-1-flash-lite:batch\":[[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-1-flash-live-preview\":[[\"google\",131072,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-1-pro\":[[\"opencode\",1048576,65536,11,\"low,medium,high\"]],\"gemini-3-1-pro-preview\":[[\"google\",1048576,65536,11,\"low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"low,medium,high\"],[\"openrouter\",1048576,65536,11,\"low,medium,high\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"gemini-3-1-pro-preview-customtools\":[[\"google\",1048576,65536,11,\"low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"low,medium,high\"],[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemini-3-1-pro-preview:batch\":[[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemini-3-5-flash\":[[\"github-copilot\",200000,64000,11,\"\"],[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"opencode\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"gemini-3-5-flash-lite\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"opencode\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",1000000,65000,11,\"\"]],\"gemini-3-5-flash-lite:batch\":[[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-5-flash:batch\":[[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-6-flash\":[[\"github-copilot\",1000000,64000,11,\"\"],[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"opencode\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"gemini-3-6-flash:batch\":[[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-7-flash\":[[\"github-copilot\",1000000,64000,11,\"\"],[\"google\",1048576,65536,11,\"low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"low,medium,high\"],[\"opencode\",1048576,65536,11,\"low,medium,high\"],[\"openrouter\",1048576,65536,11,\"low,medium,high\"],[\"vercel-ai-gateway\",1000000,65535,11,\"\"]],\"gemini-3-7-flash:batch\":[[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemini-3-8-flash\":[[\"github-copilot\",1000000,64000,11,\"\"],[\"google\",1048576,65536,11,\"low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"low,medium,high\"],[\"opencode\",1048576,65536,11,\"low,medium,high\"],[\"openrouter\",1048576,65536,11,\"low,medium,high\"],[\"vercel-ai-gateway\",1000000,65535,11,\"\"]],\"gemini-3-8-flash:batch\":[[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemini-3-flash\":[[\"opencode\",1048576,65536,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",1000000,65000,11,\"\"]],\"gemini-3-flash-preview\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-flash-preview:batch\":[[\"openrouter\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-3-pro-image\":[[\"openrouter\",65536,32768,11,\"\"]],\"gemini-3-pro-image-preview\":[[\"openrouter\",0,0,13,\"\"]],\"gemini-flash-latest\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"],[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemini-flash-lite-latest\":[[\"google\",1048576,65536,11,\"minimal,low,medium,high\"],[\"google-vertex\",1048576,65536,11,\"minimal,low,medium,high\"]],\"gemini-pro-latest\":[[\"openrouter\",1048576,65536,11,\"low,medium,high\"]],\"gemma-3-12b-it\":[[\"huggingface\",131072,131072,9,\"\"],[\"nvidia\",131072,16384,9,\"\"],[\"openrouter\",131072,16384,9,\"\"]],\"gemma-3-27b-it\":[[\"huggingface\",131072,131072,9,\"\"],[\"openrouter\",131072,117964,9,\"\"]],\"gemma-3-4b-it\":[[\"huggingface\",131072,131072,9,\"\"],[\"nvidia\",131072,16384,9,\"\"]],\"gemma-4-26b-a4b-it\":[[\"cloudflare-ai-gateway\",256000,16384,11,\"\"],[\"cloudflare-workers-ai\",256000,16384,11,\"high\"],[\"google\",262144,32768,11,\"minimal,high\"],[\"huggingface\",262144,32768,11,\"\"],[\"openrouter\",262144,235929,11,\"\"],[\"vercel-ai-gateway\",262144,131072,11,\"\"]],\"gemma-4-26b-a4b-it:free\":[[\"openrouter\",262144,32768,11,\"\"]],\"gemma-4-31b-it\":[[\"google\",262144,32768,11,\"minimal,high\"],[\"huggingface\",262144,32768,11,\"\"],[\"openrouter\",262144,16384,11,\"\"],[\"vercel-ai-gateway\",262144,131072,11,\"\"]],\"gemma-4-31b-it:free\":[[\"openrouter\",262144,32768,11,\"\"]],\"glm-4-5\":[[\"huggingface\",131072,98304,10,\"\"],[\"openrouter\",131072,98304,10,\"\"],[\"vercel-ai-gateway\",128000,96000,10,\"\"]],\"glm-4-5-air\":[[\"huggingface\",131072,98304,10,\"\"],[\"openrouter\",131072,98304,10,\"\"],[\"vercel-ai-gateway\",128000,96000,10,\"\"]],\"glm-4-5v\":[[\"huggingface\",65536,16384,11,\"\"],[\"openrouter\",65536,16384,11,\"\"],[\"vercel-ai-gateway\",66000,16000,11,\"\"]],\"glm-4-6\":[[\"huggingface\",204800,131072,10,\"\"],[\"openrouter\",198000,16384,10,\"\"],[\"vercel-ai-gateway\",200000,96000,10,\"\"]],\"glm-4-6v\":[[\"openrouter\",131072,32768,11,\"\"],[\"zai-coding-cn\",128000,32768,11,\"\"]],\"glm-4-6v-flash\":[[\"huggingface\",131072,32768,11,\"\"]],\"glm-4-7\":[[\"baseten\",200000,200000,10,\"high\"],[\"huggingface\",204800,131072,10,\"\"],[\"openrouter\",202752,131072,10,\"\"],[\"vercel-ai-gateway\",200000,120000,10,\"\"],[\"zai\",204800,131072,10,\"\"]],\"glm-4-7-flash\":[[\"cloudflare-ai-gateway\",131072,131072,10,\"\"],[\"cloudflare-workers-ai\",131072,131072,10,\"\"],[\"huggingface\",200000,128000,10,\"\"],[\"openrouter\",131072,117964,10,\"\"],[\"vercel-ai-gateway\",200000,131000,10,\"\"]],\"glm-4-7-flashx\":[[\"vercel-ai-gateway\",200000,128000,10,\"\"]],\"glm-5\":[[\"baseten\",202800,202800,10,\"high\"],[\"huggingface\",202752,131072,10,\"\"],[\"opencode\",204800,131072,10,\"\"],[\"openrouter\",198000,128000,10,\"\"],[\"qwen-token-plan\",202752,16384,10,\"high,max\"],[\"qwen-token-plan-cn\",202752,16384,10,\"high,max\"],[\"vercel-ai-gateway\",202800,131100,10,\"\"]],\"glm-5-1\":[[\"baseten\",202800,202800,10,\"high\"],[\"huggingface\",202752,131072,10,\"\"],[\"opencode\",204800,131072,10,\"\"],[\"openrouter\",202752,131072,10,\"\"],[\"qwen-token-plan\",202752,128000,10,\"high,max\"],[\"qwen-token-plan-cn\",202752,128000,10,\"high,max\"],[\"vercel-ai-gateway\",202800,64000,10,\"\"]],\"glm-5-2\":[[\"baseten\",1048576,262144,10,\"high,max\"],[\"cloudflare-ai-gateway\",262144,256000,10,\"\"],[\"cloudflare-workers-ai\",262144,256000,10,\"high,max\"],[\"huggingface\",262144,131072,10,\"\"],[\"opencode\",1000000,131072,10,\"high,max\"],[\"opencode-go\",1000000,131072,10,\"high,max\"],[\"openrouter\",1048576,943718,10,\"high,xhigh\"],[\"qwen-token-plan\",1000000,131072,10,\"high,max\"],[\"qwen-token-plan-cn\",1000000,131072,10,\"high,max\"],[\"qwen-token-plan-individual\",1000000,131072,10,\"high,max\"],[\"together\",1048575,164000,10,\"\"],[\"vercel-ai-gateway\",1000000,128000,10,\"\"],[\"zai\",1000000,131072,10,\"high,max\"]],\"glm-5-2-fast\":[[\"baseten\",1048576,262144,10,\"high,max\"],[\"vercel-ai-gateway\",1000000,128000,10,\"\"]],\"glm-5-2-highspeed\":[[\"zai\",1000000,131072,10,\"high,max\"]],\"glm-5-3\":[[\"baseten\",1048576,262144,11,\"low,high,max\"],[\"cloudflare-ai-gateway\",1048576,1048576,10,\"\"],[\"cloudflare-workers-ai\",1048576,1048576,10,\"low,high,max\"],[\"huggingface\",1048576,131072,10,\"low,high,max\"],[\"nvidia\",1000000,131072,10,\"\"],[\"opencode\",1000000,131072,10,\"low,high,max\"],[\"opencode-go\",1000000,131072,10,\"low,high,max\"],[\"openrouter\",1048576,131072,10,\"low,high,max\"],[\"qwen-token-plan\",1000000,131072,10,\"low,high,max\"],[\"qwen-token-plan-cn\",1000000,131072,10,\"low,high,max\"],[\"radius\",1000000,131072,10,\"minimal,low,medium,high,xhigh,max\"],[\"together\",1048576,262144,10,\"\"],[\"vercel-ai-gateway\",1000000,1000000,10,\"\"],[\"zai\",1000000,131072,10,\"low,high,max\"],[\"zai-coding-cn\",1000000,131072,10,\"low,high,max\"]],\"glm-5-3-fast\":[[\"baseten\",1048576,262144,11,\"low,high,max\"],[\"vercel-ai-gateway\",1048576,262144,10,\"\"]],\"glm-5-3-flash\":[[\"baseten\",1048576,131072,11,\"low,high,max\"],[\"cloudflare-ai-gateway\",1048576,1048576,11,\"\"],[\"cloudflare-workers-ai\",1048576,1048576,11,\"low,high,max\"],[\"huggingface\",1048576,131072,11,\"low,high,max\"],[\"nvidia\",1000000,131072,11,\"\"],[\"opencode\",1000000,131072,11,\"low,high,max\"],[\"opencode-go\",1000000,131072,11,\"low,high,max\"],[\"openrouter\",1048575,943717,11,\"low,high,max\"],[\"radius\",1000000,131072,10,\"low,high,max\"],[\"together\",1048575,400000,11,\"\"],[\"vercel-ai-gateway\",1000000,131000,11,\"\"],[\"zai\",1000000,131072,11,\"low,high,max\"],[\"zai-coding-cn\",1000000,131072,11,\"low,high,max\"]],\"glm-5-3-flash:batch\":[[\"openrouter\",1048576,131072,11,\"low,high,max\"]],\"glm-5-3-flashx\":[[\"openrouter\",1048576,131072,11,\"low,high,max\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"glm-5-3-highspeed\":[[\"zai\",1000000,131072,10,\"low,high,max\"],[\"zai-coding-cn\",1000000,131072,10,\"low,high,max\"]],\"glm-5-3-prime\":[[\"openrouter\",1000000,131072,10,\"low,high,max\"]],\"glm-5-3:batch\":[[\"openrouter\",1048576,131072,10,\"low,high,max\"]],\"glm-5-turbo\":[[\"openrouter\",202752,131072,10,\"\"],[\"vercel-ai-gateway\",202800,131100,10,\"\"],[\"zai\",200000,131072,10,\"\"]],\"glm-5p3\":[[\"fireworks\",1048573,262144,10,\"low,high,max\"]],\"glm-5p3-fast\":[[\"fireworks\",1048572,262144,10,\"low,high,max\"]],\"glm-5p3-flash\":[[\"fireworks\",1048573,131072,11,\"low,high,max\"]],\"glm-5v-turbo\":[[\"openrouter\",202752,131072,11,\"\"],[\"vercel-ai-gateway\",200000,128000,11,\"\"]],\"glm-fast-latest\":[[\"fireworks\",1048572,262144,10,\"low,high,max\"]],\"glm-flash-latest\":[[\"fireworks\",1048573,131072,11,\"low,high,max\"],[\"openrouter\",1048576,131072,11,\"low,high,max\"]],\"glm-latest\":[[\"fireworks\",1048573,262144,10,\"low,high,max\"],[\"openrouter\",1048576,943718,10,\"low,high,max\"]],\"global-amazon-nova-2-lite-v1:0\":[[\"amazon-bedrock\",1000000,65535,11,\"\"]],\"global-anthropic-claude-fable-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-fable-5-1\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"global-anthropic-claude-opus-4-5-20251101-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"global-anthropic-claude-opus-4-6-v1\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"global-anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-sonnet-4-20250514-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"global-anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"global-anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"global-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-anthropic-claude-sonnet-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"global-moonshotai-kimi-k3\":[[\"amazon-bedrock\",1048576,128000,11,\"\"]],\"global-openai-gpt-5-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-5-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-5-6-terra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-6-1-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-6-astra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-openai-gpt-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"global-xai-grok-4-6\":[[\"amazon-bedrock\",500000,500000,11,\"\"]],\"global-xai-grok-4-7\":[[\"amazon-bedrock\",500000,500000,11,\"\"]],\"google-gemma-4-26b-a4b\":[[\"amazon-bedrock\",262144,32768,11,\"\"]],\"google-gemma-4-31b\":[[\"amazon-bedrock\",262144,32768,11,\"\"]],\"google-gemma-4-e2b\":[[\"amazon-bedrock\",131072,8192,11,\"\"]],\"gpt-3-5-turbo\":[[\"openrouter\",16385,4096,8,\"\"],[\"vercel-ai-gateway\",16385,4096,8,\"\"]],\"gpt-3-5-turbo-0613\":[[\"openrouter\",4095,3685,8,\"\"]],\"gpt-3-5-turbo-16k\":[[\"openrouter\",16385,4096,8,\"\"]],\"gpt-3-5-turbo:batch\":[[\"openrouter\",16385,4096,8,\"\"]],\"gpt-4\":[[\"azure-openai-responses\",8192,8192,8,\"\"],[\"openai\",8192,8192,8,\"\"],[\"openrouter\",8191,4096,8,\"\"]],\"gpt-4-1\":[[\"azure-openai-responses\",1047576,32768,9,\"\"],[\"cloudflare-ai-gateway\",1047576,32768,9,\"\"],[\"openai\",1047576,32768,9,\"\"],[\"openrouter\",1047576,32768,9,\"\"],[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-fast\":[[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-mini\":[[\"azure-openai-responses\",1047576,32768,9,\"\"],[\"cloudflare-ai-gateway\",1047576,32768,9,\"\"],[\"openai\",1047576,32768,9,\"\"],[\"openrouter\",1047576,32768,9,\"\"],[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-mini-fast\":[[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-mini:batch\":[[\"openrouter\",1047576,32768,9,\"\"]],\"gpt-4-1-nano\":[[\"azure-openai-responses\",1047576,32768,9,\"\"],[\"cloudflare-ai-gateway\",1000000,32768,9,\"\"],[\"openai\",1047576,32768,9,\"\"],[\"openrouter\",1047576,32768,9,\"\"],[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-nano-fast\":[[\"vercel-ai-gateway\",1047576,32768,9,\"\"]],\"gpt-4-1-nano:batch\":[[\"openrouter\",1047576,32768,9,\"\"]],\"gpt-4-1:batch\":[[\"openrouter\",1047576,32768,9,\"\"]],\"gpt-4-turbo\":[[\"azure-openai-responses\",128000,4096,9,\"\"],[\"openai\",128000,4096,9,\"\"],[\"openrouter\",128000,4096,9,\"\"],[\"vercel-ai-gateway\",128000,4096,9,\"\"]],\"gpt-4-turbo:batch\":[[\"openrouter\",128000,4096,9,\"\"]],\"gpt-4o\":[[\"azure-openai-responses\",128000,16384,9,\"\"],[\"cloudflare-ai-gateway\",128000,16384,9,\"\"],[\"openai\",128000,16384,9,\"\"],[\"openrouter\",128000,16384,9,\"\"],[\"vercel-ai-gateway\",128000,16384,9,\"\"]],\"gpt-4o-2024-05-13\":[[\"azure-openai-responses\",128000,4096,9,\"\"],[\"openai\",128000,4096,9,\"\"],[\"openrouter\",128000,4096,9,\"\"]],\"gpt-4o-2024-08-06\":[[\"azure-openai-responses\",128000,16384,9,\"\"],[\"openai\",128000,16384,9,\"\"],[\"openrouter\",128000,16384,9,\"\"]],\"gpt-4o-2024-11-20\":[[\"azure-openai-responses\",128000,16384,9,\"\"],[\"openai\",128000,16384,9,\"\"],[\"openrouter\",128000,16384,9,\"\"]],\"gpt-4o-fast\":[[\"vercel-ai-gateway\",128000,16384,9,\"\"]],\"gpt-4o-mini\":[[\"azure-openai-responses\",128000,16384,9,\"\"],[\"cloudflare-ai-gateway\",128000,16384,9,\"\"],[\"openai\",128000,16384,9,\"\"],[\"openrouter\",128000,16384,9,\"\"],[\"vercel-ai-gateway\",128000,16384,9,\"\"]],\"gpt-4o-mini-2024-07-18\":[[\"openrouter\",128000,16384,9,\"\"]],\"gpt-4o-mini-fast\":[[\"vercel-ai-gateway\",128000,16384,9,\"\"]],\"gpt-4o-mini:batch\":[[\"openrouter\",128000,16384,9,\"\"]],\"gpt-4o:batch\":[[\"openrouter\",128000,16384,9,\"\"]],\"gpt-5\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"minimal,low,medium,high\"],[\"openai\",400000,128000,11,\"minimal,low,medium,high\"],[\"opencode\",400000,128000,11,\"minimal,low,medium,high\"],[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"low,medium,high\"],[\"openai\",400000,128000,11,\"low,medium,high\"],[\"opencode\",400000,128000,11,\"low,medium,high\"],[\"openrouter\",400000,128000,11,\"low,medium,high\"]],\"gpt-5-1-codex\":[[\"opencode\",400000,128000,11,\"low,medium,high\"],[\"openrouter\",400000,128000,11,\"low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1-codex-max\":[[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1-codex-mini\":[[\"opencode\",400000,128000,11,\"low,medium,high\"],[\"openrouter\",400000,128000,11,\"low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1-thinking\":[[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1-thinking-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-1:batch\":[[\"openrouter\",400000,128000,11,\"low,medium,high\"]],\"gpt-5-2\":[[\"azure-openai-responses\",400000,128000,11,\"xhigh\"],[\"openai\",400000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-2-chat\":[[\"openrouter\",128000,32000,9,\"xhigh\"]],\"gpt-5-2-chat-latest\":[[\"azure-openai-responses\",128000,16384,11,\"xhigh\"],[\"openai\",128000,16384,11,\"medium,xhigh\"]],\"gpt-5-2-codex\":[[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-2-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-2-pro\":[[\"azure-openai-responses\",400000,128000,11,\"xhigh\"],[\"openai\",400000,128000,11,\"medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-2-pro:batch\":[[\"openrouter\",400000,128000,11,\"medium,high,xhigh\"]],\"gpt-5-2:batch\":[[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-5-3-chat-latest\":[[\"azure-openai-responses\",128000,16384,9,\"xhigh\"],[\"openai\",128000,16384,9,\"xhigh\"]],\"gpt-5-3-codex\":[[\"azure-openai-responses\",400000,128000,11,\"xhigh\"],[\"github-copilot\",1000000,128000,11,\"minimal,low,medium,high,xhigh\"],[\"openai\",400000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"radius\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-3-codex-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-3-codex-spark\":[[\"azure-openai-responses\",128000,32000,11,\"xhigh\"],[\"openai\",128000,32000,11,\"low,medium,high,xhigh\"],[\"openai-codex\",128000,128000,10,\"minimal,xhigh\"]],\"gpt-5-4\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"low,medium,high,xhigh\"],[\"github-copilot\",1000000,128000,11,\"minimal,low,medium,high,xhigh\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",272000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-4-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-4-image-2\":[[\"openrouter\",0,0,13,\"\"]],\"gpt-5-4-mini\":[[\"azure-openai-responses\",400000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"low,medium,high,xhigh\"],[\"github-copilot\",400000,128000,11,\"minimal,low,medium,high,xhigh\"],[\"openai\",400000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"radius\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-4-mini-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-4-mini:batch\":[[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-5-4-nano\":[[\"azure-openai-responses\",400000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"low,medium,high,xhigh\"],[\"github-copilot\",400000,128000,11,\"minimal,xhigh\"],[\"openai\",400000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",400000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",400000,128000,11,\"xhigh\"]],\"gpt-5-4-nano:batch\":[[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-5-4-pro\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"medium,high,xhigh\"],[\"openai\",1050000,128000,11,\"medium,high,xhigh\"],[\"opencode\",1050000,128000,11,\"medium,high,xhigh\"],[\"openrouter\",1050000,128000,11,\"medium,high,xhigh\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-4-pro:batch\":[[\"openrouter\",1050000,128000,11,\"medium,high,xhigh\"]],\"gpt-5-4:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-5-5\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"low,medium,high,xhigh\"],[\"github-copilot\",1000000,128000,11,\"minimal,low,medium,high,xhigh\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh\"],[\"openai-codex\",272000,128000,11,\"minimal,xhigh\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh\"]],\"gpt-5-5-fast\":[[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh\"]],\"gpt-5-5-pro\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh\"],[\"cloudflare-ai-gateway\",1000000,128000,11,\"medium,high,xhigh\"],[\"openai\",1050000,128000,11,\"medium,high,xhigh\"],[\"opencode\",1050000,128000,11,\"medium,high,xhigh\"],[\"openrouter\",1050000,128000,11,\"medium,high,xhigh\"],[\"vercel-ai-gateway\",1000000,128000,11,\"xhigh\"]],\"gpt-5-5-pro:batch\":[[\"openrouter\",1050000,128000,11,\"medium,high,xhigh\"]],\"gpt-5-5:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-5-6-luna\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1050000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"opencode-go\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-luna-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-luna-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-luna-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-luna:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-sol\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1050000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-sol-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-sol-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-sol-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-sol:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-terra\":[[\"azure-openai-responses\",1050000,128000,11,\"xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1050000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-terra-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-5-6-terra-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-terra-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-6-terra:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-5-chat-latest\":[[\"azure-openai-responses\",128000,16384,9,\"\"],[\"openai\",128000,16384,9,\"\"]],\"gpt-5-codex\":[[\"opencode\",400000,128000,11,\"low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-image\":[[\"openrouter\",0,0,13,\"\"]],\"gpt-5-image-mini\":[[\"openrouter\",0,0,13,\"\"]],\"gpt-5-mini\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"minimal,low,medium,high\"],[\"github-copilot\",264000,64000,11,\"minimal,low,medium,high\"],[\"openai\",400000,128000,11,\"minimal,low,medium,high\"],[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-mini-fast\":[[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-mini:batch\":[[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"]],\"gpt-5-nano\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"cloudflare-ai-gateway\",128000,128000,11,\"minimal,low,medium,high\"],[\"openai\",400000,128000,11,\"minimal,low,medium,high\"],[\"opencode\",400000,128000,11,\"minimal,low,medium,high\"],[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"],[\"vercel-ai-gateway\",400000,128000,11,\"\"]],\"gpt-5-nano:batch\":[[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"]],\"gpt-5-pro\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"openai\",400000,128000,11,\"high\"],[\"openrouter\",400000,128000,11,\"high\"],[\"vercel-ai-gateway\",400000,272000,11,\"\"]],\"gpt-5-pro:batch\":[[\"openrouter\",400000,128000,11,\"high\"]],\"gpt-5:batch\":[[\"openrouter\",400000,128000,11,\"minimal,low,medium,high\"]],\"gpt-6-1-sol\":[[\"azure-openai-responses\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-1-sol-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-1-sol-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-astra\":[[\"azure-openai-responses\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-astra-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-astra-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-astra-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-astra:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-luna\":[[\"azure-openai-responses\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"opencode-go\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-luna-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-luna-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-luna-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-luna:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-sol\":[[\"azure-openai-responses\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"cloudflare-ai-gateway\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"github-copilot\",1000000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai\",272000,128000,11,\"low,medium,high,xhigh,max\"],[\"openai-codex\",272000,128000,11,\"minimal,low,medium,high,xhigh,max\"],[\"opencode\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"radius\",1050000,128000,11,\"low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-sol-fast\":[[\"vercel-ai-gateway\",1050000,128000,11,\"xhigh\"]],\"gpt-6-sol-pro\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-sol-pro:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-6-sol:batch\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-astra-latest\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-audio\":[[\"openrouter\",128000,16384,8,\"\"]],\"gpt-audio-mini\":[[\"openrouter\",128000,16384,8,\"\"]],\"gpt-chat-latest\":[[\"openrouter\",400000,128000,9,\"\"]],\"gpt-daybreak-blue-latest\":[[\"azure-openai-responses\",1050000,128000,11,\"\"],[\"openai\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-daybreak-red-latest\":[[\"azure-openai-responses\",400000,128000,11,\"\"],[\"openai\",400000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-image-1\":[[\"openrouter\",0,0,5,\"\"]],\"gpt-image-1-mini\":[[\"openrouter\",0,0,5,\"\"]],\"gpt-image-2\":[[\"openrouter\",0,0,5,\"\"]],\"gpt-image-2-5-flare\":[[\"openrouter\",0,0,5,\"\"]],\"gpt-image-2-5-sunburst\":[[\"openrouter\",0,0,5,\"\"]],\"gpt-luna-latest\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-mini-latest\":[[\"openrouter\",400000,128000,11,\"low,medium,high,xhigh\"]],\"gpt-oss-120b\":[[\"baseten\",128072,128072,10,\"minimal,low,medium,high,xhigh,max\"],[\"cerebras\",131072,40960,10,\"low,medium,high\"],[\"cloudflare-ai-gateway\",128000,16384,10,\"\"],[\"cloudflare-workers-ai\",128000,16384,10,\"low,medium,high\"],[\"fireworks\",131072,32768,10,\"low,medium,high\"],[\"groq\",131072,65536,10,\"low,medium,high\"],[\"huggingface\",131072,32768,10,\"low,medium,high\"],[\"openrouter\",131072,117964,10,\"low,medium,high\"],[\"together\",131072,131072,10,\"low,medium,high\"],[\"vercel-ai-gateway\",131072,131072,10,\"\"]],\"gpt-oss-120b:batch\":[[\"openrouter\",131072,117964,10,\"low,medium,high\"]],\"gpt-oss-20b\":[[\"cloudflare-ai-gateway\",128000,16384,10,\"\"],[\"cloudflare-workers-ai\",128000,16384,10,\"low,medium,high\"],[\"groq\",131072,65536,10,\"low,medium,high\"],[\"huggingface\",131072,32768,10,\"low,medium,high\"],[\"nvidia\",131072,32768,10,\"\"],[\"openrouter\",131072,32768,10,\"low,medium,high\"],[\"vercel-ai-gateway\",131072,8192,10,\"\"]],\"gpt-oss-20b:batch\":[[\"openrouter\",131072,117964,10,\"low,medium,high\"]],\"gpt-oss-safeguard-120b\":[[\"vercel-ai-gateway\",128000,16000,10,\"\"]],\"gpt-oss-safeguard-20b\":[[\"groq\",131072,65536,10,\"low,medium,high\"],[\"openrouter\",131072,65536,10,\"\"],[\"vercel-ai-gateway\",128000,16000,10,\"\"]],\"gpt-realtime-2-1\":[[\"azure-openai-responses\",128000,32000,11,\"\"],[\"openai\",128000,32000,11,\"minimal,low,medium,high,xhigh\"]],\"gpt-sol-latest\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"gpt-terra-latest\":[[\"openrouter\",1050000,128000,11,\"low,medium,high,xhigh,max\"]],\"granite-4-0-h-micro\":[[\"cloudflare-ai-gateway\",131000,131000,8,\"\"],[\"cloudflare-workers-ai\",131000,131000,8,\"\"]],\"granite-4-2-8b\":[[\"openrouter\",131072,117964,10,\"low,high\"]],\"grok-4-1-fast-non-reasoning\":[[\"vercel-ai-gateway\",1000000,1000000,9,\"\"]],\"grok-4-1-fast-reasoning\":[[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"grok-4-20\":[[\"openrouter\",2000000,1800000,11,\"\"]],\"grok-4-20-multi-agent\":[[\"vercel-ai-gateway\",2000000,2000000,11,\"\"]],\"grok-4-20-multi-agent-beta\":[[\"vercel-ai-gateway\",2000000,2000000,11,\"\"]],\"grok-4-20-non-reasoning\":[[\"vercel-ai-gateway\",2000000,2000000,9,\"\"]],\"grok-4-20-non-reasoning-beta\":[[\"vercel-ai-gateway\",2000000,2000000,9,\"\"]],\"grok-4-20-reasoning\":[[\"vercel-ai-gateway\",2000000,2000000,11,\"\"]],\"grok-4-20-reasoning-beta\":[[\"vercel-ai-gateway\",2000000,2000000,11,\"\"]],\"grok-4-3\":[[\"openrouter\",1000000,900000,11,\"low,medium,high\"],[\"vercel-ai-gateway\",1000000,1000000,11,\"\"],[\"xai\",1000000,30000,11,\"low,medium,high\"]],\"grok-4-3:batch\":[[\"openrouter\",1000000,900000,11,\"low,medium,high\"]],\"grok-4-5\":[[\"github-copilot\",500000,128000,11,\"low,medium,high\"],[\"opencode\",500000,500000,11,\"low,medium,high\"],[\"openrouter\",500000,450000,11,\"low,medium,high\"],[\"vercel-ai-gateway\",500000,500000,11,\"\"],[\"xai\",500000,500000,11,\"low,medium,high\"]],\"grok-4-6\":[[\"github-copilot\",500000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",500000,500000,11,\"low,medium,high,xhigh\"],[\"opencode-go\",500000,500000,11,\"low,medium,high,xhigh\"],[\"openrouter\",500000,450000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",500000,500000,11,\"\"],[\"xai\",500000,500000,11,\"low,medium,high,xhigh\"]],\"grok-4-7\":[[\"github-copilot\",500000,128000,11,\"low,medium,high,xhigh\"],[\"opencode\",500000,500000,11,\"low,medium,high,xhigh\"],[\"opencode-go\",500000,500000,11,\"low,medium,high,xhigh\"],[\"openrouter\",500000,450000,11,\"low,medium,high,xhigh\"],[\"radius\",500000,500000,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",500000,500000,11,\"\"],[\"xai\",500000,500000,11,\"low,medium,high,xhigh\"]],\"grok-build-0-1\":[[\"opencode\",256000,256000,11,\"\"],[\"openrouter\",256000,230400,11,\"\"],[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"grok-imagine-image-2-0\":[[\"openrouter\",0,0,5,\"\"]],\"grok-imagine-image-quality\":[[\"openrouter\",0,0,5,\"\"]],\"grok-latest\":[[\"openrouter\",500000,450000,11,\"low,medium,high,xhigh\"]],\"hy3\":[[\"huggingface\",262144,128000,10,\"low,high\"],[\"opencode-go\",256000,128000,10,\"low,high\"],[\"openrouter\",262144,128000,10,\"low,high\"],[\"vercel-ai-gateway\",262144,262144,10,\"\"]],\"hy3-preview\":[[\"openrouter\",262144,235929,10,\"low,high\"]],\"hy4-preview\":[[\"huggingface\",1000000,64000,10,\"high\"],[\"opencode-go\",1024000,64000,10,\"high\"],[\"openrouter\",1048576,64000,10,\"low,high\"],[\"vercel-ai-gateway\",1024000,64000,10,\"\"]],\"in-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"in-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"in-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"in-openai-gpt-5-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"in-openai-gpt-5-6-terra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"inkling\":[[\"baseten\",1048576,32768,11,\"minimal,low,medium,high,xhigh,max\"],[\"fireworks\",1048576,1048576,11,\"\"],[\"huggingface\",1048576,1048576,11,\"low,medium,high\"],[\"openrouter\",524288,262144,11,\"minimal,low,medium,high,max\"],[\"together\",524288,131072,11,\"\"],[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"inkling-small\":[[\"baseten\",1048576,32768,11,\"minimal,low,medium,high,xhigh,max\"],[\"huggingface\",524288,1048576,11,\"\"],[\"openrouter\",524288,262144,11,\"minimal,low,medium,high,max\"],[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"inkling-small:free\":[[\"openrouter\",1048576,262144,11,\"minimal,low,medium,high,max\"]],\"inkling:free\":[[\"openrouter\",1048576,262144,11,\"minimal,low,medium,high,max\"]],\"interfaze-beta\":[[\"vercel-ai-gateway\",1000000,32000,11,\"\"]],\"jev-router\":[[\"openrouter\",1000000,4096,11,\"\"]],\"jp-amazon-nova-2-lite-v1:0\":[[\"amazon-bedrock\",1000000,65535,11,\"\"]],\"jp-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"jp-anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"jp-anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"jp-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"jp-anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"jp-anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"jp-anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"jp-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"k3\":[[\"kimi-coding\",1048576,131072,11,\"low,high,max\"]],\"k3-256k\":[[\"kimi-coding\",262144,131072,11,\"low,high,max\"]],\"kat-coder-pro-v2-5\":[[\"openrouter\",262144,235929,8,\"\"]],\"kimi-fast-latest\":[[\"fireworks\",1048576,131072,11,\"low,medium,high,max\"]],\"kimi-for-coding\":[[\"kimi-coding\",1048576,32768,11,\"low,high,max\"]],\"kimi-for-coding-highspeed\":[[\"kimi-coding\",262144,32768,11,\"\"]],\"kimi-k2\":[[\"openrouter\",131072,98304,8,\"\"],[\"vercel-ai-gateway\",131072,131072,8,\"\"]],\"kimi-k2-0905\":[[\"openrouter\",262144,98304,8,\"\"]],\"kimi-k2-5\":[[\"baseten\",262000,262000,11,\"high\"],[\"huggingface\",262144,262144,11,\"\"],[\"opencode\",262144,65536,11,\"\"],[\"openrouter\",262144,4096,11,\"\"],[\"qwen-token-plan\",262144,98304,11,\"\"],[\"qwen-token-plan-cn\",262144,98304,11,\"\"],[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"kimi-k2-6\":[[\"baseten\",262000,262000,11,\"high\"],[\"cloudflare-ai-gateway\",262144,256000,11,\"\"],[\"cloudflare-workers-ai\",262144,256000,11,\"high\"],[\"huggingface\",262144,262144,11,\"\"],[\"moonshotai\",262144,262144,11,\"\"],[\"moonshotai-cn\",262144,262144,11,\"\"],[\"nvidia\",262144,262144,11,\"\"],[\"opencode\",262144,65536,11,\"\"],[\"openrouter\",262144,235929,11,\"\"],[\"qwen-token-plan\",262144,262144,11,\"\"],[\"qwen-token-plan-cn\",262144,262144,11,\"\"],[\"vercel-ai-gateway\",262000,262000,11,\"\"]],\"kimi-k2-7-code\":[[\"baseten\",262000,262000,11,\"high\"],[\"cloudflare-ai-gateway\",262144,262144,11,\"\"],[\"cloudflare-workers-ai\",262144,262144,11,\"\"],[\"github-copilot\",256000,32000,11,\"\"],[\"huggingface\",262144,262144,11,\"\"],[\"moonshotai\",262144,262144,11,\"\"],[\"moonshotai-cn\",262144,262144,11,\"\"],[\"opencode\",262144,262144,11,\"\"],[\"opencode-go\",262144,262144,11,\"\"],[\"openrouter\",262144,235929,11,\"\"],[\"qwen-token-plan\",262144,262144,11,\"\"],[\"qwen-token-plan-cn\",262144,262144,11,\"\"],[\"vercel-ai-gateway\",256000,32768,11,\"\"]],\"kimi-k2-7-code-highspeed\":[[\"moonshotai\",262144,262144,11,\"\"],[\"moonshotai-cn\",262144,262144,11,\"\"],[\"vercel-ai-gateway\",262144,32768,11,\"\"]],\"kimi-k2-instruct\":[[\"huggingface\",131072,16384,8,\"\"]],\"kimi-k2-instruct-0905\":[[\"huggingface\",262144,16384,8,\"\"]],\"kimi-k2-thinking\":[[\"huggingface\",262144,262144,10,\"\"],[\"openrouter\",262144,235929,10,\"\"],[\"vercel-ai-gateway\",216144,216144,10,\"\"]],\"kimi-k3\":[[\"baseten\",1048576,262144,11,\"low,high,max\"],[\"fireworks\",1048576,131072,11,\"low,high,max\"],[\"github-copilot\",1048576,131072,11,\"\"],[\"huggingface\",1000000,131072,11,\"low,high,max\"],[\"moonshotai\",1048576,1048576,11,\"low,high,max\"],[\"moonshotai-cn\",1048576,1048576,11,\"low,high,max\"],[\"nvidia\",1048576,131072,11,\"\"],[\"opencode\",1048576,131072,11,\"max\"],[\"opencode-go\",1048576,131072,11,\"max\"],[\"openrouter\",1048576,131072,11,\"low,high,max\"],[\"radius\",1048576,131072,11,\"low,high,max\"],[\"together\",1048576,131072,11,\"\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"kimi-k3-fast\":[[\"fireworks\",1048576,131072,11,\"low,high,max\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"kimi-k3:batch\":[[\"openrouter\",1048576,16384,11,\"low,high,max\"]],\"kimi-latest\":[[\"fireworks\",1048576,131072,11,\"low,medium,high,max\"],[\"openrouter\",1048576,131072,11,\"low,high,max\"]],\"krea-2-large\":[[\"openrouter\",0,0,5,\"\"]],\"krea-2-medium\":[[\"openrouter\",0,0,5,\"\"]],\"krea-2-medium-turbo\":[[\"openrouter\",0,0,5,\"\"]],\"l3-1-euryale-70b\":[[\"openrouter\",131072,16384,8,\"\"]],\"labs-devstral-small-2512\":[[\"mistral\",256000,256000,9,\"\"]],\"laguna-s-2-1\":[[\"openrouter\",1048576,131072,10,\"\"],[\"vercel-ai-gateway\",1000000,131072,10,\"\"]],\"laguna-s-2-1-free\":[[\"vercel-ai-gateway\",256000,32768,10,\"\"]],\"laguna-s-2-1:free\":[[\"openrouter\",262144,32768,10,\"\"]],\"laguna-xs-2-1\":[[\"nvidia\",262144,16384,10,\"\"],[\"openrouter\",262144,32768,10,\"\"]],\"laguna-xs-2-1:free\":[[\"openrouter\",262144,32768,10,\"\"]],\"lfm-2-5-2-6b:free\":[[\"openrouter\",65536,8192,10,\"\"]],\"ling-2-6-1t\":[[\"ant-ling\",262144,65536,8,\"\"]],\"ling-2-6-flash\":[[\"ant-ling\",262144,65536,8,\"\"]],\"ling-3-0-flash\":[[\"openrouter\",262144,32768,10,\"\"],[\"vercel-ai-gateway\",256000,32000,10,\"\"]],\"ling-3-0-flash-fin\":[[\"openrouter\",262144,32768,10,\"\"],[\"vercel-ai-gateway\",256000,32000,10,\"\"]],\"ling-3-0-flash-fin-free\":[[\"opencode\",262144,32768,10,\"\"]],\"ling-3-0-flash-sante\":[[\"vercel-ai-gateway\",256000,32000,10,\"\"]],\"ling-3-0-flash-sante-free\":[[\"vercel-ai-gateway\",256000,32000,10,\"\"]],\"ling-3-0-flash-sante:free\":[[\"openrouter\",262144,32768,10,\"\"]],\"ling-3-0-flash-vl\":[[\"openrouter\",262144,32768,11,\"\"],[\"vercel-ai-gateway\",256000,32000,11,\"\"]],\"ling-3-1-flash\":[[\"openrouter\",262144,32768,10,\"\"],[\"vercel-ai-gateway\",262144,32768,10,\"\"]],\"ling-3-1-flash-free\":[[\"opencode\",262144,32768,10,\"\"],[\"vercel-ai-gateway\",262144,32768,10,\"\"]],\"llama-3-1-70b\":[[\"vercel-ai-gateway\",128000,8192,8,\"\"]],\"llama-3-1-70b-instruct\":[[\"openrouter\",131072,16384,8,\"\"]],\"llama-3-1-8b\":[[\"vercel-ai-gateway\",128000,8192,8,\"\"]],\"llama-3-1-8b-instant\":[[\"groq\",131072,131072,8,\"\"]],\"llama-3-1-8b-instruct\":[[\"huggingface\",131072,4096,8,\"\"],[\"openrouter\",131072,117964,8,\"\"]],\"llama-3-1-nemotron-70b-instruct\":[[\"nvidia\",128000,8192,8,\"\"]],\"llama-3-1-nemotron-ultra-253b-v1\":[[\"nvidia\",128000,16384,10,\"\"]],\"llama-3-2-11b-vision-instruct\":[[\"nvidia\",128000,4096,9,\"\"]],\"llama-3-2-90b-vision-instruct\":[[\"nvidia\",128000,8192,9,\"\"]],\"llama-3-3-70b\":[[\"vercel-ai-gateway\",128000,8192,8,\"\"]],\"llama-3-3-70b-instruct\":[[\"huggingface\",131072,4096,8,\"\"],[\"openrouter\",131072,16384,8,\"\"]],\"llama-3-3-70b-instruct-fp8-fast\":[[\"cloudflare-ai-gateway\",24000,24000,8,\"\"],[\"cloudflare-workers-ai\",24000,24000,8,\"\"]],\"llama-3-3-70b-instruct-turbo\":[[\"together\",131072,131072,8,\"\"]],\"llama-3-3-70b-versatile\":[[\"groq\",131072,32768,8,\"\"]],\"llama-4-maverick\":[[\"openrouter\",128000,16384,9,\"\"],[\"vercel-ai-gateway\",128000,8192,9,\"\"]],\"llama-4-scout\":[[\"openrouter\",327680,16384,9,\"\"],[\"vercel-ai-gateway\",128000,8192,9,\"\"]],\"llama-4-scout-17b-16e-instruct\":[[\"cloudflare-ai-gateway\",131000,16384,9,\"\"],[\"cloudflare-workers-ai\",131000,16384,9,\"\"]],\"longcat-2-0\":[[\"opencode-go\",1000000,131072,10,\"\"],[\"openrouter\",1048756,262144,10,\"\"]],\"longcat-2-5-preview\":[[\"vercel-ai-gateway\",1048576,131072,11,\"\"]],\"longcat-2-5-preview-free\":[[\"opencode\",1000000,131072,11,\"\"],[\"opencode-go\",1000000,131072,11,\"\"]],\"magistral-medium-latest\":[[\"mistral\",128000,16384,10,\"\"]],\"mai-code-1-1-flash\":[[\"github-copilot\",256000,128000,11,\"low,medium,high\"]],\"mai-code-1-flash-picker\":[[\"github-copilot\",256000,128000,10,\"low,medium,high\"]],\"mai-image-2-5\":[[\"openrouter\",0,0,5,\"\"]],\"mai-image-2-5-pro\":[[\"openrouter\",0,0,5,\"\"]],\"mai-image-2-6\":[[\"openrouter\",0,0,5,\"\"]],\"mai-image-2-6-flash\":[[\"openrouter\",0,0,5,\"\"]],\"mercury-2\":[[\"openrouter\",128000,50000,10,\"low,medium,high\"],[\"vercel-ai-gateway\",128000,128000,10,\"\"]],\"mercury-2-5\":[[\"openrouter\",260000,65536,10,\"low,medium,high\"],[\"vercel-ai-gateway\",260000,65536,10,\"\"]],\"mercury-coder-small\":[[\"vercel-ai-gateway\",32000,16384,8,\"\"]],\"meta-llama3-1-70b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"meta-llama3-1-8b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"meta-llama3-3-70b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"meta-llama4-maverick-17b-instruct-v1:0\":[[\"amazon-bedrock\",1000000,8192,9,\"\"]],\"meta-llama4-scout-17b-instruct-v1:0\":[[\"amazon-bedrock\",10000000,8192,9,\"\"]],\"mimo-v2-5\":[[\"huggingface\",262144,131072,10,\"low,medium,high,xhigh\"],[\"opencode-go\",1000000,128000,11,\"\"],[\"openrouter\",1048576,131072,11,\"\"],[\"vercel-ai-gateway\",1050000,131100,11,\"\"],[\"xiaomi\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-ams\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-cn\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-sgp\",1048576,131072,11,\"\"]],\"mimo-v2-5-pro\":[[\"huggingface\",1048576,131072,10,\"low,medium,high,xhigh\"],[\"opencode-go\",1048576,128000,10,\"\"],[\"openrouter\",1048576,131072,10,\"\"],[\"vercel-ai-gateway\",1050000,131000,10,\"\"],[\"xiaomi\",1048576,131072,10,\"\"],[\"xiaomi-token-plan-ams\",1048576,131072,10,\"\"],[\"xiaomi-token-plan-cn\",1048576,131072,10,\"\"],[\"xiaomi-token-plan-sgp\",1048576,131072,10,\"\"]],\"mimo-v2-5-pro-ultraspeed\":[[\"xiaomi\",1048576,131072,10,\"\"]],\"mimo-v2-6-flash\":[[\"opencode-go\",1048576,131072,11,\"\"],[\"openrouter\",1048576,131072,11,\"\"],[\"vercel-ai-gateway\",1048576,131072,11,\"\"],[\"xiaomi\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-ams\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-cn\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-sgp\",1048576,131072,11,\"\"]],\"mimo-v2-6-flash-free\":[[\"opencode\",200000,32000,11,\"\"]],\"mimo-v2-6-pro\":[[\"opencode-go\",1048576,131072,11,\"\"],[\"openrouter\",1048576,131072,11,\"\"],[\"vercel-ai-gateway\",1048576,131072,11,\"\"],[\"xiaomi\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-ams\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-cn\",1048576,131072,11,\"\"],[\"xiaomi-token-plan-sgp\",1048576,131072,11,\"\"]],\"mimo-v2-6-pro-ultraspeed\":[[\"openrouter\",1048576,131072,11,\"\"],[\"vercel-ai-gateway\",1048576,131072,11,\"\"],[\"xiaomi\",1048576,131072,11,\"\"]],\"mimo-v2-flash\":[[\"huggingface\",262144,4096,10,\"\"]],\"ming-image-0-1-design\":[[\"openrouter\",0,0,4,\"\"]],\"ming-image-0-1-design-layer\":[[\"openrouter\",0,0,5,\"\"]],\"minimax-latest\":[[\"fireworks\",512000,512000,10,\"low,medium,high\"]],\"minimax-m1\":[[\"openrouter\",1000000,40000,10,\"\"]],\"minimax-m2\":[[\"huggingface\",204800,131072,10,\"\"],[\"openrouter\",196608,176947,10,\"\"],[\"vercel-ai-gateway\",205000,205000,10,\"\"]],\"minimax-m2-1\":[[\"huggingface\",204800,131072,10,\"\"],[\"openrouter\",204800,131072,10,\"\"],[\"vercel-ai-gateway\",204800,131072,10,\"\"]],\"minimax-m2-1-lightning\":[[\"vercel-ai-gateway\",204800,131072,10,\"\"]],\"minimax-m2-5\":[[\"huggingface\",204800,131072,10,\"\"],[\"opencode\",204800,131072,10,\"\"],[\"openrouter\",200000,128000,10,\"\"],[\"qwen-token-plan\",196608,32768,10,\"\"],[\"qwen-token-plan-cn\",196608,32768,10,\"\"],[\"vercel-ai-gateway\",204800,131000,10,\"\"]],\"minimax-m2-5-highspeed\":[[\"vercel-ai-gateway\",204800,131000,10,\"\"]],\"minimax-m2-7\":[[\"huggingface\",204800,131072,10,\"\"],[\"minimax\",204800,131072,10,\"\"],[\"minimax-cn\",204800,131072,10,\"\"],[\"opencode\",204800,131072,10,\"\"],[\"opencode-go\",204800,131072,10,\"\"],[\"openrouter\",196608,176947,10,\"\"],[\"together\",196608,131072,10,\"\"],[\"vercel-ai-gateway\",204800,131000,10,\"\"]],\"minimax-m2-7-highspeed\":[[\"minimax\",204800,131072,10,\"\"],[\"minimax-cn\",204800,131072,10,\"\"],[\"vercel-ai-gateway\",204800,131100,10,\"\"]],\"minimax-m3\":[[\"fireworks\",512000,512000,10,\"low,medium,high\"],[\"huggingface\",524288,512000,11,\"\"],[\"minimax\",1000000,512000,11,\"\"],[\"minimax-cn\",1000000,512000,11,\"\"],[\"opencode\",512000,128000,11,\"\"],[\"opencode-go\",1000000,131072,11,\"\"],[\"openrouter\",524288,512000,11,\"\"],[\"together\",524288,250000,11,\"\"],[\"vercel-ai-gateway\",512000,512000,11,\"\"]],\"minimax-minimax-m2\":[[\"amazon-bedrock\",204608,128000,10,\"\"]],\"minimax-minimax-m2-1\":[[\"amazon-bedrock\",196608,131072,10,\"\"]],\"minimax-minimax-m2-5\":[[\"amazon-bedrock\",196608,98304,10,\"\"]],\"ministral-14b\":[[\"vercel-ai-gateway\",262144,256000,9,\"\"]],\"ministral-14b-2512\":[[\"openrouter\",262144,209715,9,\"\"]],\"ministral-3b\":[[\"vercel-ai-gateway\",131072,4000,9,\"\"]],\"ministral-3b-2512\":[[\"openrouter\",131072,104857,9,\"\"]],\"ministral-3b-latest\":[[\"mistral\",128000,128000,8,\"\"]],\"ministral-8b\":[[\"vercel-ai-gateway\",262144,4000,9,\"\"]],\"ministral-8b-2512\":[[\"openrouter\",262144,209715,9,\"\"]],\"ministral-8b-2512:batch\":[[\"openrouter\",262144,209715,9,\"\"]],\"ministral-8b-latest\":[[\"mistral\",128000,128000,8,\"\"]],\"mistral-7b-instruct-v0-3\":[[\"nvidia\",65536,65536,8,\"\"]],\"mistral-devstral-2-123b\":[[\"amazon-bedrock\",262144,8192,8,\"\"]],\"mistral-large\":[[\"openrouter\",128000,102400,8,\"\"]],\"mistral-large-2407\":[[\"openrouter\",131072,104857,8,\"\"]],\"mistral-large-2411\":[[\"mistral\",131072,16384,8,\"\"]],\"mistral-large-2512\":[[\"mistral\",262144,262144,9,\"\"],[\"openrouter\",262144,209715,9,\"\"]],\"mistral-large-2512:batch\":[[\"openrouter\",262144,209715,9,\"\"]],\"mistral-large-3\":[[\"vercel-ai-gateway\",262144,256000,9,\"\"]],\"mistral-large-latest\":[[\"mistral\",262144,262144,9,\"\"]],\"mistral-magistral-small-2509\":[[\"amazon-bedrock\",128000,40000,11,\"\"]],\"mistral-medium-2505\":[[\"mistral\",131072,131072,9,\"\"]],\"mistral-medium-2508\":[[\"mistral\",262144,262144,9,\"\"]],\"mistral-medium-2604\":[[\"mistral\",262144,262144,11,\"high\"]],\"mistral-medium-3\":[[\"openrouter\",131072,104857,9,\"\"]],\"mistral-medium-3-1\":[[\"openrouter\",131072,104857,9,\"\"]],\"mistral-medium-3-1:batch\":[[\"openrouter\",131072,104857,9,\"\"]],\"mistral-medium-3-5\":[[\"mistral\",262144,262144,11,\"high\"],[\"openrouter\",262144,209715,11,\"high\"],[\"vercel-ai-gateway\",262144,256000,11,\"\"]],\"mistral-medium-3-5:batch\":[[\"openrouter\",262144,209715,11,\"high\"]],\"mistral-medium-latest\":[[\"mistral\",262144,262144,11,\"high\"]],\"mistral-ministral-3-14b-instruct\":[[\"amazon-bedrock\",128000,4096,9,\"\"]],\"mistral-ministral-3-3b-instruct\":[[\"amazon-bedrock\",256000,8192,9,\"\"]],\"mistral-ministral-3-8b-instruct\":[[\"amazon-bedrock\",128000,4096,9,\"\"]],\"mistral-mistral-large-3-675b-instruct\":[[\"amazon-bedrock\",262144,8192,9,\"\"]],\"mistral-nemo\":[[\"mistral\",128000,128000,8,\"\"],[\"openrouter\",131072,16384,8,\"\"],[\"vercel-ai-gateway\",60288,16000,8,\"\"]],\"mistral-pixtral-large-2502-v1:0\":[[\"amazon-bedrock\",128000,8192,9,\"\"]],\"mistral-saba\":[[\"openrouter\",32768,26214,8,\"\"]],\"mistral-small\":[[\"vercel-ai-gateway\",262144,4000,9,\"\"]],\"mistral-small-2506\":[[\"mistral\",128000,16384,9,\"\"]],\"mistral-small-2603\":[[\"mistral\",256000,256000,11,\"high\"],[\"openrouter\",262144,209715,11,\"high\"]],\"mistral-small-2603:batch\":[[\"openrouter\",262144,209715,11,\"high\"]],\"mistral-small-3-1-24b-instruct\":[[\"cloudflare-ai-gateway\",128000,128000,8,\"\"],[\"cloudflare-workers-ai\",128000,128000,8,\"\"],[\"openrouter\",128000,102400,9,\"\"]],\"mistral-small-3-2-24b-instruct\":[[\"openrouter\",256000,16384,9,\"\"]],\"mistral-small-latest\":[[\"mistral\",256000,256000,11,\"high\"]],\"mistral-voxtral-mini-3b-2507\":[[\"amazon-bedrock\",32768,4096,8,\"\"]],\"mistral-voxtral-small-24b-2507\":[[\"amazon-bedrock\",32768,8192,8,\"\"]],\"mixtral-8x22b-instruct\":[[\"openrouter\",65536,52428,8,\"\"]],\"moonshot-kimi-k2-thinking\":[[\"amazon-bedrock\",262144,16000,10,\"\"]],\"moonshotai-kimi-k2-5\":[[\"amazon-bedrock\",262144,16384,11,\"\"]],\"muse-glimmer-30b\":[[\"nvidia\",131072,131072,11,\"\"],[\"openrouter\",131072,117964,11,\"low,medium,high,xhigh\"],[\"vercel-ai-gateway\",131072,131072,11,\"\"]],\"muse-image\":[[\"openrouter\",0,0,5,\"\"]],\"muse-spark-1-1\":[[\"meta\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"openrouter\",1048576,943718,11,\"minimal,low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"muse-spark-1-2\":[[\"meta\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"opencode\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"openrouter\",1048576,943718,11,\"minimal,low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"muse-spark-1-2-contributor\":[[\"meta\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"opencode-go\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"openrouter\",1048576,943718,11,\"minimal,low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"muse-spark-1-3\":[[\"meta\",1048576,131072,11,\"minimal,low,medium,high,xhigh,max\"],[\"opencode\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"openrouter\",1048576,943718,11,\"minimal,low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"muse-spark-1-3-contributor\":[[\"meta\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"opencode-go\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"],[\"openrouter\",1048576,943718,11,\"minimal,low,medium,high,xhigh,max\"],[\"vercel-ai-gateway\",1048576,1048576,11,\"\"]],\"muse-spark-1-3-contributor-free\":[[\"opencode\",1048576,131072,11,\"minimal,low,medium,high,xhigh\"]],\"namazu\":[[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"nemotron-120b-a12b\":[[\"baseten\",202800,202800,10,\"high\"]],\"nemotron-3-120b-a12b\":[[\"cloudflare-ai-gateway\",256000,256000,10,\"\"],[\"cloudflare-workers-ai\",256000,256000,10,\"low,medium,high\"]],\"nemotron-3-5-lightning\":[[\"openrouter\",262144,131072,10,\"\"],[\"vercel-ai-gateway\",262144,131072,10,\"\"]],\"nemotron-3-5-lightning-30b-a3b\":[[\"nvidia\",262144,262144,10,\"\"]],\"nemotron-3-5-lightning-free\":[[\"opencode\",262144,262144,10,\"\"]],\"nemotron-3-5-lightning:free\":[[\"openrouter\",1000000,65536,10,\"\"]],\"nemotron-3-nano-30b-a3b\":[[\"openrouter\",262144,235929,10,\"\"],[\"vercel-ai-gateway\",262144,262144,10,\"\"]],\"nemotron-3-nano-omni-30b-a3b-reasoning\":[[\"nvidia\",256000,65536,11,\"\"]],\"nemotron-3-nano-omni-30b-a3b-reasoning:free\":[[\"openrouter\",256000,65536,11,\"\"]],\"nemotron-3-super-120b-a12b\":[[\"nvidia\",262144,262144,10,\"\"],[\"openrouter\",262144,235929,10,\"low,medium\"],[\"vercel-ai-gateway\",256000,32000,10,\"\"]],\"nemotron-3-super-120b-a12b:free\":[[\"openrouter\",262144,235929,10,\"low,medium\"]],\"nemotron-3-ultra-550b-a55b\":[[\"nvidia\",1000000,65536,10,\"\"],[\"openrouter\",262144,16384,10,\"medium,high\"],[\"together\",512300,512300,10,\"\"],[\"vercel-ai-gateway\",1000000,65000,10,\"\"]],\"nemotron-3-ultra-550b-a55b:free\":[[\"openrouter\",1000000,65536,10,\"medium,high\"]],\"nemotron-3-ultra-free\":[[\"opencode\",1000000,128000,10,\"\"]],\"nemotron-3-ultra-nvfp4\":[[\"fireworks\",262144,128000,10,\"\"]],\"nemotron-lightning-3p5-30b-a3b\":[[\"fireworks\",262144,262144,10,\"\"]],\"nemotron-nano-12b-v2-vl\":[[\"vercel-ai-gateway\",131072,131072,11,\"\"]],\"nemotron-nano-9b-v2\":[[\"vercel-ai-gateway\",131072,131072,10,\"\"]],\"nex-n2-5-pro\":[[\"openrouter\",262144,235929,11,\"medium,high\"]],\"north-mini-code:free\":[[\"openrouter\",256000,64000,10,\"\"]],\"nova-2-lite\":[[\"vercel-ai-gateway\",1000000,1000000,11,\"\"]],\"nova-2-lite-v1\":[[\"openrouter\",1000000,65535,11,\"\"]],\"nova-lite\":[[\"vercel-ai-gateway\",300000,8192,9,\"\"]],\"nova-lite-v1\":[[\"openrouter\",300000,5120,9,\"\"]],\"nova-micro\":[[\"vercel-ai-gateway\",128000,8192,8,\"\"]],\"nova-micro-v1\":[[\"openrouter\",128000,5120,8,\"\"]],\"nova-premier-v1\":[[\"openrouter\",1000000,32000,9,\"\"]],\"nova-pro\":[[\"vercel-ai-gateway\",300000,8192,9,\"\"]],\"nova-pro-v1\":[[\"openrouter\",300000,5120,9,\"\"]],\"nvidia-nemotron-3-ultra-550b-a55b\":[[\"baseten\",202800,202800,10,\"high\"]],\"nvidia-nemotron-nano-12b-v2\":[[\"amazon-bedrock\",131072,8192,9,\"\"]],\"nvidia-nemotron-nano-3-30b\":[[\"amazon-bedrock\",262144,8192,10,\"\"]],\"nvidia-nemotron-nano-9b-v2\":[[\"amazon-bedrock\",131072,8192,8,\"\"]],\"nvidia-nemotron-super-3-120b\":[[\"amazon-bedrock\",262144,131072,10,\"\"]],\"o1\":[[\"azure-openai-responses\",200000,100000,11,\"\"],[\"openai\",200000,100000,11,\"low,medium,high\"],[\"openrouter\",200000,100000,11,\"\"],[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o1-pro\":[[\"azure-openai-responses\",200000,100000,11,\"\"],[\"openai\",200000,100000,11,\"low,medium,high\"]],\"o3\":[[\"azure-openai-responses\",200000,100000,11,\"\"],[\"cloudflare-ai-gateway\",200000,100000,11,\"low,medium,high\"],[\"openai\",200000,100000,11,\"low,medium,high\"],[\"openrouter\",200000,100000,11,\"\"],[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o3-fast\":[[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o3-mini\":[[\"azure-openai-responses\",200000,100000,10,\"\"],[\"cloudflare-ai-gateway\",200000,100000,10,\"low,medium,high\"],[\"openai\",200000,100000,10,\"low,medium,high\"],[\"openrouter\",200000,100000,10,\"\"],[\"vercel-ai-gateway\",200000,100000,10,\"\"]],\"o3-mini-high\":[[\"openrouter\",200000,100000,10,\"high\"]],\"o3-mini:batch\":[[\"openrouter\",200000,100000,10,\"\"]],\"o3-pro\":[[\"azure-openai-responses\",200000,100000,11,\"\"],[\"openai\",200000,100000,11,\"low,medium,high\"],[\"openrouter\",200000,100000,11,\"\"],[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o3:batch\":[[\"openrouter\",200000,100000,11,\"\"]],\"o4-mini\":[[\"azure-openai-responses\",200000,100000,11,\"\"],[\"cloudflare-ai-gateway\",200000,100000,11,\"low,medium,high\"],[\"openai\",200000,100000,11,\"low,medium,high\"],[\"openrouter\",200000,100000,11,\"\"],[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o4-mini-fast\":[[\"vercel-ai-gateway\",200000,100000,11,\"\"]],\"o4-mini-high\":[[\"openrouter\",200000,100000,11,\"high\"]],\"o4-mini:batch\":[[\"openrouter\",200000,100000,11,\"\"]],\"open-mistral-7b\":[[\"mistral\",8000,8000,8,\"\"]],\"open-mistral-nemo\":[[\"mistral\",128000,128000,8,\"\"]],\"open-mixtral-8x22b\":[[\"mistral\",64000,64000,8,\"\"]],\"open-mixtral-8x7b\":[[\"mistral\",32000,32000,8,\"\"]],\"openai-gpt-5-4\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh\"]],\"openai-gpt-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh\"]],\"openai-gpt-5-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-5-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-5-6-terra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-6-1-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-6-astra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"openai-gpt-oss-120b\":[[\"amazon-bedrock\",131072,131072,10,\"\"]],\"openai-gpt-oss-120b-1:0\":[[\"amazon-bedrock\",131072,128000,10,\"\"]],\"openai-gpt-oss-20b\":[[\"amazon-bedrock\",131072,131072,10,\"\"]],\"openai-gpt-oss-20b-1:0\":[[\"amazon-bedrock\",131072,128000,10,\"\"]],\"openai-gpt-oss-safeguard-120b\":[[\"amazon-bedrock\",128000,16384,10,\"\"]],\"openai-gpt-oss-safeguard-20b\":[[\"amazon-bedrock\",128000,16384,10,\"\"]],\"pareto\":[[\"openrouter\",262144,131072,9,\"\"]],\"pareto-26-10-preview\":[[\"openrouter\",1048576,131072,9,\"\"]],\"perceptron-mk1-5\":[[\"openrouter\",36864,8192,11,\"minimal,low,medium,high\"]],\"pixtral-12b\":[[\"mistral\",128000,128000,9,\"\"]],\"pixtral-large-latest\":[[\"mistral\",128000,128000,9,\"\"]],\"precise\":[[\"radius\",272000,128000,11,\"low,medium,high,xhigh,max\"]],\"qwen-2-5-72b-instruct\":[[\"openrouter\",32768,16384,8,\"\"]],\"qwen-2-5-7b-instruct\":[[\"openrouter\",32768,29491,8,\"\"]],\"qwen-3-14b\":[[\"vercel-ai-gateway\",40960,16384,10,\"\"]],\"qwen-3-235b\":[[\"vercel-ai-gateway\",262144,16384,10,\"\"]],\"qwen-3-30b\":[[\"vercel-ai-gateway\",40960,16384,10,\"\"]],\"qwen-3-32b\":[[\"vercel-ai-gateway\",128000,8192,10,\"\"]],\"qwen-3-6-max-preview\":[[\"vercel-ai-gateway\",240000,64000,10,\"\"]],\"qwen-3-8-27b\":[[\"cerebras\",131072,40960,11,\"low,medium,high\"]],\"qwen-image-3\":[[\"openrouter\",0,0,5,\"\"]],\"qwen-image-3-pro\":[[\"openrouter\",0,0,5,\"\"]],\"qwen-max-latest\":[[\"fireworks\",262144,131072,11,\"\"]],\"qwen-plus\":[[\"openrouter\",1000000,32768,8,\"\"]],\"qwen-plus-2025-07-28\":[[\"openrouter\",1000000,32768,8,\"\"]],\"qwen-qwen3-235b-a22b-2507-v1:0\":[[\"amazon-bedrock\",262144,131072,8,\"\"]],\"qwen-qwen3-32b-v1:0\":[[\"amazon-bedrock\",32768,16384,10,\"\"]],\"qwen-qwen3-coder-30b-a3b-v1:0\":[[\"amazon-bedrock\",262144,131072,8,\"\"]],\"qwen-qwen3-coder-480b-a35b-v1:0\":[[\"amazon-bedrock\",131072,65536,8,\"\"]],\"qwen-qwen3-coder-next\":[[\"amazon-bedrock\",262144,65536,8,\"\"]],\"qwen-qwen3-next-80b-a3b\":[[\"amazon-bedrock\",262144,262000,8,\"\"]],\"qwen-qwen3-vl-235b-a22b\":[[\"amazon-bedrock\",262144,262000,9,\"\"]],\"qwen2-5-7b-instruct-turbo\":[[\"together\",32768,32768,8,\"\"]],\"qwen2-5-coder-32b-instruct\":[[\"huggingface\",131072,8192,8,\"\"]],\"qwen3-14b\":[[\"openrouter\",40960,16384,10,\"\"]],\"qwen3-235b-a22b\":[[\"huggingface\",40960,16384,10,\"\"],[\"openrouter\",131072,8192,10,\"\"]],\"qwen3-235b-a22b-2507\":[[\"openrouter\",262144,235929,8,\"\"]],\"qwen3-235b-a22b-instruct-2507\":[[\"huggingface\",262144,16384,8,\"\"]],\"qwen3-235b-a22b-thinking\":[[\"vercel-ai-gateway\",131072,32768,11,\"\"]],\"qwen3-235b-a22b-thinking-2507\":[[\"huggingface\",262144,131072,10,\"\"],[\"openrouter\",131072,117964,10,\"\"]],\"qwen3-30b-a3b\":[[\"huggingface\",40960,16384,10,\"\"],[\"openrouter\",40960,16384,10,\"\"]],\"qwen3-30b-a3b-fp8\":[[\"cloudflare-ai-gateway\",32768,32768,10,\"\"],[\"cloudflare-workers-ai\",32768,32768,10,\"\"]],\"qwen3-30b-a3b-instruct-2507\":[[\"openrouter\",128000,32000,8,\"\"]],\"qwen3-30b-a3b-thinking-2507\":[[\"openrouter\",81920,32768,10,\"\"]],\"qwen3-32b\":[[\"huggingface\",131072,16384,10,\"\"],[\"openrouter\",40960,16384,10,\"\"]],\"qwen3-5-122b-a10b\":[[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",262144,65536,11,\"\"]],\"qwen3-5-27b\":[[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",262144,65536,11,\"\"]],\"qwen3-5-35b-a3b\":[[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",262144,235929,11,\"\"]],\"qwen3-5-397b-a17b\":[[\"huggingface\",262144,32768,11,\"low,medium,high\"],[\"openrouter\",262144,235929,11,\"\"]],\"qwen3-5-9b\":[[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",256000,32768,11,\"\"],[\"together\",262144,65536,11,\"\"]],\"qwen3-5-flash\":[[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"qwen3-5-flash-02-23\":[[\"openrouter\",1000000,65536,11,\"\"]],\"qwen3-5-plus\":[[\"opencode\",262144,65536,11,\"\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"qwen3-5-plus-02-15\":[[\"openrouter\",1000000,65536,11,\"\"]],\"qwen3-5-plus-20260420\":[[\"openrouter\",1000000,65536,11,\"\"]],\"qwen3-6-27b\":[[\"groq\",131072,16384,11,\"high\"],[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",262144,81920,11,\"\"],[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"qwen3-6-35b-a3b\":[[\"huggingface\",262144,65536,11,\"\"],[\"openrouter\",262144,235929,11,\"\"]],\"qwen3-6-flash\":[[\"openrouter\",1000000,65536,11,\"\"],[\"qwen-token-plan\",1000000,65536,11,\"\"],[\"qwen-token-plan-cn\",1000000,65536,11,\"\"],[\"qwen-token-plan-individual\",1000000,65536,11,\"\"]],\"qwen3-6-max-preview\":[[\"openrouter\",262144,65536,10,\"\"]],\"qwen3-6-plus\":[[\"opencode\",262144,65536,11,\"\"],[\"openrouter\",1000000,65536,11,\"\"],[\"qwen-token-plan\",1000000,65536,11,\"\"],[\"qwen-token-plan-cn\",1000000,65536,11,\"\"],[\"together\",1000000,500000,10,\"\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"qwen3-7-flash\":[[\"openrouter\",1000000,65536,11,\"\"],[\"vercel-ai-gateway\",991000,64000,11,\"\"]],\"qwen3-7-max\":[[\"openrouter\",1000000,131072,10,\"\"],[\"qwen-token-plan\",1000000,131072,10,\"\"],[\"qwen-token-plan-cn\",1000000,131072,10,\"\"],[\"qwen-token-plan-individual\",1000000,131072,10,\"\"],[\"together\",1000000,500000,8,\"\"],[\"vercel-ai-gateway\",991000,64000,10,\"\"]],\"qwen3-7-plus\":[[\"opencode-go\",1000000,65536,11,\"\"],[\"openrouter\",1000000,131072,11,\"\"],[\"qwen-token-plan\",1000000,65536,11,\"\"],[\"qwen-token-plan-cn\",1000000,65536,11,\"\"],[\"qwen-token-plan-individual\",1000000,65536,11,\"\"],[\"vercel-ai-gateway\",1000000,64000,11,\"\"]],\"qwen3-8-2-4t-a95b\":[[\"huggingface\",262144,131072,10,\"low,medium,xhigh\"],[\"openrouter\",1000000,131072,10,\"low,medium,xhigh\"],[\"vercel-ai-gateway\",262144,128000,11,\"\"]],\"qwen3-8-27b\":[[\"cloudflare-ai-gateway\",262144,262144,11,\"\"],[\"cloudflare-workers-ai\",262144,262144,11,\"low,medium,xhigh\"],[\"groq\",131042,16384,11,\"low,medium,high\"],[\"huggingface\",262144,32768,11,\"low,medium,xhigh\"],[\"openrouter\",1000000,131072,11,\"low,medium,xhigh\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"qwen3-8-27b:free\":[[\"openrouter\",262144,235929,11,\"low,medium,xhigh\"]],\"qwen3-8-flash\":[[\"opencode\",1000000,131072,11,\"\"],[\"opencode-go\",1000000,131072,11,\"\"],[\"openrouter\",1000000,131072,11,\"\"],[\"qwen-token-plan\",1000000,131072,11,\"low,medium,xhigh\"],[\"qwen-token-plan-cn\",1000000,131072,11,\"low,medium,xhigh\"],[\"qwen-token-plan-individual\",1000000,131072,11,\"low,medium,xhigh\"],[\"vercel-ai-gateway\",991000,128000,11,\"\"]],\"qwen3-8-max\":[[\"opencode\",262144,131072,11,\"\"],[\"opencode-go\",1000000,131072,11,\"low,medium,xhigh\"],[\"qwen-token-plan\",1000000,131072,11,\"low,medium,xhigh\"],[\"qwen-token-plan-cn\",1000000,131072,11,\"low,medium,xhigh\"],[\"qwen-token-plan-individual\",1000000,131072,11,\"low,medium,xhigh\"],[\"vercel-ai-gateway\",262144,128000,11,\"\"]],\"qwen3-8-max-0902\":[[\"openrouter\",1000000,131072,11,\"minimal,low,medium,high,xhigh\"],[\"vercel-ai-gateway\",991000,128000,11,\"\"]],\"qwen3-8-max-prime\":[[\"openrouter\",1000000,131072,11,\"minimal,low,medium,high,xhigh\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"qwen3-8-omni-flash\":[[\"openrouter\",1000000,131072,11,\"\"],[\"vercel-ai-gateway\",1000000,131072,11,\"\"]],\"qwen3-8b\":[[\"openrouter\",131072,8192,10,\"\"]],\"qwen3-coder\":[[\"openrouter\",262144,65536,8,\"\"],[\"vercel-ai-gateway\",262144,65536,8,\"\"]],\"qwen3-coder-30b-a3b\":[[\"vercel-ai-gateway\",262144,8192,8,\"\"]],\"qwen3-coder-30b-a3b-instruct\":[[\"huggingface\",262144,65536,8,\"\"],[\"openrouter\",262144,235929,8,\"\"]],\"qwen3-coder-480b-a35b-instruct\":[[\"huggingface\",262144,66536,8,\"\"]],\"qwen3-coder-flash\":[[\"openrouter\",1000000,65536,8,\"\"]],\"qwen3-coder-next\":[[\"huggingface\",262144,65536,8,\"\"],[\"openrouter\",262144,235929,8,\"\"],[\"vercel-ai-gateway\",256000,256000,8,\"\"]],\"qwen3-coder-plus\":[[\"openrouter\",1000000,65536,8,\"\"],[\"vercel-ai-gateway\",1000000,65536,8,\"\"]],\"qwen3-max\":[[\"openrouter\",262144,65536,8,\"\"],[\"vercel-ai-gateway\",262144,32768,8,\"\"]],\"qwen3-max-preview\":[[\"vercel-ai-gateway\",262144,32768,8,\"\"]],\"qwen3-max-thinking\":[[\"openrouter\",262144,65536,10,\"\"],[\"vercel-ai-gateway\",256000,65536,10,\"\"]],\"qwen3-next-80b-a3b-instruct\":[[\"huggingface\",262144,66536,8,\"\"],[\"openrouter\",262144,235929,8,\"\"],[\"vercel-ai-gateway\",262114,262114,8,\"\"]],\"qwen3-next-80b-a3b-thinking\":[[\"huggingface\",262144,131072,8,\"\"],[\"openrouter\",131072,32768,10,\"\"],[\"vercel-ai-gateway\",262144,262144,10,\"\"]],\"qwen3-vl-235b-a22b-instruct\":[[\"huggingface\",131072,32768,9,\"\"],[\"openrouter\",131072,32768,9,\"\"],[\"vercel-ai-gateway\",131072,129024,9,\"\"]],\"qwen3-vl-235b-a22b-thinking\":[[\"huggingface\",131072,32768,11,\"low,medium,high\"],[\"openrouter\",131072,32768,11,\"\"]],\"qwen3-vl-30b-a3b-instruct\":[[\"openrouter\",262144,16384,9,\"\"]],\"qwen3-vl-30b-a3b-thinking\":[[\"openrouter\",131072,32768,11,\"\"]],\"qwen3-vl-32b-instruct\":[[\"openrouter\",131072,32768,9,\"\"]],\"qwen3-vl-8b-instruct\":[[\"openrouter\",131072,32768,9,\"\"]],\"qwen3-vl-8b-thinking\":[[\"openrouter\",131072,32768,11,\"\"]],\"qwen3-vl-instruct\":[[\"vercel-ai-gateway\",131072,129024,9,\"\"]],\"qwen3-vl-thinking\":[[\"vercel-ai-gateway\",131072,32768,11,\"\"]],\"qwen3p8-2p4t-a95b\":[[\"fireworks\",262144,131072,10,\"low,medium,xhigh\"]],\"qwen3p8-max\":[[\"fireworks\",262144,131072,11,\"low,medium,xhigh\"]],\"recraft-v3\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1-flash\":[[\"openrouter\",0,0,4,\"\"]],\"recraft-v4-1-pro\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1-pro-vector\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1-utility\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1-utility-pro\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-1-vector\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-pro\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-pro-vector\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-styles\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-styles-pro\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-styles-pro-vector\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-styles-vector\":[[\"openrouter\",0,0,5,\"\"]],\"recraft-v4-vector\":[[\"openrouter\",0,0,5,\"\"]],\"reka-edge\":[[\"openrouter\",16384,14745,9,\"\"]],\"relace-search\":[[\"openrouter\",256000,128000,8,\"\"]],\"ring-2-6-1t\":[[\"ant-ling\",262144,65536,10,\"high,xhigh\"]],\"riverflow-v2-5-fast\":[[\"openrouter\",0,0,5,\"\"]],\"riverflow-v2-5-pro\":[[\"openrouter\",0,0,5,\"\"]],\"riverflow-v2-fast\":[[\"openrouter\",0,0,5,\"\"]],\"riverflow-v2-pro\":[[\"openrouter\",0,0,5,\"\"]],\"sakana-namazu\":[[\"openrouter\",262144,65536,11,\"high\"]],\"seed-1-6\":[[\"openrouter\",262144,32768,11,\"\"],[\"vercel-ai-gateway\",256000,32000,11,\"\"]],\"seed-1-6-flash\":[[\"openrouter\",262144,32768,11,\"\"]],\"seed-1-8\":[[\"vercel-ai-gateway\",256000,64000,11,\"\"]],\"seed-2-0-code\":[[\"openrouter\",262144,131072,11,\"low,medium,high\"]],\"seed-2-0-lite\":[[\"openrouter\",262144,131072,11,\"minimal,low,medium,high\"]],\"seed-2-0-mini\":[[\"openrouter\",262144,131072,11,\"minimal,low,medium,high\"]],\"seed-2-1-turbo\":[[\"openrouter\",262144,235929,11,\"\"],[\"vercel-ai-gateway\",262144,262144,11,\"\"]],\"seedream-4-5\":[[\"openrouter\",0,0,5,\"\"]],\"seedream-5-0-flash\":[[\"openrouter\",0,0,5,\"\"]],\"seedream-5-0-lite\":[[\"openrouter\",0,0,5,\"\"]],\"seedream-5-0-pro\":[[\"openrouter\",0,0,5,\"\"]],\"solar-mini4\":[[\"openrouter\",524288,131072,10,\"minimal,low,medium,high,xhigh,max\"]],\"solar-pro-3\":[[\"openrouter\",131072,117964,10,\"minimal,low,medium,high\"]],\"solar-pro4\":[[\"openrouter\",524288,131072,10,\"minimal,low,medium,high,xhigh,max\"]],\"space-bunny-alpha\":[[\"openrouter\",1000000,524288,11,\"low,medium,high,xhigh,max\"]],\"space-bunny-free\":[[\"opencode\",1048576,524288,11,\"low,medium,high,xhigh,max\"],[\"opencode-go\",1048576,524288,11,\"low,medium,high,xhigh,max\"]],\"step-3-5-flash\":[[\"huggingface\",262144,256000,10,\"\"],[\"openrouter\",262144,65536,10,\"\"],[\"vercel-ai-gateway\",262114,262114,11,\"\"]],\"step-3-7-flash\":[[\"huggingface\",262144,256000,11,\"low,medium,high\"],[\"openrouter\",256000,230400,11,\"low,medium,high\"],[\"vercel-ai-gateway\",256000,256000,11,\"\"]],\"ternary-bonsai-2-27b\":[[\"openrouter\",262144,32768,11,\"medium,xhigh\"]],\"toast-1\":[[\"vercel-ai-gateway\",131000,4000,8,\"\"]],\"trinity-large-thinking\":[[\"openrouter\",262144,80000,10,\"\"],[\"vercel-ai-gateway\",262100,80000,10,\"\"]],\"us-amazon-nova-2-lite-v1:0\":[[\"amazon-bedrock\",1000000,65535,11,\"\"]],\"us-amazon-nova-lite-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"us-amazon-nova-micro-v1:0\":[[\"amazon-bedrock\",128000,10000,8,\"\"]],\"us-amazon-nova-premier-v1:0\":[[\"amazon-bedrock\",1000000,10000,9,\"\"]],\"us-amazon-nova-pro-v1:0\":[[\"amazon-bedrock\",300000,10000,9,\"\"]],\"us-anthropic-claude-fable-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-fable-5-1\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-haiku-4-5-20251001-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"us-anthropic-claude-opus-4-1-20250805-v1:0\":[[\"amazon-bedrock\",200000,32000,11,\"\"]],\"us-anthropic-claude-opus-4-5-20251101-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"us-anthropic-claude-opus-4-6-v1\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"us-anthropic-claude-opus-4-7\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-opus-4-8\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-opus-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-opus-5-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-anthropic-claude-sonnet-4-20250514-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"us-anthropic-claude-sonnet-4-5-20250929-v1:0\":[[\"amazon-bedrock\",200000,64000,11,\"\"]],\"us-anthropic-claude-sonnet-4-6\":[[\"amazon-bedrock\",1000000,128000,11,\"max\"]],\"us-anthropic-claude-sonnet-5\":[[\"amazon-bedrock\",1000000,128000,11,\"xhigh,max\"]],\"us-gov-openai-gpt-oss-120b-1:0\":[[\"amazon-bedrock\",128000,16384,10,\"\"]],\"us-gov-openai-gpt-oss-20b-1:0\":[[\"amazon-bedrock\",128000,16384,10,\"\"]],\"us-meta-llama3-1-70b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"us-meta-llama3-1-8b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"us-meta-llama3-3-70b-instruct-v1:0\":[[\"amazon-bedrock\",128000,4096,8,\"\"]],\"us-meta-llama4-maverick-17b-instruct-v1:0\":[[\"amazon-bedrock\",1000000,8192,9,\"\"]],\"us-meta-llama4-scout-17b-instruct-v1:0\":[[\"amazon-bedrock\",10000000,8192,9,\"\"]],\"us-mistral-pixtral-large-2502-v1:0\":[[\"amazon-bedrock\",128000,8192,9,\"\"]],\"us-moonshotai-kimi-k3\":[[\"amazon-bedrock\",1048576,128000,11,\"\"]],\"us-openai-gpt-5-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-5-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-5-6-terra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-6-1-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-6-astra\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-6-luna\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-openai-gpt-6-sol\":[[\"amazon-bedrock\",1050000,128000,11,\"xhigh\"]],\"us-writer-palmyra-x4-v1:0\":[[\"amazon-bedrock\",122880,8192,10,\"\"]],\"us-writer-palmyra-x5-v1:0\":[[\"amazon-bedrock\",1040000,8192,10,\"\"]],\"us-xai-grok-4-6\":[[\"amazon-bedrock\",500000,500000,11,\"\"]],\"us-xai-grok-4-7\":[[\"amazon-bedrock\",500000,500000,11,\"\"]],\"voxtral-small-24b-2507\":[[\"openrouter\",32768,26214,8,\"\"]],\"voxtral-small-latest\":[[\"mistral\",32000,32000,8,\"\"]],\"writer-palmyra-x4-v1:0\":[[\"amazon-bedrock\",122880,8192,10,\"\"]],\"writer-palmyra-x5-v1:0\":[[\"amazon-bedrock\",1040000,8192,10,\"\"]],\"xai-grok-4-3\":[[\"amazon-bedrock\",1000000,131072,11,\"\"]],\"xai-grok-4-6\":[[\"amazon-bedrock\",500000,500000,11,\"\"]],\"zai-glm-4-7\":[[\"amazon-bedrock\",202752,131072,10,\"\"]],\"zai-glm-4-7-flash\":[[\"amazon-bedrock\",202752,131072,10,\"\"]],\"zai-glm-5\":[[\"amazon-bedrock\",202752,131072,10,\"\"]],\"zai-glm-5-2\":[[\"mistral\",1000000,131072,10,\"high,max\"]],\"zai-glm-5-3\":[[\"mistral\",1000000,131072,10,\"low,high,max\"]]}");
+diff --git a/packages/provider/src/model-knowledge.ts b/packages/provider/src/model-knowledge.ts
+new file mode 100644
+index 0000000..5638ca0
+--- /dev/null
++++ b/packages/provider/src/model-knowledge.ts
+@@ -0,0 +1,192 @@
++import type { ModelConfigObject } from "./config/model-config.js";
++import { MODEL_KNOWLEDGE, MODEL_KNOWLEDGE_HOSTS } from "./model-knowledge.generated.js";
++
++/**
++ * Model facts from the shipped catalog, for models that no provider response, curated rule or user
++ * correction describes. It replaces the catch-all placeholder (200K, text-only) and is itself
++ * overridden by every one of those layers.
++ *
++ * Design (compared with OpenCode's models.dev catalog and Cherry Studio's provider registry): one
++ * entry per model per host, because hosts legitimately differ (OpenAI 272K vs a gateway's 1.05M).
++ * Lookup prefers the host actually serving the request, then the model's own vendor, and only then
++ * a consensus across hosts, where capabilities are unioned (any credible host reporting image input
++ * means the model takes images) and limits use the most common value.
++ */
++export interface ModelKnowledgeInput {
++  readonly providerId?: string;
++  readonly templateId?: string;
++  readonly modelId: string;
++  readonly baseUrl?: string | null;
++}
++export interface ModelKnowledge {
++  readonly host: string;
++  /** Which evidence chose the entry: the serving host, the model's vendor or cross-host consensus. */
++  readonly basis: "host" | "vendor" | "consensus";
++  readonly contextWindow?: number;
++  readonly maxOutputTokens?: number;
++  readonly imageInput: boolean;
++  readonly reasoning: boolean;
++  readonly imageOutput: boolean;
++  readonly textOutput: boolean;
++  readonly reasoningLevels: readonly string[];
++}
++type Entry = readonly [string, number, number, number, string];
++
++const normalise = (id: string) => id.trim().toLowerCase().replace(/\./g, "-");
++const lastSegment = (id: string) => id.slice(id.lastIndexOf("/") + 1);
++
++/** Variant spellings that name the same underlying model; tried only after the exact id. */
++const VARIANT_SUFFIXES = [/-thinking$/u, /-latest$/u, /:(?:free|beta|thinking|latest)$/u, /-\d{8}$/u, /-\d{4}-\d{2}-\d{2}$/u];
++
++function keys(modelId: string): string[] {
++  const base = normalise(lastSegment(modelId));
++  const out = [base];
++  for (const suffix of VARIANT_SUFFIXES) {
++    const stripped = base.replace(suffix, "");
++    if (stripped !== base && !out.includes(stripped)) out.push(stripped);
++  }
++  return out;
++}
++
++/** Connections whose host is fixed by their template (official clients and subscriptions). */
++const TEMPLATE_HOSTS: Readonly<Record<string, readonly string[]>> = {
++  "fleet-claude-native": ["anthropic"],
++  "fleet-chatgpt-native": ["openai-codex", "openai"],
++  "fleet-openai-codex": ["openai-codex", "openai"],
++  "fleet-kimi-cli-native": ["kimi-coding", "moonshotai"],
++  "fleet-xai": ["xai"],
++  "fleet-github-copilot": ["github-copilot"],
++};
++/** Routing prefixes inside model ids (OpenCode `opencode-go/…`, Kimi CLI `kimi-code/…`). */
++const PREFIX_HOSTS: Readonly<Record<string, string>> = {
++  "opencode-go": "opencode-go",
++  opencode: "opencode",
++  "kimi-code": "kimi-coding",
++  deepseek: "deepseek",
++  openai: "openai",
++  anthropic: "anthropic",
++  google: "google",
++  "x-ai": "xai",
++  xai: "xai",
++  moonshotai: "moonshotai",
++  zai: "zai",
++  "z-ai": "zai",
++  minimax: "minimax",
++  xiaomi: "xiaomi",
++  mistralai: "mistral",
++  mistral: "mistral",
++};
++/** The vendor that publishes each family; its own API states the model's native limits. */
++const VENDOR_HOSTS: readonly (readonly [RegExp, string])[] = [
++  [/^claude/u, "anthropic"],
++  [/^(?:gpt|o\d|chatgpt|codex)/u, "openai"],
++  [/^(?:gemini|gemma)/u, "google"],
++  [/^grok/u, "xai"],
++  [/^deepseek/u, "deepseek"],
++  [/^glm/u, "zai"],
++  [/^(?:kimi|k\d|moonshot)/u, "moonshotai"],
++  [/^mimo/u, "xiaomi"],
++  [/^minimax/u, "minimax"],
++  [/^(?:qwen|qwq)/u, "qwen-token-plan"],
++  [/^(?:mistral|codestral|devstral|magistral|ministral)/u, "mistral"],
++];
++
++function baseUrlHost(baseUrl: string | null | undefined): string | undefined {
++  if (!baseUrl) return undefined;
++  const wanted = baseUrl.trim().replace(/\/+$/u, "").toLowerCase();
++  let best: { host: string; length: number } | undefined;
++  for (const [host, urls] of Object.entries(MODEL_KNOWLEDGE_HOSTS))
++    for (const url of urls) {
++      const known = url.toLowerCase();
++      // Longest matching prefix wins: opencode.ai/zen/go is OpenCode Go, not OpenCode Zen.
++      if ((wanted === known || wanted.startsWith(`${known}/`)) && known.length > (best?.length ?? 0))
++        best = { host, length: known.length };
++    }
++  return best?.host;
++}
++
++function mode(values: number[]): number | undefined {
++  const counts = new Map<number, number>();
++  for (const value of values) if (value > 0) counts.set(value, (counts.get(value) ?? 0) + 1);
++  let chosen: number | undefined;
++  for (const [value, count] of counts)
++    if (chosen === undefined || count > counts.get(chosen)! || (count === counts.get(chosen) && value < chosen))
++      chosen = value;
++  return chosen;
++}
++
++function toKnowledge(entry: Entry, basis: ModelKnowledge["basis"]): ModelKnowledge {
++  const [host, context, output, flags, levels] = entry;
++  return {
++    host,
++    basis,
++    ...(context > 0 ? { contextWindow: context } : {}),
++    ...(output > 0 ? { maxOutputTokens: output } : {}),
++    imageInput: (flags & 1) !== 0,
++    reasoning: (flags & 2) !== 0,
++    imageOutput: (flags & 4) !== 0,
++    textOutput: (flags & 8) !== 0,
++    reasoningLevels: levels ? levels.split(",") : [],
++  };
++}
++
++export function lookupModelKnowledge(input: ModelKnowledgeInput): ModelKnowledge | undefined {
++  let entries: readonly Entry[] | undefined;
++  let matchedKey = "";
++  for (const key of keys(input.modelId)) {
++    entries = MODEL_KNOWLEDGE[key];
++    if (entries?.length) {
++      matchedKey = key;
++      break;
++    }
++  }
++  if (!entries?.length) return undefined;
++  const prefixes = input.modelId.toLowerCase().split("/").slice(0, -1);
++  const hosted = [
++    ...prefixes.map((prefix) => PREFIX_HOSTS[prefix]).filter((host): host is string => !!host),
++    ...(input.templateId ? (TEMPLATE_HOSTS[input.templateId] ?? []) : []),
++    ...(baseUrlHost(input.baseUrl) ? [baseUrlHost(input.baseUrl)!] : []),
++  ];
++  for (const host of hosted) {
++    const entry = entries.find((candidate) => candidate[0] === host);
++    if (entry) return toKnowledge(entry, "host");
++  }
++  const vendor = VENDOR_HOSTS.find(([pattern]) => pattern.test(matchedKey))?.[1];
++  const own = vendor ? entries.find((candidate) => candidate[0] === vendor) : undefined;
++  if (own) return toKnowledge(own, "vendor");
++  const flags = entries.reduce((all, entry) => all | entry[3], 0);
++  const levelCounts = new Map<string, number>();
++  for (const entry of entries) if (entry[4]) levelCounts.set(entry[4], (levelCounts.get(entry[4]) ?? 0) + 1);
++  const levels = [...levelCounts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
++  return toKnowledge(
++    [
++      "consensus",
++      mode(entries.map((entry) => entry[1])) ?? 0,
++      mode(entries.map((entry) => entry[2])) ?? 0,
++      flags,
++      levels,
++    ],
++    "consensus",
++  );
++}
++
++/**
++ * The catalog's facts as a model-config layer. Only facts the catalog states are set; reasoning
++ * levels stay with curated/request-mapped rules because their values must map to request fields.
++ */
++export function modelKnowledgeConfig(input: ModelKnowledgeInput): ModelConfigObject | undefined {
++  const knowledge = lookupModelKnowledge(input);
++  if (!knowledge) return undefined;
++  return {
++    properties: {
++      ...(knowledge.contextWindow ? { contextWindow: knowledge.contextWindow } : {}),
++      inputFormat: { supportsText: true, supportsImage: knowledge.imageInput },
++      ...(knowledge.imageOutput
++        ? { outputFormat: { supportsText: knowledge.textOutput, supportsImage: true } }
++        : {}),
++    },
++    ...(knowledge.maxOutputTokens
++      ? { optionSpecs: { maxOutputTokens: { max: knowledge.maxOutputTokens } } }
++      : {}),
++  };
++}
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 4bece2b..87d5607 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -215,7 +215,7 @@ export interface ResolvedProviderModelCandidate {
+   readonly config: ModelConfig;
+   readonly effectiveBuiltinConfig: ModelConfig;
+   readonly evidenceConfig: ModelConfig;
+-  readonly contextEvidenceSource: "provider" | "manual" | "saved" | "builtin" | "unknown";
++  readonly contextEvidenceSource: "provider" | "manual" | "saved" | "builtin" | "catalog" | "unknown";
+   readonly issues: readonly ConfigValidationIssue[];
+   readonly enabled: boolean;
+   readonly executable: boolean;
+@@ -368,10 +368,13 @@ export class ProviderConfigResolver {
+               : "saved"
+             : discovered?.config.properties?.contextWindow != null
+               ? "provider"
+-              : input.zcodeBuiltinModelRules.resolveEvidence(modelIdentity).properties
++              : input.zcodeBuiltinModelRules.resolveCuratedEvidence(modelIdentity).properties
+                     ?.contextWindow != null
+                 ? "builtin"
+-                : "unknown";
++                : input.zcodeBuiltinModelRules.resolveEvidence(modelIdentity).properties
++                      ?.contextWindow != null
++                  ? "catalog"
++                  : "unknown";
+         if (config.access?.type === "subscription") {
+           const observed = input.personalModels
+             .rules()
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 148e557..45966f6 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -175,11 +175,13 @@ export function createNativeCliConnectionAdapter(
+                   ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+                   inputFormat: {
+                     supportsText: true,
+-                    // ACP 的 image 能力属于会话；只有 agent 按模型声明（_meta）时才标视觉。
+-                    supportsImage: model.images === true,
+-                    supportsPdf: false,
+-                    supportsAudio: false,
+-                    supportsVideo: false,
++                    // 修复：未声明时曾写死 false，压过模型目录，导致 Gemini/Claude 等视觉模型被标成纯文本。
++                    // agent 不收图片时，此路线确实不能传图（false）；按模型声明时用声明；否则留空交给模型目录。
++                    ...(!inspected.images
++                      ? { supportsImage: false }
++                      : model.images !== undefined
++                        ? { supportsImage: model.images }
++                        : {}),
+                   },
+                   outputFormat: { supportsText: true },
+                 },
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 319fe8e..61c9243 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -1,3 +1,4 @@
++import { isOfficialOpenaiImageModel } from "@zcode/provider";
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import { mkdtemp, readFile, rm } from "node:fs/promises";
+@@ -1177,11 +1178,14 @@ test("official OpenAI image membership uses exact published models, survives res
+     const image = models.find((model) => model.modelId === "gpt-image-2")!;
+     assert.equal(image.effectiveConfig.properties?.outputFormat?.supportsImage, true);
+     assert.equal(image.selectable, false);
+-    assert.equal(
+-      models.find((model) => model.modelId === "gpt-image-future")!.effectiveConfig.properties
+-        ?.outputFormat?.supportsImage,
+-      undefined,
+-    );
++    // Naming classifies an unpublished variant as an image model so it stays out of chat; only the
++    // exact published list may be sent to the Images API.
++    const future = models.find((model) => model.modelId === "gpt-image-future")!;
++    assert.equal(future.effectiveConfig.properties?.outputFormat?.supportsImage, true);
++    assert.equal(future.effectiveConfig.properties?.outputFormat?.supportsText, false);
++    assert.equal(future.selectable, false);
++    assert.equal(isOfficialOpenaiImageModel("https://api.openai.com/v1", "gpt-image-future"), false);
++    assert.equal(isOfficialOpenaiImageModel("https://api.openai.com/v1", "gpt-image-2"), true);
+     assert.equal(
+       models.find((model) => model.modelId === "gpt-4.1")!.effectiveConfig.properties?.outputFormat
+         ?.supportsImage,
+diff --git a/packages/services/test/model-knowledge.test.ts b/packages/services/test/model-knowledge.test.ts
+new file mode 100644
+index 0000000..58259fb
+--- /dev/null
++++ b/packages/services/test/model-knowledge.test.ts
+@@ -0,0 +1,96 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readFile } from "node:fs/promises";
++import { fileURLToPath } from "node:url";
++import { lookupModelKnowledge } from "../../provider/src/model-knowledge.js";
++import { parseZCodeBuiltinModelConfigRules } from "../../provider/src/config/schema.js";
++
++const builtin = async () =>
++  parseZCodeBuiltinModelConfigRules(
++    JSON.parse(
++      await readFile(
++        fileURLToPath(new URL("../../../config/provider/zcode-builtin.json", import.meta.url)),
++        "utf8",
++      ),
++    ).config.modelConfigRules,
++  );
++
++test("catalog prefers the serving host, then the vendor, then cross-host consensus", () => {
++  // OpenCode Go routes by id prefix; its own entry wins over other hosts of the same model.
++  assert.equal(lookupModelKnowledge({ modelId: "opencode-go/gpt-6-luna" })?.host, "opencode-go");
++  assert.equal(lookupModelKnowledge({ modelId: "opencode-go/gpt-6-luna" })?.contextWindow, 1050000);
++  // The ChatGPT subscription host states its own (smaller) limit for the same model.
++  const codex = lookupModelKnowledge({ modelId: "gpt-6-luna", templateId: "fleet-chatgpt-native" });
++  assert.equal(codex?.host, "openai-codex");
++  assert.equal(codex?.contextWindow, 272000);
++  // A custom API connection is matched by its base URL; the longest known prefix wins.
++  assert.equal(
++    lookupModelKnowledge({ modelId: "glm-5.3", baseUrl: "https://opencode.ai/zen/go/v1/" })?.host,
++    "opencode-go",
++  );
++  // Without a host, the vendor's own API states the model.
++  const gemini = lookupModelKnowledge({ modelId: "gemini-3.8-flash", templateId: "fleet-antigravity-native" });
++  assert.equal(gemini?.basis, "vendor");
++  assert.equal(gemini?.host, "google");
++  assert.equal(gemini?.imageInput, true);
++});
++
++test("catalog matches spelling variants of the same model", () => {
++  // Copilot spells versions with dots, Anthropic with hyphens.
++  assert.equal(lookupModelKnowledge({ modelId: "claude-sonnet-4.6" })?.contextWindow, 1000000);
++  assert.equal(lookupModelKnowledge({ modelId: "Anthropic/Claude-Sonnet-4-6" })?.host, "anthropic");
++  // A -thinking variant names the same model.
++  assert.equal(lookupModelKnowledge({ modelId: "claude-opus-4-6-thinking" })?.contextWindow, 1000000);
++  assert.equal(lookupModelKnowledge({ modelId: "definitely-not-a-model-xyz" }), undefined);
++});
++
++test("catalog facts replace the placeholder but never curated rules, provider facts or corrections", async () => {
++  const rules = await builtin();
++  const unknownHost = { providerId: "p", modelId: "opencode-go/hy3", templateId: "fleet-opencode-native" };
++  assert.equal(rules.resolve(unknownHost).properties?.contextWindow, 256000);
++  assert.equal(rules.resolveEvidence(unknownHost).properties?.contextWindow, 256000);
++  assert.equal(rules.resolveCuratedEvidence(unknownHost).properties?.contextWindow, undefined);
++  // A model nobody knows keeps the explicit placeholder and no evidence.
++  const nobody = { providerId: "p", modelId: "definitely-not-a-model-xyz" };
++  assert.equal(rules.resolve(nobody).properties?.contextWindow, 200000);
++  assert.equal(rules.resolveEvidence(nobody).properties?.contextWindow, undefined);
++  // The catalog layer is never written back into the builtin file shape.
++  assert.ok(!JSON.stringify(rules.toZCodeBuiltinJSON()).includes("knowledge"));
++});
++
++test("generation, speech, transcription and embedding models are recognised and kept out of chat", async () => {
++  const rules = await builtin();
++  const output = (modelId: string) =>
++    rules.resolve({ providerId: "p", modelId }).properties?.outputFormat;
++  for (const id of ["veo-3.1-generate-preview", "kling-v2.6-pro", "doubao-seedance-1-0-pro", "MiniMax-Hailuo-02", "wan2.6-t2v", "sora-2"])
++    assert.deepEqual([id, output(id)?.supportsVideo, output(id)?.supportsText], [id, true, false]);
++  for (const id of ["gpt-image-2", "doubao-seedream-4-0", "black-forest-labs/flux.2-pro", "qwen-image-plus", "imagen-4.0-generate-001", "cogview-4"])
++    assert.deepEqual([id, output(id)?.supportsImage, output(id)?.supportsText], [id, true, false]);
++  // Chat models that can also draw stay chat models.
++  assert.deepEqual(
++    [output("gemini-3-pro-image-preview")?.supportsImage, output("gemini-3-pro-image-preview")?.supportsText],
++    [true, true],
++  );
++  assert.equal(output("gpt-4o-mini-tts")?.supportsSpeech, true);
++  assert.equal(output("whisper-1")?.supportsTranscription, true);
++  assert.equal(output("text-embedding-3-large")?.supportsText, false);
++  assert.equal(output("BAAI/bge-reranker-v2-m3")?.supportsText, false);
++  // Ordinary chat models are untouched by these patterns.
++  for (const id of ["gpt-6-luna", "kimi-k3", "deepseek-v4-pro", "grok-4.7", "glm-5.3"])
++    assert.equal(output(id)?.supportsText, true, id);
++});
++
++test("the shipped catalog snapshot matches the installed pi-ai release", async () => {
++  const { MODEL_KNOWLEDGE_SOURCE } = await import("../../provider/src/model-knowledge.generated.js");
++  const installed = JSON.parse(
++    await readFile(
++      fileURLToPath(new URL("../../../node_modules/@earendil-works/pi-ai/package.json", import.meta.url)),
++      "utf8",
++    ),
++  ).version;
++  assert.equal(
++    MODEL_KNOWLEDGE_SOURCE,
++    `@earendil-works/pi-ai ${installed}`,
++    "Run node scripts/generate-model-knowledge.mjs after upgrading pi-ai",
++  );
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e122048..e16fa3a 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -23,6 +23,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.contextWindowSource.provider": "Provider-reported",
+   "settings.modelProvider.contextWindowSource.manual": "Manual setting",
+   "settings.modelProvider.contextWindowSource.saved": "Saved, source unconfirmed",
++  "settings.modelProvider.contextWindowSource.catalog": "Model catalog",
+   "settings.modelProvider.contextWindowSource.builtin": "Built-in recommendation",
+   "settings.modelProvider.contextWindowSource.unknown": "Source unconfirmed",
+   "settings.modelProvider.allowance.windowsUnavailable": "Usage allowance is unavailable",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 45dcf9a..830a6bc 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -20,6 +20,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.contextWindowSource.provider": "上游返回",
+   "settings.modelProvider.contextWindowSource.manual": "手动设置",
+   "settings.modelProvider.contextWindowSource.saved": "已保存，来源未确认",
++  "settings.modelProvider.contextWindowSource.catalog": "模型目录",
+   "settings.modelProvider.contextWindowSource.builtin": "内置推荐",
+   "settings.modelProvider.contextWindowSource.unknown": "来源未确认",
+   "settings.modelProvider.allowance.windowsUnavailable": "暂未获取到额度",
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index a1e13a2..8b6a797 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -60,7 +60,7 @@ export interface ProviderSettingsFormModel {
+   /** Personal Rule 叠加前的 Built-in Rule 解析结果，用于编辑器表达继承与稀疏覆盖。 */
+   inheritedConfig?: ModelConfigObject;
+   evidenceConfig?: ModelConfigObject;
+-  contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "unknown";
++  contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "catalog" | "unknown";
+   personalConfig: ModelConfigObject;
+   /** 缺省或 true 表示跟随 Built-in 推荐配置；false 表示固定个人配置。 */
+   useRecommendedConfig?: boolean;
+diff --git a/scripts/generate-model-knowledge.mjs b/scripts/generate-model-knowledge.mjs
+new file mode 100644
+index 0000000..c2aa829
+--- /dev/null
++++ b/scripts/generate-model-knowledge.mjs
+@@ -0,0 +1,61 @@
++#!/usr/bin/env node
++// Regenerates packages/provider/src/model-knowledge.generated.ts from the model catalog that the
++// installed @earendil-works/pi-ai already ships (MIT; derived from models.dev and OpenRouter).
++// Run after upgrading pi-ai: `node scripts/generate-model-knowledge.mjs`.
++import { readFile, realpath, writeFile } from "node:fs/promises";
++import { join, resolve } from "node:path";
++import { pathToFileURL } from "node:url";
++
++const root = resolve(import.meta.dirname, "..");
++// pi-ai is ESM-only and hides package.json from its exports map; read the copy services installs.
++const piRoot = await realpath(join(root, "packages/services/node_modules/@earendil-works/pi-ai")).catch(
++  () => realpath(join(root, "node_modules/@earendil-works/pi-ai")),
++);
++const { version } = JSON.parse(await readFile(join(piRoot, "package.json"), "utf8"));
++const { MODELS, IMAGE_MODELS } = await import(
++  pathToFileURL(join(piRoot, "dist/models.generated.js")).href
++);
++
++// Same normalisation as runtime lookup (model-knowledge.ts): vendor path dropped, case and
++// dot/hyphen version spelling unified ("claude-sonnet-4.6" ≡ "claude-sonnet-4-6").
++const key = (id) => id.slice(id.lastIndexOf("/") + 1).trim().toLowerCase().replace(/\./g, "-");
++const LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
++
++const hosts = {};
++const models = {};
++function add(model, kind) {
++  const host = model.provider;
++  if (model.baseUrl) (hosts[host] ??= new Set()).add(model.baseUrl.replace(/\/+$/, ""));
++  const input = model.input ?? ["text"];
++  const output = model.output ?? (kind === "image" ? ["image"] : ["text"]);
++  // Bits: 1 image input · 2 reasoning · 4 image output · 8 text output.
++  const flags =
++    (input.includes("image") ? 1 : 0) |
++    (model.reasoning ? 2 : 0) |
++    (output.includes("image") ? 4 : 0) |
++    (output.includes("text") ? 8 : 0);
++  const levels = model.thinkingLevelMap
++    ? LEVELS.filter((level) => model.thinkingLevelMap[level] != null).join(",")
++    : "";
++  const entry = [host, model.contextWindow ?? 0, model.maxTokens ?? 0, flags, levels];
++  const list = (models[key(model.id)] ??= []);
++  if (!list.some((existing) => existing[0] === host)) list.push(entry);
++}
++for (const provider of Object.values(MODELS)) for (const model of Object.values(provider)) add(model, "chat");
++for (const provider of Object.values(IMAGE_MODELS)) for (const model of Object.values(provider)) add(model, "image");
++
++const sortedHosts = Object.fromEntries(
++  Object.entries(hosts)
++    .sort(([a], [b]) => a.localeCompare(b))
++    .map(([host, urls]) => [host, [...urls].filter((url) => !url.includes("{")).sort()]),
++);
++const sortedModels = Object.fromEntries(Object.entries(models).sort(([a], [b]) => a.localeCompare(b)));
++const output = `// Generated by scripts/generate-model-knowledge.mjs from @earendil-works/pi-ai ${version}; do not edit.
++// Entry: [host, contextWindow, maxOutputTokens, flags, reasoningLevels]; flags 1 image-in · 2 reasoning ·
++// 4 image-out · 8 text-out. Zero means the source did not state the value.
++export const MODEL_KNOWLEDGE_SOURCE = "@earendil-works/pi-ai ${version}";
++export const MODEL_KNOWLEDGE_HOSTS: Readonly<Record<string, readonly string[]>> = JSON.parse(${JSON.stringify(JSON.stringify(sortedHosts))});
++export const MODEL_KNOWLEDGE: Readonly<Record<string, readonly (readonly [string, number, number, number, string])[]>> = JSON.parse(${JSON.stringify(JSON.stringify(sortedModels))});
++`;
++await writeFile(join(root, "packages/provider/src/model-knowledge.generated.ts"), output);
++console.log(`model knowledge: ${Object.keys(sortedModels).length} models, ${Object.keys(sortedHosts).length} hosts (pi-ai ${version})`);

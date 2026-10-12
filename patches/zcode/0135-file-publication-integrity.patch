@@ -1,0 +1,1237 @@
+diff --git a/apps/zcode-cli/docs/file-write-integrity.md b/apps/zcode-cli/docs/file-write-integrity.md
+new file mode 100644
+index 0000000..6a0316f
+--- /dev/null
++++ b/apps/zcode-cli/docs/file-write-integrity.md
+@@ -0,0 +1,46 @@
++# Native file write integrity
++
++The existing FileSystemPort/NodeFileSystemAdapter owns native file publication. Human/domain
++callers and Write/Edit use that owner; this adds no document database or migration.
++
++```text
++permission-approved request → canonical file lock → check observed revision
++  → stage bytes beside target → flush/close → recheck revision and Stop → rename
++  → existing result/checkpoint path → release lock
++failure before rename → remove only this writer's temp → original unchanged + original cause
++```
++
++- `atomic:true` (including the default) never degrades to an in-place truncating write. Temporary
++  rename locks may retry with a bounded delay; persistent failure preserves the original.
++- Preserve existing encoding, line endings, executable mode and symlink refusal. Cancellation
++  before publication removes staged bytes; cancellation after rename cannot undo a committed file.
++- Fleet writers in different Sessions/processes serialize the same canonical file using the
++  existing PID-owned file-lock mechanism. Lock metadata is transient, outside project artifacts.
++  Rendezvous uses the OS-reported user's private cache, independent of HOME/TMPDIR/profile overrides;
++  an unavailable/unwritable rendezvous refuses before writing rather than bypassing coordination.
++  Waiting cancellation cannot release another writer's lock or let its successor overtake it.
++- Check a supplied revision within that lock and immediately before atomic publication. Compare
++  the supplied content hash as well as legacy mtime/size identity, so equal-size/equal-mtime edits
++  remain stale. Unconditional writes retain their explicit contract.
++- Write/Edit compare the model's complete cached Read with current content before accepting their
++  fresh internal revision. Equal metadata cannot erase an unseen external change; identical logical
++  content and existing bounded-view rules retain their original compatibility.
++- Truncated reads omit an entire-file hash; their bounded prefix must not masquerade as a full
++  content digest. They retain the existing metadata revision; complete reads keep hash protection.
++- This is coordination among participating Fleet writers, not an OS compare-and-swap against
++  arbitrary external editors. A crashed writer's existing PID-lock reclamation remains authoritative.
++  No power-loss, network-filesystem, cross-user or unverified OS guarantee is implied.
++- Once a native rename has been entered, Stop cannot promise absence of a file effect. The generic
++  executor's immediate cancellation/late-result reconciliation remains a separate kernel gap;
++  this correction does not claim a committed late file result is already journaled after Stop.
++
++Acceptance: real disposable files preserve original bytes on temporary-write/flush/rename failures;
++bounded transient rename succeeds once; Stop before rename publishes nothing; permission/encoding
++and symlink cases remain correct. Concurrent adapters and independent local processes with one
++observed revision produce one successful write and one `stale_write`, with lock cleanup/recovery.
++
++Comparison: original ZCode `29628c9` stages then falls back to O_TRUNC on every failure. Current
++GenOffice retries rename but still uses direct fallback; Kun supplies a before-commit/Stop guard
++and optional fallback refusal. Adapt their bounded retry/fence ideas through Fleet's existing
++adapter and shared lock, and reject direct fallback. Exact source locks/evidence live in the root
++reference registry; no third-party implementation is copied or dependency added.
+diff --git a/apps/zcode-cli/packages/adapters/src/fs/atomic-text-write.ts b/apps/zcode-cli/packages/adapters/src/fs/atomic-text-write.ts
+new file mode 100644
+index 0000000..fdcd4a2
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/fs/atomic-text-write.ts
+@@ -0,0 +1,97 @@
++import { randomBytes } from "node:crypto";
++import { constants } from "node:fs";
++import { lstat, open, rename, unlink } from "node:fs/promises";
++import { setTimeout as sleep } from "node:timers/promises";
++import { maybeThrowStorageFsFault } from "../storage/fs-fault-injection.js";
++
++const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400] as const;
++const RETRYABLE_RENAME_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
++
++async function targetMode(path: string): Promise<number | undefined> {
++  try {
++    const info = await lstat(path);
++    if (info.isSymbolicLink()) {
++      throw new Error(
++        `Refusing to write through symlink: ${path}. Resolve its real target explicitly.`,
++      );
++    }
++    return info.mode;
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
++    return undefined;
++  }
++}
++
++/** Staging/publication only; the FileSystemPort caller owns revision checks and the file lock. */
++export async function atomicWriteTextBytes(
++  path: string,
++  content: Buffer,
++  options: { signal?: AbortSignal; beforeCommit?: () => Promise<void> } = {},
++): Promise<void> {
++  const mode = await targetMode(path);
++  const temporary = `${path}.tmp.${process.pid}.${randomBytes(6).toString("hex")}`;
++  let created = false;
++  try {
++    options.signal?.throwIfAborted();
++    const handle = await open(
++      temporary,
++      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
++    );
++    created = true;
++    let stagingFailed = false;
++    let stagingError: unknown;
++    try {
++      maybeThrowStorageFsFault({ operation: "writeFile", path });
++      await handle.writeFile(content, { signal: options.signal });
++      if (mode !== undefined) await handle.chmod(mode);
++      await handle.sync();
++    } catch (error) {
++      stagingFailed = true;
++      stagingError = error;
++      throw error;
++    } finally {
++      try {
++        await handle.close();
++      } catch (error) {
++        if (!stagingFailed) throw error;
++        // close 的次要失败不能遮掉磁盘满等首因；既有 errno 分类继续看首因的 code。
++        const code =
++          stagingError && typeof stagingError === "object" && "code" in stagingError
++            ? stagingError.code
++            : undefined;
++        throw Object.assign(
++          new AggregateError(
++            [stagingError, error],
++            stagingError instanceof Error ? stagingError.message : String(stagingError),
++            { cause: stagingError },
++          ),
++          { code },
++        );
++      }
++    }
++    for (let attempt = 0; ; attempt += 1) {
++      options.signal?.throwIfAborted();
++      await options.beforeCommit?.();
++      await targetMode(path);
++      options.signal?.throwIfAborted();
++      try {
++        maybeThrowStorageFsFault({ operation: "rename", path });
++        await rename(temporary, path);
++        return;
++      } catch (error) {
++        const delay = RENAME_RETRY_DELAYS_MS[attempt];
++        if (
++          delay === undefined ||
++          !RETRYABLE_RENAME_CODES.has((error as NodeJS.ErrnoException).code ?? "")
++        )
++          throw error;
++        // Windows 的短暂占用可以重试，但不能把 atomic 请求降级成截断原文件。
++        await sleep(delay, undefined, { signal: options.signal });
++      }
++    }
++  } catch (error) {
++    // 原实现在任何失败后 O_TRUNC 重写，第二次写入失败会毁掉原件；只清本 writer 的暂存。
++    if (created) await unlink(temporary).catch(() => undefined);
++    throw error;
++  }
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/fs/file-write-lock.ts b/apps/zcode-cli/packages/adapters/src/fs/file-write-lock.ts
+new file mode 100644
+index 0000000..0c440f5
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/fs/file-write-lock.ts
+@@ -0,0 +1,28 @@
++import { createHash } from "node:crypto";
++import { mkdir, realpath } from "node:fs/promises";
++import { userInfo } from "node:os";
++import { basename, dirname, join } from "node:path";
++import { withFileLock } from "@zcode/shared/node";
++
++/** Reuse transient PID-owned locks across Fleet processes; these are not document records. */
++export async function withNativeFileWriteLock<T>(
++  path: string,
++  operation: () => Promise<T>,
++  signal?: AbortSignal,
++): Promise<T> {
++  signal?.throwIfAborted();
++  let canonical: string;
++  try {
++    canonical = await realpath(path);
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
++    canonical = join(await realpath(dirname(path)), basename(path));
++  }
++  // Windows 的同名大小写入口必须竞争同一把锁；目标路径和权限仍用原请求，不改写。
++  if (process.platform === "win32") canonical = canonical.toLowerCase();
++  const key = createHash("sha256").update(canonical).digest("hex");
++  // HOME/TMPDIR 不能分裂同一文件的锁；OS 用户信息只在写入时读，失败不影响普通读取。
++  const directory = join(userInfo().homedir, ".cache", "fleet", "file-write-locks");
++  await mkdir(directory, { recursive: true, mode: 0o700 });
++  return withFileLock(join(directory, key), operation, { signal });
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/fs/index.ts b/apps/zcode-cli/packages/adapters/src/fs/index.ts
+index 9c7d7aa..ce2b78c 100644
+--- a/apps/zcode-cli/packages/adapters/src/fs/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/fs/index.ts
+@@ -2,9 +2,8 @@
+ // Node FileSystem Adapter
+ // ============================================================
+ 
+-import { createHash, randomBytes } from "node:crypto";
+-import { constants } from "node:fs";
+-import { lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
++import { createHash } from "node:crypto";
++import { lstat, mkdir, open, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+ import { basename, dirname, extname, isAbsolute, join, normalize, relative, sep } from "node:path";
+ import { Worker } from "node:worker_threads";
+ import type { RgArg, RipgrepBufferedResult } from "ripgrep";
+@@ -47,6 +46,8 @@ import {
+ } from "./text-metadata.js";
+ import { readTextFileRangeFromNode } from "./text-range-reader.js";
+ import { maybeThrowStorageFsFault } from "../storage/fs-fault-injection.js";
++import { atomicWriteTextBytes } from "./atomic-text-write.js";
++import { withNativeFileWriteLock } from "./file-write-lock.js";
+ 
+ const DEFAULT_GLOB_MAX_RESULTS = 100;
+ const DEFAULT_GREP_HEAD_LIMIT = 250;
+@@ -194,7 +195,8 @@ export class NodeFileSystemAdapter implements FileSystemPort {
+           id: revisionId(info.mtimeMs, info.size),
+           mtimeMs: info.mtimeMs,
+           sizeBytes: info.size,
+-          hash: hashBuffer(buffer),
++          // 前缀不是整个文件的 hash；否则未改动文件拿这个 revision 回写也会误判 stale。
++          ...(!truncated ? { hash: hashBuffer(buffer) } : {}),
+         },
+       };
+     } catch (error) {
+@@ -288,41 +290,65 @@ export class NodeFileSystemAdapter implements FileSystemPort {
+     }
+   }
+ 
+-  async writeTextFile(request: FileSystemWriteTextRequest): Promise<FileSystemWriteTextResult> {
++  async writeTextFile(
++    request: FileSystemWriteTextRequest,
++    options?: { signal?: AbortSignal },
++  ): Promise<FileSystemWriteTextResult> {
+     const path = resolveAbsoluteRequestPath(request.path);
+     const encoding = request.encoding ?? "utf8";
+     const textContent = applyRequestedLineEndings(request.content, request.lineEndings);
+     const content = encodeTextContent({ content: textContent, encoding, path });
++    const expectedRevision = request.expectedRevision ? { ...request.expectedRevision } : undefined;
++    const atomic = request.atomic ?? true;
+ 
+     try {
+-      if (request.expectedRevision) {
+-        await this.assertExpectedRevision(path, request.expectedRevision);
+-      }
+-
++      throwIfAborted(options?.signal);
+       if (request.createParents) {
+         maybeThrowStorageFsFault({ operation: "mkdir", path: dirname(path) });
+         await mkdir(dirname(path), { recursive: true });
+       }
+ 
+-      if (request.atomic ?? true) {
+-        await atomicWrite(path, content);
+-      } else {
+-        maybeThrowStorageFsFault({ operation: "writeFile", path });
+-        await writeFile(path, content);
+-      }
+-
+-      const info = await stat(path);
+-      return {
++      return await withNativeFileWriteLock(
+         path,
+-        bytesWritten: content.byteLength,
+-        revision: {
+-          id: revisionId(info.mtimeMs, info.size),
+-          mtimeMs: info.mtimeMs,
+-          sizeBytes: info.size,
+-          hash: hashBuffer(content),
++        async () => {
++          const beforeCommit = async () => {
++            throwIfAborted(options?.signal);
++            if (expectedRevision) {
++              await this.assertExpectedRevision(path, expectedRevision, options?.signal);
++            }
++          };
++          // 原有先查后写不覆盖 await 的窗口；同文件各 Session/进程在锁内校验并发布。
++          await beforeCommit();
++          if (atomic) {
++            await atomicWriteTextBytes(path, content, { signal: options?.signal, beforeCommit });
++          } else {
++            maybeThrowStorageFsFault({ operation: "writeFile", path });
++            await writeFile(path, content, { signal: options?.signal });
++          }
++          const info = await stat(path);
++          return {
++            path,
++            bytesWritten: content.byteLength,
++            revision: {
++              id: revisionId(info.mtimeMs, info.size),
++              mtimeMs: info.mtimeMs,
++              sizeBytes: info.size,
++              hash: hashBuffer(content),
++            },
++          };
+         },
+-      };
++        options?.signal,
++      );
+     } catch (error) {
++      if (options?.signal?.aborted && error === options.signal.reason) {
++        // AbortSignal 的 reason 可能是普通 Error；保留取消语义，而非误记成磁盘失败。
++        throw createFileSystemError({
++          code: "cancelled",
++          path,
++          message: `File system operation was cancelled: ${path}`,
++          cause: error,
++        });
++      }
+       throw toFileSystemError(error, path);
+     }
+   }
+@@ -470,10 +496,18 @@ export class NodeFileSystemAdapter implements FileSystemPort {
+     }
+   }
+ 
+-  private async assertExpectedRevision(path: string, expected: FileSystemRevision): Promise<void> {
++  private async assertExpectedRevision(
++    path: string,
++    expected: FileSystemRevision,
++    signal?: AbortSignal,
++  ): Promise<void> {
+     const info = await stat(path);
+     const actual = revisionId(info.mtimeMs, info.size);
+-    if (actual !== expected.id) {
++    // mtime 取整和等长编辑会产生相同旧 id；已读内容 hash 不能在写入校验时被丢弃。
++    if (
++      actual !== expected.id ||
++      (expected.hash !== undefined && hashBuffer(await readFile(path, { signal })) !== expected.hash)
++    ) {
+       throw createFileSystemError({
+         code: "stale_write",
+         path,
+@@ -686,74 +720,10 @@ async function readAtMostBytes(
+   }
+ }
+ 
+-class SymlinkWriteRefusedError extends Error {
+-  constructor(message: string) {
+-    super(message);
+-    this.name = "SymlinkWriteRefusedError";
+-  }
+-}
+-
+ function getNodeErrorCode(error: unknown): unknown {
+   return typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+ }
+ 
+-async function atomicWrite(path: string, content: Buffer): Promise<void> {
+-  let existingMode: number | undefined;
+-
+-  try {
+-    const targetInfo = await lstat(path);
+-    if (targetInfo.isSymbolicLink()) {
+-      throw new SymlinkWriteRefusedError(
+-        `Refusing to write through symlink: ${path}. Resolve the symlink and pass the real target path explicitly.`,
+-      );
+-    }
+-    existingMode = targetInfo.mode;
+-  } catch (error) {
+-    if (getNodeErrorCode(error) !== "ENOENT") {
+-      throw error;
+-    }
+-  }
+-
+-  const tempPath = `${path}.tmp.${process.pid}.${randomBytes(6).toString("hex")}`;
+-
+-  try {
+-    const handle = await open(
+-      tempPath,
+-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+-    );
+-    try {
+-      await handle.writeFile(content);
+-      if (existingMode !== undefined) {
+-        // 原子写会用临时文件 inode 覆盖目标文件；必须先复制原文件权限，避免抹掉脚本执行位。
+-        await handle.chmod(existingMode);
+-      }
+-      await handle.sync();
+-    } finally {
+-      await handle.close();
+-    }
+-
+-    await rename(tempPath, path);
+-  } catch {
+-    await unlink(tempPath).catch(() => undefined);
+-    const fallbackHandle = await open(
+-      path,
+-      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
+-    ).catch((error: unknown) => {
+-      if (getNodeErrorCode(error) === "ELOOP") {
+-        throw new SymlinkWriteRefusedError(`Refusing to write through symlink: ${path} (O_NOFOLLOW)`);
+-      }
+-      throw error;
+-    });
+-
+-    try {
+-      await fallbackHandle.writeFile(content);
+-      await fallbackHandle.sync();
+-    } finally {
+-      await fallbackHandle.close();
+-    }
+-  }
+-}
+-
+ function nodeKind(info: Awaited<ReturnType<typeof stat>>): FileSystemNodeKind {
+   if (info.isFile()) return "file";
+   if (info.isDirectory()) return "directory";
+diff --git a/apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts b/apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts
+new file mode 100644
+index 0000000..a2deb5f
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts
+@@ -0,0 +1,282 @@
++import assert from "node:assert/strict";
++import fs from "node:fs/promises";
++import { syncBuiltinESMExports } from "node:module";
++import { join } from "node:path";
++import { fork } from "node:child_process";
++import { test } from "node:test";
++import { NodeFileSystemAdapter } from "../src/fs/index.js";
++import { fileWriteFixture as fixture } from "./helpers/file-write-fixture.js";
++
++test("bounded text revision does not mistake its prefix digest for the whole file", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "shared.txt");
++    await fs.writeFile(path, "original sixteen");
++    const adapter = new NodeFileSystemAdapter();
++    const partial = await adapter.readTextFile({ path, maxBytes: 4 });
++    assert.equal(partial.content, "orig");
++    assert.equal(partial.truncated, true);
++    assert.equal(partial.revision.hash, undefined);
++    await adapter.writeTextFile({
++      path,
++      content: "replacement",
++      expectedRevision: partial.revision,
++    });
++    assert.equal(await fs.readFile(path, "utf8"), "replacement");
++    assert.ok((await adapter.readTextFile({ path })).revision.hash);
++    assert.ok((await adapter.readBinaryFile({ path })).revision.hash);
++  });
++});
++
++test("two adapter owners cannot both overwrite the same observed revision", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "shared.txt");
++    await fs.writeFile(path, "original");
++    const a = new NodeFileSystemAdapter(),
++      b = new NodeFileSystemAdapter();
++    const { revision } = await a.readTextFile({ path });
++    const outcomes = await Promise.allSettled([
++      a.writeTextFile({ path, content: "writer-A", expectedRevision: revision }),
++      b.writeTextFile({ path, content: "writer-B", expectedRevision: revision }),
++    ]);
++    assert.equal(outcomes.filter((value) => value.status === "fulfilled").length, 1);
++    const failure = outcomes.find((value) => value.status === "rejected") as PromiseRejectedResult;
++    assert.equal(failure.reason.code, "stale_write");
++    assert.deepEqual(await fs.readdir(root), ["shared.txt"]);
++  });
++});
++
++test("supplied hash catches a same-size edit with the original mtime restored", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "shared.txt");
++    await fs.writeFile(path, "original");
++    const adapter = new NodeFileSystemAdapter();
++    const { revision } = await adapter.readTextFile({ path });
++    await fs.writeFile(path, "external");
++    const timestamp = new Date(revision.mtimeMs!);
++    await fs.utimes(path, timestamp, timestamp);
++    await assert.rejects(
++      adapter.writeTextFile({ path, content: "changed!", expectedRevision: revision }),
++      (error: any) => error.code === "stale_write",
++    );
++    assert.equal(await fs.readFile(path, "utf8"), "external");
++  });
++});
++
++test("an external edit observed while staging is not overwritten", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "shared.txt");
++    await fs.writeFile(path, "original");
++    const adapter = new NodeFileSystemAdapter();
++    const { revision } = await adapter.readTextFile({ path });
++    const originalOpen = fs.open;
++    fs.open = async (value, flags, ...rest) => {
++      const handle = await originalOpen(value, flags, ...rest);
++      if (String(value).startsWith(`${path}.tmp.`)) {
++        const sync = handle.sync.bind(handle);
++        handle.sync = async () => {
++          await sync();
++          await fs.writeFile(path, "external editor");
++        };
++      }
++      return handle;
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        adapter.writeTextFile({ path, content: "replacement", expectedRevision: revision }),
++        (error: any) => error.code === "stale_write",
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "external editor");
++      assert.deepEqual(await fs.readdir(root), ["shared.txt"]);
++    } finally {
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test(
++  "a cancelled waiting writer cannot publish or release its predecessor",
++  { timeout: 10000 },
++  async () => {
++    await fixture(async (root) => {
++      const path = join(root, "shared.txt");
++      await fs.writeFile(path, "original");
++      const adapter = new NodeFileSystemAdapter();
++      const entered = Promise.withResolvers<void>(),
++        release = Promise.withResolvers<void>();
++      const originalOpen = fs.open;
++      let writes = 0;
++      fs.open = async (value, flags, ...rest) => {
++        const handle = await originalOpen(value, flags, ...rest);
++        if (String(value).startsWith(`${path}.tmp.`)) {
++          const write = handle.writeFile.bind(handle);
++          handle.writeFile = async (...args) => {
++            writes++;
++            if (writes === 1) {
++              entered.resolve();
++              await release.promise;
++            }
++            return write(...args);
++          };
++        }
++        return handle;
++      };
++      syncBuiltinESMExports();
++      const first = adapter.writeTextFile({ path, content: "first" });
++      try {
++        await entered.promise;
++        const controller = new AbortController();
++        const waiting = new NodeFileSystemAdapter().writeTextFile(
++          { path, content: "cancelled" },
++          { signal: controller.signal },
++        );
++        const rejected = assert.rejects(waiting, (error: any) => error.code === "cancelled");
++        controller.abort(new Error("Owner stopped"));
++        await rejected;
++        const next = adapter.writeTextFile({ path, content: "next" });
++        await new Promise((resolve) => setTimeout(resolve, 25));
++        assert.equal(writes, 1, "later writer must not pass the still-active predecessor");
++        assert.equal(await fs.readFile(path, "utf8"), "original");
++        release.resolve();
++        await first;
++        await next;
++        assert.equal(writes, 2);
++        assert.equal(await fs.readFile(path, "utf8"), "next");
++      } finally {
++        release.resolve();
++        await first.catch(() => {});
++        fs.open = originalOpen;
++        syncBuiltinESMExports();
++      }
++    });
++  },
++);
++
++test("committed rename is not rolled back or reported as a pre-publication cancellation", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "shared.txt");
++    await fs.writeFile(path, "original");
++    const controller = new AbortController();
++    const originalRename = fs.rename;
++    fs.rename = async (from, to) => {
++      await originalRename(from, to);
++      if (to === path) controller.abort();
++    };
++    syncBuiltinESMExports();
++    try {
++      const result = await new NodeFileSystemAdapter().writeTextFile(
++        { path, content: "committed" },
++        { signal: controller.signal },
++      );
++      assert.equal(result.bytesWritten, Buffer.byteLength("committed"));
++      assert.equal(await fs.readFile(path, "utf8"), "committed");
++    } finally {
++      fs.rename = originalRename;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test(
++  "independent native writer processes share revision admission",
++  { timeout: 20000 },
++  async () => {
++    await fixture(async (root) => {
++      const path = join(root, "shared.txt");
++      await fs.writeFile(path, "original");
++      const worker = join(root, "worker.mts");
++      const adapterUrl = new URL("../src/fs/index.ts", import.meta.url).href;
++      await fs.writeFile(
++        worker,
++        `
++      import { NodeFileSystemAdapter } from ${JSON.stringify(adapterUrl)};
++      const adapter = new NodeFileSystemAdapter();
++      const path = process.argv[2];
++      const { revision } = await adapter.readTextFile({ path });
++      process.on('message', async () => {
++        try {
++          await adapter.writeTextFile({ path, content: process.argv[3], expectedRevision: revision });
++          process.send({ status: 'fulfilled' });
++        } catch (error) { process.send({ status: 'rejected', code: error.code }); }
++        process.disconnect();
++      });
++      process.send({ status: 'ready', hash: revision.hash });
++    `,
++      );
++      const children = ["writer-A", "writer-B"].map((value) =>
++        fork(worker, [path, value], {
++          execArgv: ["--import", import.meta.resolve("tsx")],
++          stdio: ["ignore", "pipe", "pipe", "ipc"],
++        }),
++      );
++      try {
++        const outcomes = children.map(
++          (child) =>
++            new Promise<any>((resolve, reject) => {
++              child.on("message", (value: any) => {
++                if (value.status !== "ready") resolve(value);
++              });
++              child.on("error", reject);
++            }),
++        );
++        const ready = await Promise.all(
++          children.map(
++            (child) =>
++              new Promise<any>((resolve, reject) => {
++                child.on("message", (value: any) => {
++                  if (value.status === "ready") resolve(value);
++                });
++                child.on("error", reject);
++              }),
++          ),
++        );
++        assert.equal(ready[0].hash, ready[1].hash);
++        children.forEach((child) => child.send({ go: true }));
++        const result = await Promise.all(outcomes);
++        assert.equal(result.filter((value) => value.status === "fulfilled").length, 1);
++        assert.deepEqual(
++          result.filter((value) => value.status === "rejected").map((value) => value.code),
++          ["stale_write"],
++        );
++        assert.ok(["writer-A", "writer-B"].includes(await fs.readFile(path, "utf8")));
++      } finally {
++        children.forEach((child) => child.kill());
++      }
++    });
++  },
++);
++
++test("same parent-directory aliases coordinate and final symlink targets remain refused", async () => {
++  await fixture(async (root) => {
++    const real = join(root, "real"),
++      alias = join(root, "alias");
++    await fs.mkdir(real);
++    try {
++      await fs.symlink(real, alias, process.platform === "win32" ? "junction" : "dir");
++    } catch (error) {
++      if (process.platform === "win32" && (error as any).code === "EPERM") return;
++      throw error;
++    }
++    const path = join(real, "shared.txt"),
++      viaAlias = join(alias, "shared.txt");
++    await fs.writeFile(path, "original");
++    const adapter = new NodeFileSystemAdapter();
++    const { revision } = await adapter.readTextFile({ path });
++    const outcomes = await Promise.allSettled([
++      adapter.writeTextFile({ path, content: "writer-A", expectedRevision: revision }),
++      new NodeFileSystemAdapter().writeTextFile({
++        path: viaAlias,
++        content: "writer-B",
++        expectedRevision: revision,
++      }),
++    ]);
++    assert.equal(outcomes.filter((value) => value.status === "fulfilled").length, 1);
++    const link = join(real, "link.txt");
++    await fs.symlink(path, link);
++    const before = await fs.readFile(path, "utf8");
++    await assert.rejects(adapter.writeTextFile({ path: link, content: "forbidden" }));
++    assert.equal(await fs.readFile(path, "utf8"), before);
++    assert.equal((await fs.lstat(link)).isSymbolicLink(), true);
++  });
++});
+diff --git a/apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts b/apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts
+new file mode 100644
+index 0000000..c4ea2d5
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts
+@@ -0,0 +1,196 @@
++import assert from "node:assert/strict";
++import { constants } from "node:fs";
++import fs from "node:fs/promises";
++import { syncBuiltinESMExports } from "node:module";
++import { join } from "node:path";
++import { test } from "node:test";
++import { NodeFileSystemAdapter } from "../src/fs/index.js";
++import { fileWriteFixture as fixture } from "./helpers/file-write-fixture.js";
++
++const fault = (code: string) => Object.assign(new Error(`Injected ${code}`), { code });
++
++test("atomic publication failure preserves original bytes and the rename cause", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "original.txt");
++    await fs.writeFile(path, "original must survive");
++    const adapter = new NodeFileSystemAdapter();
++    const originalRename = fs.rename;
++    const originalOpen = fs.open;
++    let directOpened = false;
++    fs.rename = async (from, to) => {
++      if (to === path) throw fault("EIO");
++      return originalRename(from, to);
++    };
++    fs.open = async (value, flags, ...rest) => {
++      if (value === path && typeof flags === "number" && flags & constants.O_TRUNC)
++        directOpened = true;
++      return originalOpen(value, flags, ...rest);
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        adapter.writeTextFile({ path, content: "replacement", atomic: true }),
++        (error: any) => error.code === "io_error" && error.cause.code === "EIO",
++      );
++      assert.equal(directOpened, false);
++      assert.equal(await fs.readFile(path, "utf8"), "original must survive");
++      assert.deepEqual(await fs.readdir(root), ["original.txt"]);
++    } finally {
++      fs.rename = originalRename;
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test("exclusive temporary creation failure cannot remove another writer's file", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "original.txt");
++    await fs.writeFile(path, "original");
++    const originalOpen = fs.open;
++    let otherFile: string | undefined;
++    fs.open = async (value, flags, ...rest) => {
++      if (String(value).startsWith(`${path}.tmp.`)) {
++        otherFile = String(value);
++        await fs.writeFile(otherFile, "another writer", { flag: "wx" });
++      }
++      return originalOpen(value, flags, ...rest);
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        new NodeFileSystemAdapter().writeTextFile({ path, content: "replacement" }),
++      );
++      assert.ok(otherFile);
++      assert.equal(await fs.readFile(otherFile, "utf8"), "another writer");
++      assert.equal(await fs.readFile(path, "utf8"), "original");
++    } finally {
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test("temporary flush failure leaves the original and cleans its own temporary file", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "original.txt");
++    await fs.writeFile(path, "original");
++    const originalOpen = fs.open;
++    fs.open = async (value, flags, ...rest) => {
++      const handle = await originalOpen(value, flags, ...rest);
++      if (String(value).startsWith(`${path}.tmp.`))
++        handle.sync = async () => {
++          throw fault("ENOSPC");
++        };
++      return handle;
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        new NodeFileSystemAdapter().writeTextFile({ path, content: "replacement" }),
++        (error: any) => error.code === "io_error" && error.cause.code === "ENOSPC",
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "original");
++      assert.deepEqual(await fs.readdir(root), ["original.txt"]);
++    } finally {
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test("secondary close failure retains staging ENOSPC as the primary cause", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "original.txt");
++    await fs.writeFile(path, "original");
++    const originalOpen = fs.open;
++    fs.open = async (value, flags, ...rest) => {
++      const handle = await originalOpen(value, flags, ...rest);
++      if (String(value).startsWith(`${path}.tmp.`)) {
++        const close = handle.close.bind(handle);
++        handle.writeFile = async () => {
++          throw fault("ENOSPC");
++        };
++        handle.close = async () => {
++          await close();
++          throw fault("EIO");
++        };
++      }
++      return handle;
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        new NodeFileSystemAdapter().writeTextFile({ path, content: "replacement" }),
++        (error: any) =>
++          error.cause.code === "ENOSPC" &&
++          error.cause.cause.code === "ENOSPC" &&
++          error.cause.errors[1].code === "EIO",
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "original");
++      assert.deepEqual(await fs.readdir(root), ["original.txt"]);
++    } finally {
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test("transient rename locks retry without opening the original for overwrite", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "script.sh");
++    await fs.writeFile(path, "old", { mode: 0o755 });
++    const originalRename = fs.rename;
++    let attempts = 0;
++    fs.rename = async (from, to) => {
++      if (to === path && ++attempts < 3) throw fault("EBUSY");
++      return originalRename(from, to);
++    };
++    syncBuiltinESMExports();
++    try {
++      await new NodeFileSystemAdapter().writeTextFile({ path, content: "new" });
++      assert.equal(attempts, 3);
++      assert.equal(await fs.readFile(path, "utf8"), "new");
++      if (process.platform !== "win32") assert.equal((await fs.stat(path)).mode & 0o777, 0o755);
++      assert.deepEqual(await fs.readdir(root), ["script.sh"]);
++    } finally {
++      fs.rename = originalRename;
++      syncBuiltinESMExports();
++    }
++  });
++});
++
++test("Stop after staging but before rename preserves the original", async () => {
++  await fixture(async (root) => {
++    const path = join(root, "original.txt");
++    await fs.writeFile(path, "original");
++    const controller = new AbortController();
++    const originalOpen = fs.open;
++    fs.open = async (value, flags, ...rest) => {
++      const handle = await originalOpen(value, flags, ...rest);
++      if (String(value).startsWith(`${path}.tmp.`)) {
++        const sync = handle.sync.bind(handle);
++        handle.sync = async () => {
++          await sync();
++          controller.abort();
++        };
++      }
++      return handle;
++    };
++    syncBuiltinESMExports();
++    try {
++      await assert.rejects(
++        new NodeFileSystemAdapter().writeTextFile(
++          { path, content: "replacement" },
++          { signal: controller.signal },
++        ),
++        (error: any) => error.code === "cancelled",
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "original");
++      assert.deepEqual(await fs.readdir(root), ["original.txt"]);
++    } finally {
++      fs.open = originalOpen;
++      syncBuiltinESMExports();
++    }
++  });
++});
+diff --git a/apps/zcode-cli/packages/adapters/test/helpers/file-write-fixture.ts b/apps/zcode-cli/packages/adapters/test/helpers/file-write-fixture.ts
+new file mode 100644
+index 0000000..89307a8
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/helpers/file-write-fixture.ts
+@@ -0,0 +1,12 @@
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++
++export async function fileWriteFixture(run: (root: string) => Promise<void>) {
++  const root = await mkdtemp(join(tmpdir(), "zcode-file-integrity-"));
++  try {
++    await run(root);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/edit.ts b/apps/zcode-cli/packages/core/src/tool/handlers/edit.ts
+index 6d3cf52..ebd0694 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/edit.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/edit.ts
+@@ -445,6 +445,8 @@ function hasReadStateChanged(
+   lastRead: ReadFileStateEntry,
+   currentRead: FileSystemReadTextResult,
+ ): boolean {
++  // 完整 Read 的内容事实优先于 mtime/size 快路径，避免跳过已发生的等长外部修改。
++  if (isStrictFullRead(lastRead) && lastRead.content !== currentRead.content) return true;
+   const currentMtimeMs = currentRead.revision?.mtimeMs;
+   if (lastRead.mtimeMs !== undefined && currentMtimeMs !== undefined) {
+     // 亚毫秒级精度，只在当前文件的整数毫秒晚于 Read 记录或大小变化时判 stale，减少误报。
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/write.ts b/apps/zcode-cli/packages/core/src/tool/handlers/write.ts
+index 78834c4..26cf3fa 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/write.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/write.ts
+@@ -307,6 +307,8 @@ function hasReadStateChanged(
+   lastRead: ReadFileStateEntry,
+   currentRead: FileSystemReadTextResult,
+ ): boolean {
++  // 整件缓存内容不同就是 stale；等长编辑或恢复 mtime 不能用新一次内部读取洗掉旧上下文。
++  if (isStrictFullRead(lastRead) && lastRead.content !== currentRead.content) return true;
+   const currentRevisionId = currentRead.revision?.id;
+   if (lastRead.revisionId && currentRevisionId && lastRead.revisionId !== currentRevisionId) {
+     return true;
+diff --git a/apps/zcode-cli/packages/core/test/file-write-publication.test.ts b/apps/zcode-cli/packages/core/test/file-write-publication.test.ts
+new file mode 100644
+index 0000000..2c0776f
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/file-write-publication.test.ts
+@@ -0,0 +1,155 @@
++import assert from "node:assert/strict";
++import fs from "node:fs/promises";
++import { syncBuiltinESMExports } from "node:module";
++import { join } from "node:path";
++import test from "node:test";
++import { SessionEventType } from "@zcode/contracts";
++import { NodeFileSystemAdapter } from "../../adapters/src/fs/index.js";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++for (const streaming of [false, true]) {
++  test(`failed file publication remains an error through Host/Pi/SQLite ${streaming ? "stream" : "generate"}`, async () => {
++    const f = await fixture(undefined, streaming, {
++      config: { toolAllowlist: ["Read", "Write"] },
++      deps: { fileSystemPort: new NodeFileSystemAdapter() },
++    });
++    const path = join(f.dir, "document.txt");
++    await fs.writeFile(path, "original file");
++    const originalRename = fs.rename;
++    fs.rename = async (from, to) => {
++      if (to === path)
++        throw Object.assign(new Error("Injected publication failure"), { code: "EIO" });
++      return originalRename(from, to);
++    };
++    syncBuiltinESMExports();
++    try {
++      f.steps.push(
++        () =>
++          reply("Read original", [{ id: "read-source", name: "Read", input: { file_path: path } }]),
++        () =>
++          reply("Replace document", [
++            {
++              id: "write-source",
++              name: "Write",
++              input: { file_path: path, content: "replacement file" },
++            },
++          ]),
++        (request) => {
++          const tool = request.messages.find(
++            (message: any) => message.role === "tool" && message.toolCallId === "write-source",
++          );
++          assert.equal(tool?.isError, true);
++          return reply("The write failed");
++        },
++      );
++      assert.equal(
++        (await f.runtime.executeTurn("Replace the read document")).response,
++        "The write failed",
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "original file");
++      const events = await f.runtime.getSessionEventStore().getEvents("session" as never);
++      assert.equal(
++        events.filter((event) => event.type === SessionEventType.CheckpointCreated).length,
++        0,
++      );
++      const messages = await f.store.messages({ sessionID: "session" as never });
++      assert.ok(
++        messages.some((message) =>
++          message.parts.some(
++            (part) =>
++              part.type === "tool" &&
++              part.callID === "write-source" &&
++              part.state.status === "error",
++          ),
++        ),
++      );
++      await f.reopen();
++      const reopened = await f.store.messages({ sessionID: "session" as never });
++      assert.ok(
++        reopened.some((message) =>
++          message.parts.some(
++            (part) =>
++              part.type === "tool" &&
++              part.callID === "write-source" &&
++              part.state.status === "error",
++          ),
++        ),
++      );
++      assert.equal(await fs.readFile(path, "utf8"), "original file");
++    } finally {
++      fs.rename = originalRename;
++      syncBuiltinESMExports();
++      await f.close();
++    }
++  });
++}
++
++for (const streaming of [false, true]) {
++  for (const tool of ["Write", "Edit"] as const) {
++    test(`${tool} keeps complete Read freshness with restored metadata, ${streaming ? "stream" : "generate"}`, async () => {
++      const f = await fixture(undefined, streaming, {
++        config: { toolAllowlist: ["Read", tool] },
++        deps: { fileSystemPort: new NodeFileSystemAdapter() },
++      });
++      const path = join(f.dir, "document.txt");
++      await fs.writeFile(path, "line-a\nline-b");
++      const original = await fs.stat(path);
++      const timestamp = new Date(original.mtimeMs);
++      try {
++        f.steps.push(
++          () =>
++            reply("Read original", [
++              { id: "read-source", name: "Read", input: { file_path: path } },
++            ]),
++          async () => {
++            await fs.writeFile(path, "line-c\nline-b");
++            await fs.utimes(path, timestamp, timestamp);
++            return reply("Try old-context mutation", [
++              {
++                id: "mutate-source",
++                name: tool,
++                input:
++                  tool === "Write"
++                    ? { file_path: path, content: "replacement" }
++                    : { file_path: path, old_string: "line-b", new_string: "line-d" },
++              },
++            ]);
++          },
++          (request) => {
++            assert.ok(
++              request.messages.some(
++                (message: any) =>
++                  message.role === "tool" &&
++                  message.toolCallId === "mutate-source" &&
++                  message.isError,
++              ),
++            );
++            return reply("Read the current file first");
++          },
++        );
++        await f.runtime.executeTurn("Mutate only the document already read");
++        assert.equal(await fs.readFile(path, "utf8"), "line-c\nline-b");
++        const events = await f.runtime.getSessionEventStore().getEvents("session" as never);
++        assert.equal(
++          events.filter((event) => event.type === SessionEventType.CheckpointCreated).length,
++          0,
++        );
++        await f.reopen();
++        assert.equal(await fs.readFile(path, "utf8"), "line-c\nline-b");
++        const messages = await f.store.messages({ sessionID: "session" as never });
++        assert.ok(
++          messages.some((message) =>
++            message.parts.some(
++              (part) =>
++                part.type === "tool" &&
++                part.callID === "mutate-source" &&
++                part.state.status === "error",
++            ),
++          ),
++        );
++      } finally {
++        await f.close();
++      }
++    });
++  }
++}
+diff --git a/package.json b/package.json
+index a892095..af95740 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:decision-classifier && pnpm run test:decision-host && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:kernel-recovery && pnpm run test:decision-classifier && pnpm run test:decision-host && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts apps/zcode-cli/packages/core/test/mimo-thinking-replay.test.ts apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -77,7 +77,8 @@
+     "test:decision-classifier": "tsx --test apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
+-    "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests"
++    "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/shared/src/node/atomicFileLock.ts b/packages/shared/src/node/atomicFileLock.ts
+index 9d56fd8..5eb9685 100644
+--- a/packages/shared/src/node/atomicFileLock.ts
++++ b/packages/shared/src/node/atomicFileLock.ts
+@@ -177,6 +177,7 @@ export async function acquireFileLock(
+   retryDelaysMs: readonly number[],
+   ownerlessGraceMs: number,
+   maxWaitMs: number,
++  signal?: AbortSignal,
+ ): Promise<() => Promise<void>> {
+   const lockFile = `${filePath}.lock`;
+   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+@@ -195,6 +196,7 @@ export async function acquireFileLock(
+   let lastRemovalError: unknown;
+ 
+   for (let attempt = 0; ; attempt += 1) {
++    signal?.throwIfAborted();
+     let createdLock = false;
+     try {
+       await mkdir(lockFile);
+@@ -269,7 +271,7 @@ export async function acquireFileLock(
+ 
+       const retryDelayMs =
+         retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)] ?? remainingMs;
+-      await sleep(Math.min(retryDelayMs, remainingMs));
++      await sleep(Math.min(retryDelayMs, remainingMs), undefined, { signal });
+     }
+   }
+ }
+diff --git a/packages/shared/src/node/privateFilePersistence.ts b/packages/shared/src/node/privateFilePersistence.ts
+index ca7de92..3563b5c 100644
+--- a/packages/shared/src/node/privateFilePersistence.ts
++++ b/packages/shared/src/node/privateFilePersistence.ts
+@@ -11,6 +11,7 @@ const DEFAULT_RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 800] as const;
+ const processFileLockTails = new Map<string, Promise<void>>();
+ 
+ export interface SharedFileLockOptions {
++  signal?: AbortSignal;
+   lockRetryDelaysMs?: readonly number[];
+   lockOwnerlessGraceMs?: number;
+   lockMaxWaitMs?: number;
+@@ -53,6 +54,7 @@ export async function withFileLock<T>(
+   operation: () => Promise<T>,
+   options: SharedFileLockOptions = {},
+ ): Promise<T> {
++  options.signal?.throwIfAborted();
+   // 同一进程几十个 caller 同时轮询目录锁会形成惊群，后排请求可能在
+   // 很短的实际写入之后仍撞上 8 秒超时。先做进程内 FIFO，每个进程只让队首竞争 OS 锁。
+   const previousTail = processFileLockTails.get(filePath) ?? Promise.resolve();
+@@ -61,30 +63,56 @@ export async function withFileLock<T>(
+     releaseProcessQueue = resolve;
+   });
+   processFileLockTails.set(filePath, currentTail);
+-  await previousTail;
+-
++  let enteredQueue = false;
+   let releaseLock: (() => Promise<void>) | undefined;
++  const releaseQueue = () => {
++    releaseProcessQueue();
++    if (processFileLockTails.get(filePath) === currentTail) processFileLockTails.delete(filePath);
++  };
+   try {
++    await waitForFileLockTurn(previousTail, options.signal);
++    enteredQueue = true;
++    options.signal?.throwIfAborted();
+     await mkdir(dirname(filePath), { recursive: true });
+     releaseLock = await acquireFileLock(
+       filePath,
+       options.lockRetryDelaysMs ?? DEFAULT_LOCK_RETRY_DELAYS_MS,
+       options.lockOwnerlessGraceMs ?? DEFAULT_LOCK_OWNERLESS_GRACE_MS,
+       options.lockMaxWaitMs ?? DEFAULT_LOCK_MAX_WAIT_MS,
++      options.signal,
+     );
++    options.signal?.throwIfAborted();
+     return await operation();
+   } finally {
+     try {
+       await releaseLock?.();
+     } finally {
+-      releaseProcessQueue();
+-      if (processFileLockTails.get(filePath) === currentTail) {
+-        processFileLockTails.delete(filePath);
+-      }
++      // 取消排队者不能提前放行后继，让它越过仍持锁的前任。
++      if (enteredQueue) releaseQueue();
++      else void previousTail.then(releaseQueue, releaseQueue);
+     }
+   }
+ }
+ 
++function waitForFileLockTurn(previous: Promise<void>, signal?: AbortSignal): Promise<void> {
++  if (!signal) return previous;
++  signal.throwIfAborted();
++  return new Promise((resolve, reject) => {
++    const abort = () => reject(new DOMException("File lock wait cancelled", "AbortError"));
++    signal.addEventListener("abort", abort, { once: true });
++    void previous.then(
++      () => {
++        signal.removeEventListener("abort", abort);
++        resolve();
++      },
++      (error) => {
++        signal.removeEventListener("abort", abort);
++        reject(error);
++      },
++    );
++  });
++}
++
+ export async function atomicWritePrivateTextFile(
+   filePath: string,
+   content: string,

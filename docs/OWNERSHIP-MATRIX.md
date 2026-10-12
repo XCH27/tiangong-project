@@ -269,3 +269,12 @@ If a Worker touches a file outside its domain:
 1. The PR is rejected without review.
 2. The Worker must revert the change and re-open with a corrected diff.
 3. If the Worker needed to modify a Lead-owned file, it must file a contract change request before touching any code.
+
+
+## ZK-FIX disjoint ZCode correction ownership (D57)
+
+The exact existing-source leaf paths in `docs/agent-packets/zcode-kernel-rectification.md`
+are assigned R/S/C in independent worktrees. Lead owns shared contracts, package test lists,
+root documents/recipe, UI, build/gates and final integration. These rows do not authorize
+Craft-spine writes or any historical Locked wave. Narrow packet scope wins; overlap returns
+to Lead before editing.

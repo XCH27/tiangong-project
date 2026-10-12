@@ -1,0 +1,2013 @@
+diff --git a/package.json b/package.json
+index 25debe2..bce5721 100644
+--- a/package.json
++++ b/package.json
+@@ -56,7 +56,8 @@
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+-    "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests"
++    "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
++    "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/ChatMediaAttachmentPreviewDialog.tsx b/packages/ui/src/ChatMediaAttachmentPreviewDialog.tsx
+index 879a2bd..41d1057 100644
+--- a/packages/ui/src/ChatMediaAttachmentPreviewDialog.tsx
++++ b/packages/ui/src/ChatMediaAttachmentPreviewDialog.tsx
+@@ -8,6 +8,10 @@ import {
+ } from "@/components/ui/dialog.js";
+ import type { PdfViewerLabels, PdfViewerSource } from "@/components/ui/pdf-viewer.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { ComposerDocumentPreview } from "@/v4/composer/ComposerDocumentPreview.js";
++import { getComposerDocumentKind } from "@/v4/composer/useComposerAttachmentPreviews.js";
++import type { ComposerAttachmentPreview } from "@/v4/composer/useComposerAttachmentPreviews.js";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ 
+ // react-pdf/pdfjs 在模块导入阶段依赖浏览器 DOMMatrix；对话列表也会加载本组件，
+ // 导致 Node 测试和非 PDF 对话在真正打开预览前就触发浏览器专属依赖。仅在渲染 PDF 时懒加载，
+@@ -22,6 +26,7 @@ export interface ChatMediaAttachmentPreviewTarget {
+   mediaType: string;
+   url?: string;
+   pdfSource?: PdfViewerSource;
++  documentPreview?: ComposerAttachmentPreview;
+ }
+ 
+ export function ChatMediaAttachmentPreviewDialog({
+@@ -30,16 +35,33 @@ export function ChatMediaAttachmentPreviewDialog({
+   onOpenChange,
+   loading = false,
+   error = false,
++  onCloseAutoFocus,
+ }: {
+   attachment: ChatMediaAttachmentPreviewTarget | null;
+   open: boolean;
+   onOpenChange: (open: boolean) => void;
+   loading?: boolean;
+   error?: boolean;
++  onCloseAutoFocus?: (event: Event) => void;
+ }) {
+   const { intl } = useZCodeIntl();
+   const isVideo = attachment?.mediaType.startsWith("video/") === true;
+   const isPdf = attachment?.mediaType.split(";", 1)[0]?.trim().toLowerCase() === "application/pdf";
++  const isText = attachment
++    ? ["text", "office", "pptx"].includes(
++        getComposerDocumentKind({
++          filename: attachment.filename,
++          mimeType: attachment.mediaType,
++        }) ?? "",
++      )
++    : false;
++  const [documentMode, setDocumentMode] = useState("preview");
++  const richText =
++    attachment?.documentPreview?.kind === "text" &&
++    /\.(md|markdown|csv|tsv|ipynb)$/iu.test(attachment.filename);
++  useEffect(() => {
++    setDocumentMode("preview");
++  }, [attachment?.filename, open]);
+   const [videoState, setVideoState] = useState<"loading" | "ready" | "unsupported">("loading");
+   useEffect(() => {
+     setVideoState("loading");
+@@ -48,18 +70,22 @@ export function ChatMediaAttachmentPreviewDialog({
+     id: "chat.attachments.preview.title",
+   });
+   const loadingLabel = intl.formatMessage({
+-    id: isVideo
+-      ? "chat.attachments.preview.videoLoading"
+-      : isPdf
+-        ? "chat.attachments.preview.pdfLoading"
+-        : "chat.attachments.preview.loading",
++    id: isText
++      ? "chat.attachments.preview.textLoading"
++      : isVideo
++        ? "chat.attachments.preview.videoLoading"
++        : isPdf
++          ? "chat.attachments.preview.pdfLoading"
++          : "chat.attachments.preview.loading",
+   });
+   const unavailableLabel = intl.formatMessage({
+-    id: isVideo
+-      ? "chat.attachments.preview.videoUnavailable"
+-      : isPdf
+-        ? "chat.attachments.preview.pdfUnavailable"
+-        : "chat.attachments.preview.unavailable",
++    id: isText
++      ? "chat.attachments.preview.textUnavailable"
++      : isVideo
++        ? "chat.attachments.preview.videoUnavailable"
++        : isPdf
++          ? "chat.attachments.preview.pdfUnavailable"
++          : "chat.attachments.preview.unavailable",
+   });
+   const unsupportedVideoLabel = intl.formatMessage({
+     id: "chat.attachments.preview.videoUnsupported",
+@@ -79,15 +105,42 @@ export function ChatMediaAttachmentPreviewDialog({
+ 
+   return (
+     <Dialog open={open} onOpenChange={onOpenChange}>
+-      <DialogContent className="rounded-xl max-w-5xl gap-0 overflow-hidden p-0" showCloseButton>
+-        <DialogHeader className="gap-1 border-b border-popover-border px-4 py-3 pr-12">
+-          <DialogTitle className="truncate">{attachment?.filename ?? title}</DialogTitle>
+-          <DialogDescription className="truncate text-ui-base">
+-            {attachment?.mediaType ?? title}
+-          </DialogDescription>
++      <DialogContent
++        className="rounded-xl max-w-5xl gap-0 overflow-hidden p-0"
++        showCloseButton
++        closeLabel={intl.formatMessage({ id: "common.close" })}
++        onCloseAutoFocus={onCloseAutoFocus}
++      >
++        <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-popover-border px-4 py-3 pr-12">
++          <div className="min-w-0">
++            <DialogTitle className="truncate" title={attachment?.filename}>
++              {attachment?.filename ?? title}
++            </DialogTitle>
++            <DialogDescription className="sr-only">{title}</DialogDescription>
++          </div>
++          {richText ? (
++            <Tabs value={documentMode} onValueChange={setDocumentMode}>
++              <TabsList>
++                <TabsTrigger value="preview">
++                  {intl.formatMessage({ id: "codeViewer.markdownPreview" })}
++                </TabsTrigger>
++                <TabsTrigger value="source">
++                  {intl.formatMessage({ id: "codeViewer.markdownSource" })}
++                </TabsTrigger>
++              </TabsList>
++            </Tabs>
++          ) : null}
+         </DialogHeader>
+         <div className="flex max-h-[72vh] min-h-64 items-center justify-center bg-background-alt p-4">
+-          {attachment?.pdfSource || attachment?.url ? (
++          {attachment?.documentPreview ? (
++            <div className="h-[calc(72vh-2rem)] w-full overflow-auto rounded-lg bg-background">
++              <ComposerDocumentPreview
++                preview={attachment.documentPreview}
++                filename={attachment.filename}
++                source={documentMode === "source"}
++              />
++            </div>
++          ) : attachment?.pdfSource || attachment?.url ? (
+             isPdf ? (
+               <Suspense
+                 fallback={
+diff --git a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
+index 0335580..b272a9a 100644
+--- a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
++++ b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
+@@ -1,3 +1,4 @@
++import { parseDelimitedTextPreview } from "@/lib/delimitedTextPreview.js";
+ import { useMemo } from "react";
+ import { MessageResponse } from "@/components/ai-elements/message.js";
+ import {
+@@ -63,33 +64,16 @@ function previewModeFor(artifact: {
+   return undefined;
+ }
+ 
+-/** 最小的 CSV 读法：只认逗号与成对引号，够画一张缩略；不是解析器。 */
+ function csvPreviewRows(text: string): string[][] {
+-  const rows: string[][] = [];
+-  for (const line of text.split(/\r?\n/u)) {
+-    if (line.trim().length === 0) continue;
+-    const cells: string[] = [];
+-    let cell = "";
+-    let quoted = false;
+-    for (const char of line) {
+-      if (char === '"') quoted = !quoted;
+-      else if (char === "," && !quoted) {
+-        cells.push(cell);
+-        cell = "";
+-      } else cell += char;
+-    }
+-    cells.push(cell);
+-    rows.push(
+-      cells.slice(0, CSV_PREVIEW_COLUMNS).map((value) => {
++  return parseDelimitedTextPreview(text, ",", CSV_PREVIEW_ROWS, CSV_PREVIEW_COLUMNS).rows.map(
++    (row) =>
++      row.map((value) => {
+         const trimmed = value.trim();
+         return trimmed.length > CSV_CELL_MAX_CHARS
+           ? `${trimmed.slice(0, CSV_CELL_MAX_CHARS)}…`
+           : trimmed;
+       }),
+-    );
+-    if (rows.length >= CSV_PREVIEW_ROWS) break;
+-  }
+-  return rows;
++  );
+ }
+ 
+ function decodeHead(bytes: Uint8Array): string {
+diff --git a/packages/ui/src/components/ai-elements/attachments.tsx b/packages/ui/src/components/ai-elements/attachments.tsx
+index 37ea7ed..4240238 100644
+--- a/packages/ui/src/components/ai-elements/attachments.tsx
++++ b/packages/ui/src/components/ai-elements/attachments.tsx
+@@ -246,7 +246,7 @@ export const Attachment = ({
+   const handleKeyDown = useCallback(
+     (event: ReactKeyboardEvent<HTMLDivElement>) => {
+       onKeyDown?.(event);
+-      if (event.defaultPrevented || !onOpen) {
++      if (event.defaultPrevented || !onOpen || event.target !== event.currentTarget) {
+         return;
+       }
+       if (event.key === "Enter" || event.key === " ") {
+diff --git a/packages/ui/src/components/ai-elements/message.tsx b/packages/ui/src/components/ai-elements/message.tsx
+index f8088fe..df6b652 100644
+--- a/packages/ui/src/components/ai-elements/message.tsx
++++ b/packages/ui/src/components/ai-elements/message.tsx
+@@ -355,6 +355,8 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
+ export type MessageResponseProps = {
+   /** 办公模式的正式回答固定换行，不覆盖用户保存的代码预览设置。 */
+   forceCodeWrap?: boolean;
++  /** Render-time image loading only; unrelated to model vision or send permissions. */
++  allowImageRequests?: boolean;
+   className?: string;
+   children?: ReactNode;
+   dir?: "auto" | "ltr" | "rtl";
+@@ -1296,6 +1298,7 @@ export const messageResponsePropsAreEqual = (
+ ): boolean =>
+   prevProps.children === nextProps.children &&
+   prevProps.forceCodeWrap === nextProps.forceCodeWrap &&
++  prevProps.allowImageRequests === nextProps.allowImageRequests &&
+   nextProps.streaming === prevProps.streaming &&
+   nextProps.streamingAnimationKey === prevProps.streamingAnimationKey &&
+   nextProps.workspacePath === prevProps.workspacePath &&
+@@ -1316,6 +1319,7 @@ export const MessageResponse = memo(
+     className,
+     streaming = false,
+     forceCodeWrap = false,
++    allowImageRequests = true,
+     onOpenCodeViewer,
+     onOpenFileLink,
+     onOpenExternalUrl,
+@@ -1409,13 +1413,16 @@ export const MessageResponse = memo(
+           workspaceIdentity,
+           workspaceRemoteSessionId,
+           wrapLongLines,
+-        }) + (forceCodeWrap ? ":wrap-locked" : "")
++        }) +
++        (forceCodeWrap ? ":wrap-locked" : "") +
++        (allowImageRequests ? "" : ":local-images")
+       );
+     }, [
+       codeBlockTheme,
+       codePreviewSettings.fontSizePx,
+       wrapLongLines,
+       forceCodeWrap,
++      allowImageRequests,
+       renderZCodeFileCitations,
+       readAttachment,
+       sessionId,
+@@ -1498,15 +1505,19 @@ export const MessageResponse = memo(
+             </span>
+           );
+         },
+-        img: (imageProps: MarkdownImageProps) => (
+-          <MarkdownImage
+-            {...imageProps}
+-            workspacePath={workspacePath}
+-            workspaceHomePath={workspaceHomePath}
+-            sessionId={sessionId}
+-            readAttachment={readAttachment}
+-          />
+-        ),
++        img: (imageProps: MarkdownImageProps) =>
++          allowImageRequests ||
++          (typeof imageProps.src === "string" && imageProps.src.startsWith("data:image/")) ? (
++            <MarkdownImage
++              {...imageProps}
++              workspacePath={workspacePath}
++              workspaceHomePath={workspaceHomePath}
++              sessionId={sessionId}
++              readAttachment={readAttachment}
++            />
++          ) : (
++            <span className="text-muted-foreground">{imageProps.alt}</span>
++          ),
+         p: MarkdownImageParagraph,
+         h1: (headingProps: MarkdownHeadingProps) => (
+           <MessageMarkdownHeading {...headingProps} headingLevel="h1" />
+@@ -1596,6 +1607,7 @@ export const MessageResponse = memo(
+         codePreviewSettings.fontSizePx,
+         wrapLongLines,
+         forceCodeWrap,
++        allowImageRequests,
+         onOpenFileLink,
+         onOpenCodeViewer,
+         onOpenExternalUrl,
+diff --git a/packages/ui/src/components/ui/dialog.tsx b/packages/ui/src/components/ui/dialog.tsx
+index 9e06261..650669c 100644
+--- a/packages/ui/src/components/ui/dialog.tsx
++++ b/packages/ui/src/components/ui/dialog.tsx
+@@ -44,11 +44,13 @@ function DialogContent({
+   className,
+   children,
+   showCloseButton = true,
++  closeLabel = "Close",
+   showOverlay = true,
+   overlayClassName,
+   ...props
+ }: React.ComponentProps<typeof DialogPrimitive.Content> & {
+   showCloseButton?: boolean;
++  closeLabel?: string;
+   showOverlay?: boolean;
+   overlayClassName?: string;
+ }) {
+@@ -75,7 +77,7 @@ function DialogContent({
+               size="icon-sm"
+             >
+               <XIcon />
+-              <span className="sr-only">Close</span>
++              <span className="sr-only">{closeLabel}</span>
+             </Button>
+           </DialogPrimitive.Close>
+         )}
+diff --git a/packages/ui/src/components/ui/pdf-viewer.tsx b/packages/ui/src/components/ui/pdf-viewer.tsx
+index e470fd5..1b4ea2a 100644
+--- a/packages/ui/src/components/ui/pdf-viewer.tsx
++++ b/packages/ui/src/components/ui/pdf-viewer.tsx
+@@ -98,6 +98,7 @@ const DEFAULT_LABELS: PdfViewerLabels = {
+ 
+ export interface PdfViewerProps extends HTMLAttributes<HTMLDivElement> {
+   source: PdfViewerSource;
++  thumbnail?: boolean;
+   labels?: Partial<PdfViewerLabels>;
+   onLoadError?: (error: Error) => void;
+ }
+@@ -119,7 +120,14 @@ function normalizePdfSource(
+   return { data: new Uint8Array(source) };
+ }
+ 
+-export function PdfViewer({ source, labels, onLoadError, className, ...props }: PdfViewerProps) {
++export function PdfViewer({
++  source,
++  labels,
++  onLoadError,
++  className,
++  thumbnail = false,
++  ...props
++}: PdfViewerProps) {
+   const mergedLabels = { ...DEFAULT_LABELS, ...labels };
+   const [numPages, setNumPages] = useState<number | null>(null);
+   const [pageNumber, setPageNumber] = useState(1);
+@@ -339,6 +347,23 @@ export function PdfViewer({ source, labels, onLoadError, className, ...props }:
+     zoomPreviewScale,
+   );
+ 
++  if (thumbnail) {
++    return (
++      <div className={cn("h-full w-full overflow-hidden", className)} {...props}>
++        <Document
++          file={file}
++          options={rangeTransport ? RANGE_DOCUMENT_OPTIONS : DOCUMENT_OPTIONS}
++          onLoadError={onLoadError}
++          loading={null}
++          error={mergedLabels.loadError}
++          noData={mergedLabels.noData}
++        >
++          <Page pageNumber={1} width={88} renderTextLayer={false} renderAnnotationLayer={false} />
++        </Document>
++      </div>
++    );
++  }
++
+   return (
+     <div
+       tabIndex={0}
+diff --git a/packages/ui/src/components/ui/pptx-preview-viewer.tsx b/packages/ui/src/components/ui/pptx-preview-viewer.tsx
+index f19374d..5c7ed27 100644
+--- a/packages/ui/src/components/ui/pptx-preview-viewer.tsx
++++ b/packages/ui/src/components/ui/pptx-preview-viewer.tsx
+@@ -435,6 +435,7 @@ function useElementSize(node: HTMLElement | null) {
+ 
+ export function PptxPreviewViewer({
+   data,
++  thumbnail = false,
+   labels,
+   onOpenBrowserUrl,
+   className,
+@@ -444,6 +445,7 @@ export function PptxPreviewViewer({
+   referenceNavigationReady = true,
+ }: {
+   data: ArrayBuffer;
++  thumbnail?: boolean;
+   labels: PptxPreviewViewerLabels;
+   onOpenBrowserUrl?: (url: string) => void;
+   className?: string;
+@@ -776,6 +778,20 @@ export function PptxPreviewViewer({
+     return <div className="p-3 text-ui-base text-foreground-subtle">{labels.noSlides}</div>;
+   }
+ 
++  if (thumbnail) {
++    const scale = Math.min(88 / document.pageSize.width, 64 / document.pageSize.height);
++    return (
++      <div className="flex h-full items-start justify-center overflow-hidden">
++        <RenderedPage
++          document={document}
++          generation={presentation!.generation}
++          pageIndex={0}
++          scale={scale}
++        />
++      </div>
++    );
++  }
++
+   const pageIndex = pageNumber - 1;
+   return (
+     <div
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index ab3e885..1253b25 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -6057,8 +6057,15 @@ const enUS: Record<string, string> = {
+   "chat.attachments.clipboardText.description": "{lineCount} lines",
+   "chat.attachments.preview.open": "Open image preview",
+   "chat.attachments.preview.openVideo": "Open video preview",
++  "chat.attachments.preview.tableTruncated": "Showing a limited set of rows and columns. The original attachment is unchanged.",
++  "chat.attachments.preview.openFile": "Preview {filename}",
++  "chat.attachments.preview.textLoading": "Loading file preview…",
++  "chat.attachments.preview.textUnavailable":
++    "This file cannot be previewed. The original attachment is unchanged.",
++  "chat.attachments.preview.textTruncated":
++    "Showing the first 64 KB. The original attachment is unchanged.",
+   "chat.attachments.preview.openPdf": "Open PDF preview",
+-  "chat.attachments.preview.title": "Image preview",
++  "chat.attachments.preview.title": "Attachment preview",
+   "chat.attachments.preview.pdfLoading": "Loading PDF preview…",
+   "chat.attachments.preview.pdfUnavailable": "This PDF is no longer available to preview.",
+   "markdownImage.previous": "Previous image",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index b7522c5..871b29d 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -5755,8 +5755,13 @@ const zhCN: Record<string, string> = {
+   "chat.attachments.clipboardText.description": "{lineCount} 行",
+   "chat.attachments.preview.open": "打开图片预览",
+   "chat.attachments.preview.openVideo": "打开视频预览",
++  "chat.attachments.preview.tableTruncated": "仅预览部分行或列，原附件内容不变。",
++  "chat.attachments.preview.openFile": "预览 {filename}",
++  "chat.attachments.preview.textLoading": "正在加载文件预览…",
++  "chat.attachments.preview.textUnavailable": "无法预览此文件，原附件内容不变。",
++  "chat.attachments.preview.textTruncated": "仅预览前 64 KB，原附件内容不变。",
+   "chat.attachments.preview.openPdf": "打开 PDF 预览",
+-  "chat.attachments.preview.title": "图片预览",
++  "chat.attachments.preview.title": "附件预览",
+   "chat.attachments.preview.pdfLoading": "正在加载 PDF 预览…",
+   "chat.attachments.preview.pdfUnavailable": "这个 PDF 已无法预览。",
+   "markdownImage.previous": "上一张图片",
+diff --git a/packages/ui/src/lib/chatAttachmentMetadata.ts b/packages/ui/src/lib/chatAttachmentMetadata.ts
+index f0b0fda..b28e5f0 100644
+--- a/packages/ui/src/lib/chatAttachmentMetadata.ts
++++ b/packages/ui/src/lib/chatAttachmentMetadata.ts
+@@ -45,9 +45,20 @@ export function basenameFromPath(path: string): string {
+ 
+ export function inferAttachmentMimeType(filename: string): string {
+   const extension = filename.split(".").pop()?.toLocaleLowerCase() ?? "";
+-  if (extension === "md") return "text/markdown";
++  if (extension === "md" || extension === "markdown") return "text/markdown";
+   if (extension === "json") return "application/json";
+   if (extension === "csv") return "text/csv";
++  if (extension === "tsv") return "text/tab-separated-values";
++  if (extension === "ipynb") return "application/x-ipynb+json";
++  if (extension === "docx")
++    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
++  if (extension === "doc") return "application/msword";
++  if (extension === "xlsx")
++    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
++  if (extension === "xlsm") return "application/vnd.ms-excel.sheet.macroEnabled.12";
++  if (extension === "xls") return "application/vnd.ms-excel";
++  if (extension === "pptx")
++    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+   if (extension === "txt" || extension === "log") return "text/plain";
+   if (extension === "png") return "image/png";
+   if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+@@ -70,7 +81,7 @@ export function isTextLikeAttachment(attachment: { filename: string; mimeType: s
+     return true;
+   }
+ 
+-  return /\.(cjs|conf|cpp|cs|css|csv|go|h|hpp|html|ini|java|js|json|jsx|log|md|mjs|py|rs|sh|sql|toml|ts|tsx|txt|xml|yaml|yml)$/iu.test(
++  return /\.(ipynb|markdown|jsonl|rb|tsv|cjs|conf|cpp|cs|css|csv|go|h|hpp|html|ini|java|js|json|jsx|log|md|mjs|py|rs|sh|sql|toml|ts|tsx|txt|xml|yaml|yml)$/iu.test(
+     attachment.filename,
+   );
+ }
+diff --git a/packages/ui/src/lib/chatAttachments.ts b/packages/ui/src/lib/chatAttachments.ts
+index c1612a7..17b73d2 100644
+--- a/packages/ui/src/lib/chatAttachments.ts
++++ b/packages/ui/src/lib/chatAttachments.ts
+@@ -63,7 +63,7 @@ function normalizeComposerMimeType(mimeType: string): string {
+   return normalized === PDF_MIME_TYPE ? PDF_MIME_TYPE : mimeType;
+ }
+ 
+-function readFileAsDataUrl(file: File): Promise<string> {
++export function readFileAsDataUrl(file: File): Promise<string> {
+   return new Promise((resolve, reject) => {
+     const reader = new FileReader();
+     reader.onload = () => {
+diff --git a/packages/ui/src/lib/delimitedTextPreview.ts b/packages/ui/src/lib/delimitedTextPreview.ts
+new file mode 100644
+index 0000000..6573b10
+--- /dev/null
++++ b/packages/ui/src/lib/delimitedTextPreview.ts
+@@ -0,0 +1,45 @@
++// Bounded read-only table projection, shared by attachment and workflow thumbnails.
++// It is not a workbook loader and never interprets cells as formulas or HTML.
++export function parseDelimitedTextPreview(
++  text: string,
++  separator = ",",
++  maxRows = 200,
++  maxColumns = 20,
++): { rows: string[][]; truncated: boolean } {
++  const rows: string[][] = [];
++  let row: string[] = [];
++  let cell = "";
++  let quoted = false;
++  let truncated = false;
++  const pushCell = () => {
++    if (row.length < maxColumns) row.push(cell);
++    else truncated = true;
++    cell = "";
++  };
++  const pushRow = () => {
++    pushCell();
++    rows.push(row);
++    row = [];
++  };
++  const content = text.replace(/^\uFEFF/u, "");
++  for (let index = 0; index < content.length; index++) {
++    const character = content[index];
++    if (character === '"') {
++      if (quoted && content[index + 1] === '"') {
++        cell += '"';
++        index++;
++      } else if (quoted || cell.length === 0) quoted = !quoted;
++      else cell += character;
++    } else if (character === separator && !quoted) pushCell();
++    else if ((character === "\n" || character === "\r") && !quoted) {
++      if (character === "\r" && content[index + 1] === "\n") index++;
++      pushRow();
++      if (rows.length >= maxRows) {
++        truncated ||= index + 1 < content.length;
++        return { rows, truncated };
++      }
++    } else cell += character;
++  }
++  if (cell.length || row.length) pushRow();
++  return { rows, truncated };
++}
+diff --git a/packages/ui/src/previewPaneMarkdownContent.tsx b/packages/ui/src/previewPaneMarkdownContent.tsx
+index 5f273bf..65b5251 100644
+--- a/packages/ui/src/previewPaneMarkdownContent.tsx
++++ b/packages/ui/src/previewPaneMarkdownContent.tsx
+@@ -7,6 +7,7 @@ import type { Theme } from "@/useTheme.js";
+ 
+ interface MarkdownPreviewContentProps {
+   content: string;
++  allowImageRequests?: boolean;
+   sourceKey?: string;
+   sourceTitle?: string;
+   sourcePath?: string;
+@@ -21,6 +22,7 @@ interface MarkdownPreviewContentProps {
+ 
+ export function MarkdownPreviewContent({
+   content,
++  allowImageRequests,
+   sourceKey,
+   sourceTitle,
+   sourcePath,
+@@ -54,6 +56,7 @@ export function MarkdownPreviewContent({
+       <div className="min-h-full bg-background p-4">
+         <MessageResponse
+           className="min-w-0 break-words"
++          allowImageRequests={allowImageRequests}
+           workspacePath={workspacePath}
+           theme={theme}
+           codePreviewSettings={codePreviewSettings}
+diff --git a/packages/ui/src/previewPaneOfficeContent.tsx b/packages/ui/src/previewPaneOfficeContent.tsx
+index 53fba17..9c7190d 100644
+--- a/packages/ui/src/previewPaneOfficeContent.tsx
++++ b/packages/ui/src/previewPaneOfficeContent.tsx
+@@ -75,6 +75,7 @@ export function PreviewPaneOfficeContent({
+   loading,
+   onOpenBrowserUrl,
+   preview,
++  data,
+   resolvedTheme,
+   sourcePath,
+ }: {
+@@ -83,6 +84,7 @@ export function PreviewPaneOfficeContent({
+   loading: boolean;
+   onOpenBrowserUrl?: (url: string) => void;
+   preview: FileBinaryPreview | null;
++  data?: ArrayBuffer;
+   resolvedTheme: "light" | "dark";
+   sourcePath: string;
+ }) {
+@@ -91,8 +93,8 @@ export function PreviewPaneOfficeContent({
+     id: "codeViewer.officeUnavailable",
+   });
+   const buffer = useMemo(
+-    () => (preview ? decodeBase64ToArrayBuffer(preview.dataBase64) : null),
+-    [preview],
++    () => data ?? (preview ? decodeBase64ToArrayBuffer(preview.dataBase64) : null),
++    [data, preview],
+   );
+ 
+   if (loading || (!error && !buffer)) {
+diff --git a/packages/ui/src/v4/ConversationComposer.tsx b/packages/ui/src/v4/ConversationComposer.tsx
+index 7f504ef..3ee0cda 100644
+--- a/packages/ui/src/v4/ConversationComposer.tsx
++++ b/packages/ui/src/v4/ConversationComposer.tsx
+@@ -67,7 +67,6 @@ import {
+ import {
+   Attachment,
+   Attachments,
+-  AttachmentInfo,
+   AttachmentPreview,
+ } from "@/components/ai-elements/attachments.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -82,10 +81,7 @@ import {
+ } from "@/components/ui/dialog.js";
+ import { Spinner } from "@/components/ui/spinner.js";
+ import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialog.js";
+-import {
+-  ChatMediaAttachmentPreviewDialog,
+-  type ChatMediaAttachmentPreviewTarget,
+-} from "@/ChatMediaAttachmentPreviewDialog.js";
++import { ChatMediaAttachmentPreviewDialog } from "@/ChatMediaAttachmentPreviewDialog.js";
+ import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
+ import { ChatPromptEditor } from "@/prompt-editor/ChatPromptEditor.js";
+ import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
+@@ -93,6 +89,12 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { advanceComposerDraftRevision } from "@/v4/composer/composerDraftRevision.js";
+ import type { AppSlashCommand } from "@/slashCommandHelpers.js";
+ import { useOptionalServices } from "@/hooks/useServices.js";
++import { useOptionalBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
++import { ComposerDocumentPreview } from "@/v4/composer/ComposerDocumentPreview.js";
++import {
++  getComposerDocumentKind,
++  useComposerAttachmentPreviews,
++} from "@/v4/composer/useComposerAttachmentPreviews.js";
+ import { logger } from "@/logger.js";
+ import { runUserAction, startUserAction } from "@/lib/userActionTelemetry.js";
+ import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
+@@ -194,14 +196,6 @@ export interface ConversationComposerSendOptions {
+ }
+ 
+ export type ConversationComposerSendResult = "sent" | "blocked" | "confirmationRequired";
+-function getComposerAttachmentTypeLabel(filename: string, mimeType: string): string {
+-  const leaf = filename.split(/[\\/]/u).at(-1) ?? filename;
+-  const dotIndex = leaf.lastIndexOf(".");
+-  if (dotIndex > 0 && dotIndex < leaf.length - 1) {
+-    return leaf.slice(dotIndex + 1).toUpperCase();
+-  }
+-  return (mimeType.split("/").at(-1) ?? mimeType).toUpperCase();
+-}
+ 
+ interface ExternalTextInsertRequest {
+   requestId: number;
+@@ -545,6 +539,7 @@ function ConversationComposerImpl({
+ }: ConversationComposerProps) {
+   const { intl, locale } = useZCodeIntl();
+   const services = useOptionalServices();
++  const localAttachmentServices = useOptionalBaseWorkspaceServices();
+   const conversationTelemetry = useScopedConversationTelemetrySupervisor({
+     workspacePath,
+     ...(workspaceIdentity ? { workspaceIdentity } : {}),
+@@ -715,15 +710,30 @@ function ConversationComposerImpl({
+   }, [dropTargetController, onDropTargetControllerChange]);
+   const [attachmentPreviewIndex, setAttachmentPreviewIndex] = useState(0);
+   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+-  const [pdfAttachmentPreview, setPdfAttachmentPreview] =
+-    useState<ChatMediaAttachmentPreviewTarget | null>(null);
+-  const [pdfAttachmentPreviewOpen, setPdfAttachmentPreviewOpen] = useState(false);
+   const attachmentPreviewTitle = intl.formatMessage({
+     id: "chat.attachments.preview.open",
+   });
+   const videoAttachmentPreviewTitle = intl.formatMessage({
+     id: "chat.attachments.preview.openVideo",
+   });
++  const composerAttachments = attachmentsApi.attachments;
++  const documentPreviews = useComposerAttachmentPreviews(
++    composerAttachments,
++    localAttachmentServices?.fileService,
++  );
++  const [documentPreviewAttachmentId, setDocumentPreviewAttachmentId] = useState<string | null>(
++    null,
++  );
++  const documentPreviewTriggerRef = useRef<HTMLElement | null>(null);
++  const documentPreviewAttachment = attachmentsApi.attachments.find(
++    (attachment) => attachment.id === documentPreviewAttachmentId,
++  );
++  const documentPreview = documentPreviewAttachment
++    ? documentPreviews.get(documentPreviewAttachment.id)
++    : undefined;
++  useEffect(() => {
++    if (!documentPreviewAttachment) setDocumentPreviewAttachmentId(null);
++  }, [documentPreviewAttachment]);
+   const hasAttachments = attachmentsApi.hasAttachments;
+   const mainSelection = draftConfig?.modelSelection ?? snapshot?.config.modelSelection;
+   const visionBridgeChoice = useMemo(
+@@ -1703,7 +1713,6 @@ function ConversationComposerImpl({
+   );
+ 
+   // ── 附件预览网格 ──
+-  const composerAttachments = attachmentsApi.attachments;
+   const orderedComposerAttachments = useMemo(() => {
+     // 媒体组（图片/视频）优先、文件在后；组内保持添加顺序。
+     const media: (typeof composerAttachments)[number][] = [];
+@@ -1715,19 +1724,22 @@ function ConversationComposerImpl({
+   }, [composerAttachments]);
+   const composerMediaPreviewItems = useMemo(
+     () =>
+-      composerAttachments.flatMap((attachment) =>
+-        attachment.objectUrl && isMediaChatComposerAttachment(attachment)
++      composerAttachments.flatMap((attachment) => {
++        const preview = documentPreviews.get(attachment.id);
++        const src = attachment.objectUrl ?? (preview?.kind === "media" ? preview.src : undefined);
++        return src && isMediaChatComposerAttachment(attachment)
+           ? [
+               {
++                attachmentId: attachment.id,
+                 alt: attachment.filename,
+                 filename: attachment.filename,
+                 mediaType: attachment.mimeType,
+-                src: attachment.objectUrl,
++                src,
+               },
+             ]
+-          : [],
+-      ),
+-    [composerAttachments],
++          : [];
++      }),
++    [composerAttachments, documentPreviews],
+   );
+   const topContentNode = useMemo(() => {
+     if (
+@@ -1744,7 +1756,7 @@ function ConversationComposerImpl({
+         {composerAttachments.length > 0 ? (
+           <Attachments
+             variant="inline"
+-            className="flex max-w-full flex-wrap gap-2"
++            className="ml-0 w-full max-w-full flex-nowrap gap-2 overflow-x-auto pb-1"
+             data-composer-file-attachments-row="true"
+           >
+             {orderedComposerAttachments.map((attachment) => {
+@@ -1752,15 +1764,19 @@ function ConversationComposerImpl({
+               const isMediaAttachment = isMediaChatComposerAttachment(attachment);
+               const isVideoAttachment = isVideoChatComposerAttachment(attachment);
+               const isPdfAttachment = isPdfChatComposerAttachment(attachment);
+-              const mediaType = attachment.objectUrl
++              const canPreviewTextAttachment = getComposerDocumentKind(attachment) !== null;
++              const documentPreview = documentPreviews.get(attachment.id);
++              const mediaSrc =
++                attachment.objectUrl ??
++                (documentPreview?.kind === "media" ? documentPreview.src : undefined);
++              const mediaType = mediaSrc
+                 ? attachment.mimeType
+                 : attachment.mimeType.startsWith("image/")
+                   ? "application/octet-stream"
+                   : attachment.mimeType;
+               const canPreviewImageAttachment =
+-                Boolean(attachment.objectUrl) && isImageChatComposerAttachment(attachment);
+-              const canPreviewVideoAttachment = Boolean(attachment.objectUrl) && isVideoAttachment;
+-              const canPreviewPdfAttachment = Boolean(attachment.objectUrl) && isPdfAttachment;
++                Boolean(mediaSrc) && isImageChatComposerAttachment(attachment);
++              const canPreviewVideoAttachment = Boolean(mediaSrc) && isVideoAttachment;
+               const fileDisplayDescriptor = resolveFileDisplayDescriptor(
+                 attachment.localPath ?? attachment.filename,
+               );
+@@ -1784,7 +1800,13 @@ function ConversationComposerImpl({
+               return (
+                 <Attachment
+                   key={attachment.id}
+-                  variant={isMediaAttachment ? "grid" : "inline"}
++                  variant="grid"
++                  onClick={(event) => {
++                    documentPreviewTriggerRef.current = event.currentTarget;
++                  }}
++                  onFocus={(event) => {
++                    documentPreviewTriggerRef.current = event.currentTarget;
++                  }}
+                   data-composer-attachment-kind={
+                     isVideoAttachment
+                       ? "video"
+@@ -1796,58 +1818,27 @@ function ConversationComposerImpl({
+                   }
+                   data-testid={testId(TID_V4_ATTACHMENT, attachment.id)}
+                   data-upload-status={attachment.uploadStatus}
+-                  className={
+-                    isMediaAttachment
+-                      ? "relative size-12 overflow-hidden rounded-lg bg-surface after:pointer-events-none after:absolute after:inset-0 after:rounded-lg after:border after:border-border after:content-['']"
+-                      : "h-12 w-fit max-w-full min-w-0 gap-2 rounded-lg border border-border bg-surface p-1.5 pr-6 [--attachment-bg:var(--color-surface)] hover:bg-surface-hover"
+-                  }
++                  className="flex size-24 shrink-0 flex-col gap-1 rounded-lg border border-border bg-surface p-1 hover:bg-surface-hover"
+                   data={{
+                     id: attachment.id,
+                     type: "file",
+                     filename: attachment.filename,
+-                    ...(isClipboardTextAttachment
+-                      ? {
+-                          description: intl.formatMessage(
+-                            {
+-                              id: "chat.attachments.clipboardText.description",
+-                            },
+-                            {
+-                              lineCount: formatAttachmentLineCount(attachment, locale),
+-                            },
+-                          ),
+-                          displayName: intl.formatMessage({
+-                            id: "chat.attachments.clipboardText",
+-                          }),
+-                          sourceKind: "clipboard-text" as const,
+-                        }
+-                      : {}),
+                     mediaType,
+-                    url: attachment.objectUrl ?? "",
++                    url: mediaSrc ?? "",
+                   }}
+-                  onRemove={() => attachmentsApi.removeAttachment(attachment.id)}
+-                  // 附件支持非图片格式，PDF 走独立 PdfViewer，
+-                  // 其他文件展示类型图标和文件名，避免 doc 等普通文件被当成图片渲染失败。
+-                  // 图片与视频统一按添加顺序进入发送前 gallery，
+-                  // 保证同一组媒体可以连续导航。
+                   onOpen={
+                     canPreviewImageAttachment || canPreviewVideoAttachment
+                       ? () => {
+-                          const previewIndex = composerMediaPreviewItems.findIndex(
+-                            (item) => item.src === attachment.objectUrl,
++                          const index = composerMediaPreviewItems.findIndex(
++                            (item) => item.attachmentId === attachment.id,
+                           );
+-                          if (previewIndex < 0) return;
+-                          setAttachmentPreviewIndex(previewIndex);
+-                          setAttachmentPreviewOpen(true);
+-                        }
+-                      : canPreviewPdfAttachment
+-                        ? () => {
+-                            setPdfAttachmentPreview({
+-                              filename: attachment.filename,
+-                              mediaType: "application/pdf",
+-                              url: attachment.objectUrl,
+-                            });
+-                            setPdfAttachmentPreviewOpen(true);
++                          if (index >= 0) {
++                            setAttachmentPreviewIndex(index);
++                            setAttachmentPreviewOpen(true);
+                           }
++                        }
++                      : canPreviewTextAttachment
++                        ? () => setDocumentPreviewAttachmentId(attachment.id)
+                         : undefined
+                   }
+                   openLabel={
+@@ -1855,104 +1846,64 @@ function ConversationComposerImpl({
+                       ? videoAttachmentPreviewTitle
+                       : canPreviewImageAttachment
+                         ? attachmentPreviewTitle
+-                        : canPreviewPdfAttachment
+-                          ? intl.formatMessage({ id: "chat.attachments.preview.openPdf" })
++                        : canPreviewTextAttachment
++                          ? intl.formatMessage(
++                              { id: "chat.attachments.preview.openFile" },
++                              { filename: attachment.filename },
++                            )
+                           : undefined
+                   }
+                 >
+                   <div
+-                    className={cn(
+-                      "relative shrink-0",
+-                      isMediaAttachment ? "size-full" : "size-9 rounded-md bg-background",
+-                    )}
++                    className="pointer-events-none relative h-16 w-full shrink-0 overflow-hidden rounded-md bg-background"
++                    inert
++                    aria-hidden="true"
+                   >
+-                    <AttachmentPreview
+-                      className={cn(
+-                        isMediaAttachment ? "size-full rounded-none" : "size-9 rounded-md",
+-                      )}
+-                      fallbackIcon={
+-                        isClipboardTextAttachment ? (
+-                          <ClipboardPenLineIcon className="size-3.5 text-muted-foreground" />
+-                        ) : (
+-                          <FileDisplayIcon
+-                            src={fileDisplayDescriptor.fileIconSrc}
+-                            size={16}
+-                            className="size-4 shrink-0"
+-                          />
+-                        )
+-                      }
+-                    />
+-                    {showUploadStatus && isMediaAttachment ? (
+-                      <span
+-                        data-testid={testId(TID_V4_ATTACHMENT_UPLOAD_PROGRESS, attachment.id)}
+-                        role={attachment.uploadStatus === "failed" ? "alert" : "status"}
+-                        aria-label={uploadStatusLabel}
+-                        className="absolute inset-0 grid place-items-center rounded-lg bg-background/85 text-[7px] font-semibold text-foreground"
+-                      >
+-                        <svg
+-                          aria-hidden="true"
+-                          className="absolute inset-0 size-full -rotate-90 text-brand"
+-                          viewBox="0 0 24 24"
+-                        >
+-                          <circle
+-                            className="stroke-border"
+-                            cx="12"
+-                            cy="12"
+-                            fill="none"
+-                            pathLength="100"
+-                            r="9"
+-                            strokeWidth="2"
+-                          />
+-                          <circle
+-                            className={
+-                              attachment.uploadStatus === "failed"
+-                                ? "stroke-destructive"
+-                                : "stroke-current"
+-                            }
+-                            cx="12"
+-                            cy="12"
+-                            fill="none"
+-                            pathLength="100"
+-                            r="9"
+-                            strokeDasharray={`${attachment.uploadProgress} 100`}
+-                            strokeLinecap="round"
+-                            strokeWidth="2"
+-                          />
+-                        </svg>
+-                        <span className="relative">
+-                          {attachment.uploadStatus === "failed"
+-                            ? "!"
+-                            : `${attachment.uploadProgress}%`}
+-                        </span>
+-                      </span>
+-                    ) : null}
+-                  </div>
+-                  {!isMediaAttachment ? (
+-                    isClipboardTextAttachment ? (
+-                      <AttachmentInfo className="max-w-48 text-ui-base text-foreground" />
++                    {documentPreview && documentPreview.kind !== "media" ? (
++                      <ComposerDocumentPreview
++                        preview={documentPreview}
++                        filename={attachment.filename}
++                        thumbnail
++                      />
+                     ) : (
+-                      <div className="min-w-0 max-w-40 flex-1">
+-                        <span
+-                          className="block truncate text-ui-base font-medium text-foreground"
+-                          title={attachment.filename}
+-                        >
+-                          {attachment.filename}
+-                        </span>
+-                        <span className="block truncate text-ui-sm font-normal text-foreground-subtle">
+-                          {getComposerAttachmentTypeLabel(attachment.filename, attachment.mimeType)}
+-                        </span>
+-                      </div>
+-                    )
+-                  ) : null}
+-                  {showUploadStatus && !isMediaAttachment ? (
++                      <AttachmentPreview
++                        className="size-full rounded-none"
++                        fallbackIcon={
++                          isClipboardTextAttachment ? (
++                            <ClipboardPenLineIcon className="size-4 text-muted-foreground" />
++                          ) : (
++                            <FileDisplayIcon
++                              src={fileDisplayDescriptor.fileIconSrc}
++                              size={20}
++                              className="size-5 shrink-0"
++                            />
++                          )
++                        }
++                      />
++                    )}
++                  </div>
++                  <span
++                    className="block w-full truncate px-0.5 text-ui-sm font-medium text-foreground"
++                    title={
++                      isClipboardTextAttachment
++                        ? intl.formatMessage(
++                            { id: "chat.attachments.clipboardText.description" },
++                            { lineCount: formatAttachmentLineCount(attachment, locale) },
++                          )
++                        : attachment.filename
++                    }
++                  >
++                    {isClipboardTextAttachment
++                      ? intl.formatMessage({ id: "chat.attachments.clipboardText" })
++                      : attachment.filename}
++                  </span>
++                  {showUploadStatus ? (
+                     <span
+                       data-testid={testId(TID_V4_ATTACHMENT_UPLOAD_PROGRESS, attachment.id)}
+                       role={attachment.uploadStatus === "failed" ? "alert" : "status"}
++                      aria-label={uploadStatusLabel}
+                       title={uploadStatusLabel}
+-                      className={cn(
+-                        "max-w-28 truncate text-ui-sm font-normal text-foreground-subtle",
+-                        attachment.uploadStatus === "failed" && "text-destructive",
+-                      )}
++                      className="pointer-events-none absolute inset-x-1 top-1 grid h-16 place-items-center rounded-md bg-background/85 text-ui-sm text-foreground"
+                     >
+                       {attachment.uploadStatus === "uploading"
+                         ? `${attachment.uploadProgress}%`
+@@ -1960,14 +1911,13 @@ function ConversationComposerImpl({
+                     </span>
+                   ) : null}
+                   {attachment.uploadStatus === "failed" ? (
+-                    <button
++                    <Button
+                       type="button"
++                      variant="ghost"
++                      size="icon-xs"
++                      className="absolute bottom-0.5 left-0.5 z-20 bg-surface text-destructive"
+                       data-testid={testId(TID_V4_ATTACHMENT_UPLOAD_RETRY, attachment.id)}
+-                      aria-label={intl.formatMessage({
+-                        id: "chat.attachments.upload.retry",
+-                      })}
+-                      title={uploadStatusLabel}
+-                      className="grid size-5 shrink-0 place-items-center rounded-md text-destructive hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
++                      aria-label={intl.formatMessage({ id: "chat.attachments.upload.retry" })}
+                       onClick={(event) => {
+                         event.preventDefault();
+                         event.stopPropagation();
+@@ -1975,16 +1925,14 @@ function ConversationComposerImpl({
+                       }}
+                     >
+                       <RotateCcwIcon className="size-3" />
+-                    </button>
++                    </Button>
+                   ) : null}
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="icon-xs"
+                     data-composer-attachment-remove={attachment.id}
+-                    aria-label={intl.formatMessage({
+-                      id: "chat.attachments.remove",
+-                    })}
++                    aria-label={intl.formatMessage({ id: "chat.attachments.remove" })}
+                     className="absolute right-0.5 top-0.5 z-20 size-3.5 rounded-full bg-primary p-0 text-primary-foreground opacity-0 transition-opacity hover:bg-primary/80 hover:text-primary-foreground group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                     onPointerDown={(event) => event.stopPropagation()}
+                     onClick={(event) => {
+@@ -2052,6 +2000,7 @@ function ConversationComposerImpl({
+     visionBridgeChoice,
+     composerMediaPreviewItems,
+     orderedComposerAttachments,
++    documentPreviews,
+     intl,
+     locale,
+     removeCodeCommentContext,
+@@ -2357,11 +2306,27 @@ function ConversationComposerImpl({
+         open={attachmentPreviewOpen}
+       />
+       <ChatMediaAttachmentPreviewDialog
+-        attachment={pdfAttachmentPreview}
+-        open={pdfAttachmentPreviewOpen}
++        attachment={
++          documentPreviewAttachment
++            ? {
++                filename: documentPreviewAttachment.filename,
++                mediaType: documentPreviewAttachment.mimeType,
++                ...(documentPreview ? { documentPreview: documentPreview } : {}),
++              }
++            : null
++        }
++        open={Boolean(documentPreviewAttachment)}
+         onOpenChange={(open) => {
+-          setPdfAttachmentPreviewOpen(open);
+-          if (!open) setPdfAttachmentPreview(null);
++          if (!open) setDocumentPreviewAttachmentId(null);
++        }}
++        loading={documentPreview === undefined}
++        error={documentPreview === null}
++        onCloseAutoFocus={(event) => {
++          const trigger = documentPreviewTriggerRef.current;
++          if (trigger?.isConnected && trigger.getClientRects().length > 0) {
++            event.preventDefault();
++            trigger.focus();
++          }
+         }}
+       />
+       <Dialog
+diff --git a/packages/ui/src/v4/composer/ComposerDocumentPreview.tsx b/packages/ui/src/v4/composer/ComposerDocumentPreview.tsx
+new file mode 100644
+index 0000000..9de36d3
+--- /dev/null
++++ b/packages/ui/src/v4/composer/ComposerDocumentPreview.tsx
+@@ -0,0 +1,213 @@
++import { lazy, Suspense, useMemo } from "react";
++import { MarkdownPreviewContent } from "@/previewPaneMarkdownContent.js";
++import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { useZCodeStore } from "@/store/StoreProvider.js";
++import { resolveTheme } from "@/useTheme.js";
++import { parseDelimitedTextPreview } from "@/lib/delimitedTextPreview.js";
++import type { ComposerAttachmentPreview } from "./useComposerAttachmentPreviews.js";
++
++const PdfViewer = lazy(() =>
++  import("@/components/ui/pdf-viewer.js").then((m) => ({ default: m.PdfViewer })),
++);
++const OfficeContent = lazy(() =>
++  import("@/previewPaneOfficeContent.js").then((m) => ({ default: m.PreviewPaneOfficeContent })),
++);
++const PptxViewer = lazy(() =>
++  import("@/components/ui/pptx-preview-viewer.js").then((m) => ({ default: m.PptxPreviewViewer })),
++);
++
++function notebookCells(content: string): Array<{ cell_type: string; source: string }> | null {
++  try {
++    const parsed = JSON.parse(content) as {
++      cells?: Array<{ cell_type?: unknown; source?: unknown }>;
++    };
++    if (!Array.isArray(parsed.cells)) return null;
++    return parsed.cells.map((cell) => ({
++      cell_type: typeof cell.cell_type === "string" ? cell.cell_type : "code",
++      source:
++        typeof cell.source === "string"
++          ? cell.source
++          : Array.isArray(cell.source)
++            ? cell.source.filter((s) => typeof s === "string").join("")
++            : "",
++    }));
++  } catch {
++    return null;
++  }
++}
++
++export function ComposerDocumentPreview({
++  preview,
++  filename,
++  thumbnail = false,
++  source = false,
++}: {
++  preview: ComposerAttachmentPreview;
++  filename: string;
++  thumbnail?: boolean;
++  source?: boolean;
++}) {
++  const { intl } = useZCodeIntl();
++  const theme = useZCodeStore((state) => state.theme);
++  const pdfLabels = usePdfViewerLabels();
++  const pptxLabels = usePptxViewerLabels();
++  const table = useMemo(
++    () =>
++      preview.kind === "text" && /\.(csv|tsv)$/iu.test(filename)
++        ? parseDelimitedTextPreview(
++            preview.content,
++            /\.tsv$/iu.test(filename) ? "\t" : ",",
++            thumbnail ? 6 : 200,
++            thumbnail ? 5 : 20,
++          )
++        : null,
++    [filename, preview, thumbnail],
++  );
++  const cells = useMemo(
++    () =>
++      preview.kind === "text" && /\.ipynb$/iu.test(filename)
++        ? notebookCells(preview.content)
++        : null,
++    [filename, preview],
++  );
++  let content;
++  if (preview.kind === "media")
++    content = preview.mediaType.startsWith("video/") ? (
++      <video
++        src={preview.src}
++        controls={!thumbnail}
++        muted={thumbnail}
++        playsInline
++        className="h-full w-full object-contain"
++      />
++    ) : (
++      <img src={preview.src} alt={filename} className="h-full w-full object-contain" />
++    );
++  else if (preview.kind === "pdf")
++    content = (
++      <PdfViewer
++        source={preview.source}
++        labels={pdfLabels}
++        thumbnail={thumbnail}
++        className="h-full w-full"
++      />
++    );
++  else if (preview.kind === "office")
++    content = (
++      <OfficeContent
++        data={preview.buffer}
++        preview={null}
++        kind={preview.officeKind}
++        loading={false}
++        error={null}
++        resolvedTheme={resolveTheme(theme)}
++        sourcePath={filename}
++      />
++    );
++  else if (preview.kind === "pptx")
++    content = (
++      <PptxViewer
++        data={preview.buffer}
++        fileName={filename}
++        labels={pptxLabels}
++        thumbnail={thumbnail}
++        className="h-full"
++      />
++    );
++  else if (!source && /\.(md|markdown)$/iu.test(filename))
++    content = (
++      <div className="mx-auto max-w-3xl">
++        <MarkdownPreviewContent
++          content={thumbnail ? preview.content.slice(0, 2400) : preview.content}
++          theme={theme}
++          allowImageRequests={false}
++        />
++      </div>
++    );
++  else if (!source && table)
++    content = (
++      <div className="h-full overflow-auto p-2">
++        <table className="w-full border-collapse text-ui-sm">
++          <tbody>
++            {table.rows.map((row, index) => (
++              <tr key={index}>
++                {row.map((cell, column) => (
++                  <td
++                    key={column}
++                    className="max-w-72 border border-border px-2 py-1 align-top whitespace-pre-wrap break-words"
++                  >
++                    {cell}
++                  </td>
++                ))}
++              </tr>
++            ))}
++          </tbody>
++        </table>
++        {!thumbnail && table.truncated ? (
++          <p className="mt-3 text-ui-sm text-muted-foreground">
++            {intl.formatMessage({ id: "chat.attachments.preview.tableTruncated" })}
++          </p>
++        ) : null}
++      </div>
++    );
++  else if (!source && cells)
++    content = (
++      <div className="mx-auto max-w-3xl p-4">
++        {(thumbnail ? cells.slice(0, 3) : cells).map((cell, index) => (
++          <section className="mb-4" key={index}>
++            {cell.cell_type === "markdown" ? (
++              <MarkdownPreviewContent
++                content={cell.source}
++                theme={theme}
++                allowImageRequests={false}
++              />
++            ) : (
++              <pre className="overflow-auto rounded-md bg-surface p-3 font-mono text-ui-sm whitespace-pre-wrap break-words">
++                {cell.source}
++              </pre>
++            )}
++          </section>
++        ))}
++      </div>
++    );
++  else
++    content = (
++      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-ui-base text-foreground">
++        {thumbnail ? preview.content.slice(0, 1600) : preview.content}
++      </pre>
++    );
++  const scaled =
++    thumbnail && preview.kind !== "pdf" && preview.kind !== "pptx" && preview.kind !== "media";
++  return (
++    <div className="h-full w-full overflow-hidden" data-composer-document-preview={preview.kind}>
++      {!thumbnail && preview.kind === "text" && preview.truncated ? (
++        <p className="px-4 py-2 text-ui-sm text-muted-foreground">
++          {intl.formatMessage({ id: "chat.attachments.preview.textTruncated" })}
++        </p>
++      ) : null}
++      <Suspense
++        fallback={
++          thumbnail ? null : (
++            <p role="status" className="p-4 text-ui-base text-muted-foreground">
++              {intl.formatMessage({ id: "chat.attachments.preview.textLoading" })}
++            </p>
++          )
++        }
++      >
++        {scaled ? (
++          <div
++            inert
++            aria-hidden="true"
++            className="origin-top-left [&_button]:hidden"
++            style={{ width: 400, height: 290, transform: "scale(0.22)" }}
++          >
++            {content}
++          </div>
++        ) : (
++          content
++        )}
++      </Suspense>
++    </div>
++  );
++}
+diff --git a/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts b/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts
+new file mode 100644
+index 0000000..74cd50a
+--- /dev/null
++++ b/packages/ui/src/v4/composer/useComposerAttachmentPreviews.ts
+@@ -0,0 +1,174 @@
++import { useEffect, useRef, useState } from "react";
++import type { IFileService } from "@zcode/services";
++import { readFileAsDataUrl, type ChatComposerAttachment } from "@/lib/chatAttachments.js";
++import {
++  decodeBase64ToArrayBuffer,
++  getOfficeFilePreviewKind,
++  type OfficeFilePreviewKind,
++} from "@/lib/officeFilePreview.js";
++import type { PdfViewerSource } from "@/components/ui/pdf-viewer.js";
++import { isTextLikeAttachment } from "@/lib/chatAttachmentMetadata.js";
++
++// Preview is ephemeral UI state. It neither changes the attachment sent to the Host
++// nor stores a second copy of its contents in the conversation/draft ledger.
++export const COMPOSER_TEXT_PREVIEW_BYTES = 64 * 1024;
++export interface ComposerTextPreview {
++  content: string;
++  truncated: boolean;
++}
++
++export async function readComposerTextPreview(
++  attachment: ChatComposerAttachment,
++  fileService?: Pick<IFileService, "readTextFile">,
++): Promise<ComposerTextPreview> {
++  if (!isTextLikeAttachment(attachment)) throw new Error("Not a text attachment");
++  // A dropped File belongs to this computer, even when its destination is remote.
++  // Path-only picker attachments use the existing local file service instead.
++  if (attachment.file) {
++    const content = await attachment.file.slice(0, COMPOSER_TEXT_PREVIEW_BYTES).text();
++    if (content.includes("\0")) throw new Error("Binary attachment");
++    return { content, truncated: attachment.file.size > COMPOSER_TEXT_PREVIEW_BYTES };
++  }
++  if (!attachment.localPath || !fileService) throw new Error("Attachment content unavailable");
++  const result = await fileService.readTextFile({
++    path: attachment.localPath,
++    length: COMPOSER_TEXT_PREVIEW_BYTES,
++  });
++  if (result.isBinary) throw new Error("Binary attachment");
++  return { content: result.content, truncated: result.truncated };
++}
++
++export type ComposerDocumentKind = "text" | "pdf" | "office" | "pptx" | "media";
++export type ComposerAttachmentPreview =
++  | (ComposerTextPreview & { kind: "text" })
++  | { kind: "pdf"; source: PdfViewerSource }
++  | { kind: "office"; buffer: ArrayBuffer; officeKind: OfficeFilePreviewKind }
++  | { kind: "pptx"; buffer: ArrayBuffer }
++  | { kind: "media"; src: string; mediaType: string };
++export const COMPOSER_BINARY_PREVIEW_BYTES = 25 * 1024 * 1024;
++
++export function getComposerDocumentKind(
++  attachment: Pick<ChatComposerAttachment, "filename" | "mimeType">,
++): ComposerDocumentKind | null {
++  if (attachment.mimeType.startsWith("image/") || attachment.mimeType.startsWith("video/"))
++    return "media";
++  if (attachment.mimeType.startsWith("audio/")) return null;
++  if (/\.pdf$/iu.test(attachment.filename) || attachment.mimeType === "application/pdf")
++    return "pdf";
++  if (/\.pptx$/iu.test(attachment.filename)) return "pptx";
++  if (getOfficeFilePreviewKind(attachment.filename)) return "office";
++  return isTextLikeAttachment(attachment) ? "text" : null;
++}
++
++export async function readComposerAttachmentPreview(
++  attachment: ChatComposerAttachment,
++  fileService?: Pick<IFileService, "readTextFile" | "readBinaryPreview"> &
++    Partial<Pick<IFileService, "stat" | "readFileRange">>,
++): Promise<ComposerAttachmentPreview> {
++  const kind = getComposerDocumentKind(attachment);
++  if (kind === "text") return { kind, ...(await readComposerTextPreview(attachment, fileService)) };
++  if (!kind) throw new Error("Unsupported document preview");
++  if (kind === "media") {
++    if (attachment.objectUrl)
++      return { kind, src: attachment.objectUrl, mediaType: attachment.mimeType };
++    if (attachment.file) {
++      if (attachment.file.size > COMPOSER_BINARY_PREVIEW_BYTES)
++        throw new Error("Preview too large");
++      return {
++        kind,
++        src: await readFileAsDataUrl(attachment.file),
++        mediaType: attachment.mimeType,
++      };
++    }
++    if (!attachment.localPath || !fileService) throw new Error("Attachment content unavailable");
++    // Unsent picker files are not Session-owned media grants. Reuse the existing
++    // file reader, never manufacture or loosen a media-protocol authorization.
++    const binary = await fileService.readBinaryPreview({
++      path: attachment.localPath,
++      maxBytes: COMPOSER_BINARY_PREVIEW_BYTES,
++    });
++    return {
++      kind,
++      src: `data:${attachment.mimeType};base64,${binary.dataBase64}`,
++      mediaType: attachment.mimeType,
++    };
++  }
++  // Browser PDFs can be paged from their existing Blob without another whole-file copy.
++  if (kind === "pdf" && attachment.objectUrl) return { kind, source: attachment.objectUrl };
++  if (kind === "pdf" && attachment.file) return { kind, source: attachment.file };
++  if (kind === "pdf" && attachment.localPath && fileService?.stat && fileService.readFileRange) {
++    const path = attachment.localPath;
++    const info = await fileService.stat({ path });
++    if (typeof info.size === "number") {
++      // Use the same range transport as PreviewPane. The media protocol is for
++      // Chromium image/video elements and is not a PDF.js fetch URL.
++      return {
++        kind,
++        source: {
++          totalBytes: info.size,
++          requestRange: (offset, length) => fileService.readFileRange!({ path, offset, length }),
++        },
++      };
++    }
++  }
++  let buffer: ArrayBuffer;
++  if (attachment.file) {
++    if (attachment.file.size > COMPOSER_BINARY_PREVIEW_BYTES) throw new Error("Preview too large");
++    buffer = await attachment.file.arrayBuffer();
++  } else {
++    if (!attachment.localPath || !fileService) throw new Error("Attachment content unavailable");
++    const binary = await fileService.readBinaryPreview({
++      path: attachment.localPath,
++      maxBytes: COMPOSER_BINARY_PREVIEW_BYTES,
++    });
++    buffer = decodeBase64ToArrayBuffer(binary.dataBase64);
++  }
++  if (kind === "pdf") return { kind, source: buffer };
++  if (kind === "pptx") return { kind, buffer };
++  return { kind, buffer, officeKind: getOfficeFilePreviewKind(attachment.filename)! };
++}
++
++export function useComposerAttachmentPreviews(
++  attachments: readonly ChatComposerAttachment[],
++  fileService?: Pick<IFileService, "readTextFile" | "readBinaryPreview"> &
++    Partial<Pick<IFileService, "stat" | "readFileRange">>,
++) {
++  const reads = useRef(new Map<string, Promise<ComposerAttachmentPreview | null>>());
++  const [previews, setPreviews] = useState<ReadonlyMap<string, ComposerAttachmentPreview | null>>(
++    () => new Map(),
++  );
++  useEffect(() => {
++    let current = true;
++    const documentAttachments = attachments.filter(
++      (attachment) => getComposerDocumentKind(attachment) !== null,
++    );
++    const ids = new Set(documentAttachments.map((attachment) => attachment.id));
++    for (const id of reads.current.keys()) if (!ids.has(id)) reads.current.delete(id);
++    setPreviews((previous) =>
++      [...previous.keys()].every((id) => ids.has(id))
++        ? previous
++        : new Map([...previous].filter(([id]) => ids.has(id))),
++    );
++    for (const attachment of documentAttachments) {
++      let read = reads.current.get(attachment.id);
++      if (!read) {
++        read = readComposerAttachmentPreview(attachment, fileService).catch(() => null);
++        reads.current.set(attachment.id, read);
++      }
++      void read.then((preview) => {
++        if (!current) return;
++        setPreviews((previous) =>
++          previous.has(attachment.id) && previous.get(attachment.id) === preview
++            ? previous
++            : new Map(previous).set(attachment.id, preview),
++        );
++      });
++    }
++    // Upload-progress rerenders reuse the bounded read. Removed/scoped-out cards
++    // cannot be brought back by a late file-service reply.
++    return () => {
++      current = false;
++    };
++  }, [attachments, fileService]);
++  return previews;
++}
+diff --git a/packages/ui/test/composerAttachmentPreviews.browser.test.tsx b/packages/ui/test/composerAttachmentPreviews.browser.test.tsx
+new file mode 100644
+index 0000000..ef12fe6
+--- /dev/null
++++ b/packages/ui/test/composerAttachmentPreviews.browser.test.tsx
+@@ -0,0 +1,512 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { parseDelimitedTextPreview } from "../src/lib/delimitedTextPreview.js";
++import { Attachment } from "../src/components/ai-elements/attachments.js";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { useOptionalBaseWorkspaceServices } from "../src/hooks/useWorkspaceServices.js";
++import { useRemoteWorkspaceSessionStore } from "../src/store/remoteWorkspaceSessionStore.js";
++import type { ChatComposerAttachment } from "../src/lib/chatAttachments.js";
++import {
++  COMPOSER_TEXT_PREVIEW_BYTES,
++  readComposerTextPreview,
++  useComposerAttachmentPreviews,
++  readComposerAttachmentPreview,
++  getComposerDocumentKind,
++  COMPOSER_BINARY_PREVIEW_BYTES,
++} from "../src/v4/composer/useComposerAttachmentPreviews.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const results: Array<{ name: string; error?: string }> = [];
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++const attachment = (
++  id: string,
++  extra: Partial<ChatComposerAttachment> = {},
++): ChatComposerAttachment => ({
++  id,
++  filename: "preview.md",
++  mimeType: "text/markdown",
++  sizeBytes: 0,
++  ...extra,
++});
++
++async function run() {
++  await test("dropped File preview is bounded and never reads the remote destination", async () => {
++    const file = new File(["# 中文\n", "x".repeat(100_000)], "preview.md");
++    let requested = false;
++    const value = await readComposerTextPreview(
++      attachment("drop", { file, localPath: "/local/preview.md" }),
++      {
++        async readTextFile() {
++          requested = true;
++          throw new Error("Must not use host path");
++        },
++      },
++    );
++    check(value.content.startsWith("# 中文\n") && value.truncated, "lost UTF-8 text or truncation");
++    check(
++      new TextEncoder().encode(value.content).length <= COMPOSER_TEXT_PREVIEW_BYTES,
++      "read the whole File",
++    );
++    check(
++      !requested && file.size > value.content.length,
++      "preview changed the source or requested the remote file",
++    );
++  });
++  await test("path-only picker preview uses the existing bounded file service", async () => {
++    let requested = false;
++    const value = await readComposerTextPreview(
++      attachment("picker", { localPath: "/local/preview.md" }),
++      {
++        async readTextFile(params) {
++          check(
++            params.path === "/local/preview.md" && params.length === COMPOSER_TEXT_PREVIEW_BYTES,
++            "wrong file/limit",
++          );
++          requested = true;
++          return {
++            path: params.path,
++            content: "# Local",
++            offset: 0,
++            bytesRead: 7,
++            totalBytes: 7,
++            truncated: false,
++            isBinary: false,
++          };
++        },
++      },
++    );
++    check(
++      requested && value.content === "# Local" && !value.truncated,
++      "picker content unavailable",
++    );
++  });
++  await test("empty text is a successful preview rather than a loading state", async () => {
++    const value = await readComposerTextPreview(
++      attachment("empty", { file: new File([], "empty.txt") }),
++    );
++    check(value.content === "" && !value.truncated, "empty file treated as unavailable");
++  });
++  await test("renamed binary data is not rendered as text", async () => {
++    const binary = new File([new Uint8Array([0, 1, 2])], "binary.md");
++    let rejected = false;
++    try {
++      await readComposerTextPreview(attachment("binary", { file: binary }));
++    } catch {
++      rejected = true;
++    }
++    check(rejected, "binary data rendered as text");
++  });
++  await test("binary service response does not become a preview", async () => {
++    let rejected = false;
++    try {
++      await readComposerTextPreview(attachment("binary-path", { localPath: "/local/binary.md" }), {
++        async readTextFile(params) {
++          return {
++            path: params.path,
++            content: "",
++            offset: 0,
++            bytesRead: 3,
++            totalBytes: 3,
++            truncated: false,
++            isBinary: true,
++          };
++        },
++      });
++    } catch {
++      rejected = true;
++    }
++    check(rejected, "binary service result accepted");
++  });
++
++  await test("progress updates reuse reads, and removed/scoped-out attachments reject late results", async () => {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    let previews!: ReturnType<typeof useComposerAttachmentPreviews>;
++    let calls = 0;
++    const pending = Promise.withResolvers<{
++      path: string;
++      content: string;
++      offset: number;
++      bytesRead: number;
++      totalBytes: number;
++      truncated: boolean;
++      isBinary: boolean;
++    }>();
++    const service = {
++      async readTextFile() {
++        calls++;
++        return pending.promise;
++      },
++    };
++    function Reader({ items }: { items: ChatComposerAttachment[] }) {
++      previews = useComposerAttachmentPreviews(items, service);
++      return <div>{previews.size}</div>;
++    }
++    const item = attachment("old", { localPath: "/old.md" });
++    try {
++      await act(async () => {
++        root.render(<Reader items={[item]} />);
++      });
++      await act(async () => {
++        root.render(<Reader items={[{ ...item }]} />);
++      });
++      check(calls === 1, "upload-progress rerender reread the file");
++      await act(async () => {
++        root.render(<Reader items={[]} />);
++      });
++      await act(async () => {
++        pending.resolve({
++          path: "/old.md",
++          content: "old content",
++          offset: 0,
++          bytesRead: 11,
++          totalBytes: 11,
++          truncated: false,
++          isBinary: false,
++        });
++      });
++      check(previews.size === 0, "late result restored a removed attachment");
++      const next = attachment("new", { file: new File(["new content"], "new.md") });
++      await act(async () => {
++        root.render(<Reader items={[next]} />);
++      });
++      // File.text() finishes on a browser I/O task, beyond act's React-only flush.
++      const deadline = performance.now() + 2000;
++      while (!previews.has("new") && performance.now() < deadline) {
++        await act(async () => {
++          await new Promise((resolve) => setTimeout(resolve, 5));
++        });
++      }
++      check(
++        !previews.has("old") &&
++          (previews.get("new")?.kind === "text"
++            ? (previews.get("new") as { content: string }).content
++            : undefined) === "new content",
++        "cross-scope content leak",
++      );
++      await act(async () => {
++        root.render(<Reader items={[attachment("missing", { localPath: "/missing.md" })]} />);
++      });
++      check(!previews.has("new"), "removed contents retained in preview state");
++    } finally {
++      await act(async () => root.unmount());
++      container.remove();
++    }
++  });
++  await test("read failure remains optional and does not reject composer rendering", async () => {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    let previews!: ReturnType<typeof useComposerAttachmentPreviews>;
++    function Reader() {
++      previews = useComposerAttachmentPreviews([attachment("unavailable")]);
++      return <div>{previews.has("unavailable") ? "settled" : "pending"}</div>;
++    }
++    try {
++      await act(async () => root.render(<Reader />));
++      check(
++        previews.has("unavailable") && previews.get("unavailable") === null,
++        "failure did not settle",
++      );
++    } finally {
++      await act(async () => root.unmount());
++      container.remove();
++    }
++  });
++  await test("attachment Enter opens preview while remove-button Enter keeps its own action", async () => {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    let opened = 0;
++    let removed = 0;
++    try {
++      await act(async () =>
++        root.render(
++          <Attachment
++            data={{
++              id: "keys",
++              type: "file",
++              filename: "keys.md",
++              mediaType: "text/markdown",
++              url: "",
++            }}
++            onOpen={() => {
++              opened++;
++            }}
++            openLabel="Preview keys.md"
++          >
++            <button
++              type="button"
++              onClick={(event) => {
++                event.stopPropagation();
++                removed++;
++              }}
++            >
++              Remove
++            </button>
++          </Attachment>,
++        ),
++      );
++      const card = container.querySelector('[role="button"]')!;
++      const remove = container.querySelector("button")!;
++      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
++      await act(async () => {
++        card.dispatchEvent(enter);
++      });
++      check(opened === 1 && enter.defaultPrevented, "card did not open with Enter");
++      const removeEnter = new KeyboardEvent("keydown", {
++        key: "Enter",
++        bubbles: true,
++        cancelable: true,
++      });
++      await act(async () => {
++        remove.dispatchEvent(removeEnter);
++      });
++      check(
++        opened === 1 && !removeEnter.defaultPrevented,
++        "card hijacked the remove button's keyboard action",
++      );
++      await act(async () => {
++        remove.click();
++      });
++      check(removed === 1 && opened === 1, "remove action opened the preview");
++    } finally {
++      await act(async () => root.unmount());
++      container.remove();
++    }
++  });
++  await test("remote conversation previews local picker files through the base Host", async () => {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    const previous = useRemoteWorkspaceSessionStore.getState().baseServices;
++    const item = attachment("local-picker", { localPath: "/this-computer/preview.md" });
++    let localReads = 0;
++    let remoteReads = 0;
++    const base = {
++      fileService: {
++        async readTextFile(params: { path: string }) {
++          localReads++;
++          return {
++            path: params.path,
++            content: "local preview",
++            offset: 0,
++            bytesRead: 13,
++            totalBytes: 13,
++            truncated: false,
++            isBinary: false,
++          };
++        },
++      },
++    };
++    const remote = {
++      fileService: {
++        async readTextFile() {
++          remoteReads++;
++          throw new Error("Remote file owner");
++        },
++      },
++    };
++    function Reader() {
++      const services = useOptionalBaseWorkspaceServices();
++      const previews = useComposerAttachmentPreviews([item], services?.fileService);
++      const preview = previews.get(item.id);
++      return <div>{preview?.kind === "text" ? preview.content : ""}</div>;
++    }
++    try {
++      useRemoteWorkspaceSessionStore.setState({ baseServices: base as never });
++      await act(async () =>
++        root.render(
++          <ServiceProvider services={remote as never}>
++            <Reader />
++          </ServiceProvider>,
++        ),
++      );
++      check(
++        container.textContent === "local preview" && localReads === 1 && remoteReads === 0,
++        "local picker path read on remote Host",
++      );
++    } finally {
++      await act(async () => root.unmount());
++      useRemoteWorkspaceSessionStore.setState({ baseServices: previous });
++      container.remove();
++    }
++  });
++  await test("document kinds match real format adapters instead of treating every binary as previewable", async () => {
++    for (const [filename, expected] of [
++      ["a.pdf", "pdf"],
++      ["a.docx", "office"],
++      ["a.doc", "office"],
++      ["a.xlsx", "office"],
++      ["a.xlsm", "office"],
++      ["a.xls", "office"],
++      ["a.pptx", "pptx"],
++      ["a.tsv", "text"],
++      ["a.ipynb", "text"],
++      ["a.html", "text"],
++      ["a.ppt", null],
++      ["a.zip", null],
++    ]) {
++      check(
++        getComposerDocumentKind({
++          filename: String(filename),
++          mimeType: "application/octet-stream",
++        }) === expected,
++        "incorrect format adapter: " + filename,
++      );
++    }
++  });
++  await test("Office read limit is checked before allocating or reading the whole File", async () => {
++    const file = new File([new Uint8Array(COMPOSER_BINARY_PREVIEW_BYTES + 1)], "large.docx");
++    let read = false;
++    Object.defineProperty(file, "arrayBuffer", {
++      value: async () => {
++        read = true;
++        throw new Error("Must not read");
++      },
++    });
++    let rejected = false;
++    try {
++      await readComposerAttachmentPreview(
++        attachment("too-large", { filename: "large.docx", file }),
++      );
++    } catch {
++      rejected = true;
++    }
++    check(rejected && !read, "oversized document was read");
++  });
++  await test("picker binary preview reuses bounded Host bytes, while existing PDF URLs avoid copying", async () => {
++    let requested = false;
++    const preview = await readComposerAttachmentPreview(
++      attachment("binary", { filename: "small.docx", localPath: "/small.docx" }),
++      {
++        async readTextFile() {
++          throw new Error("Not text");
++        },
++        async readBinaryPreview(params) {
++          requested = true;
++          check(
++            params.path === "/small.docx" && params.maxBytes === COMPOSER_BINARY_PREVIEW_BYTES,
++            "wrong binary limit",
++          );
++          return { path: params.path, dataBase64: btoa("PKfixture"), totalBytes: 9 };
++        },
++      },
++    );
++    check(
++      requested && preview.kind === "office" && preview.buffer.byteLength === 9,
++      "binary preview lost bytes",
++    );
++    const pdf = await readComposerAttachmentPreview(
++      attachment("pdf-url", { filename: "a.pdf", objectUrl: "blob:fixture" }),
++    );
++    check(
++      pdf.kind === "pdf" && pdf.source === "blob:fixture",
++      "PDF URL unnecessarily read as a whole file",
++    );
++  });
++  await test("CSV and TSV previews retain quoted newlines, escaped quotes and bounded columns", async () => {
++    const csv = parseDelimitedTextPreview('name,note\r\n"A","two\nlines and ""quotes"""\r\nB,last');
++    check(
++      csv.rows[1]?.[1] === 'two\nlines and "quotes"' && csv.rows.length === 3,
++      "CSV quoting lost content",
++    );
++    const tsv = parseDelimitedTextPreview("a\tb\tc\n1\t2\t3", "\t", 1, 2);
++    check(tsv.rows[0]?.join(",") === "a,b" && tsv.truncated, "TSV bounds not disclosed");
++  });
++  await test("local PDF paths use the existing range service without media-URL fetch or whole-file reads", async () => {
++    let binaryRead = false;
++    let rangeRead = false;
++    const preview = await readComposerAttachmentPreview(
++      attachment("pdf-range", { filename: "large.pdf", localPath: "/large.pdf" }),
++      {
++        async readTextFile() {
++          throw new Error("Not text");
++        },
++        async readBinaryPreview() {
++          binaryRead = true;
++          throw new Error("Must not read whole PDF");
++        },
++        async stat() {
++          return { type: "file", size: 50_000_000 } as never;
++        },
++        async readFileRange(params) {
++          check(
++            params.path === "/large.pdf" && params.offset === 4096 && params.length === 4,
++            "wrong range",
++          );
++          rangeRead = true;
++          return new Uint8Array([37, 80, 68, 70]);
++        },
++      },
++    );
++    check(
++      preview.kind === "pdf" &&
++        typeof preview.source === "object" &&
++        "requestRange" in preview.source,
++      "local PDF is not paged",
++    );
++    if (
++      preview.kind !== "pdf" ||
++      typeof preview.source !== "object" ||
++      !("requestRange" in preview.source)
++    )
++      throw new Error("No range source");
++    const bytes = await preview.source.requestRange(4096, 4);
++    check(
++      rangeRead && !binaryRead && bytes[0] === 37,
++      "PDF copied whole contents or lost range bytes",
++    );
++  });
++  await test("unsent picker images reuse file bytes without claiming a Session media grant", async () => {
++    let read = false;
++    const preview = await readComposerAttachmentPreview(
++      attachment("picker-image", {
++        filename: "sample.png",
++        mimeType: "image/png",
++        localPath: "/sample.png",
++      }),
++      {
++        async readTextFile() {
++          throw new Error("Not text");
++        },
++        async readBinaryPreview(params) {
++          read = true;
++          check(
++            params.path === "/sample.png" && params.maxBytes === COMPOSER_BINARY_PREVIEW_BYTES,
++            "wrong media read",
++          );
++          return { path: params.path, dataBase64: btoa("fixture"), totalBytes: 7 };
++        },
++      },
++    );
++    check(
++      read && preview.kind === "media" && preview.src.startsWith("data:image/png;base64,"),
++      "picker used an unadmitted media URL",
++    );
++    const dropped = await readComposerAttachmentPreview(
++      attachment("dropped-image", {
++        filename: "sample.png",
++        mimeType: "image/png",
++        objectUrl: "blob:existing",
++      }),
++    );
++    check(
++      dropped.kind === "media" && dropped.src === "blob:existing",
++      "existing Blob preview was copied",
++    );
++  });
++  return results;
++}
++(window as unknown as Record<string, unknown>).__composerPreviewTests = run();

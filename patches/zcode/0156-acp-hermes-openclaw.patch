@@ -1,0 +1,463 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+index 40093e7..d4dbbf2 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+@@ -1,5 +1,11 @@
+ import { execFile } from "node:child_process";
+-import { ACP_PROFILES, acpLocalAccount, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
++import {
++  ACP_FIXED_MODEL_ID,
++  ACP_PROFILES,
++  acpLocalAccount,
++  resolveAcpExecutable,
++  type AcpExecutorKind,
++} from "./acp-profiles.js";
+ import { acpOption, acpOptionValues, openAcpSession } from "./acp-session.js";
+ import { acpCliVersion } from "./acp-turn.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
+@@ -48,10 +54,12 @@ export async function inspectAcpConnection(input: {
+     onExit: () => {},
+   });
+   try {
+-    const models = acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
+-      id: entry.value,
+-      name: entry.name,
+-    }));
++    const models = profile.fixedModel
++      ? [{ id: ACP_FIXED_MODEL_ID, name: `${profile.label} agent` }]
++      : acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
++          id: entry.value,
++          name: entry.name,
++        }));
+     if (!models.length) throw new Error(`${profile.label} returned no models for this account`);
+     const thoughtLevels = acpOptionValues(acpOption(session.configOptions, "thought_level"))
+       .map((entry) => entry.value)
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+index 8e000df..b2068c2 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -3,12 +3,14 @@ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import type { CollaborationMode } from "@zcode/contracts";
+ 
+-export type AcpExecutorKind = "cursor" | "kimi" | "opencode";
++export type AcpExecutorKind = "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
+ 
+ /**
+  * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
+  * initialize + session/new handshake (2026-10-06): Kimi Code CLI 0.37.2, OpenCode 1.18.32,
+- * Cursor Agent 2026.08.04. Fleet keeps the vendor's own login; it never reads their tokens.
++ * Cursor Agent 2026.08.04. Hermes (`hermes-acp`) and OpenClaw (`openclaw acp`) follow their source
++ * (hermes-agent acp_adapter/server.py, openclaw docs/cli/acp.md) and are not installed here.
++ * Fleet keeps the vendor's own login; it never reads their tokens.
+  */
+ export interface AcpProfile {
+   kind: AcpExecutorKind;
+@@ -20,9 +22,11 @@ export interface AcpProfile {
+   args: string[];
+   /** ACP authenticate method to call before sessions (Cursor requires it after `agent login`). */
+   authMethodId?: string;
+-  /** Vendor mode option values: plan uses the vendor's read-only plan; others stay on manual approval. */
+-  planMode: string;
+-  manualMode: string;
++  /** Vendor mode values: plan uses the vendor's read-only plan; others stay on manual approval. */
++  planMode?: string;
++  manualMode?: string;
++  /** The CLI's agent configuration owns the model (OpenClaw Gateway); Fleet lists one entry. */
++  fixedModel?: boolean;
+   /** Extra environment for a Fleet permission mode (e.g. make OpenCode ask instead of auto-allow). */
+   environment(mode: CollaborationMode | undefined): Record<string, string>;
+   billingProvider: string;
+@@ -79,6 +83,34 @@ export const ACP_PROFILES: Record<AcpExecutorKind, AcpProfile> = {
+     billingProvider: "cursor",
+     loginCommand: "cursor-agent login",
+   },
++  hermes: {
++    kind: "hermes",
++    label: "Hermes",
++    binary: bin("hermes-acp"),
++    candidates: [join(home, ".local", "bin", bin("hermes-acp")), join(home, ".hermes", "bin", bin("hermes-acp"))],
++    args: [],
++    // Hermes 没有计划模式：计划档由 Fleet 拒绝其改动请求；default 即"改动前询问"。
++    manualMode: "default",
++    environment: () => ({}),
++    billingProvider: "hermes",
++    loginCommand: "hermes setup",
++  },
++  openclaw: {
++    kind: "openclaw",
++    label: "OpenClaw",
++    binary: bin("openclaw"),
++    candidates: [
++      join(home, ".openclaw", "bin", bin("openclaw")),
++      "/opt/homebrew/bin/openclaw",
++      "/usr/local/bin/openclaw",
++      join(home, ".local", "bin", bin("openclaw")),
++    ],
++    args: ["acp"],
++    fixedModel: true,
++    environment: () => ({}),
++    billingProvider: "openclaw",
++    loginCommand: "openclaw onboard",
++  },
+ };
+ 
+ export function resolveAcpExecutable(kind: AcpExecutorKind, override?: string): string {
+@@ -97,4 +129,7 @@ export function resolveAcpExecutable(kind: AcpExecutorKind, override?: string):
+ 
+ export const acpLocalAccount = (kind: AcpExecutorKind) => `${kind}-local`;
+ export const isAcpExecutorKind = (value: unknown): value is AcpExecutorKind =>
+-  value === "cursor" || value === "kimi" || value === "opencode";
++  value === "cursor" || value === "kimi" || value === "opencode" || value === "hermes" || value === "openclaw";
++
++/** The single catalog entry for CLIs whose agent configuration owns the model. */
++export const ACP_FIXED_MODEL_ID = "agent-default";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index 5bc3164..8ce9e8e 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -201,7 +201,7 @@ export function createAcpNativeAgentPort(
+             return;
+           }
+           const modelId = String(request.model.modelId);
+-          if (!(await setAcpOption(session, "model", modelId)))
++          if (!profile.fixedModel && !(await setAcpOption(session, "model", modelId)))
+             throw new Error(`${profile.label} does not offer model ${modelId} for this account`);
+           await setAcpOption(session, "mode", mode === "plan" ? profile.planMode : profile.manualMode);
+           const effort = request.model.options.reasoningLevel;
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 57ddb23..44c5abe 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,7 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
++export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 1afcd7b..74db7a3 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -45,7 +45,7 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+   readonly nativeExecutor?: {
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index e8838e3..8b9bb43 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -59,9 +59,10 @@ access allows everything. It cannot ask mid-run, so refused actions are listed a
+ reply; switch the permission as suggested and retry. It offers no allowance query, so its card
+ shows no allowance.
+ 
+-Cursor, Kimi Code CLI and OpenCode CLI connect through the official CLI's ACP mode; sign in with
+-each CLI first (`cursor-agent login`, `kimi login`, `opencode auth login`). Plan mode uses the CLI's
+-own planning mode. Under Ask before changes, file edits and commands raise Fleet's approval card and
++Cursor, Kimi Code CLI, OpenCode CLI, Hermes and OpenClaw connect through the official CLI's ACP
++mode; sign in or configure each CLI first (`cursor-agent login`, `kimi login`, `opencode auth login`,
++`hermes setup`, `openclaw onboard`). OpenClaw uses the model configured in its gateway. Plan mode
++uses the CLI's own planning mode. Under Ask before changes, file edits and commands raise Fleet's approval card and
+ run only after you allow them; Edit automatically allows file edits and still asks for other
+ actions; Full access allows everything. Available models come from the CLI's account list, and a
+ model outside your plan fails when requested.
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index b49fa29..52158e6 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -45,8 +45,9 @@ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作
+ 运行中弹出确认，被拒的操作列在回复末尾，按提示切换权限后重试即可。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+-Cursor、Kimi Code CLI、OpenCode CLI 通过官方 CLI 的 ACP 模式接入，先在终端完成各自登录
+-（`cursor-agent login`、`kimi login`、`opencode auth login`）。计划模式使用 CLI 自己的规划模式；
++Cursor、Kimi Code CLI、OpenCode CLI、Hermes、OpenClaw 通过官方 CLI 的 ACP 模式接入，先在终端完成
++各自登录或配置（`cursor-agent login`、`kimi login`、`opencode auth login`、`hermes setup`、
++`openclaw onboard`）。OpenClaw 使用其网关中配置的模型。计划模式使用 CLI 自己的规划模式；
+ 变更前确认下，它们要改文件或执行命令时会弹出 Fleet 的确认卡片，你允许后才执行；自动编辑直接
+ 允许改文件、其它操作仍会询问；完全访问全部放行。可用模型以 CLI 返回的账号列表为准，套餐不包含
+ 的模型会在请求时报错。
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 1906c4b..cf29cbb 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2142,6 +2142,70 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-hermes-native",
++          "templateNameMap": {
++            "zh-CN": "Hermes",
++            "en-US": "Hermes"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "hermes",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "hermes"
++            }
++          },
++          "catalog": {
++            "vendorId": "hermes",
++            "vendorNameMap": {
++              "zh-CN": "Hermes",
++              "en-US": "Hermes"
++            },
++            "serviceId": "hermes-cli",
++            "serviceNameMap": {
++              "zh-CN": "Hermes",
++              "en-US": "Hermes"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-openclaw-native",
++          "templateNameMap": {
++            "zh-CN": "OpenClaw",
++            "en-US": "OpenClaw"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "openclaw",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "openclaw"
++            }
++          },
++          "catalog": {
++            "vendorId": "openclaw",
++            "vendorNameMap": {
++              "zh-CN": "OpenClaw",
++              "en-US": "OpenClaw"
++            },
++            "serviceId": "openclaw-cli",
++            "serviceNameMap": {
++              "zh-CN": "OpenClaw",
++              "en-US": "OpenClaw"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-kimi-cli-native",
+           "templateNameMap": {
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index b97ab2e..762bd98 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -78,7 +78,7 @@ export const completeSubscriptionAccessDataSchema = subscriptionAccessDataSchema
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode"]),
++    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw"]),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index b953bc4..576b240 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -18,7 +18,7 @@ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode";
++    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw";
+     executable?: string;
+     configDir?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 3d93d93..4232437 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -93,7 +93,7 @@ export function mapCodexNativeModels(
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode",
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw",
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 55b187b..1ddcc12 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2869,6 +2869,8 @@ const NATIVE_CLI_LOGIN_ENDPOINTS = {
+   cursor: "https://api2.cursor.sh/",
+   kimi: "https://api.kimi.com/coding/v1",
+   opencode: "https://opencode.ai/zen/v1",
++  hermes: "https://portal.nousresearch.com/",
++  openclaw: "https://openclaw.ai/",
+ } as const;
+ 
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+@@ -2878,6 +2880,8 @@ const NATIVE_EXECUTOR_ENDPOINTS = {
+   cursor: "https://api2.cursor.sh/",
+   kimi: "https://api.kimi.com/coding/v1",
+   opencode: "https://opencode.ai/zen/v1",
++  hermes: "https://portal.nousresearch.com/",
++  openclaw: "https://openclaw.ai/",
+ } as const;
+ 
+ async function resolveNativeExecutorNetworkEnv(transport: {
+diff --git a/packages/services/test/acp-native.test.ts b/packages/services/test/acp-native.test.ts
+index 1d785df..4285758 100644
+--- a/packages/services/test/acp-native.test.ts
++++ b/packages/services/test/acp-native.test.ts
+@@ -211,3 +211,29 @@ test("an ACP setup request that never answers fails after its timeout instead of
+     client.close();
+   }
+ });
++
++test("OpenClaw's gateway owns the model: one catalog entry and no model switch", async () => {
++  const agent = fakeAgent();
++  const inspected = await inspectAcpConnection({ kind: "openclaw", executable: agent.script, cwd: tmpdir() });
++  assert.deepEqual(inspected.models, [{ id: "agent-default", name: "OpenClaw agent" }]);
++  const turn = createAcpNativeAgentPort("openclaw").createTurn({
++    ...request(agent.script, { collaborationMode: "yolo" }),
++    model: { modelId: "agent-default", options: {}, nativeExecutor: { kind: "openclaw", executable: agent.script } } as never,
++  });
++  await drain(turn);
++  await turn.close();
++  assert.ok(!agent.log().some((entry) => entry.method === "session/set_config_option" && entry.params.configId === "model"));
++});
++
++test("Hermes has no plan mode, so Fleet's plan refuses its change requests itself", async () => {
++  const agent = fakeAgent();
++  const turn = createAcpNativeAgentPort("hermes").createTurn({
++    ...request(agent.script, { collaborationMode: "plan" }),
++    model: { modelId: "k3", options: {}, nativeExecutor: { kind: "hermes", executable: agent.script } } as never,
++  });
++  await drain(turn);
++  await turn.close();
++  const log = agent.log();
++  assert.ok(!log.some((entry) => entry.method === "session/set_config_option" && entry.params.value === "plan"));
++  assert.deepEqual(log.find((entry) => entry.permissionOutcome)?.permissionOutcome, { outcome: "selected", optionId: "no" });
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index e4b2231..f662e39 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -61,12 +61,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 54);
+-  assert.equal(vendors.length, 22);
++  assert.equal(templates.length, 56);
++  assert.equal(vendors.length, 24);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    54,
++    56,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 54872d7..433de4a 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7332,6 +7332,16 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.opencode.missing": "OpenCode (opencode) was not found. Install the official CLI first.",
+   "settings.modelProvider.nativeCli.opencode.login": "Run opencode auth login in a terminal, then connect again.",
+   "settings.modelProvider.nativeCli.opencode.guide": "OpenCode ACP guide",
++  "settings.modelProvider.nativeCli.hermes.title": "Hermes account",
++  "settings.modelProvider.nativeCli.hermes.flow": "Connect the providers configured in Hermes Agent (hermes-acp) on this machine.",
++  "settings.modelProvider.nativeCli.hermes.missing": "Hermes Agent (hermes-acp) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.hermes.login": "Run hermes setup in a terminal to configure a provider, then connect again.",
++  "settings.modelProvider.nativeCli.hermes.guide": "Hermes Agent setup",
++  "settings.modelProvider.nativeCli.openclaw.title": "OpenClaw gateway",
++  "settings.modelProvider.nativeCli.openclaw.flow": "Connect OpenClaw (openclaw acp) and the agent configured in its gateway on this machine.",
++  "settings.modelProvider.nativeCli.openclaw.missing": "OpenClaw (openclaw) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.openclaw.login": "Run openclaw onboard in a terminal and start the gateway, then connect again.",
++  "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP guide",
+   "settings.modelProvider.nativeCli.flow":
+     "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 24704df..e43d764 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6944,6 +6944,16 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.opencode.missing": "未找到 OpenCode（opencode），请先安装官方 CLI。",
+   "settings.modelProvider.nativeCli.opencode.login": "请先在终端运行 opencode auth login 登录，然后再连接。",
+   "settings.modelProvider.nativeCli.opencode.guide": "OpenCode ACP 说明",
++  "settings.modelProvider.nativeCli.hermes.title": "Hermes 账号",
++  "settings.modelProvider.nativeCli.hermes.flow": "连接本机 Hermes Agent（hermes-acp）已配置的服务商。",
++  "settings.modelProvider.nativeCli.hermes.missing": "未找到 Hermes Agent（hermes-acp），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.hermes.login": "请先在终端运行 hermes setup 配置服务商，然后再连接。",
++  "settings.modelProvider.nativeCli.hermes.guide": "Hermes Agent 安装与配置",
++  "settings.modelProvider.nativeCli.openclaw.title": "OpenClaw 网关",
++  "settings.modelProvider.nativeCli.openclaw.flow": "连接本机 OpenClaw（openclaw acp）及其网关中的智能体。",
++  "settings.modelProvider.nativeCli.openclaw.missing": "未找到 OpenClaw（openclaw），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.openclaw.login": "请先在终端运行 openclaw onboard 完成配置并启动网关，然后再连接。",
++  "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP 说明",
+   "settings.modelProvider.nativeCli.flow":
+     "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index 00330d3..9089bbf 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -48,6 +48,8 @@ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], Rea
+   cursor: new Set(["title", "flow", "missing", "login", "guide"]),
+   kimi: new Set(["title", "flow", "missing", "login", "guide"]),
+   opencode: new Set(["title", "flow", "missing", "login", "guide"]),
++  hermes: new Set(["title", "flow", "missing", "login", "guide"]),
++  openclaw: new Set(["title", "flow", "missing", "login", "guide"]),
+ };
+ 
+ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+@@ -57,6 +59,8 @@ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+   cursor: "https://cursor.com/docs/cli/overview",
+   kimi: "https://moonshotai.github.io/kimi-cli/",
+   opencode: "https://opencode.ai/docs/acp/",
++  hermes: "https://hermes-agent.nousresearch.com/",
++  openclaw: "https://docs.openclaw.ai/cli/acp",
+ };
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 1a5b732..f636e9c 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -20,6 +20,8 @@ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
+ import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
+ import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg";
++import Hermes from "@lobehub/icons-static-svg/icons/hermesagent.svg";
++import OpenClaw from "@lobehub/icons-static-svg/icons/openclaw-color.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+ import Groq from "@lobehub/icons-static-svg/icons/groq.svg";
+ import Cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg";
+@@ -52,6 +54,8 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   openrouter: { src: openrouterLight, dark: openrouterDark, color: true },
+   opencode: { src: OpenCode, color: false },
+   cursor: { src: Cursor, color: false },
++  hermes: { src: Hermes, color: false },
++  openclaw: { src: OpenClaw, color: true },
+   github: { src: GithubCopilot, color: false },
+   groq: { src: Groq, color: false },
+   cerebras: { src: Cerebras, color: true },

@@ -1,0 +1,51 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 13d7ed8..53e3510 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1339,7 +1339,7 @@
+             "builtinModelIds": [],
+             "logo": {
+               "type": "builtin",
+-              "key": "codex"
++              "key": "openai"
+             }
+           },
+           "catalog": {
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+index 4799930..7e2b82d 100644
+--- a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
++++ b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+@@ -137,9 +137,9 @@
+       "asset": "@lobehub/icons-static-svg/icons/zai.svg",
+       "evidence": "https://bigmodel.cn/static/images/favicon.png and official app asset https://static.bigmodel.cn/wd-paas-front/img/z-pure-logo.b65701e5.svg show the current Z mark; OAuth surfaces share the same renderer."
+     },
+-    "codex": {
+-      "asset": "@lobehub/icons-static-svg/icons/codex.svg",
+-      "evidence": "Codex native-client template plus installed com.openai.codex official app icon; generic OpenAI/ChatGPT keys remain."
++    "chatgpt": {
++      "asset": "@lobehub/icons-static-svg/icons/openai.svg",
++      "evidence": "OV-092 selects the ChatGPT account mark for this subscription connection; the native Codex executor and connection data remain unchanged. Previous stored codex logo keys resolve to the same mark."
+     },
+     "openrouter": {
+       "asset": "model-provider-openrouter-light.svg",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index aad943c..5d914c9 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -14,7 +14,6 @@ import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
+ import Bailian from "@lobehub/icons-static-svg/icons/bailian-color.svg";
+ import XiaomiMiMo from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
+ import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg";
+-import Codex from "@lobehub/icons-static-svg/icons/codex.svg";
+ import Anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
+ import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg";
+ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
+@@ -43,7 +42,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   "alibaba-model-studio": { src: Bailian, color: true },
+   "xiaomi-mimo": { src: XiaomiMiMo, color: false },
+   openai: { src: OpenAI, color: false },
+-  codex: { src: Codex, color: false },
++  codex: { src: OpenAI, color: false }, // Retain the previous stored key as a ChatGPT-mark alias.
+   anthropic: { src: Anthropic, color: false },
+   claude: { src: Claude, color: true },
+   xai: { src: XAI, color: false },

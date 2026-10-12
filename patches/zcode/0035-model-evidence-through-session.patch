@@ -1,0 +1,713 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 980eb88..4aaa76f 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -56,15 +56,15 @@ Cindy's `UnifiedModelList` supplies the single searchable list and inline refres
+ `ModelListSyncContent` supplies the discovery comparison. The
+ existing ZCode model rows retain their edit, enable, test and reorder operations. Complete discovered
+ catalogs are registered automatically; manual model-ID addition is the footer action below the list.
+-API-key and manual-model rows share the same input, compact confirmation and persistent trash controls.
+-A confirmation button appears beside the pending row; Enter performs the same single-item operation.
+-Empty or duplicate values cannot be confirmed. Escape restores only that saved key or removes only
+-that new row. Add remains below the list; there is no group Confirm/Cancel toolbar. Pending rows
+-retain their input on failure and show a spinner during persistence. Confirmation never submits
+-another row, address or name draft. Key deletion/default selection and automatic switching persist
+-only their own change; only committed keys count toward automatic switching. Address confirmation
+-saves only the address; selecting a format still saves its protocol/address pair immediately.
+-Model IDs continue through the existing addPersonalModel command. Blur and navigation do not save.
++API-key rows retain the original Enter/blur save with no confirmation button. Clearing a saved key
++on blur removes only that value; Escape restores it or removes only the new row. The sole saved key
++hides trash and switch controls until a second row is added. Manual model-ID rows use a compact
++single-row confirmation; Enter confirms and Escape cancels, while blur and navigation do not add a
++model. Empty or duplicate model IDs cannot be confirmed. Pending rows retain their input on
++failure. Neither key save nor model confirmation submits another address/name draft. Key
++deletion/default selection and automatic switching persist only their own change; only committed
++keys count toward automatic switching. Address confirmation saves only the address; selecting a
++format still saves its protocol/address pair immediately. Model IDs use addPersonalModel.
+ Saving configuration is not connectivity validation and never runs inference.
+ Each saved API-key row has an independent enable switch, distinct from default selection.
+ The existing API access config owns optional `apiKeyEnabledFlags`: up to ten boolean slots aligned
+@@ -346,7 +346,9 @@ failure/cost feedback and Copilot model-policy permission copy remain visible. P
+ links use provider documentation; authorization URLs still come from the existing OAuth owner.
+ Cancellation, account state and persistence ownership are unchanged.
+ 
+-Credential rows reserve an action column only while a sibling has a confirmation/default action, and a switch column only when saved keys exist. Idle single-key and new-provider forms have no empty control columns; delete and enabled controls remain aligned at the trailing edge. Drafts retain the shared row, Enter/Escape and per-row persistence behavior.
++Credential rows reserve action columns only when a sibling needs default/removal or switching.
++Idle single-key and new-provider forms have no empty control columns. API keys save on Enter/blur;
++manual model rows retain their own confirmation. Neither action saves neighbouring drafts.
+ 
+ 
+ ## Automatic reasoning selection (OV-045)
+@@ -673,3 +675,12 @@ and mark built-in recommendations separately from provider-reported data. Unknow
+ in the model row/editor and must not be advertised as an actual context capacity. The runtime
+ fallback remains traceable and is never written into personal corrections by viewing/editing a
+ model. No new model store, inferred entitlement or paid test is introduced.
++
++The same evidence projection must reach the selectable model view and the Agent's ListModels
++port. An unknown context must not become a reported 200K capacity in the conversation ring:
++ModelSelected explicitly clears the denominator and ModelComplete omits it; a resume cannot
++resurrect a runtime-only fallback as a measured quota. The runtime may still use its old internal
++completion value for safety until the request budget contract accepts unknowns. An unknown
++reasoning list is omitted from display and Agent choices, while automatic execution remains.
++Changing account/model invalidates the old measured occupancy as before. This projection must
++not change which model, credential or tool executor receives the turn.
+diff --git a/apps/zcode-cli/packages/adapters/src/model/model.ts b/apps/zcode-cli/packages/adapters/src/model/model.ts
+index a55c696..a6da2b0 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/model.ts
+@@ -27,6 +27,7 @@ export interface ModelExecutor {
+ export interface CreateModelOptions {
+   providerId: ModelProviderId;
+   modelId: ModelId;
++  contextWindowEvidence?: number | null;
+   displayName?: string;
+   properties: ModelPropertiesInput;
+   optionSpecs: ModelOptionSpecs;
+@@ -41,6 +42,7 @@ export function createModel(input: CreateModelOptions): Model {
+ class ExecutableModel implements Model {
+   readonly providerId: ModelProviderId;
+   readonly modelId: ModelId;
++  readonly contextWindowEvidence?: number | null;
+   readonly displayName?: string;
+   readonly properties: ModelProperties;
+   readonly optionSpecs: ModelOptionSpecs;
+@@ -50,6 +52,7 @@ class ExecutableModel implements Model {
+   constructor(input: CreateModelOptions) {
+     this.providerId = input.providerId;
+     this.modelId = input.modelId;
++    this.contextWindowEvidence = input.contextWindowEvidence;
+     this.displayName = input.displayName;
+     this.properties = Object.freeze({ ...input.properties });
+     this.optionSpecs = freezeOptionSpecs(input.optionSpecs);
+@@ -62,6 +65,9 @@ class ExecutableModel implements Model {
+     return new ExecutableModel({
+       providerId: this.providerId,
+       modelId: this.modelId,
++      ...(this.contextWindowEvidence !== undefined
++        ? { contextWindowEvidence: this.contextWindowEvidence }
++        : {}),
+       displayName: this.displayName,
+       properties: this.properties,
+       optionSpecs: this.optionSpecs,
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner.ts b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+index 8ec1097..5e0b8d1 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+@@ -75,6 +75,7 @@ export interface AiSdkModelAdapterOptions {
+ export interface CreateAiSdkModelOptions {
+   providerId: string;
+   modelId: string;
++  contextWindowEvidence?: number | null;
+   providerConfig: RegistryProviderConfig;
+   modelConfig: RegistryModelConfig;
+   displayName?: string;
+@@ -284,6 +285,9 @@ export class AiSdkModelAdapter {
+     return createModel({
+       providerId: resolved.providerId,
+       modelId: resolved.modelId,
++      ...(options.contextWindowEvidence !== undefined
++        ? { contextWindowEvidence: options.contextWindowEvidence }
++        : {}),
+       displayName: options.displayName,
+       properties,
+       optionSpecs: {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.ts
+index 46ad299..44ecbf0 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.ts
+@@ -44,14 +44,31 @@ export function createModelCatalogPort(deps: ModelCatalogPortDeps): ModelCatalog
+       const current = deps.currentSelection();
+       return view.providers.flatMap((provider) =>
+         provider.models.map((model): ModelCatalogEntry => {
+-          const reasoning = model.config.optionSpecs.reasoningLevel;
++          const evidence = model.evidenceConfig?.toJSON();
++          const reasoning = evidence
++            ? evidence.optionSpecs?.reasoningLevel
++            : model.config.optionSpecs.reasoningLevel;
+           // 档位表**复制**而不是原样递出：注册表的 values 是 readonly 视图的一部分，
+           // 端口契约给的是一个普通可读数组，让调用方拿到一份不会随注册表变动的副本。
+-          const reasoningLevels = [...selectableReasoningLevels(reasoning)];
++          const reasoningValues = reasoning?.values;
++          const reasoningLevels = reasoningValues?.length
++            ? [...selectableReasoningLevels({ values: reasoningValues })]
++            : [];
+           // 与新草稿和 GUI 共用默认解析；此处取最后一档会忽略源端 medium 等明确推荐。
+           // 没有档位的模型整个字段缺席（空数组 + 无默认）。
+-          const defaultReasoningLevel = resolveDefaultReasoningLevel(reasoning);
+-          const contextWindow = model.config.properties.contextWindow;
++          const defaultReasoningLevel = reasoningValues?.length
++            ? resolveDefaultReasoningLevel({
++                values: reasoningValues,
++                defaultValue: reasoning?.defaultValue ?? undefined,
++              })
++            : undefined;
++          const candidateContextWindow = evidence
++            ? evidence.properties?.contextWindow
++            : model.config.properties.contextWindow;
++          const contextWindow =
++            typeof candidateContextWindow === "number" && candidateContextWindow > 0
++              ? candidateContextWindow
++              : undefined;
+           // `providerName` 在注册表里是 `string | null | undefined`（config-service.ts 把空串
+           // 归一成 `null`），而端口契约上是 `string | undefined`。三种「没名字」在这里合成
+           // **一个**答案：键缺席。绝不放一个 `null` 或空串过去——它会原样印进 ListModels 的
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+index 3598d7e..809a998 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+@@ -74,6 +74,9 @@ export class ApiProviderModelRuntime {
+     return this.#modelAdapter.createModel({
+       providerId: provider.providerId,
+       modelId: registryModel.modelId,
++      ...(registryModel.evidenceConfig
++        ? { contextWindowEvidence: registryModel.evidenceConfig.properties?.contextWindow ?? null }
++        : {}),
+       providerConfig: provider.config,
+       modelConfig: config,
+       ...(provider.config.access.type === "zhipu-account" &&
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
+index 63f1a92..dd6d735 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
+@@ -188,17 +188,35 @@ export function requireRegistryThoughtLevel(
+ function toModelOption(provider: Provider, model: ProviderModel): ZCodeModelOption {
+   const properties = model.config.properties;
+   const optionSpecs = model.config.optionSpecs;
+-  const reasoning = optionSpecs.reasoningLevel;
++  const evidence = model.evidenceConfig?.toJSON();
++  const reasoning = evidence
++    ? evidence.optionSpecs?.reasoningLevel
++    : optionSpecs.reasoningLevel;
++  const contextWindow = evidence ? evidence.properties?.contextWindow : properties.contextWindow;
++  const maxOutputTokens = evidence
++    ? evidence.optionSpecs?.maxOutputTokens?.max
++    : optionSpecs.maxOutputTokens.max;
++  const reasoningValues = reasoning?.values;
++  const levels = reasoningValues?.length
++    ? selectableReasoningLevels({ values: reasoningValues })
++    : [];
+   return {
+     ref: { providerId: provider.providerId, modelId: model.modelId },
+     label: model.modelId,
+     providerLabel: provider.providerName ?? provider.providerId,
+-    contextWindow: properties.contextWindow,
+-    maxOutputTokens: optionSpecs.maxOutputTokens.max,
+-    reasoning: {
+-      levels: selectableReasoningLevels(reasoning).map((level) => ({ value: level, label: level })),
+-      defaultLevel: resolveDefaultReasoningLevel(reasoning),
+-    },
++    ...(contextWindow ? { contextWindow } : {}),
++    ...(maxOutputTokens ? { maxOutputTokens } : {}),
++    ...(reasoningValues?.length
++      ? {
++          reasoning: {
++            levels: levels.map((level) => ({ value: level, label: level })),
++            defaultLevel: resolveDefaultReasoningLevel({
++              values: reasoningValues,
++              defaultValue: reasoning?.defaultValue ?? undefined,
++            }),
++          },
++        }
++      : {}),
+     properties: {
+       inputFormat: properties.inputFormat,
+       outputFormat: properties.outputFormat,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+index 3a3b187..3e59b47 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+@@ -347,10 +347,9 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
+     },
+     getModelOption: (selection) => getRegistryBackedModel(deps.providerRegistry, selection),
+     listThoughtLevels: () => {
+-      const registryState = currentRegistrySelection();
+-      return registryState.owned
+-        ? [...(registryState.selection?.model.config.optionSpecs.reasoningLevel.values ?? [])]
+-        : [];
++      const selection = deps.runtime.getSessionModelSelection();
++      const option = selection && getRegistryBackedModel(deps.providerRegistry, selection);
++      return option?.reasoning?.levels.map((level) => level.value) ?? [];
+     },
+     listMcpServers: async () =>
+       listMcpServerStatuses(
+diff --git a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+index 36437a0..0acd0cd 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+@@ -100,6 +100,22 @@ test("main usage is an attributed occupancy sample, independent of cumulative an
+   assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
+ });
+ 
++test("an explicit unknown model capacity does not turn runtime fallback into a visible token ring", () => {
++  const f = fixture();
++  f.send(SessionEventType.ModelSelected, {
++    modelSelection: { providerId: "provider-fixture", modelId: "unknown-model", options: { reasoningLevel: "auto" } },
++    contextWindow: null,
++  });
++  f.request("unknown-model");
++  f.send(SessionEventType.ModelComplete, {
++    content: "OK", stopReason: "stop", querySource: "main_turn",
++    usage: { inputTokens: 40, outputTokens: 2 },
++  });
++  assert.equal(f.context(), null);
++  assert.equal(f.projection.getSnapshot().usage.cumulative.inputTokens, 40);
++  assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
++});
++
+ test("actual serving account follows the main request receipt and clears when a later request has no receipt",()=>{
+  const f=fixture();f.request();
+  f.send(SessionEventType.ModelComplete,{content:"",stopReason:"stop",querySource:"main_turn",usage:{inputTokens:10,outputTokens:2},accountId:"fallback-account"});
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index cbaf2e2..2e2dda0 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -45,6 +45,8 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   readonly providerId: ModelProviderId;
+   readonly modelId: ModelId;
++  /** null explicitly says the registry has no sourced capacity; undefined preserves legacy models. */
++  readonly contextWindowEvidence?: number | null;
+   readonly displayName?: string;
+   readonly properties: ModelProperties;
+   readonly optionSpecs: ModelOptionSpecs;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+index ec19126..3026598 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+@@ -1087,7 +1087,8 @@ export async function emitModelSelected(
+     this.sessionId,
+     {
+       // 模型切换事件必须从本次创建的 Active Model 读取窗口，不能再复制 Runtime Config。
+-      contextWindow: model.properties.contextWindow,
++      contextWindow: model.contextWindowEvidence !== undefined
++        ? model.contextWindowEvidence : model.properties.contextWindow,
+       modelSelection: cloneModelSelection(options.modelSelection),
+       ...(options.effectiveReasoningLevel
+         ? { effectiveReasoningLevel: options.effectiveReasoningLevel }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index 473a12a..28417ed 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -155,6 +155,8 @@ async function runModelBackedTurnStepImpl(
+   // ModelFactory 不再把该请求参数伪装成长期 ModelSelection/Active Model 状态。
+   const executionMaxOutputTokens = model.optionSpecs.maxOutputTokens.max;
+   const executionContextWindow = model.properties.contextWindow;
++  const publishedContextWindow = model.contextWindowEvidence !== undefined
++    ? model.contextWindowEvidence : executionContextWindow;
+   const modelTraceContext = createChildTraceContext(state.turnTraceContext, {
+     attributes: {
+       providerId: String(model.providerId),
+@@ -601,8 +603,8 @@ async function runModelBackedTurnStepImpl(
+       // 桌面 continuous 实时事件只携带当前 model_complete payload。
+       // 如果主轮次只发 usage 不发 contextWindow，旧 task stream 无法生成 usage_update，
+       // 长程任务中输入栏会拿不到 context meter 的 size 而隐藏。
+-      ...(querySource === "main_turn" && executionContextWindow !== undefined
+-        ? { contextWindow: executionContextWindow }
++      ...(querySource === "main_turn" && publishedContextWindow !== null && publishedContextWindow !== undefined
++        ? { contextWindow: publishedContextWindow }
+         : {}),
+       querySource,
+       stopReason: result.finishReason,
+diff --git a/package.json b/package.json
+index 384dd99..9b9685e 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index cb30646..cf152fc 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -204,6 +204,7 @@ export interface ProviderSettingsCreationResult {
+ export interface ModelSelectionModelView {
+   readonly modelId: ModelId;
+   readonly config: RegistryModelConfigObject;
++  readonly evidenceConfig?: ModelConfigObject;
+ }
+ 
+ export interface ModelSelectionProviderView extends Pick<
+@@ -654,6 +655,7 @@ export function projectModelSelectionProviderView(
+         Object.freeze({
+           modelId: model.modelId,
+           config: serializeRegistryModelConfig(model.config),
++          ...(model.evidenceConfig ? { evidenceConfig: model.evidenceConfig.toJSON() } : {}),
+         }),
+       ),
+     ),
+diff --git a/packages/provider/src/registry.ts b/packages/provider/src/registry.ts
+index 3c93fed..86029a5 100644
+--- a/packages/provider/src/registry.ts
++++ b/packages/provider/src/registry.ts
+@@ -185,7 +185,11 @@ function freezeView(revision: number, providers: readonly Provider[]): ProviderR
+       config: provider.config,
+       models: Object.freeze(
+         provider.models.map((model) =>
+-          Object.freeze({ modelId: model.modelId, config: model.config }),
++          Object.freeze({
++            modelId: model.modelId,
++            config: model.config,
++            ...(model.evidenceConfig ? { evidenceConfig: model.evidenceConfig } : {}),
++          }),
+         ),
+       ),
+     }),
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 5d8b3a4..bebce26 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -186,6 +186,7 @@ export interface ResolvedProvider extends Pick<ProviderConfigRule, "templateId"
+ export interface ProviderModel {
+   readonly modelId: ModelId;
+   readonly config: RegistryModelConfig;
++  readonly evidenceConfig?: ModelConfig;
+ }
+ 
+ export interface Provider extends Pick<ProviderConfigRule, "templateId" | "providerName"> {
+@@ -399,7 +400,7 @@ export class ProviderConfigResolver {
+       }
+       const validModels = models
+         .filter((model) => model.executable)
+-        .map(({ modelId, config: modelConfig }) => {
++        .map(({ modelId, config: modelConfig, evidenceConfig }) => {
+           const result = createRegistryModelConfig(modelConfig, [
+             ...providerPath,
+             "models",
+@@ -407,7 +408,11 @@ export class ProviderConfigResolver {
+           ]);
+           if (!result.ok)
+             throw new Error(`Registry Model 完整性结果不一致: ${providerId}/${modelId}`);
+-          return Object.freeze({ modelId, config: result.config });
++          return Object.freeze({
++            modelId,
++            config: result.config,
++            evidenceConfig,
++          });
+         });
+       if (validModels.length === 0) continue;
+       registryProviders.push(
+diff --git a/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts b/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts
+index 9bba246..c214e48 100644
+--- a/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts
++++ b/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts
+@@ -1571,8 +1571,13 @@ export function createZCodeTaskServiceAdapter(
+         activeTurnKind: snapshot.runtime.activeTurnKind,
+         apiRetry: apiRetryByTaskKey.get(taskKey(meta)) ?? null,
+         contextUsage:
+-          contextUsageFromRuntime(snapshot.runtime.contextUsage) ??
+           contextUsageFromProjection(snapshot.projection) ??
++          (snapshot.projection.contextWindow > 0
++            ? contextUsageFromRuntime(
++                snapshot.runtime.contextUsage,
++                snapshot.projection.contextWindow,
++              )
++            : null) ??
+           undefined,
+         pendingPermissions,
+         backgroundBashJobs: backgroundTaskControls,
+@@ -5525,15 +5530,16 @@ function contextUsageFromProjection(
+ 
+ function contextUsageFromRuntime(
+   runtimeUsage: ZCodeSessionStateSnapshot["runtime"]["contextUsage"] | undefined,
++  knownCapacity: number,
+ ): ContextUsageUpdate | null {
+-  if (!runtimeUsage || runtimeUsage.size <= 0 || runtimeUsage.used <= 0) {
++  if (!runtimeUsage || knownCapacity <= 0 || runtimeUsage.used <= 0) {
+     return null;
+   }
+   // session resume 时 protocol projection 可能还没重放主轮次 usage。
+   // runtime.contextUsage 来自持久化 assistant token 记录，应优先用于恢复旧 task UI。
+   return {
+     used: runtimeUsage.used,
+-    size: runtimeUsage.size,
++    size: knownCapacity,
+     cost: runtimeUsage.cost ?? null,
+     ...(runtimeUsage.cache ? { cache: runtimeUsage.cache } : {}),
+     ...(runtimeUsage.breakdown ? { breakdown: runtimeUsage.breakdown } : {}),
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index ba35afd..e67ef4b 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -209,6 +209,70 @@ test("unreported capability fields never become provider facts through the runti
+     assert.equal(model.effectiveConfig.properties?.contextWindow, 200_000);
+     assert.equal(model.evidenceConfig?.properties?.contextWindow, undefined);
+     assert.equal(model.contextEvidenceSource, "unknown");
++    const { createModelCatalogPort } =
++      await import("../../../apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.js");
++    const { listRegistryBackedModels } =
++      await import("../../../apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.js");
++    const catalog = () =>
++      createModelCatalogPort({
++        registry: f.runtime.registryService,
++        currentSelection: () => undefined,
++      })
++        .listModels()
++        .find((item) => item.providerId === f.providerId && item.modelId === "unknown-model")!;
++    const picker = () =>
++      listRegistryBackedModels(f.runtime.registryService).find(
++        (item) => item.ref.providerId === f.providerId && item.ref.modelId === "unknown-model",
++      )!;
++    const selectionModel = async () =>
++      (await f.runtime.modelSelection.getView()).providers
++        .find((item) => item.providerId === f.providerId)!
++        .models.find((item) => item.modelId === "unknown-model")!;
++    assert.equal((await selectionModel()).evidenceConfig?.properties?.contextWindow, undefined);
++    assert.equal(catalog().contextWindow, undefined);
++    assert.deepEqual(catalog().reasoningLevels, []);
++    assert.equal(picker().contextWindow, undefined);
++    assert.equal(picker().maxOutputTokens, undefined);
++    assert.equal(picker().reasoning, undefined);
++    const { ApiProviderModelRuntime } =
++      await import("../../../apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.js");
++    const { createModel } =
++      await import("../../../apps/zcode-cli/packages/adapters/src/model/model.js");
++    const bound = () => {
++      const runtimeModel = new ApiProviderModelRuntime({
++        registry: f.runtime.registryService,
++        modelAdapter: {
++          createModel: (options: any) =>
++            createModel({
++              providerId: options.providerId,
++              modelId: options.modelId,
++              properties: options.modelConfig.properties,
++              optionSpecs: options.modelConfig.optionSpecs,
++              options: options.options,
++              contextWindowEvidence: options.contextWindowEvidence,
++              executor: {
++                generateText: async () => {
++                  throw Error("No inference in evidence fixture");
++                },
++                streamText: () => {
++                  throw Error("No inference in evidence fixture");
++                },
++              },
++            }),
++        },
++      });
++      runtimeModel.start();
++      return runtimeModel
++        .modelFactory({
++          selection: {
++            providerId: f.providerId,
++            modelId: "unknown-model",
++            options: { reasoningLevel: "disabled" },
++          },
++        } as never)
++        .bind({ maxOutputTokens: 100 });
++    };
++    assert.equal(bound().contextWindowEvidence, null);
+     f.setFetch(async () =>
+       Response.json({ data: [{ id: "unknown-model", context_window: 480_000 }] }),
+     );
+@@ -216,12 +280,20 @@ test("unreported capability fields never become provider facts through the runti
+     model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
+     assert.equal(model.evidenceConfig?.properties?.contextWindow, 480_000);
+     assert.equal(model.contextEvidenceSource, "provider");
++    assert.equal((await selectionModel()).evidenceConfig?.properties?.contextWindow, 480_000);
++    assert.equal(catalog().contextWindow, 480_000);
++    assert.equal(picker().contextWindow, 480_000);
++    assert.equal(bound().contextWindowEvidence, 480_000);
+     f.setFetch(async () => Response.json({ data: [{ id: "unknown-model" }] }));
+     await f.service.discoverModels(f.providerId);
+     await f.restart();
+     model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
+     assert.equal(model.evidenceConfig?.properties?.contextWindow, undefined);
+     assert.equal(model.contextEvidenceSource, "unknown");
++    assert.equal((await selectionModel()).evidenceConfig?.properties?.contextWindow, undefined);
++    assert.equal(catalog().contextWindow, undefined);
++    assert.equal(picker().contextWindow, undefined);
++    assert.equal(bound().contextWindowEvidence, null);
+     assert.equal(model.effectiveConfig.properties?.contextWindow, 200_000);
+   } finally {
+     await f.dispose();
+diff --git a/packages/services/test/nonCliAcpRetirement.test.ts b/packages/services/test/nonCliAcpRetirement.test.ts
+index d69fe69..108e21e 100644
+--- a/packages/services/test/nonCliAcpRetirement.test.ts
++++ b/packages/services/test/nonCliAcpRetirement.test.ts
+@@ -142,7 +142,7 @@ test("missing sessions report the owner error even when a valid ACP snapshot exi
+ });
+ 
+ test("current session recovery preserves Desktop and replayable projections", async () => {
+-  const snapshot = zcodeSessionStateSnapshotSchema.parse({
++  let snapshot = zcodeSessionStateSnapshotSchema.parse({
+     protocol: { name: ZCODE_PROTOCOL_NAME, version: ZCODE_PROTOCOL_VERSION },
+     session: {
+       sessionId: meta.taskId,
+@@ -215,9 +215,24 @@ test("current session recovery preserves Desktop and replayable projections", as
+     assert.deepEqual(desktop?.slashCommands, snapshot.slashCommands);
+     assert.equal(desktop?.runtime?.pendingElicitations, undefined);
+     assert.deepEqual(mobile?.runtime?.pendingElicitations, []);
++    snapshot = zcodeSessionStateSnapshotSchema.parse({
++      ...snapshot,
++      runtime: {
++        ...snapshot.runtime,
++        contextUsage: { used: 5000, size: 200000 },
++      },
++    });
++    const known = await service.getTaskSnapshot({ ...meta, clientMode: "desktop-continuous" });
++    assert.equal(known?.runtime?.contextUsage?.size, 200000);
++    snapshot = zcodeSessionStateSnapshotSchema.parse({
++      ...snapshot,
++      projection: { ...snapshot.projection, contextWindow: 0 },
++    });
++    const unknown = await service.getTaskSnapshot({ ...meta, clientMode: "desktop-continuous" });
++    assert.equal(unknown?.runtime?.contextUsage, undefined);
+     assert.equal((await service.resumeTask(meta)).taskId, meta.taskId);
+-    assert.equal(resumed.length, 3);
+-    assert.equal(indexed.length, 3);
++    assert.equal(resumed.length, 5);
++    assert.equal(indexed.length, 5);
+   } finally {
+     service.disposeAll();
+   }
+diff --git a/packages/ui/src/lib/composerRecent.ts b/packages/ui/src/lib/composerRecent.ts
+index f356e42..931ac76 100644
+--- a/packages/ui/src/lib/composerRecent.ts
++++ b/packages/ui/src/lib/composerRecent.ts
+@@ -109,9 +109,12 @@ export function resolveDraftInitialModelSelection(
+     const model = findModel(view, recent);
+     if (!model) return { selection: null, invalidated: true };
+     const reasoning = recent.options?.reasoningLevel;
++    const reasoningValues = model.evidenceConfig
++      ? model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? []
++      : model.config.optionSpecs.reasoningLevel.values;
+     if (
+       reasoning === undefined ||
+-      !model.config.optionSpecs.reasoningLevel.values.includes(reasoning)
++      (reasoning !== "auto" && !reasoningValues.includes(reasoning))
+     ) {
+       // 仍保留 Provider/Model 身份，但清空失效档位；Composer 不弹泛化通知，
+       // 让空的 Reasoning 控件直接要求用户作出新的明确选择。
+@@ -135,8 +138,10 @@ function isSelectionInView(view: ModelSelectionView, selection: ModelSelection):
+   const model = findModel(view, selection);
+   if (!model) return false;
+   const reasoning = selection.options?.reasoningLevel;
+-  const reasoningSpec = model.config.optionSpecs.reasoningLevel;
+-  return reasoning !== undefined && reasoningSpec.values.includes(reasoning);
++  const reasoningValues = model.evidenceConfig
++    ? model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? []
++    : model.config.optionSpecs.reasoningLevel.values;
++  return reasoning !== undefined && (reasoning === "auto" || reasoningValues.includes(reasoning));
+ }
+ 
+ function findModel(view: ModelSelectionView, selection: ModelSelection) {
+diff --git a/packages/ui/src/lib/modelSelectionGroups.ts b/packages/ui/src/lib/modelSelectionGroups.ts
+index 9605d3a..c7c34a5 100644
+--- a/packages/ui/src/lib/modelSelectionGroups.ts
++++ b/packages/ui/src/lib/modelSelectionGroups.ts
+@@ -51,13 +51,13 @@ export function buildRegistryModelSelectGroups(
+         label: accountPresentation?.label || provider.providerName?.trim() || provider.providerId,
+         ...(accountPresentation?.labelBadge ? { labelBadge: accountPresentation.labelBadge } : {}),
+         ...(accountPresentation ? { directItems: true } : {}),
+-        items: provider.models.map(({ modelId, config }) => ({
++        items: provider.models.map(({ modelId, config, evidenceConfig }) => ({
+           key: `registry-provider:${provider.providerId}:${modelId}`,
+           value: encodeCustomModelValue(provider.providerId, modelId),
+           name: modelId,
+           ...(shouldShowModelVisionBadge(
+             modelId,
+-            config.properties?.inputFormat?.supportsImage,
++            (evidenceConfig ?? config).properties?.inputFormat?.supportsImage,
+             provider.config.access,
+           )
+             ? { supportsVisionInput: true }
+diff --git a/packages/ui/src/lib/modelThoughtOption.ts b/packages/ui/src/lib/modelThoughtOption.ts
+index 32ca620..ccabeba 100644
+--- a/packages/ui/src/lib/modelThoughtOption.ts
++++ b/packages/ui/src/lib/modelThoughtOption.ts
+@@ -14,8 +14,12 @@ export function resolveModelThoughtOption(params: {
+     (candidate) => candidate.providerId === params.providerId,
+   );
+   const model = provider?.models.find((candidate) => candidate.modelId === params.modelId);
+-  const reasoning = model?.config.optionSpecs.reasoningLevel;
+-  if (!reasoning || reasoning.values.length === 0) return null;
++  const reasoning =
++    model?.evidenceConfig?.optionSpecs?.reasoningLevel ??
++    (model?.evidenceConfig ? undefined : model?.config.optionSpecs.reasoningLevel);
++  const values = reasoning?.values;
++  if (!values?.length) return null;
++  const supported = selectableReasoningLevels({ values });
+ 
+   return {
+     id: "thought_level",
+@@ -24,10 +28,8 @@ export function resolveModelThoughtOption(params: {
+     type: "select",
+     // Reasoning 没有默认档位；空字符串表示模型已选但用户尚未选择 reasoning。
+     currentValue:
+-      params.currentValue && selectableReasoningLevels(reasoning).includes(params.currentValue)
+-        ? params.currentValue
+-        : "",
+-    options: selectableReasoningLevels(reasoning).map((level) => ({
++      params.currentValue && supported.includes(params.currentValue) ? params.currentValue : "",
++    options: supported.map((level) => ({
+       value: level,
+       name: params.formatLevelName?.(level) ?? level,
+     })),
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+new file mode 100644
+index 0000000..924ae10
+--- /dev/null
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -0,0 +1,56 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { ModelSelectionView } from "@zcode/services";
++import { resolveDraftInitialModelSelection } from "../src/lib/composerRecent.js";
++import { resolveModelThoughtOption } from "../src/lib/modelThoughtOption.js";
++
++const runtimeConfig = {
++  properties: { contextWindow: 200_000 },
++  optionSpecs: { reasoningLevel: { values: ["low", "high"] } },
++};
++
++function view(evidenceConfig: object): ModelSelectionView {
++  return {
++    providers: [{
++      providerId: "synthetic-provider",
++      models: [{ modelId: "unknown-model", config: runtimeConfig, evidenceConfig }],
++    }],
++  } as unknown as ModelSelectionView;
++}
++
++test("unreported reasoning is absent from the control and invalidates a stale explicit effort", () => {
++  const catalog = view({});
++  assert.equal(resolveModelThoughtOption({
++    modelSelectionView: catalog,
++    providerId: "synthetic-provider",
++    modelId: "unknown-model",
++  }), null);
++  assert.deepEqual(resolveDraftInitialModelSelection(catalog, {
++    providerId: "synthetic-provider",
++    modelId: "unknown-model",
++    options: { reasoningLevel: "high" },
++  }), {
++    selection: { providerId: "synthetic-provider", modelId: "unknown-model" },
++    invalidated: true,
++  });
++  assert.equal(resolveDraftInitialModelSelection(catalog, {
++    providerId: "synthetic-provider",
++    modelId: "unknown-model",
++    options: { reasoningLevel: "auto" },
++  }).invalidated, false);
++});
++
++test("reported reasoning is available without borrowing fallback-only levels", () => {
++  const catalog = view({ optionSpecs: { reasoningLevel: { values: ["low"] } } });
++  const option = resolveModelThoughtOption({
++    modelSelectionView: catalog,
++    providerId: "synthetic-provider",
++    modelId: "unknown-model",
++  });
++  assert.deepEqual(option?.options?.map((item) => item.value), ["low"]);
++  assert.equal(resolveDraftInitialModelSelection(catalog, {
++    providerId: "synthetic-provider",
++    modelId: "unknown-model",
++    options: { reasoningLevel: "high" },
++  }).invalidated, true);
++});

@@ -1,0 +1,611 @@
+diff --git a/packages/ui/src/TaskListItem.tsx b/packages/ui/src/TaskListItem.tsx
+index 223fe9f..63b9a9a 100644
+--- a/packages/ui/src/TaskListItem.tsx
++++ b/packages/ui/src/TaskListItem.tsx
+@@ -954,6 +954,7 @@ export function TaskListItemContextMenuContent({
+           title: taskTitle,
+         });
+       }}
++      assistantTask={{ sessionId: task.taskId, label: task.title || undefined }}
+     />
+   );
+ }
+diff --git a/packages/ui/src/TaskListItemContextMenu.tsx b/packages/ui/src/TaskListItemContextMenu.tsx
+index 3c0c74a..ae702e8 100644
+--- a/packages/ui/src/TaskListItemContextMenu.tsx
++++ b/packages/ui/src/TaskListItemContextMenu.tsx
+@@ -1,3 +1,4 @@
++import { PageAssistantMenuItem } from "@/page-assistant/PageAssistantContext.js";
+ import {
+   ContextMenuContent,
+   ContextMenuItem,
+@@ -27,6 +28,7 @@ export function TaskListItemContextMenu({
+   onViewModelTrajectory,
+   disableTaskActions = false,
+   disabledReason,
++  assistantTask,
+ }: {
+   intl: {
+     formatMessage: (desc: { id: string }, values?: Record<string, string>) => string;
+@@ -57,6 +59,8 @@ export function TaskListItemContextMenu({
+   onViewModelTrajectory?: () => void;
+   disableTaskActions?: boolean;
+   disabledReason?: string;
++  /** 右键的任务，用于"让 Agent 帮忙"指向该会话而不是当前页面。 */
++  assistantTask?: { sessionId: string; label?: string };
+ }) {
+   return (
+     <ContextMenuContent className="w-52">
+@@ -85,6 +89,20 @@ export function TaskListItemContextMenu({
+         disableTaskActions={disableTaskActions}
+         disabledReason={disabledReason}
+       />
++      {assistantTask ? (
++        <PageAssistantMenuItem
++          selection={{
++            feature: "app-page",
++            pageId: "conversation",
++            resource: {
++              kind: "conversation",
++              sessionId: assistantTask.sessionId,
++              ...(assistantTask.label ? { label: assistantTask.label.slice(0, 160) } : {}),
++            },
++          }}
++          label={assistantTask.label}
++        />
++      ) : null}
+     </ContextMenuContent>
+   );
+ }
+diff --git a/packages/ui/src/WorkspaceSidebar.tsx b/packages/ui/src/WorkspaceSidebar.tsx
+index 0d03386..50950b2 100644
+--- a/packages/ui/src/WorkspaceSidebar.tsx
++++ b/packages/ui/src/WorkspaceSidebar.tsx
+@@ -1,3 +1,4 @@
++import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ /* eslint-disable max-lines -- 归档视图开关沿用现有 sidebar 结构，先保持同文件收口。 */
+ import {
+   memo,
+@@ -1234,6 +1235,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+               variant="ghost"
+               onClick={onOpenCommandCenter}
+               data-icon="inline-start"
++              {...pageAssistantScope({ feature: "app-page", pageId: "search" })}
+               size="lg"
+               className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
+             >
+@@ -1268,6 +1270,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+               onClick={handleOpenAutomationsMain}
+               data-icon="inline-start"
+               data-testid={TID_AUTOMATIONS_OPEN}
++              // 右键时让页面助手指向对应页面，而不是落到外层的"工作台"。
++              {...pageAssistantScope({ feature: "app-page", pageId: "automations" })}
+               size="lg"
+               aria-pressed={automationsActive}
+               className={cn(
+@@ -1283,6 +1287,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+               onClick={handleOpenPluginStoreMain}
+               data-icon="inline-start"
+               data-testid="plugin-store-sidebar-open"
++              {...pageAssistantScope({ feature: "app-page", pageId: "plugin-store" })}
+               size="lg"
+               aria-pressed={pluginStoreActive}
+               className={cn(
+diff --git a/packages/ui/src/WorkspaceSidebarItem.tsx b/packages/ui/src/WorkspaceSidebarItem.tsx
+index 51c76b6..aa9ae94 100644
+--- a/packages/ui/src/WorkspaceSidebarItem.tsx
++++ b/packages/ui/src/WorkspaceSidebarItem.tsx
+@@ -1,3 +1,5 @@
++import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu.js";
++import { PageAssistantMenuItem, pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ /* eslint-disable max-lines -- workspace 行同时承载折叠、远端状态和快捷操作，先保持同文件收口。 */
+ import {
+   memo,
+@@ -335,9 +337,9 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
+   }, []);
+ 
+   const handleCreateThreadClick = useCallback(
+-    (event: MouseEvent<HTMLButtonElement>) => {
+-      event.preventDefault();
+-      event.stopPropagation();
++    (event?: MouseEvent<HTMLButtonElement>) => {
++      event?.preventDefault();
++      event?.stopPropagation();
+       if (readOnlyReason) {
+         return;
+       }
+@@ -446,9 +448,9 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
+   );
+ 
+   const handleOpenWorkspaceFileTree = useCallback(
+-    (event: MouseEvent<HTMLButtonElement>) => {
+-      event.preventDefault();
+-      event.stopPropagation();
++    (event?: MouseEvent<HTMLButtonElement>) => {
++      event?.preventDefault();
++      event?.stopPropagation();
+       if (isDisconnectedRemoteWorkspace || readOnlyReason || !onOpenFileTree) {
+         return;
+       }
+@@ -798,7 +800,20 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
+           active={shouldShowRemoteConnectingBorderBeam}
+           borderRadius={8}
+         >
++          {/* 右键复用行内与"更多"菜单里的操作（参考 Craft 实体右键菜单），并可把该项目交给页面助手。 */}
++          <ContextMenu modal={false}>
++          <ContextMenuTrigger asChild>
+           <div
++            {...pageAssistantScope({
++              feature: "app-page",
++              pageId: "project",
++              resource: {
++                kind: "project",
++                workspacePath: tab.workspacePath,
++                ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
++                label: tab.label,
++              },
++            })}
+             className={cn(
+               "group flex items-center gap-2 rounded-lg transition-[background-color,box-shadow]",
+               isReconnectPending
+@@ -1112,6 +1127,24 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
+               </div>
+             </CollapsibleTrigger>
+           </div>
++          </ContextMenuTrigger>
++          <ContextMenuContent>
++            {!readOnlyReason ? (
++              <ContextMenuItem onSelect={() => handleCreateThreadClick()}>
++                {intl.formatMessage({ id: "taskList.newThread" })}
++              </ContextMenuItem>
++            ) : null}
++            {showFileTreeAction && onOpenFileTree && !readOnlyReason && !isDisconnectedRemoteWorkspace ? (
++              <ContextMenuItem onSelect={() => handleOpenWorkspaceFileTree()}>
++                {intl.formatMessage({ id: "workspaceSidebar.showFileTree" })}
++              </ContextMenuItem>
++            ) : null}
++            <ContextMenuItem onSelect={() => void handleRemoveWorkspace()}>
++              {intl.formatMessage({ id: "workspaceSidebar.remove" })}
++            </ContextMenuItem>
++            <PageAssistantMenuItem />
++          </ContextMenuContent>
++          </ContextMenu>
+         </BorderBeam>
+ 
+         <CollapsibleContent>
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 91410c3..0bac14d 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7357,7 +7357,9 @@ const enUS: Record<string, string> = {
+   "pageAssistant.confirmChange":
+     "Apply this change? Existing conversations and accepted requests keep their settings.",
+   "pageAssistant.enabled": "On",
+-  "pageAssistant.placeholder": "Describe what you'd like to understand or change…",
++  "pageAssistant.placeholder": "Tell me what to change, or ask what this does",
++  "pageAssistant.emptyTitle": "What would you like to know or change?",
++  "pageAssistant.emptyHint": "Just describe it — I'll handle the rest",
+   "pageAssistant.move": "Move assistant · use arrow keys when focused",
+   "pageAssistant.resize": "Resize assistant · use arrow keys when focused",
+   "pageAssistant.disabled": "Off",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 0d52e87..72c84dd 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6964,7 +6964,9 @@ const zhCN: Record<string, string> = {
+   "pageAssistant.setModelDefault": "修改默认模型",
+   "pageAssistant.confirmChange": "是否应用这项修改？已有对话和已接纳的请求仍保留原设置。",
+   "pageAssistant.enabled": "开启",
+-  "pageAssistant.placeholder": "描述你想了解或修改的内容…",
++  "pageAssistant.placeholder": "告诉我要改什么，或问它是做什么的",
++  "pageAssistant.emptyTitle": "想了解或调整什么？",
++  "pageAssistant.emptyHint": "描述一下就好，剩下的交给我",
+   "pageAssistant.move": "移动助手 · 聚焦后可用方向键",
+   "pageAssistant.resize": "调整助手大小 · 聚焦后可用方向键",
+   "pageAssistant.disabled": "关闭",
+diff --git a/packages/ui/src/page-assistant/PageAssistantContext.tsx b/packages/ui/src/page-assistant/PageAssistantContext.tsx
+index afbea46..30a387c 100644
+--- a/packages/ui/src/page-assistant/PageAssistantContext.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantContext.tsx
+@@ -10,6 +10,8 @@ export interface PageAssistantAnchor {
+ export interface PageAssistantController {
+   open(selection: PageAssistantSelection, anchor?: PageAssistantAnchor, label?: string): void;
+   openCaptured(): void;
++  /** 在右键位置为明确的对象打开助手（菜单项知道自己代表哪个任务／项目时使用）。 */
++  openCapturedFor(selection: PageAssistantSelection, label?: string): void;
+ }
+ export const PageAssistantContext = createContext<PageAssistantController | null>(null);
+ export const usePageAssistant = () => useContext(PageAssistantContext);
+@@ -59,8 +61,12 @@ export function PageAssistantScope({
+ export function PageAssistantMenuItem({
+   messageId = "pageAssistant.open",
+   separator = true,
++  selection,
++  label,
+ }: {
+   separator?: boolean;
++  selection?: PageAssistantSelection;
++  label?: string;
+   messageId?:
+     | "pageAssistant.open"
+     | "pageAssistant.configureProvider"
+@@ -72,7 +78,11 @@ export function PageAssistantMenuItem({
+   return (
+     <>
+       {separator ? <ContextMenuSeparator /> : null}
+-      <ContextMenuItem onSelect={assistant.openCaptured}>
++      <ContextMenuItem
++        onSelect={() =>
++          selection ? assistant.openCapturedFor(selection, label) : assistant.openCaptured()
++        }
++      >
+         {intl.formatMessage({ id: messageId })}
+       </ContextMenuItem>
+     </>
+diff --git a/packages/ui/src/page-assistant/PageAssistantConversation.tsx b/packages/ui/src/page-assistant/PageAssistantConversation.tsx
+index 769f0e0..b2deb0f 100644
+--- a/packages/ui/src/page-assistant/PageAssistantConversation.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantConversation.tsx
+@@ -10,11 +10,13 @@ export function PageAssistantConversation({
+   target,
+   defaultModelSelection,
+   resumeSessionId,
++  label,
+ }: {
+   workspacePath: string;
+   target: PageAssistantTarget;
+   defaultModelSelection?: ModelSelection;
+   resumeSessionId?: string;
++  label?: string;
+ }) {
+   const { sendCommand } = useV4Conversation();
+   const { intl } = useZCodeIntl();
+@@ -66,9 +68,13 @@ export function PageAssistantConversation({
+     );
+   if (!sessionId)
+     return (
+-      <p className="p-4 text-ui-base text-foreground-subtle">
+-        {intl.formatMessage({ id: "common.loading" })}
+-      </p>
++      // 会话建立前也显示目标与提示，用户立即知道助手针对的是哪个对象。
++      <div className="flex h-full select-none flex-col items-center justify-center gap-1 px-6 text-center">
++        {label ? <span className="text-ui-base text-foreground">{label}</span> : null}
++        <span className="text-ui-base text-foreground-subtle">
++          {intl.formatMessage({ id: "pageAssistant.emptyTitle" })}
++        </span>
++      </div>
+     );
+   return (
+     <SessionPane
+@@ -76,6 +82,7 @@ export function PageAssistantConversation({
+       sessionId={sessionId}
+       workspacePath={workspacePath}
+       compactAssistant
++      compactAssistantLabel={label}
+       isDesktop
+       focused
+       telemetryVisible
+diff --git a/packages/ui/src/page-assistant/PageAssistantHistory.tsx b/packages/ui/src/page-assistant/PageAssistantHistory.tsx
+index 1494951..07addd5 100644
+--- a/packages/ui/src/page-assistant/PageAssistantHistory.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantHistory.tsx
+@@ -17,6 +17,8 @@ export interface SavedPageAssistant {
+   target: PageAssistantTarget;
+   workspacePath: string;
+   updatedAt: number;
++  /** 首条输入或生成的标题；用于区分同一页面的多次对话。 */
++  title?: string;
+ }
+ export function PageAssistantHistory({ onResume }: { onResume(saved: SavedPageAssistant): void }) {
+   const { pageAssistantService, zcodeAgentService } = useServices();
+@@ -49,14 +51,18 @@ export function PageAssistantHistory({ onResume }: { onResume(saved: SavedPageAs
+         });
+         if (generation.current !== readGeneration) return;
+         setItems(
++          // 每次右键都会建会话；从未发送消息的（titleSource 为 default）不进入历史。
+           sessions.flatMap((item) =>
+-            item.pageAssistantTarget
++            item.pageAssistantTarget && item.titleSource !== "default"
+               ? [
+                   {
+                     sessionId: item.sessionId,
+                     target: item.pageAssistantTarget,
+                     workspacePath,
+                     updatedAt: item.updatedAt,
++                    ...(typeof item.title === "string" && item.title.trim()
++                      ? { title: item.title.trim() }
++                      : {}),
+                   },
+                 ]
+               : [],
+@@ -95,7 +101,14 @@ export function PageAssistantHistory({ onResume }: { onResume(saved: SavedPageAs
+         ) : null}
+         {items.map((item) => (
+           <DropdownMenuItem key={item.sessionId} onSelect={() => onResume(item)}>
+-            <span className="min-w-0 truncate">{pageAssistantLabel(intl, item.target)}</span>
++            <span className="flex min-w-0 flex-col">
++              <span className="truncate">{item.title ?? pageAssistantLabel(intl, item.target)}</span>
++              {item.title ? (
++                <span className="truncate text-ui-sm text-foreground-subtlest">
++                  {pageAssistantLabel(intl, item.target)}
++                </span>
++              ) : null}
++            </span>
+             <span className="ml-auto shrink-0 text-ui-sm text-foreground-subtlest">
+               {new Intl.DateTimeFormat(locale, {
+                 month: "numeric",
+diff --git a/packages/ui/src/page-assistant/PageAssistantHost.tsx b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+index 9d58b11..af072f1 100644
+--- a/packages/ui/src/page-assistant/PageAssistantHost.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+@@ -38,7 +38,7 @@ function centerAnchor(): PageAssistantAnchor {
+   return { x: window.innerWidth / 2, y: 80 };
+ }
+ 
+-function AssistantBody({ invocation }: { invocation: Invocation }) {
++function AssistantBody({ invocation, label }: { invocation: Invocation; label?: string }) {
+   const { pageAssistantService } = useServices();
+   const { intl } = useZCodeIntl();
+   const [context, setContext] =
+@@ -73,9 +73,12 @@ function AssistantBody({ invocation }: { invocation: Invocation }) {
+     );
+   if (!target || !workspacePath)
+     return (
+-      <p className="p-4 text-ui-base text-foreground-subtle">
+-        {intl.formatMessage({ id: "common.loading" })}
+-      </p>
++      <div className="flex h-full select-none flex-col items-center justify-center gap-1 px-6 text-center">
++        {label ? <span className="text-ui-base text-foreground">{label}</span> : null}
++        <span className="text-ui-base text-foreground-subtle">
++          {intl.formatMessage({ id: "common.loading" })}
++        </span>
++      </div>
+     );
+   return (
+     <V4ConversationProvider workspacePath={workspacePath}>
+@@ -84,6 +87,7 @@ function AssistantBody({ invocation }: { invocation: Invocation }) {
+         target={target}
+         defaultModelSelection={invocation.saved ? undefined : context?.defaultModelSelection}
+         resumeSessionId={invocation.saved?.sessionId}
++        label={label}
+       />
+     </V4ConversationProvider>
+   );
+@@ -167,11 +171,20 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+       openCaptured: () => {
+         const request = captured.current;
+         const focus = capturedFocus.current;
+-        // Let the context menu finish closing before the popover takes focus.
+-        requestAnimationFrame(() => {
++        // 与 Craft AppShell 一致：等右键菜单（含模态菜单的焦点归还）完全关闭后再打开，
++        // 否则焦点归还会被弹窗当成"点击外部"而立即关闭。
++        window.setTimeout(() => {
+           open(request.selection, request.anchor, request.label);
+           focusReturn.current = focus;
+-        });
++        }, 50);
++      },
++      openCapturedFor: (selection: PageAssistantSelection, label?: string) => {
++        const anchor = captured.current.anchor;
++        const focus = capturedFocus.current;
++        window.setTimeout(() => {
++          open(selection, anchor, label);
++          focusReturn.current = focus;
++        }, 50);
+       },
+     }),
+     [open],
+@@ -311,33 +324,34 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+             data-slot="page-assistant-window"
+             className="relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-md"
+           >
+-            <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border p-3">
+-              <button
+-                type="button"
+-                className="flex min-w-0 flex-1 cursor-grab touch-none items-center gap-2 text-ui-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing"
+-                aria-label={intl.formatMessage({ id: "pageAssistant.move" })}
+-                {...placement.moveHandle}
++            {/* 参考 Craft EditPopover：不占用标题栏，只保留顶部居中的拖动把手；历史与关闭为右上角浮动按钮。 */}
++            <button
++              type="button"
++              className="absolute left-1/2 top-0 z-10 -translate-x-1/2 cursor-grab touch-none rounded px-4 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing"
++              aria-label={intl.formatMessage({ id: "pageAssistant.move" })}
++              {...placement.moveHandle}
++            >
++              <GripHorizontal className="size-4 text-foreground-subtlest" />
++            </button>
++            <div className="absolute right-2 top-1.5 z-10 flex items-center gap-0.5">
++              <PageAssistantHistory onResume={resume} />
++              <Button
++                variant="ghost"
++                size="icon-sm"
++                onClick={() => setInvocation(null)}
++                aria-label={intl.formatMessage({ id: "common.close" })}
+               >
+-                <GripHorizontal className="size-4 shrink-0 text-foreground-subtlest" />
+-                <span className="truncate">
+-                  {invocation?.label ??
+-                    (invocation ? pageAssistantLabel(intl, invocation.selection) : "")}
+-                </span>
+-              </button>
+-              <div className="flex items-center gap-1">
+-                <PageAssistantHistory onResume={resume} />
+-                <Button
+-                  variant="ghost"
+-                  size="icon-sm"
+-                  onClick={() => setInvocation(null)}
+-                  aria-label={intl.formatMessage({ id: "common.close" })}
+-                >
+-                  <X className="size-4" />
+-                </Button>
+-              </div>
++                <X className="size-4" />
++              </Button>
+             </div>
+-            <div className="min-h-0 flex-1">
+-              {invocation ? <AssistantBody key={invocation.id} invocation={invocation} /> : null}
++            <div className="min-h-0 flex-1 pt-8">
++              {invocation ? (
++                <AssistantBody
++                  key={invocation.id}
++                  invocation={invocation}
++                  label={invocation.label ?? pageAssistantLabel(intl, invocation.selection)}
++                />
++              ) : null}
+             </div>
+             <button
+               type="button"
+@@ -345,7 +359,7 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+               aria-label={intl.formatMessage({ id: "pageAssistant.resize" })}
+               {...placement.resizeHandle}
+             >
+-              <MoveDiagonal2 className="size-3 text-foreground-subtlest" aria-hidden="true" />
++              <MoveDiagonal2 className="size-3 text-foreground-subtlest opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100" aria-hidden="true" />
+             </button>
+           </div>
+         </PopoverContent>
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+index fee7c95..3d7181c 100644
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -280,6 +280,8 @@ import {
+ export interface SessionPaneProps {
+   /** Page-local assistant presentation; execution still uses the normal Session and permissions. */
+   compactAssistant?: boolean;
++  /** 页面助手空状态展示的目标名（Craft EditPopover 的 emptyStateLabel）。 */
++  compactAssistantLabel?: string;
+   paneId: string;
+   sessionId: string | null;
+   /** 低基数打开入口，由 pane 宿主提供；缺省仅用于兼容旧调用。 */
+@@ -484,6 +486,7 @@ function shouldRestoreQueuedComposerFromAck(status: CommandAck["status"]): boole
+  */
+ export function SessionPane({
+   compactAssistant = false,
++  compactAssistantLabel,
+   paneId,
+   sessionId,
+   openTrigger,
+@@ -4708,6 +4711,21 @@ export function SessionPane({
+             onReconnect={handleRetrySubscribe}
+           />
+         ) : (
++          <>
++          {/* 参考 Craft EditPopover 紧凑模式：首条消息前在整个窗口居中显示邀请提示，避免大片空白。 */}
++          {compactAssistant && (timelineSnapshot?.rows.totalCount ?? 0) === 0 ? (
++            <div className="pointer-events-none absolute inset-0 flex select-none flex-col items-center justify-center gap-1 px-6 text-center">
++              {compactAssistantLabel ? (
++                <span className="text-ui-base text-foreground">{compactAssistantLabel}</span>
++              ) : null}
++              <span className="text-ui-base text-foreground-subtle">
++                {intl.formatMessage({ id: "pageAssistant.emptyTitle" })}
++              </span>
++              <span className="text-ui-sm text-foreground-subtlest">
++                {intl.formatMessage({ id: "pageAssistant.emptyHint" })}
++              </span>
++            </div>
++          ) : null}
+           <SessionPluginReferenceIconBoundary
+             enabled={pluginReferenceIconsEnabled}
+             remoteSessionId={remoteSessionId}
+@@ -4810,6 +4828,7 @@ export function SessionPane({
+               }
+             />
+           </SessionPluginReferenceIconBoundary>
++          </>
+         )}
+       </div>
+     </div>
+diff --git a/packages/ui/src/workspace-grouped-tasks/task-context-menu-content.tsx b/packages/ui/src/workspace-grouped-tasks/task-context-menu-content.tsx
+index bd7df77..f68177c 100644
+--- a/packages/ui/src/workspace-grouped-tasks/task-context-menu-content.tsx
++++ b/packages/ui/src/workspace-grouped-tasks/task-context-menu-content.tsx
+@@ -1,3 +1,4 @@
++import { PageAssistantMenuItem } from "@/page-assistant/PageAssistantContext.js";
+ import type { ZCodeTaskMeta } from "@zcode/shared";
+ import {
+   ContextMenuContent,
+@@ -177,6 +178,18 @@ export function GroupedTaskContextMenuContent({
+       <ContextMenuItem onSelect={onOpenTaskFeedback}>
+         {intl.formatMessage({ id: "taskList.feedback" })}
+       </ContextMenuItem>
++      <PageAssistantMenuItem
++        selection={{
++          feature: "app-page",
++          pageId: "conversation",
++          resource: {
++            kind: "conversation",
++            sessionId: task.taskId,
++            ...(task.title ? { label: task.title.slice(0, 160) } : {}),
++          },
++        }}
++        label={task.title || undefined}
++      />
+     </ContextMenuContent>
+   );
+ }
+diff --git a/packages/ui/test/pageAssistant.browser.test.tsx b/packages/ui/test/pageAssistant.browser.test.tsx
+index a4ce0a3..ca83160 100644
+--- a/packages/ui/test/pageAssistant.browser.test.tsx
++++ b/packages/ui/test/pageAssistant.browser.test.tsx
+@@ -148,6 +148,14 @@ async function fixture(locale: "zh-CN" | "en-US") {
+             pageAssistantTarget: documentTarget,
+             updatedAt: 1_790_000_000_000,
+           },
++          // 右键打开但从未发送消息的会话不进入历史。
++          {
++            sessionId: "unused-page-session",
++            pageAssistantTarget: { feature: "app-page", pageId: "usage" },
++            title: "",
++            titleSource: "default",
++            updatedAt: 1_790_000_000_001,
++          },
+         ]);
+       },
+     },
+@@ -259,6 +267,13 @@ async function fixture(locale: "zh-CN" | "en-US") {
+   });
+   const popover = () =>
+     document.querySelector<HTMLElement>('[data-slot="popover-content"][data-state="open"]');
++  // 助手与 Craft 一样在右键菜单关闭 50ms 后再打开（避免模态菜单归还焦点时立即关闭弹窗）。
++  async function settleMenuClose() {
++    await act(async () => {
++      await new Promise<void>((resolve) => setTimeout(resolve, 80));
++    });
++    await tick();
++  }
+   async function tick() {
+     await act(async () => {
+       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+@@ -294,8 +309,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+       );
+       check(ask, "Context menu omitted Ask Agent");
+       await act(async () => ask!.click());
+-      await tick();
+-      await tick();
++      await settleMenuClose();
+     },
+     async context(page: string, x = 250, y = 90, choose = true) {
+       window.getSelection()?.removeAllRanges();
+@@ -323,8 +337,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+         );
+         check(ask, "Page right-click menu omitted Ask Agent");
+         await act(async () => ask!.click());
+-        await tick();
+-        await tick();
++        await settleMenuClose();
+       }
+       return event;
+     },
+@@ -698,6 +711,12 @@ async function run() {
+           (item) => item.textContent?.includes("Saved document"),
+         );
+         check(saved, "Saved target was not listed in history");
++        check(
++          ![...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some((item) =>
++            item.textContent?.includes(locale === "zh-CN" ? "使用统计" : "Usage"),
++          ),
++          "History listed a never-used assistant conversation",
++        );
+         const commandsBeforeResume = f.commands.length;
+         await act(async () => saved!.click());
+         await f.tick();

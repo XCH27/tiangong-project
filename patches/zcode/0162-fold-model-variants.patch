@@ -1,0 +1,539 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+index 5163ff8..a3f8a10 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+@@ -9,12 +9,14 @@ import {
+ import { acpOption, acpOptionValues, openAcpSession } from "./acp-session.js";
+ import { acpCliVersion } from "./acp-turn.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
++import { foldVendorModels, type FoldedModel } from "./native-variants.js";
+ 
+ export interface AcpInspection {
+   version: string;
+   accountId: string;
+   accountName: string;
+-  models: { id: string; name: string; images?: boolean; contextWindow?: number }[];
++  /** Speed pairs (`…-highspeed`) are folded into one model with `fast`. */
++  models: FoldedModel[];
+   /** Session-level thinking levels (ACP `thought_level` option), when the CLI offers them. */
+   thoughtLevels: string[];
+   images: boolean;
+@@ -56,11 +58,14 @@ export async function inspectAcpConnection(input: {
+   try {
+     const models = profile.fixedModel
+       ? [{ id: ACP_FIXED_MODEL_ID, name: `${profile.label} agent` }]
+-      : acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
+-          id: entry.value,
+-          name: entry.name,
+-          ...session.modelMeta.get(entry.value),
+-        }));
++      : foldVendorModels(
++          acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => ({
++            id: entry.value,
++            name: entry.name,
++            ...session.modelMeta.get(entry.value),
++          })),
++          { efforts: false },
++        );
+     if (!models.length) throw new Error(`${profile.label} returned no models for this account`);
+     const thoughtLevels = acpOptionValues(acpOption(session.configOptions, "thought_level"))
+       .map((entry) => entry.value)
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index aab8b49..849660d 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -13,6 +13,7 @@ import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./ac
+ import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+ import { acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
+ import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
++import { resolveVariantModelId } from "./native-variants.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
+ 
+ const cachePath = (kind: string, sessionId: string) => `acp:${kind}:${sessionId}`;
+@@ -200,7 +201,13 @@ export function createAcpNativeAgentPort(
+             session.client.close();
+             return;
+           }
+-          const modelId = String(request.model.modelId);
++          // ACP 的思考强度是会话选项；只有"快速"对应厂商配对的模型 ID（如 Kimi -highspeed）。
++          const modelId = resolveVariantModelId(
++            String(request.model.modelId),
++            request.model.optionSpecs,
++            request.model.options,
++            false,
++          );
+           if (!profile.fixedModel && !(await setAcpOption(session, "model", modelId)))
+             throw new Error(`${profile.label} does not offer model ${modelId} for this account`);
+           await setAcpOption(session, "mode", mode === "plan" ? profile.planMode : profile.manualMode);
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+index 99dfa30..236036a 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+@@ -9,6 +9,7 @@ import type {
+   NativeAgentPort,
+ } from "@zcode/contracts";
+ import { NativeEvents } from "./native-events.js";
++import { resolveVariantModelId } from "./native-variants.js";
+ import {
+   addAgyUsage,
+   agyDeniedNote,
+@@ -119,7 +120,8 @@ export function createAntigravityNativeAgentPort(
+             request.workingDirectory,
+             ...agyPermissionArgs(request.collaborationMode),
+             "--model",
+-            String(request.model.modelId),
++            // agy 把思考强度编码在模型 ID 里（-low/-medium/-high）；Fleet 展示为同一模型的思考档位。
++            resolveVariantModelId(String(request.model.modelId), request.model.optionSpecs, request.model.options, true),
+             ...(resumed && conversationId ? ["--conversation", conversationId] : []),
+           ];
+           child = spawn(executable, args, {
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index ed4f624..3a78d1e 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -10,4 +10,5 @@ export { startClaudeNativeLogin } from "./claude-login.js";
+ export { readClaudeOAuthUsage } from "./claude-oauth-usage.js";
+ export { inspectAntigravityConnection, parseAgyModels, ANTIGRAVITY_LOCAL_ACCOUNT } from "./antigravity-inspect.js";
+ export { inspectAcpConnection, type AcpInspection } from "./acp-inspect.js";
++export { foldVendorModels, defaultVariantEffort, type FoldedModel } from "./native-variants.js";
+ export { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+index d9e1016..f4d00b7 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+@@ -64,6 +64,8 @@ export function createNativeAgentModel(
+         values: config.optionSpecs?.reasoningLevel?.values ?? ["auto"],
+         map: config.optionSpecs?.reasoningLevel?.map ?? "{}",
+       },
++      // 原生执行器据此把"快速"换成厂商配对的模型（variant-model）或其自身的快速模式。
++      speedMode: config.optionSpecs?.speedMode ?? null,
+     },
+     options: selected,
+     bind(next) {
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts
+new file mode 100644
+index 0000000..736454a
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts
+@@ -0,0 +1,96 @@
++/**
++ * Some official CLIs list one model several times: once per thinking effort (Antigravity
++ * `gemini-3.8-flash-high|medium|low`) or per speed (Kimi `kimi-for-coding-highspeed`). Fleet shows
++ * one model and offers those as the existing thinking-level and Fast controls; the executor maps
++ * the chosen options back to the vendor's own model id at request time.
++ */
++export const VARIANT_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
++const EFFORT_SUFFIX = new RegExp(`^(.+)-(${VARIANT_EFFORTS.join("|")})$`, "u");
++const FAST_SUFFIXES = ["-highspeed"] as const;
++const LABEL_EFFORT = /\s*\((?:minimal|low|medium|high|xhigh|max)\)\s*$/iu;
++
++export interface VendorModel {
++  id: string;
++  name: string;
++  images?: boolean;
++  contextWindow?: number;
++}
++export interface FoldedModel extends VendorModel {
++  /** Vendor efforts available as `${id}-${effort}`, in ascending order. */
++  efforts?: string[];
++  /** The vendor also lists `${id}-highspeed`. */
++  fast?: boolean;
++}
++
++export function foldVendorModels(
++  models: readonly VendorModel[],
++  options: { efforts?: boolean } = { efforts: true },
++): FoldedModel[] {
++  const ids = new Set(models.map((model) => model.id));
++  const folded = new Map<string, FoldedModel>();
++  const order: string[] = [];
++  const add = (key: string, model: FoldedModel) => {
++    if (!folded.has(key)) order.push(key);
++    folded.set(key, { ...folded.get(key), ...model });
++  };
++  for (const model of models) {
++    const fastBase = FAST_SUFFIXES.map((suffix) => (model.id.endsWith(suffix) ? model.id.slice(0, -suffix.length) : undefined)).find(
++      (base) => base && ids.has(base),
++    );
++    if (fastBase) {
++      const base = folded.get(fastBase);
++      if (base) base.fast = true;
++      else add(fastBase, { ...models.find((entry) => entry.id === fastBase)!, fast: true });
++      continue;
++    }
++    const effort = EFFORT_SUFFIX.exec(model.id);
++    // 只有不存在同名基础模型时才合并档位，避免把真正不同的模型误并。
++    if (options.efforts !== false && effort && !ids.has(effort[1]!)) {
++      const base = effort[1]!;
++      const existing = folded.get(base);
++      const efforts = [...(existing?.efforts ?? []), effort[2]!].sort(
++        (left, right) => VARIANT_EFFORTS.indexOf(left as never) - VARIANT_EFFORTS.indexOf(right as never),
++      );
++      add(base, {
++        ...model,
++        ...existing,
++        id: base,
++        name: existing?.name ?? model.name.replace(LABEL_EFFORT, ""),
++        efforts,
++      });
++      continue;
++    }
++    add(model.id, { ...model, ...folded.get(model.id) });
++  }
++  return order.map((key) => folded.get(key)!);
++}
++
++/** Default effort for "auto": the vendor's middle setting when listed, else its highest. */
++export function defaultVariantEffort(efforts: readonly string[]): string | undefined {
++  return efforts.includes("medium") ? "medium" : efforts.at(-1);
++}
++
++/**
++ * The vendor model id for a folded model. `effortsInId` is true for CLIs whose efforts are model
++ * ids (Antigravity); ACP CLIs carry thinking level as a session option, so only Fast maps to an id.
++ */
++export function resolveVariantModelId(
++  modelId: string,
++  specs: { reasoningLevel?: { values?: readonly string[] }; speedMode?: string | null } | undefined,
++  options: { reasoningLevel?: string; speedMode?: string } | undefined,
++  effortsInId: boolean,
++): string {
++  let id = modelId;
++  const efforts = effortsInId
++    ? (specs?.reasoningLevel?.values ?? []).filter((value) => (VARIANT_EFFORTS as readonly string[]).includes(value))
++    : [];
++  if (efforts.length) {
++    const chosen =
++      options?.reasoningLevel && efforts.includes(options.reasoningLevel)
++        ? options.reasoningLevel
++        : defaultVariantEffort(efforts);
++    if (chosen) id = `${id}-${chosen}`;
++  }
++  if (options?.speedMode === "fast" && specs?.speedMode === "variant-model") id = `${id}${FAST_SUFFIXES[0]}`;
++  return id;
++}
+diff --git a/packages/model-option-map/src/option-maps.ts b/packages/model-option-map/src/option-maps.ts
+index 78927b6..bb7bea8 100644
+--- a/packages/model-option-map/src/option-maps.ts
++++ b/packages/model-option-map/src/option-maps.ts
+@@ -70,5 +70,6 @@ export function modelSpeedModePatch(
+   if (fast && !mapping)
+     throw new ModelOptionMapError("Fast mode is not supported by this model route");
+   if (mapping === "openai-priority") return { service_tier: fast ? "priority" : "default" };
++  // variant-model 由原生执行器换成厂商配对的快速模型 ID，请求体不变。
+   return mapping === "anthropic-fast" && fast ? { speed: "fast" } : {};
+ }
+diff --git a/packages/model-option-map/src/types.ts b/packages/model-option-map/src/types.ts
+index 8fce5e5..fce9824 100644
+--- a/packages/model-option-map/src/types.ts
++++ b/packages/model-option-map/src/types.ts
+@@ -1,6 +1,10 @@
+ export const MODEL_SPEED_MODES = ["standard", "fast"] as const;
+ export type ModelSpeedMode = (typeof MODEL_SPEED_MODES)[number];
+-export const MODEL_SPEED_MAPPINGS = ["openai-priority", "anthropic-fast"] as const;
++/**
++ * `variant-model`: a native executor picks the vendor's paired fast model id (e.g. Kimi
++ * `…-highspeed`); there is no request-body patch.
++ */
++export const MODEL_SPEED_MAPPINGS = ["openai-priority", "anthropic-fast", "variant-model"] as const;
+ export type ModelSpeedMapping = (typeof MODEL_SPEED_MAPPINGS)[number];
+ export type JsonPrimitive = string | number | boolean | null;
+ export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 0380443..7a6d3e5 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -12,6 +12,7 @@ import {
+   inspectAcpConnection,
+   isAcpExecutorKind,
+   ACP_PROFILES,
++  foldVendorModels,
+ } from "@zcode/adapters/native-agent";
+ import { mkdirSync } from "node:fs";
+ import { tmpdir } from "node:os";
+@@ -179,10 +180,14 @@ export function createNativeCliConnectionAdapter(
+                   },
+                   outputFormat: { supportsText: true },
+                 },
+-                ...(inspected.thoughtLevels.length
++                ...(inspected.thoughtLevels.length || model.fast
+                   ? {
+                       optionSpecs: {
+-                        reasoningLevel: { values: ["auto", ...inspected.thoughtLevels], map: "{}" },
++                        ...(inspected.thoughtLevels.length
++                          ? { reasoningLevel: { values: ["auto", ...inspected.thoughtLevels], map: "{}" } }
++                          : {}),
++                        // 厂商把快速版列为独立模型（Kimi -highspeed）：合并为同一模型的"快速"。
++                        ...(model.fast ? { speedMode: "variant-model" as const } : {}),
+                       },
+                     }
+                   : {}),
+@@ -202,10 +207,22 @@ export function createNativeCliConnectionAdapter(
+           accountName: "Antigravity",
+           catalog: {
+             source: "provider" as const,
+-            models: inspected.models.map((model) => ({
++            // agy 把思考强度做成独立模型 ID（-low/-medium/-high）：合并为一个模型 + 思考档位。
++            models: foldVendorModels(inspected.models).map((model) => ({
+               id: model.id,
+               name: model.name,
+               config: {
++                ...(model.efforts?.length
++                  ? {
++                      optionSpecs: {
++                        reasoningLevel: {
++                          values: ["auto", ...model.efforts],
++                          defaultValue: "auto",
++                          map: "{}",
++                        },
++                      },
++                    }
++                  : {}),
+                 properties: {
+                   inputFormat: {
+                     supportsText: true,
+diff --git a/packages/services/test/antigravity-native.test.ts b/packages/services/test/antigravity-native.test.ts
+index 7d8bab5..884784c 100644
+--- a/packages/services/test/antigravity-native.test.ts
++++ b/packages/services/test/antigravity-native.test.ts
+@@ -191,3 +191,43 @@ test("native CLI connection resolves the network route for the executor's own ve
+   assert.deepEqual(inspected.catalog.models.map((model: { id: string }) => model.id), ["gemini-3-pro"]);
+   assert.deepEqual(kinds, ["antigravity"]);
+ });
++
++test("thinking-effort and speed variants of one model fold into one model with options", async () => {
++  const { foldVendorModels, resolveVariantModelId } = await import(
++    "../../../apps/zcode-cli/packages/adapters/src/native-agent/native-variants.js"
++  );
++  const folded = foldVendorModels([
++    { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
++    { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" },
++    { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },
++    { id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)" },
++    { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)" },
++    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
++    { id: "kimi-for-coding", name: "kimi-for-coding" },
++    { id: "kimi-for-coding-highspeed", name: "kimi-for-coding-highspeed" },
++  ]);
++  assert.deepEqual(
++    folded.map((model) => [model.id, model.name, model.efforts ?? null, model.fast ?? false]),
++    [
++      ["gemini-3.8-flash", "Gemini 3.8 Flash", ["low", "medium", "high"], false],
++      ["gemini-3.1-pro", "Gemini 3.1 Pro", ["low", "high"], false],
++      ["claude-sonnet-4-6", "Claude Sonnet 4.6 (Thinking)", null, false],
++      ["kimi-for-coding", "kimi-for-coding", null, true],
++    ],
++  );
++  const specs = { reasoningLevel: { values: ["auto", "low", "medium", "high"] } };
++  assert.equal(resolveVariantModelId("gemini-3.8-flash", specs, { reasoningLevel: "auto" }, true), "gemini-3.8-flash-medium");
++  assert.equal(resolveVariantModelId("gemini-3.8-flash", specs, { reasoningLevel: "low" }, true), "gemini-3.8-flash-low");
++  assert.equal(resolveVariantModelId("gemini-3.1-pro", { reasoningLevel: { values: ["auto", "low", "high"] } }, {}, true), "gemini-3.1-pro-high");
++  // ACP 的思考档位是会话选项，不能拼进模型 ID；只有"快速"换成配对模型。
++  assert.equal(resolveVariantModelId("opencode-go/glm-5.3", specs, { reasoningLevel: "high" }, false), "opencode-go/glm-5.3");
++  assert.equal(
++    resolveVariantModelId("kimi-for-coding", { speedMode: "variant-model" }, { speedMode: "fast" }, false),
++    "kimi-for-coding-highspeed",
++  );
++  // ACP 目录只合并速度配对，带档位后缀的 ID 原样保留。
++  assert.deepEqual(
++    foldVendorModels([{ id: "x-high", name: "X" }, { id: "x-low", name: "X" }], { efforts: false }).map((model) => model.id),
++    ["x-high", "x-low"],
++  );
++});
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+index 5fc8ac2..abcdedb 100644
+--- a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
++++ b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+@@ -107,14 +107,14 @@
+       "normalization": "Official Alibaba Cloud GitHub organization square symbol downsampled unchanged from 320x320 to 80x80 RGBA PNG."
+     },
+     {
+-      "brand": "Xiaomi MiMo",
+-      "file": "model-provider-xiaomi-mimo.png",
++      "brand": "Xiaomi",
++      "file": "model-provider-xiaomi.svg",
+       "providerIds": [
+         "xiaomi-mimo"
+       ],
+-      "sourceUrl": "https://platform.xiaomimimo.com/static/logo.5c3d18dc51d9cbea.jpg",
++      "sourceUrl": "https://cdn.jsdelivr.net/npm/simple-icons@16.34.0/icons/xiaomi.svg",
+       "sourceOwner": "Xiaomi MiMo",
+-      "normalization": "Official 256x256 embedded source image downsampled to 80x80 RGB."
++      "normalization": "Xiaomi brand mark: Simple Icons 16.34.0 xiaomi.svg (CC0) split into its squircle and 'mi' subpaths, filled with Xiaomi orange #FF6900 (as in the official mi.com/global header SVG) and white. MiMo has no coloured mark of its own. Retrieved 2026-10-06."
+     },
+     {
+       "brand": "OpenAI",
+@@ -161,15 +161,15 @@
+       "normalization": "Official mark (K with blue #1783FF dot) as published in @lobehub/icons-static-svg 1.95.1 kimi-color.svg, matching kimi.com pwa-192.png. Dark file unchanged (white K); light file recolors only the K to #000 so it stays visible on light cards. Retrieved 2026-10-06."
+     },
+     {
+-      "brand": "Xiaomi MiMo",
+-      "file": "model-provider-xiaomi-mimo.png",
++      "brand": "Xiaomi",
++      "file": "model-provider-xiaomi.svg",
+       "providerIds": [
+         "xiaomi-mimo",
+         "fleet-xiaomi-token-plan-cn"
+       ],
+-      "sourceUrl": "https://platform.xiaomimimo.com/favicon.png",
++      "sourceUrl": "https://cdn.jsdelivr.net/npm/simple-icons@16.34.0/icons/xiaomi.svg",
+       "sourceOwner": "Xiaomi",
+-      "normalization": "Official platform favicon (black tile, white Xiaomi MIMO wordmark), downscaled from 535x534 to 128px with sips. Xiaomi publishes no coloured MiMo mark (mimo.xiaomi.com logo is grey text). Retrieved 2026-10-06."
++      "normalization": "Xiaomi brand mark: Simple Icons 16.34.0 xiaomi.svg (CC0) split into its squircle and 'mi' subpaths, filled with Xiaomi orange #FF6900 (as in the official mi.com/global header SVG) and white. MiMo has no coloured mark of its own. Retrieved 2026-10-06."
+     }
+   ],
+   "scope": "Retained source-asset provenance. Runtime rendering is owned by ProviderLogo.tsx; entries below are not a second lookup table.",
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-xiaomi-mimo.png b/packages/ui/src/assets/provider-icons/model-provider-xiaomi-mimo.png
+deleted file mode 100644
+index 2741c4225a347004a485802874c0708d661eca4b..0000000000000000000000000000000000000000
+GIT binary patch
+literal 0
+HcmV?d00001
+
+literal 6240
+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
+
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-xiaomi.svg b/packages/ui/src/assets/provider-icons/model-provider-xiaomi.svg
+new file mode 100644
+index 0000000..174fca8
+--- /dev/null
++++ b/packages/ui/src/assets/provider-icons/model-provider-xiaomi.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Xiaomi</title><path fill="#FF6900" d="M12 0C8.016 0 4.756.255 2.493 2.516.23 4.776 0 8.033 0 12.012c0 3.98.23 7.235 2.494 9.497C4.757 23.77 8.017 24 12 24c3.983 0 7.243-.23 9.506-2.491C23.77 19.247 24 15.99 24 12.012c0-3.984-.233-7.243-2.502-9.504C19.234.252 15.978 0 12 0z"/><path fill="#FFFFFF" d="M4.906 7.405h5.624c1.47 0 3.007.068 3.764.827.746.746.827 2.233.83 3.676v4.54a.15.15 0 0 1-.152.147h-1.947a.15.15 0 0 1-.152-.148V11.83c-.002-.806-.048-1.634-.464-2.051-.358-.36-1.026-.441-1.72-.458H7.158a.15.15 0 0 0-.151.147v6.98a.15.15 0 0 1-.152.148H4.906a.15.15 0 0 1-.15-.148V7.554a.15.15 0 0 1 .15-.149zm12.131 0h1.949a.15.15 0 0 1 .15.15v8.892a.15.15 0 0 1-.15.148h-1.949a.15.15 0 0 1-.151-.148V7.554a.15.15 0 0 1 .151-.149zM8.92 10.948h2.046c.083 0 .15.066.15.147v5.352a.15.15 0 0 1-.15.148H8.92a.15.15 0 0 1-.152-.148v-5.352a.15.15 0 0 1 .152-.147Z"/></svg>
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 794bc07..e3d27f6 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -9,7 +9,7 @@ import openrouterLight from "@/assets/provider-icons/model-provider-openrouter-l
+ import openrouterDark from "@/assets/provider-icons/model-provider-openrouter-dark.svg";
+ import kimiLight from "@/assets/provider-icons/model-provider-kimi-light.svg";
+ import kimiDark from "@/assets/provider-icons/model-provider-kimi-dark.svg";
+-import xiaomiMimo from "@/assets/provider-icons/model-provider-xiaomi-mimo.png";
++import xiaomi from "@/assets/provider-icons/model-provider-xiaomi.svg";
+ import Zai from "@lobehub/icons-static-svg/icons/zai.svg";
+ import Minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg";
+ import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
+@@ -47,7 +47,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   minimax: { src: Minimax, color: true },
+   deepseek: { src: DeepSeek, color: true },
+   "alibaba-model-studio": { src: Bailian, color: true },
+-  "xiaomi-mimo": { src: xiaomiMimo, color: true },
++  "xiaomi-mimo": { src: xiaomi, color: true },
+   openai: { src: OpenAI, color: false },
+   codex: { src: OpenAI, color: false }, // Retain the previous stored key as a ChatGPT-mark alias.
+   anthropic: { src: Anthropic, color: false },

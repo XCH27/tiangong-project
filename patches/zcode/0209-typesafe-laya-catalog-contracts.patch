@@ -1,0 +1,172 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 0bfe795..19f457e 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -341,6 +341,11 @@ Dedicated System One identifiers, including Laya's `auto`, never borrow chat cat
+ media flags from a same-name model. Their protocol/curated/provider/corrected facts retain their
+ existing owners; an unknown checkpoint limit remains unknown. Compatible chat/gateway models keep
+ their declared dual-operation support. Source save performs no inference probe.
++Laya's local preset has no server-directory proof: its existing control explains the manual-ID
++path rather than suggesting an API key will verify loaded checkpoints. Official TypeSafe exposes
++`GET /v1/models` with `models[].name`; those exact names become scoped classifier IDs. Read aliases
++do not retire versioned pins absent from the directory. Invalid/duplicate names reject the whole
++read without partial persistence. Other API/native directories keep their existing paths.
+ 
+ Native account/catalog replacement fences the exact connection at the Personal transaction, not
+ an unrelated setting's file revision. The facade still fences builtin and selected account-source
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index 74e7e00..21b784a 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -74,6 +74,8 @@ export async function discoverConnectionModels(
+   } else if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
+   else headers.delete("Authorization");
+   let path = base.pathname.replace(/\/+$/, "");
++  const typesafeCatalog = config.api.type === "typesafe-system-one" &&
++    base.origin === "https://api.typesafe.ai" && path === "/v1";
+   if (config.api.type === "anthropic-messages" && !path.endsWith("/v1")) path += "/v1";
+   const openRouterCatalog = isOpenRouterApiBaseUrl(config.api.baseUrl);
+   const openCodeCatalog = isOpenCodeCatalogBaseUrl(config.api.baseUrl);
+@@ -183,11 +185,21 @@ export async function discoverConnectionModels(
+       );
+     }
+     const raw = await readModelListPage(response);
+-    const body = (togetherCatalog && Array.isArray(raw) ? { data: raw } : raw) as {
++    let body = (togetherCatalog && Array.isArray(raw) ? { data: raw } : raw) as {
+       data?: unknown;
+       has_more?: boolean;
+       last_id?: string;
+     };
++    if (typesafeCatalog) {
++      // TypeSafe 官方目录返回 models[].name，而不是 OpenAI 的 data[].id；名称就是请求中的模型 ID。
++      const entries = (raw as { models?: unknown })?.models;
++      if (!Array.isArray(entries)) throw new Error("TypeSafe returned an unsupported model list; add models manually");
++      body = { data: entries.map((entry) => {
++        if (!entry || typeof entry !== "object" || typeof entry.name !== "string" || !entry.name.trim() || entry.name !== entry.name.trim())
++          throw new Error("TypeSafe returned an invalid model name; saved models were not changed");
++        return { id: entry.name, name: entry.name };
++      }) };
++    }
+     if (!body || !Array.isArray(body.data))
+       throw new Error("The provider returned an unsupported model list; add models manually");
+     for (const item of body.data) {
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 61c9243..d14fc17 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -7,10 +7,51 @@ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
+ import { createManualProviderModel } from "../../ui/src/settings/model-provider-section/ProviderModelMetadata.js";
+-import { modelCatalogFailureKind } from "../../ui/src/settings/model-provider-section/modelDiscoveryActions.js";
++import { modelCatalogFailureKind, modelDiscoveryBlockReason, fetchSavedModelCatalog } from "../../ui/src/settings/model-provider-section/modelDiscoveryActions.js";
+ import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
+ import { NodeModelSelectionConfigRepository } from "@zcode/provider-node";
+ import type { SubscriptionConnectionOwner } from "../src/model-provider/subscriptionConnections.js";
++
++test("Laya preset retains manual IDs while TypeSafe's published catalog remains available", async () => {
++  let calls = 0;
++  for (const apiKey of ["", "synthetic-key"]) {
++    const blocked = modelDiscoveryBlockReason({ api: { type: "typesafe-system-one", baseUrl: "http://127.0.0.1:8000/v1" }, access: { type: "api-key", apiKey } }, false, "fleet-laya-local");
++    assert.equal(blocked, "classifierCatalog");
++    await fetchSavedModelCatalog({ providerId: "fixture", blocked: Boolean(blocked), isCurrent: () => true, service: { discoverModels: async () => { calls++; throw new Error("unsupported directory read"); } } });
++  }
++  assert.equal(calls, 0);
++  assert.equal(modelDiscoveryBlockReason({ api: { type: "typesafe-system-one", baseUrl: "https://api.typesafe.ai/v1" }, access: { type: "api-key", apiKey: "synthetic-key" } }, false, "fleet-typesafe-system-one"), undefined);
++  assert.equal(modelDiscoveryBlockReason({ api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" }, access: { type: "api-key", apiKey: "synthetic-key" } }, false), undefined);
++});
++
++test("official TypeSafe models envelope maps exact names, keeps version pins and survives reopen", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({ templateId: "fleet-typesafe-system-one", initialConfig: { access: { type: "api-key", apiKey: "synthetic-typesafe" } } });
++    const requests: string[] = [];
++    f.setFetch(async (input, init) => {
++      requests.push(String(input));
++      assert.equal(init?.method ?? "GET", "GET");
++      assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer synthetic-typesafe");
++      return Response.json({ models: [{ name: "jev-latest", release_date: "2026-01-01", description: "Fixture alias" }] });
++    });
++    await f.service.discoverModels(providerId);
++    assert.deepEqual(requests, ["https://api.typesafe.ai/v1/models"]);
++    await f.restart();
++    const provider = (await f.service.getView()).providers.find((entry) => entry.providerId === providerId)!;
++    assert.ok(provider.models.some((model) => model.modelId === "jev-1.13.0"), "The accepted version pin was retired by the alias directory");
++    const alias = provider.models.find((model) => model.modelId === "jev-latest")!;
++    assert.equal(alias.effectiveConfig.properties?.outputFormat?.supportsClassification, true);
++    assert.equal(alias.executable, false);
++    assert.equal(alias.evidenceConfig?.properties?.contextWindow, undefined);
++    const before = await f.disk();
++    for (const body of [{ models: [{ name: " " }] }, { models: [{ name: "jev-latest" }, { name: "jev-latest" }] }, { data: [{ id: "wrong-envelope" }] }]) {
++      f.setFetch(async () => Response.json(body));
++      await assert.rejects(f.service.discoverModels(providerId), /invalid model name|duplicate model IDs|unsupported model list/);
++      assert.equal(await f.disk(), before);
++    }
++  } finally { await f.dispose(); }
++});
+ import {
+   getEnabledApiKeys,
+   parseProviderConfig,
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 5651178..cda6773 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -122,6 +122,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.discovery.connectFirst": "Connect a subscription account to load models",
+   "settings.modelProvider.discovery.configureConnection":
+     "Configure an API address and key to load models",
++  "settings.modelProvider.discovery.classifierCatalog":
++    "Enter the decision service's model ID to add a model manually.",
+   "settings.modelProvider.discovery.catalog":
+     "Adapter catalog; availability depends on your account.",
+   "settings.modelProvider.discovery.provider": "From provider",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 93ffb4c..af635c5 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -102,6 +102,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.discovery.routeRestricted": "此接入方式已停用，不再读取模型列表。",
+   "settings.modelProvider.discovery.connectFirst": "连接订阅账号后自动加载模型列表",
+   "settings.modelProvider.discovery.configureConnection": "配置 API 地址和密钥后自动加载模型列表",
++  "settings.modelProvider.discovery.classifierCatalog": "使用决策服务的模型 ID 手动添加模型。",
+   "settings.modelProvider.discovery.catalog": "适配器目录，实际可用性取决于账号。",
+   "settings.modelProvider.discovery.provider": "来自服务商",
+   "settings.modelProvider.discovery.import": "添加所选模型（{count}）",
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 7aed067..b0ff394 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -270,7 +270,7 @@ export function InlineEditableProviderCard({
+     now: Date.now,
+   });
+   // 新增空行只是编辑状态；没有有效连接变更时不能阻断已保存连接的模型读取。
+-  const discoveryBlocked = modelDiscoveryBlockReason(provider.config, pendingConnection !== null);
++  const discoveryBlocked = modelDiscoveryBlockReason(provider.config, pendingConnection !== null, provider.templateId);
+   const providerDisplayName = resolveModelProviderDisplayName(provider);
+   const saveNotificationRef = useRef({
+     providerId: provider.providerId,
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index 872c5e5..ec48038 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -1,4 +1,4 @@
+-import { connectionRouteRestriction } from "@zcode/provider";
++import { connectionRouteRestriction, isLocalClassifierEndpoint } from "@zcode/provider";
+ import { readProviderSettings } from "../../lib/providerSettingsRead.js";
+ import { getEnabledApiKeys, type ProviderConfigObject } from "@zcode/provider";
+ import type { IProviderSettingsService } from "@zcode/services";
+@@ -35,10 +35,13 @@ export async function fetchSavedModelCatalog(input: {
+ export function modelDiscoveryBlockReason(
+   config: ProviderConfigObject,
+   pendingDraft: boolean,
+-): "pendingConnection" | "connectFirst" | "configureConnection" | "routeRestricted" | undefined {
++  templateId?: string | null,
++): "pendingConnection" | "connectFirst" | "configureConnection" | "routeRestricted" | "classifierCatalog" | undefined {
+   if (pendingDraft) return "pendingConnection";
+   // 厂商不允许的路线不再读取模型列表，避免报错和向厂商发请求。
+   if (connectionRouteRestriction(config.access)) return "routeRestricted";
++  // Laya 的预设目录不证明服务器已加载模型；不要把空密钥误报为缺少配置。
++  if (config.api?.type === "typesafe-system-one" && templateId === "fleet-laya-local" && isLocalClassifierEndpoint(config.api.baseUrl)) return "classifierCatalog";
+   if ((config.access?.type === "subscription" || config.access?.type === "native-cli"))
+     return config.access.connected ? undefined : "connectFirst";
+   if (

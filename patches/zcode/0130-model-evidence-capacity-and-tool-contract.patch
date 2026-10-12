@@ -1,0 +1,3955 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index c94b912..6188bc6 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -82,6 +82,36 @@ and absent dates are shown as unavailable. No browser-cookie import or second cr
+ 
+ ## Context occupancy measurement
+ 
++The Provider Registry owns sparse capacity evidence independently of its completed runtime
++configuration. API and native model factories capture that same evidence: an observed or explicit
++capacity, or an admitted selectable window, remains fixed for the accepted model; absent evidence
++is `null`, even when its internal working budget uses the existing fallback. Native model binding
++must not promote that fallback to a confirmed ModelComplete denominator. Existing complete-only
++Registry callers retain their legacy configured-capacity behavior. Refresh affects newly created
++models, while durable observed/manual fields retain their original writer and cold-reopen path.
++Native response metadata and reported usage remain provider observations, never backfilled from
++the working budget. Each new main-turn ModelComplete publishes a known capacity or explicit
++`null`; V4 clears the current model's old denominator on `null`, while absent fields in legacy
++events remain compatible. Late results from an old model and sidecars cannot change the current
++capacity. Historical usage and SQLite records remain intact. No configuration field, account access, migration or second capacity owner
++is introduced. `packages/core/test/native-model-capacity.test.ts` exercises actual Registry,
++frozen API/native factories and Host observations using isolated repositories and a scripted
++native port; it starts no CLI or provider inference.
++The selectable-window fixture proves Host admission, freezing and publication only. It does not
++prove that a native backend changes its own working window; that requires its executor binding.
++
++Named bundled rules that declare capacities/capabilities or supported/default effort carry
++optional `evidenceModelIds`: exact published model IDs within
++that existing rule, not account membership or another catalog. The bundled scope is checked
++against the installed Pi 1.0.1 static chat IDs and existing fixed template IDs. A scoped rule
++resolves only those exact IDs, so arbitrary future/private suffixes cannot acquire its capacity,
++capabilities. Pure wire-map rules retain their compatibility behavior for future/alias IDs and
++do not supply capacity/capability evidence. Catchall rules retain their universal internal/wire behavior and
++carry no scope. Unscoped legacy regex remains an internal recommendation, while only a literal
++exact match can supply evidence. Actual observations, explicit personal corrections and exact
++template/provider rules keep their existing order. Parse, compose and JSON encoding preserve
++the same immutable scope field; no stored personal data is migrated or inferred from a name.
++
+ The existing V4 Session usage projection owns optional `contextWindow.measurement`: source
+ (`provider-usage`, `runtime-estimate`, `unknown`), state (`current`, `stale`), observation time,
+ known request provider/model identity, and stale reason (`model-change`, `compaction`, `restored`).
+@@ -141,3 +171,12 @@ no usage and unpriced models leave the payment unallocated. Only observed Fleet
+ ongoing billing periods are provisional and mixed currencies are never summed. Display per-model
+ cache ratio as summed reported cache reads divided by the corresponding reported total input.
+ Token popup retains original context/allowance shape; request/cost analytics lives in Usage only.
++
++## Model tool capability projection
++
++The existing `getTools(model)` owner projects no tool declarations for an explicit false tool
++capability. Native factories preserve an explicit negative correction too. Text-only rounds
++still use the original Host/Pi, request, receipt and usage path.
++The same empty set governs context/Skill discovery and effect admission; a hallucinated call
++obtains neither permission nor an effect. Unknown/true capability and no-model local catalogues
++retain their existing behavior. Actual SDK JSON/SSE fixtures cover all three API formats and reopen.
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
+index d8872ec..33facac 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-inspect.ts
+@@ -24,6 +24,7 @@ const modelSchema = z.object({
+   ),
+   defaultReasoningEffort: z.string(),
+   inputModalities: z.array(z.string()),
++  contextWindow: z.number().int().positive().safe().nullish(),
+   isDefault: z.boolean(),
+   serviceTiers: z.array(z.object({ id: z.string() }).passthrough()).optional(),
+ });
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+index 85528c9..fc6fb38 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+@@ -13,18 +13,28 @@ export function createNativeAgentModel(
+   access: NativeCliAccessConfig,
+   config: ModelConfig,
+   options: ModelOptions,
++  contextWindowEvidence?: number | null,
+ ): Model {
+   const make = (selected: ModelOptions): Model => ({
+     nativeExecutor: {
+       kind: access.provider,
+-      executable: access.provider === "claude" ? resolveClaudeNativeExecutable(access.executable)
+-        : access.provider === "codex" ? resolveCodexNativeExecutable(access.executable) : (access.executable ?? "agy"),
++      executable:
++        access.provider === "claude"
++          ? resolveClaudeNativeExecutable(access.executable)
++          : access.provider === "codex"
++            ? resolveCodexNativeExecutable(access.executable)
++            : (access.executable ?? "agy"),
+       configDir: access.configDir,
+       accountId: access.accountId,
+     },
+     providerId: providerId as ModelProviderId,
+     modelId: modelId as ModelId,
+-    contextWindowEvidence: config.properties?.contextWindow ?? null,
++    // A sparse Registry's null means unknown; its internal budget is not a provider fact.
++    // Complete-only callers keep the same configured-capacity semantics as the API route.
++    contextWindowEvidence:
++      contextWindowEvidence === undefined
++        ? (config.properties?.contextWindow ?? null)
++        : contextWindowEvidence,
+     properties: {
+       contextWindow: config.properties?.contextWindow ?? 128000,
+       requiresMfjsToolSchema: false,
+@@ -36,7 +46,7 @@ export function createNativeAgentModel(
+         supportsVideo: config.properties?.inputFormat?.supportsVideo ?? false,
+       },
+       outputFormat: { supportsText: true },
+-      supportsToolCall: true,
++      supportsToolCall: config.properties?.supportsToolCall ?? true,
+       supportsJsonSchemaOutput: false,
+       supportsNativeWebSearch: false,
+       supportsMidConversationSystem: true,
+@@ -59,7 +69,13 @@ export function createNativeAgentModel(
+       let text = "";
+       for await (const event of make(selected).streamText(request)) {
+         if (event.type === "text_delta") text += event.text;
+-        if (event.type === "finish") return { text, finishReason: event.finishReason, usage: event.usage, providerMetadata: event.providerMetadata };
++        if (event.type === "finish")
++          return {
++            text,
++            finishReason: event.finishReason,
++            usage: event.usage,
++            providerMetadata: event.providerMetadata,
++          };
+       }
+       throw new Error("Native executor ended without a result");
+     },
+@@ -67,16 +83,23 @@ export function createNativeAgentModel(
+       const admission = getCurrentModelInvocationContext()?.modelRequestAdmission;
+       if (admission && !admission.observerOnly)
+         throw new Error("Native CLI cannot enforce this task's model-request admission policy");
+-      if (request.tools?.length) throw new Error("Native tools require the Fleet Host execution path");
++      if (request.tools?.length)
++        throw new Error("Native tools require the Fleet Host execution path");
+       const native = createNativeAgentPort().createTurn({
+-        model: make({ ...selected, ...request.options }), messages: request.messages, tools: [],
+-        sessionId: randomUUID(), turnId: randomUUID(), workingDirectory: process.cwd(),
++        model: make({ ...selected, ...request.options }),
++        messages: request.messages,
++        tools: [],
++        sessionId: randomUUID(),
++        turnId: randomUUID(),
++        workingDirectory: process.cwd(),
+         signal: request.abortSignal ?? AbortSignal.timeout(60000),
+       });
+       try {
+         await native.admitNextStep();
+         yield* native.model.streamText(request);
+-      } finally { await native.close(); }
++      } finally {
++        await native.close();
++      }
+     },
+   });
+   return make(options);
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+index 76e2865..f9de179 100644
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -14,6 +14,7 @@ import {
+ } from "@zcode/provider";
+ import { AiSdkModelExecution } from "../src/model/model-execution.js";
+ import { runWithModelInvocationContext } from "@zcode/contracts";
++import { readDiscoveredModelMetadata } from "../../../../../packages/services/src/model-provider/modelDiscoveryMetadata.js";
+ 
+ type Access = "api-key" | "zhipu-coding-plan-api-key" | "zhipu-account";
+ type Api = "anthropic-messages" | "openai-chat-completions" | "openai-responses";
+@@ -27,6 +28,36 @@ const builtin = JSON.parse(await readFile(new URL("../../../../../config/provide
+ const templates = parseProviderTemplateMap(builtin.config.providerConfigRules.templateRules);
+ const builtinModels = parseZCodeBuiltinModelConfigRules(builtin.config.modelConfigRules);
+ 
++test("Anthropic advertised effort and adaptive support reach the actual SDK wire without invented thinking budgets", async () => {
++  for (const adaptive of [true, false]) {
++    const metadata = readDiscoveredModelMetadata({
++      max_input_tokens: 64000, max_tokens: 4096,
++      capabilities: { effort: { supported: true, medium: { supported: true } },
++        thinking: { supported: true, types: { adaptive: { supported: adaptive }, enabled: { supported: true } } } },
++    }, undefined, "anthropic");
++    const validated = createRegistryProviderConfig(new ProviderConfig({
++      group: "standard-personal", access: new ApiKeyAccessConfig({ type: "api-key", apiKey: KEY }),
++      api: new ProviderApiConfig({ type: "anthropic-messages", baseUrl: "https://api.anthropic.com" }),
++    }));
++    assert.ok(validated.ok);
++    for (const reasoningLevel of ["auto", "medium"]) {
++      const { execution, requests } = fixture();
++      const binding = execution.bindModel({ providerId: "claude", modelId: "claude-directory-fixture",
++        providerConfig: validated.config, supportsJsonSchemaOutput: false,
++        optionSpecs: { reasoningLevel: { map: metadata.optionSpecs!.reasoningLevel!.map! },
++          maxOutputTokens: { map: '{"max_tokens":maxOutputTokens}' } },
++      });
++      const resolved = binding.resolveRequest({ options: { reasoningLevel, maxOutputTokens: 256 } });
++      await generateText({ model: resolved.model, prompt: "Reply OK", maxRetries: 0 });
++      assert.equal(requests.length, 1);
++      assert.equal(requests[0]!.url, "https://api.anthropic.com/v1/messages");
++      assert.equal(requests[0]!.body.max_tokens, 256);
++      assert.deepEqual(requests[0]!.body.output_config, reasoningLevel === "medium" ? { effort: "medium" } : undefined);
++      assert.deepEqual(requests[0]!.body.thinking, reasoningLevel === "medium" && adaptive ? { type: "adaptive" } : undefined);
++    }
++  }
++});
++
+ test("plan-key classification preserves each route's billing category and authentication", () => {
+   const roundtrip = parseProviderTemplateMap(templates.toJSON());
+   for (const id of ["zai-api", "bigmodel-api", "fleet-kimi-coding", "fleet-kimi-coding-global",
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+index 3cd9b76..828116d 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+@@ -94,6 +94,11 @@ export class ApiProviderModelRuntime {
+     // Selection 已在上面的 Registry 边界完成校验，Factory 不再承担任何缺省修复。
+     const normalReasoningLevel = target.selection.options!.reasoningLevel!;
+     const reportedOutputLimit = registryModel.evidenceConfig?.optionSpecs?.maxOutputTokens;
++    // Sparse evidence is distinct from the completed configuration's internal fallback.
++    // Both executor routes capture the same accepted capacity, including an explicit choice.
++    const contextWindowEvidence = registryModel.evidenceConfig
++      ? (selectedContext ?? registryModel.evidenceConfig.properties?.contextWindow ?? null)
++      : undefined;
+     if (provider.config.access.type === "native-cli") {
+       return createNativeAgentModel(
+         provider.providerId,
+@@ -101,17 +106,13 @@ export class ApiProviderModelRuntime {
+         provider.config.access,
+         config,
+         target.selection.options ?? {},
++        contextWindowEvidence,
+       );
+     }
+     return this.#modelAdapter.createModel({
+       providerId: provider.providerId,
+       modelId: registryModel.modelId,
+-      ...(registryModel.evidenceConfig
+-        ? {
+-            contextWindowEvidence:
+-              selectedContext ?? registryModel.evidenceConfig.properties?.contextWindow ?? null,
+-          }
+-        : {}),
++      ...(contextWindowEvidence !== undefined ? { contextWindowEvidence } : {}),
+       omitUnsourcedOutputLimit:
+         registryModel.evidenceConfig !== undefined &&
+         reportedOutputLimit?.max == null &&
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index f49a908..6a8885e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -4699,7 +4699,9 @@ export class ProductProjection {
+     // 切模后到达的旧请求仍可计消费，但不能把旧模型容量覆盖回当前 Registry 容量。
+     const maxTokens = modelChanged
+       ? this.contextWindowState.maxTokens
+-      : (payload.contextWindow ?? this.contextWindowState.maxTokens);
++      : payload.contextWindow !== undefined
++        ? payload.contextWindow
++        : this.contextWindowState.maxTokens;
+     this.contextWindowState.maxTokens = maxTokens;
+     const cumulative = this.snapshot.usage.cumulative;
+     deltas.push({
+@@ -4707,8 +4709,8 @@ export class ProductProjection {
+       patch: {
+         usage: {
+           lastRequest,
+-          // Bug 原因：registry 已显式清除窗口时，缺少 contextWindow 的 ModelComplete
+-          // 过去会用 0 重建对象，破坏未知容量语义。token 继续在侧状态和累计值中更新。
++          // 新主请求的 null 清除同一模型历史确认容量；仅旧事件缺字段才沿用。
++          // token 继续在侧状态和累计值中更新，未知容量不制造零分母。
+           contextWindow:
+             maxTokens === null
+               ? null
+diff --git a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+index 0acd0cd..d68b44a 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts
+@@ -49,7 +49,7 @@ function fixture() {
+   const complete = (
+     usage: Record<string, number>,
+     querySource = "main_turn",
+-    contextWindow = 10000,
++    contextWindow: number | null = 10000,
+   ) =>
+     send(SessionEventType.ModelComplete, {
+       content: "",
+@@ -91,7 +91,7 @@ test("main usage is an attributed occupancy sample, independent of cumulative an
+     modelId: "model-a",
+   });
+   const before = structuredClone(f.projection.getSnapshot().usage);
+-  f.complete({ inputTokens: 999, outputTokens: 20 }, "session_title");
++  f.complete({ inputTokens: 999, outputTokens: 20 }, "session_title", null);
+   assert.deepEqual(f.projection.getSnapshot().usage, before);
+   f.request();
+   f.complete({ inputTokens: 200, outputTokens: 30 });
+@@ -100,19 +100,19 @@ test("main usage is an attributed occupancy sample, independent of cumulative an
+   assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
+ });
+ 
+-test("an explicit unknown model capacity does not turn runtime fallback into a visible token ring", () => {
++test("main explicit unknown capacity clears the same model's denominator; missing legacy fields retain it", () => {
+   const f = fixture();
+-  f.send(SessionEventType.ModelSelected, {
+-    modelSelection: { providerId: "provider-fixture", modelId: "unknown-model", options: { reasoningLevel: "auto" } },
+-    contextWindow: null,
+-  });
+-  f.request("unknown-model");
++  f.request();
+   f.send(SessionEventType.ModelComplete, {
+     content: "OK", stopReason: "stop", querySource: "main_turn",
+-    usage: { inputTokens: 40, outputTokens: 2 },
++    usage: { inputTokens: 100, outputTokens: 20 },
+   });
++  assert.equal(f.context()?.maxTokens, 10000);
++  f.request();
++  f.complete({ inputTokens: 40, outputTokens: 2 }, "main_turn", null);
+   assert.equal(f.context(), null);
+-  assert.equal(f.projection.getSnapshot().usage.cumulative.inputTokens, 40);
++  assert.equal(f.projection.getSnapshot().usage.cumulative.inputTokens, 140);
++  assert.equal(f.projection.getSnapshot().usage.lastRequest?.inputTokens, 40);
+   assert.ok(sessionUsageStateSchema.safeParse(f.projection.getSnapshot().usage).success);
+ });
+ 
+@@ -135,7 +135,11 @@ test("same-capacity model changes invalidate identity, including a previous mode
+   f.select("model-b", 20000);
+   assert.equal(f.context()?.measurement?.staleReason, "model-change");
+   assert.equal(f.context()?.measurement?.modelId, "model-a");
+-  f.complete({ inputTokens: 150, outputTokens: 20 });
++  for (const capacity of [null, 10000]) {
++    f.request("model-a");
++    f.complete({ inputTokens: 150, outputTokens: 20 }, "main_turn", capacity);
++    assert.equal(f.context()?.maxTokens, 20000);
++  }
+   assert.equal(f.context()?.maxTokens, 20000);
+   assert.equal(f.context()?.measurement?.state, "stale");
+   assert.equal(f.context()?.measurement?.modelId, "model-a");
+diff --git a/apps/zcode-cli/packages/contracts/src/events/session.events.ts b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+index d53d110..cbd797f 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/session.events.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+@@ -783,7 +783,8 @@ export interface ModelCompletePayload {
+   };
+   content: string;
+   contextUsageBreakdown?: ContextUsageBreakdownItem[];
+-  contextWindow?: number;
++  /** null clears current capacity evidence; an absent field retains legacy event semantics. */
++  contextWindow?: number | null;
+   fileChanges?: TurnFileChangeSummary;
+   querySource?: string;
+   stopReason: string;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+index 34a8d3b..bec11f6 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+@@ -134,6 +134,8 @@ export function getActiveTurnInfo(this: AgentRuntimeInternal): ActiveTurnInfo |
+ }
+ 
+ export function getTools(this: AgentRuntimeInternal, model?: Model): ModelToolContract[] {
++  // 目录明确不支持工具的文本模型仍可对话；只投影当次模型，不清空其它模型共用的本地目录。
++  if (model?.properties.supportsToolCall === false) return [];
+   if (this.cachedTools === null) {
+     this.cachedTools = filterRuntimeVisibleTools.call(this, this.registry.toContracts());
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
+index fb980ec..e3d9c14 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
+@@ -65,7 +65,7 @@ export async function publishModelResponseObservation(
+   const event = runtime.createEvent(SessionEventType.ModelComplete, {
+     content: input.content ?? input.result.text,
+     ...(typeof accountId === "string" && accountId ? { accountId } : {}),
+-    ...(input.querySource === "main_turn" && input.contextWindow != null ? { contextWindow: input.contextWindow } : {}),
++    ...(input.querySource === "main_turn" ? { contextWindow: input.contextWindow ?? null } : {}),
+     querySource: input.querySource,
+     stopReason: input.result.finishReason,
+     usage: input.result.usage,
+diff --git a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+index 5901562..2d25565 100644
+--- a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+@@ -13,7 +13,7 @@ import { createCodexNativeAgentPort } from "../../adapters/src/native-agent/code
+ import { resolveCodexNativeExecutable } from "../../adapters/src/native-agent/codex-executable.js";
+ 
+ const executable = resolveCodexNativeExecutable(process.env.FLEET_CODEX_TEST_CLI);
+-async function nativeFixture(modelId = "gpt-6-sol") {
++async function nativeFixture(modelId = "gpt-6-sol", contextWindow?: number) {
+   assert.ok(executable, "Build and select the scoped Codex binary before this test");
+   const profile = await mkdtemp(join(tmpdir(), "fleet-codex-native-"));
+   const payload = Buffer.from(
+@@ -54,6 +54,7 @@ async function nativeFixture(modelId = "gpt-6-sol") {
+     availability_nux: null, upgrade: null, support_verbosity: false, default_verbosity: null,
+     apply_patch_tool_type: null, truncation_policy: { mode: "tokens", limit: 10000 },
+     experimental_supported_tools: [], input_modalities: ["text"],
++    ...(contextWindow ? { context_window: contextWindow } : {}),
+   });
+   const requests: any[] = [];
+   let diagnostics = "";
+@@ -317,6 +318,7 @@ test("explicit native discovery refreshes a warm cache and rejects failed catalo
+   try {
+     const old = await n.inspect().catch(error => { throw new Error(n.diagnostics(), { cause: error }); });
+     assert.deepEqual(old.models.map(model => model.model), ["old-catalog-model"]);
++    assert.equal(old.models[0]?.contextWindow, undefined, "Missing native capacity must remain unknown");
+     const reads = n.catalogReads();
+     n.catalog("gpt-6.1-sol");
+     const fresh = await n.inspect();
+@@ -329,6 +331,15 @@ test("explicit native discovery refreshes a warm cache and rejects failed catalo
+   } finally { await n.close(); }
+ });
+ 
++test("scoped native directory carries actual executor capacity without inference", { timeout: 45000 }, async () => {
++  const n = await nativeFixture("gpt-6-sol", 384000);
++  try {
++    const inspected = await n.inspect();
++    assert.equal(inspected.models[0]?.contextWindow, 384000);
++    assert.equal(n.requests.length, 0);
++  } finally { await n.close(); }
++});
++
+ test("native Codex refusal does not execute the Host effect", { timeout: 45000 }, async () => {
+   const n = await nativeFixture();
+   try {
+diff --git a/apps/zcode-cli/packages/core/test/helpers/model-capacity-v4-replay.ts b/apps/zcode-cli/packages/core/test/helpers/model-capacity-v4-replay.ts
+new file mode 100644
+index 0000000..d864387
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/helpers/model-capacity-v4-replay.ts
+@@ -0,0 +1,75 @@
++import assert from "node:assert/strict";
++import { SessionEventType, type Model, type SessionEvent } from "@zcode/contracts";
++import { ProductProjection } from "../../../bootstrap/src/zcode-protocol-v4/product-projection.js";
++import { mergeColdConversationEvents } from "../../../bootstrap/src/zcode-protocol-v4/cold-event-merge.js";
++import { resolveSessionContextUsage } from "../../../bootstrap/src/zcode-protocol/session-mapper.js";
++import { sessionUsageSeedFromRuntimeContextUsage } from "../../../bootstrap/src/zcode-protocol/v4-bridge.js";
++import type { fixture } from "./pi-runtime-fixture.js";
++
++/** Existing live/cold projection paths, using actual Host events and reopened SQLite facts. */
++export async function assertUnknownCapacityReplay(
++  f: Awaited<ReturnType<typeof fixture>>,
++  events: SessionEvent[],
++  model: Model,
++) {
++  assert.equal(model.contextWindowEvidence, null);
++  assert.ok(
++    !events.some(
++      (event) =>
++        event.type === SessionEventType.ModelSelected &&
++        (event.payload as { contextWindow?: number | null }).contextWindow === null,
++    ),
++  );
++  const live = new ProductProjection("session", "live");
++  live.applyEventAtomically(
++    {
++      ...events[0]!,
++      id: "old-capacity-selection" as never,
++      sequenceNumber: 0,
++      type: SessionEventType.ModelSelected,
++      payload: {
++        modelSelection: { providerId: model.providerId, modelId: model.modelId },
++        contextWindow: 200000,
++      },
++    },
++    () => true,
++  );
++  let completions = 0;
++  for (const event of events) {
++    live.applyEventAtomically(event, () => true);
++    if (event.type === SessionEventType.ModelComplete) {
++      completions++;
++      assert.equal(
++        live.getSnapshot().usage.contextWindow?.maxTokens ?? null,
++        completions === 1 ? 200000 : null,
++      );
++    }
++  }
++  assert.equal(completions, 2);
++  assert.equal(live.getSnapshot().usage.lastRequest?.inputTokens, 17);
++  assert.equal(live.getSnapshot().usage.cumulative.inputTokens, 34);
++  await f.reopen();
++  const messages = await f.store.messages({ sessionID: "session" as never });
++  const retained = await f.store.queryTaskUsage({ sessionID: "session" as never });
++  assert.equal(retained.cumulativeMainUsage?.inputTokens, 34);
++  assert.equal(retained.lastRequest?.inputTokens, 17);
++  const cold = new ProductProjection("session", "cold");
++  for (const event of mergeColdConversationEvents({
++    sessionId: "session",
++    messages,
++    memoryEvents: [],
++  }).events)
++    cold.applyEventAtomically(event, () => true);
++  const seed = sessionUsageSeedFromRuntimeContextUsage(
++    resolveSessionContextUsage({ messages, projection: await f.runtime.getProjection() }),
++    undefined,
++    retained.lastRequest,
++    retained.cumulativeMainUsage,
++  );
++  assert.ok(seed);
++  cold.seedUsage(seed);
++  assert.equal(cold.getSnapshot().usage.contextWindow, null);
++  assert.deepEqual(cold.getSnapshot().usage.cumulative, live.getSnapshot().usage.cumulative);
++  assert.equal(cold.getSnapshot().usage.lastRequest?.inputTokens, 17);
++  assert.equal(messages.filter((message) => message.info.role === "assistant").length, 2);
++}
+diff --git a/apps/zcode-cli/packages/core/test/model-tool-capability.test.ts b/apps/zcode-cli/packages/core/test/model-tool-capability.test.ts
+new file mode 100644
+index 0000000..5d4399a
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/model-tool-capability.test.ts
+@@ -0,0 +1,197 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import type { Model, NativeAgentPort } from "@zcode/contracts";
++import {
++  createRegistryModelConfig,
++  createRegistryProviderConfig,
++  parseModelConfig,
++  parseProviderConfig,
++} from "../../../../../packages/provider/src/index.js";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { NodeSkillAdapter } from "../../adapters/src/skills/index.js";
++import { createNativeAgentModel } from "../../adapters/src/native-agent/model.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++type Api = "openai-chat-completions" | "openai-responses" | "anthropic-messages";
++const usage = { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 };
++const args = { value: "original-host-effect" };
++const skillDescription = "CAPABILITY_SKILL_METADATA";
++
++for (const kind of ["codex", "claude"] as const) {
++  test(`native ${kind} respects an explicit negative tool correction through frozen binding and Host`, async () => {
++    const access = parseProviderConfig({ access: {
++      type: "native-cli", provider: kind, connected: true, accountId: "synthetic-account", executable: "/bin/false",
++    } }).access;
++    assert.ok(access?.type === "native-cli");
++    const model = createNativeAgentModel("provider-a", "model-a", access,
++      parseModelConfig({ properties: { supportsToolCall: false } }), { reasoningLevel: "auto" }, null);
++    let requests = 0;
++    const port: NativeAgentPort = { createTurn(request) {
++      assert.deepEqual(request.tools, []);
++      const result = { text: "native text", finishReason: "stop" as const,
++        usage: { inputTokens: 11, outputTokens: 3, totalTokens: 14, cacheReadTokens: 0, cacheWriteTokens: 0 },
++        providerMetadata: { nativeExecutor: kind, nativeRequestId: "negative-tools" } };
++      const observed: Model = { ...request.model, bind() { return observed; },
++        async generateText() { requests++; return result; },
++        async *streamText() { requests++; yield { type: "text_delta", text: result.text }; yield { type: "finish", ...result }; },
++      };
++      return { model: observed, admitNextStep() {}, retainToolReceipts() {}, async close() {} };
++    } };
++    const f = await fixture(undefined, true, {
++      nativeExecutor: model.nativeExecutor,
++      config: { modelSelection: { providerId: "provider-a", modelId: "model-a", options: { reasoningLevel: "auto" } } },
++      deps: { modelFactory: () => model, nativeAgentPort: port },
++    });
++    try {
++      assert.equal((await f.runtime.executeTurn("Reply with text only")).response, "native text");
++      assert.equal(requests, 1); assert.equal(f.permissionCalls, 0); assert.equal(f.effects, 0);
++      assert.ok(f.runtime.getTools().length > 0, "Native restriction mutated the local tool catalogue");
++    } finally { await f.close(); }
++  });
++}
++const sse = (frames: unknown[]) => new Response(
++  frames.map((value) => `data: ${JSON.stringify(value)}\n\n`).join(""),
++  { headers: { "content-type": "text/event-stream" } },
++);
++
++function response(api: Api, streaming: boolean, tool: boolean): Response {
++  if (api === "openai-chat-completions") {
++    const calls = [{ id: "capability-call", type: "function", function: { name: "Probe", arguments: JSON.stringify(args) } }];
++    if (!streaming) return Response.json({
++      id: "completion", object: "chat.completion", created: 1, model: "model-a",
++      choices: [{ index: 0, message: { role: "assistant", content: tool ? null : "complete", ...(tool ? { tool_calls: calls } : {}) }, finish_reason: tool ? "tool_calls" : "stop" }], usage,
++    });
++    const frame = (delta: unknown, finish_reason: unknown = null) => ({
++      id: "completion", object: "chat.completion.chunk", created: 1, model: "model-a",
++      choices: [{ index: 0, delta, finish_reason }], usage,
++    });
++    return sse([frame({ role: "assistant", ...(tool ? { tool_calls: [{ index: 0, ...calls[0] }] } : { content: "complete" }) }), frame({}, tool ? "tool_calls" : "stop")]);
++  }
++  if (api === "openai-responses") {
++    const item = tool
++      ? { type: "function_call", id: "tool-item", call_id: "capability-call", name: "Probe", arguments: JSON.stringify(args), status: "completed" }
++      : { type: "message", id: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "complete", annotations: [] }] };
++    const result = { id: "response", model: "model-a", created_at: 1, status: "completed", output: [item], usage: { input_tokens: 11, output_tokens: 3, total_tokens: 14 } };
++    if (!streaming) return Response.json(result);
++    return sse([
++      { type: "response.created", response: { ...result, output: [], status: "in_progress" } },
++      { type: "response.output_item.added", output_index: 0, item: tool ? { ...item, arguments: "", status: "in_progress" } : { ...item, content: [], status: "in_progress" } },
++      ...(tool ? [] : [{ type: "response.content_part.added", item_id: "message", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } }]),
++      ...(tool ? [] : [{ type: "response.output_text.delta", item_id: "message", output_index: 0, content_index: 0, delta: "complete" }]),
++      { type: "response.output_item.done", output_index: 0, item },
++      { type: "response.completed", response: result },
++    ]);
++  }
++  const content = tool
++    ? { type: "tool_use", id: "capability-call", name: "Probe", input: args }
++    : { type: "text", text: "complete" };
++  const result = { id: "message", type: "message", role: "assistant", model: "model-a", content: [content], stop_reason: tool ? "tool_use" : "end_turn", stop_sequence: null, usage: { input_tokens: 11, output_tokens: 3 } };
++  if (!streaming) return Response.json(result);
++  return sse([
++    { type: "message_start", message: { ...result, content: [], stop_reason: null, usage: { input_tokens: 11, output_tokens: 0 } } },
++    { type: "content_block_start", index: 0, content_block: tool ? { ...content, input: {} } : { type: "text", text: "" } },
++    { type: "content_block_delta", index: 0, delta: tool ? { type: "input_json_delta", partial_json: JSON.stringify(args) } : { type: "text_delta", text: "complete" } },
++    { type: "content_block_stop", index: 0 },
++    { type: "message_delta", delta: { stop_reason: result.stop_reason, stop_sequence: null }, usage: { output_tokens: 3 } },
++    { type: "message_stop" },
++  ]);
++}
++
++async function setup(api: Api, streaming: boolean, supportsToolCall: boolean, offerCall = false) {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-model-capability-"));
++  const skillDir = join(dir, "automatic");
++  await mkdir(skillDir);
++  await writeFile(join(skillDir, "SKILL.md"), `---\nname: capability-fixture\ndescription: ${skillDescription}\n---\nFixture instructions.\n`);
++  const skillPort = new NodeSkillAdapter({ homeDirectory: dir, includeZcodeSkills: false, extraRoots: [dir] });
++  const requests: Record<string, unknown>[] = [];
++  const adapter = new AiSdkModelAdapter({
++    env: {}, retry: { maxAttempts: 1 },
++    transport: async (input, init) => {
++      const request = new Request(input, init);
++      const body = JSON.parse(await request.text()) as Record<string, unknown>;
++      requests.push(body);
++      return response(api, body.stream === true, offerCall && requests.length === 1);
++    },
++  });
++  const provider = createRegistryProviderConfig(parseProviderConfig({
++    group: "standard-personal", access: { type: "api-key", apiKey: "synthetic-only" },
++    api: { type: api, baseUrl: "https://capability.invalid/v1" },
++  }));
++  const config = createRegistryModelConfig(parseModelConfig({
++    enabled: true,
++    properties: {
++      contextWindow: 65536, requiresMfjsToolSchema: false,
++      inputFormat: { supportsText: true, supportsImage: false, supportsAudio: false, supportsVideo: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: true,
++    },
++    optionSpecs: {
++      reasoningLevel: { values: ["off"], map: "{}" },
++      maxOutputTokens: { max: 256, map: api === "openai-responses" ? '{"max_output_tokens":maxOutputTokens}' : '{"max_tokens":maxOutputTokens}' },
++    },
++  }));
++  assert.ok(provider.ok);
++  assert.ok(config.ok, JSON.stringify(config));
++  const model = adapter.createModel({ providerId: "fixture", modelId: "model-a", providerConfig: provider.config, modelConfig: config.config, options: { reasoningLevel: "off", maxOutputTokens: 256 } });
++  const f = await fixture(undefined, streaming, { config: { toolAllowlist: ["Skill", "Probe"] }, deps: { skillPort, modelFactory: () => model } });
++  return { f, model, requests, async close() { await f.close(); await rm(dir, { recursive: true, force: true }); } };
++}
++
++for (const api of ["openai-chat-completions", "openai-responses", "anthropic-messages"] as const) {
++  for (const streaming of [false, true]) {
++    test(`negative tool capability allows ${api} ${streaming ? "stream" : "JSON"} text through real Host/SDK without tool context`, async () => {
++      const c = await setup(api, streaming, false);
++      try {
++        const localNames = c.f.runtime.getTools().map((tool) => tool.name);
++        assert.ok(localNames.includes("Skill") && localNames.includes("Probe"));
++        for (const cold of [false, true]) {
++          if (cold) await c.f.reopen();
++          assert.equal((await c.f.runtime.executeTurn("Reply briefly.")).response, "complete");
++          assert.deepEqual(c.f.runtime.getTools(c.model), []);
++          assert.deepEqual(c.f.runtime.getTools().map((tool) => tool.name), localNames);
++          const wire = c.requests.at(-1)!;
++          assert.equal(wire.tools, undefined);
++          const serialized = JSON.stringify(wire);
++          assert.ok(!serialized.includes(skillDescription));
++          assert.ok(!serialized.includes("The following skills are available for use with the Skill tool"));
++          assert.ok(!serialized.includes("invoke it via Skill"));
++        }
++        assert.equal(c.requests.length, 2);
++        assert.equal(c.f.effects, 0);
++        assert.equal(c.f.permissionCalls, 0);
++      } finally { await c.close(); }
++    });
++  }
++  test(`supported ${api} tool calls retain original Host approval and effects`, async () => {
++    const c = await setup(api, false, true, true);
++    try {
++      const localNames = c.f.runtime.getTools().map((tool) => tool.name);
++      const unknown = { ...c.model, properties: { ...c.model.properties, supportsToolCall: undefined } } as unknown as Model;
++      assert.deepEqual(c.f.runtime.getTools(unknown).map((tool) => tool.name), localNames);
++      assert.equal((await c.f.runtime.executeTurn("Use Probe once.")).response, "complete");
++      assert.equal(c.f.effects, 1);
++      assert.equal(c.f.permissionCalls, 1);
++      assert.equal(await c.f.read(), args.value);
++      assert.ok(Array.isArray(c.requests[0]!.tools));
++      assert.ok(JSON.stringify(c.requests[0]).includes(skillDescription));
++    } finally { await c.close(); }
++  });
++}
++
++for (const streaming of [false, true]) {
++  test(`invented tool from a negative-capability ${streaming ? "stream" : "JSON"} reply cannot dispatch a Host effect`, async () => {
++    const c = await setup("openai-chat-completions", streaming, false, true);
++    try {
++      await c.f.runtime.executeTurn("Reply briefly.").catch(() => {});
++      assert.ok(c.requests.length > 0);
++      assert.ok(c.requests.every((wire) => wire.tools === undefined));
++      assert.equal(c.f.effects, 0);
++      assert.equal(c.f.permissionCalls, 0);
++      await c.f.reopen();
++      assert.equal(c.f.effects, 0);
++    } finally { await c.close(); }
++  });
++}
+diff --git a/apps/zcode-cli/packages/core/test/native-model-capacity.test.ts b/apps/zcode-cli/packages/core/test/native-model-capacity.test.ts
+new file mode 100644
+index 0000000..85b138d
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/native-model-capacity.test.ts
+@@ -0,0 +1,370 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { DatabaseSync } from "node:sqlite";
++import { fileURLToPath } from "node:url";
++import {
++  createInMemorySessionEventStore,
++  SessionEventType,
++  type Model,
++  type NativeAgentPort,
++} from "@zcode/contracts";
++import { createProviderConfigRuntime } from "../../../../../packages/services/src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../../../../../packages/services/src/model-provider/providerRuntime.js";
++import { ApiProviderModelRuntime } from "../../bootstrap/src/app/provider-registry-model-runtime.js";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++import { assertUnknownCapacityReplay } from "./helpers/model-capacity-v4-replay.js";
++
++const reported = { input_tokens: 17, output_tokens: 3, total_tokens: 20 };
++const usage = {
++  inputTokens: 17,
++  outputTokens: 3,
++  totalTokens: 20,
++  cacheReadTokens: 0,
++  cacheWriteTokens: 0,
++};
++
++async function providerFixture(native: boolean) {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-capacity-"));
++  const personalFilePath = join(directory, "providers.json");
++  let capacity = 64000;
++  const config = () => ({
++    properties: { contextWindow: capacity },
++    optionSpecs: { maxOutputTokens: { max: 4096 } },
++  });
++  const open = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime({
++        personalFilePath,
++        zcodeBuiltinFilePath: fileURLToPath(
++          new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url),
++        ),
++        personalPollingIntervalMs: false,
++        watch: false,
++      }),
++      fetch: async () =>
++        Response.json({
++          data: [{ id: "observed-model", context_window: capacity, max_output_tokens: 4096 }],
++        }),
++      nativeCli: {
++        inspect: async () => ({
++          accountId: "synthetic",
++          accountName: "Fixture",
++          catalog: {
++            source: "provider",
++            models: [{ id: "observed-model", name: "Observed", config: config() }],
++          },
++        }),
++        login: () => {
++          throw new Error("No CLI, login or credential access in this fixture");
++        },
++      },
++    });
++  let runtime = open();
++  await runtime.start();
++  const { providerId } = await runtime.providerSettings.createPersonalProvider(
++    native
++      ? {
++          templateId: "fleet-chatgpt-native",
++          initialConfig: {
++            access: {
++              type: "native-cli",
++              provider: "codex",
++              connected: true,
++              accountId: "synthetic",
++              executable: "/not-invoked/native-fixture",
++              configDir: directory,
++            },
++          },
++        }
++      : {
++          initialConfig: {
++            api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" },
++            access: { type: "api-key", apiKey: "synthetic" },
++          },
++        },
++  );
++  await runtime.providerSettings.addPersonalModel(providerId, "unknown-model", {}, true);
++  const factories: ApiProviderModelRuntime[] = [];
++  let apiRequests = 0;
++  return {
++    providerId,
++    get runtime() {
++      return runtime;
++    },
++    get apiRequests() {
++      return apiRequests;
++    },
++    setCapacity(value: number) {
++      capacity = value;
++    },
++    bind(modelId: string, contextWindow?: number) {
++      const factory = new ApiProviderModelRuntime({
++        registry: runtime.registryService,
++        modelAdapter: new AiSdkModelAdapter({
++          env: {},
++          transport: async () => {
++            apiRequests++;
++            return Response.json({
++              id: "original",
++              created: 1,
++              model: modelId,
++              choices: [
++                {
++                  index: 0,
++                  message: { role: "assistant", content: "local observation" },
++                  finish_reason: "stop",
++                },
++              ],
++              usage: { prompt_tokens: 17, completion_tokens: 3, total_tokens: 20 },
++            });
++          },
++        }),
++      });
++      factories.push(factory);
++      factory.start();
++      return factory.modelFactory({
++        selection: {
++          providerId,
++          modelId,
++          options: {
++            reasoningLevel: "auto",
++            ...(contextWindow === undefined ? {} : { contextWindow }),
++          },
++        },
++      });
++    },
++    async reopen() {
++      runtime.dispose();
++      runtime = open();
++      await runtime.start();
++    },
++    async close() {
++      for (const factory of factories) factory.dispose();
++      runtime.dispose();
++      await rm(directory, { recursive: true, force: true });
++    },
++  };
++}
++
++async function observe(
++  bound: Model,
++  native: boolean,
++  contextWindow?: number,
++  replayOldCapacity = false,
++) {
++  const events = createInMemorySessionEventStore();
++  let nativeSteps = 0;
++  const port: NativeAgentPort = {
++    createTurn(request) {
++      const observation: Model = {
++        ...request.model,
++        bind() {
++          return observation;
++        },
++        async generateText() {
++          nativeSteps++;
++          return {
++            text: "local observation",
++            finishReason: "stop",
++            usage,
++            providerMetadata: {
++              nativeExecutor: "codex",
++              nativeRequestId: "original",
++              nativeReportedUsage: reported,
++            },
++          };
++        },
++      };
++      return { model: observation, admitNextStep() {}, retainToolReceipts() {}, async close() {} };
++    },
++  };
++  const f = await fixture(undefined, false, {
++    config: {
++      modelSelection: {
++        providerId: bound.providerId,
++        modelId: bound.modelId,
++        options: {
++          reasoningLevel: "auto",
++          ...(contextWindow === undefined ? {} : { contextWindow }),
++        },
++      },
++    },
++    deps: { eventStore: events, ...(native ? { nativeAgentPort: port } : {}) },
++  });
++  try {
++    if (replayOldCapacity) {
++      const old: Model = {
++        ...bound,
++        contextWindowEvidence: 200000,
++        bind() {
++          return old;
++        },
++        generateText: bound.generateText.bind(bound),
++        streamText: bound.streamText.bind(bound),
++      };
++      (f.runtime as any).modelFactory = () => old;
++      await f.runtime.executeTurn("Record the same model's historical capacity");
++    }
++    (f.runtime as any).modelFactory = () => bound;
++    await f.runtime.executeTurn("Observe capacity through the existing Host writers");
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++    const actualEvents = await events.getEvents("session" as never);
++    const complete = actualEvents.findLast(
++      (event) => event.type === SessionEventType.ModelComplete,
++    )!;
++    assert.ok(complete);
++    assert.equal((complete.payload as any).usage.inputTokens, 17);
++    assert.equal((complete.payload as any).usage.outputTokens, 3);
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    try {
++      const row = db.prepare("select status,provider_metadata_json from model_usage").get()!;
++      assert.equal(row.status, "completed");
++      if (native)
++        assert.deepEqual(
++          JSON.parse(String(row.provider_metadata_json)).nativeReportedUsage,
++          reported,
++        );
++    } finally {
++      db.close();
++    }
++    if (replayOldCapacity) await assertUnknownCapacityReplay(f, actualEvents, bound);
++    assert.equal(nativeSteps, native ? (replayOldCapacity ? 2 : 1) : 0);
++    return (complete.payload as any).contextWindow;
++  } finally {
++    await f.close();
++  }
++}
++
++for (const native of [false, true]) {
++  test(`${native ? "native" : "API"} future/private suffixes cannot inherit bundled capacity evidence`, async () => {
++    const p = await providerFixture(native);
++    try {
++      for (const modelId of [
++        "mimo-v2-flash-future-private",
++        "vendor/mimo-v2-flash-future-private",
++        "gpt-6-astra-future-private",
++        "gpt-5.4-mini:unknown-router",
++      ]) {
++        await p.runtime.providerSettings.addPersonalModel(p.providerId, modelId, {}, true);
++        const row = (await p.runtime.providerSettings.getView()).providers
++          .find((entry) => entry.providerId === p.providerId)!
++          .models.find((entry) => entry.modelId === modelId)!;
++        assert.equal(row.contextEvidenceSource, "unknown");
++        assert.equal(row.evidenceConfig.properties?.contextWindow, undefined);
++        const frozen = p.bind(modelId);
++        assert.equal(frozen.properties.contextWindow, 200000);
++        assert.equal(frozen.contextWindowEvidence, null);
++        assert.equal(await observe(frozen, native), null);
++      }
++      await p.runtime.providerSettings.addPersonalModel(p.providerId, "gpt-6-astra", {}, true);
++      const known = p.bind("gpt-6-astra");
++      assert.equal(known.properties.contextWindow, 1050000);
++      assert.equal(known.contextWindowEvidence, 1050000);
++      await p.reopen();
++      assert.equal(p.bind("gpt-6-astra").contextWindowEvidence, 1050000);
++      assert.equal(p.bind("mimo-v2-flash-future-private").contextWindowEvidence, null);
++    } finally {
++      await p.close();
++    }
++  });
++
++  test(`${native ? "native" : "API"} unknown capacity remains unknown through frozen binding and Host observation`, async () => {
++    const p = await providerFixture(native);
++    try {
++      const row = (await p.runtime.providerSettings.getView()).providers
++        .find((entry) => entry.providerId === p.providerId)!
++        .models.find((entry) => entry.modelId === "unknown-model")!;
++      assert.equal(row.contextEvidenceSource, "unknown");
++      assert.equal(row.evidenceConfig.properties?.contextWindow, undefined);
++      const bound = p.bind("unknown-model");
++      assert.equal(bound.properties.contextWindow, 200000, "Internal working budget changed");
++      assert.equal(bound.contextWindowEvidence, null);
++      assert.equal(bound.bind({ maxOutputTokens: 1024 }).contextWindowEvidence, null);
++      assert.equal(
++        await observe(bound, native, undefined, true),
++        null,
++        "Fallback became a confirmed denominator",
++      );
++      assert.equal(p.apiRequests, native ? 0 : 2, "Replay or reopen dispatched another request");
++      await p.reopen();
++      assert.equal(p.bind("unknown-model").contextWindowEvidence, null);
++    } finally {
++      await p.close();
++    }
++  });
++
++  for (const manual of [false, true]) {
++    test(`${native ? "native" : "API"} ${manual ? "manual" : "catalog"} capacity wins, freezes and survives repository reopen`, async () => {
++      const p = await providerFixture(native);
++      try {
++        await p.runtime.providerSettings.discoverModels(p.providerId);
++        if (manual)
++          await p.runtime.providerSettings.savePersonalModelDraft({
++            providerId: p.providerId,
++            originalModelId: "observed-model",
++            nextModelId: "observed-model",
++            personalConfig: { properties: { contextWindow: 48000 } },
++            useRecommendedConfig: true,
++            basedOnRevision: (await p.runtime.providerSettings.getView()).revision,
++          });
++        const expected = manual ? 48000 : 64000;
++        const frozen = p.bind("observed-model");
++        assert.equal(frozen.properties.contextWindow, expected);
++        assert.equal(frozen.contextWindowEvidence, expected);
++        p.setCapacity(32000);
++        await p.runtime.providerSettings.discoverModels(p.providerId);
++        assert.equal(frozen.properties.contextWindow, expected);
++        assert.equal(frozen.bind({ maxOutputTokens: 1024 }).contextWindowEvidence, expected);
++        assert.equal(await observe(frozen, native), expected);
++        const next = p.bind("observed-model");
++        assert.equal(next.contextWindowEvidence, manual ? 48000 : 32000);
++        await p.reopen();
++        const reopened = p.bind("observed-model");
++        assert.equal(reopened.properties.contextWindow, manual ? 48000 : 32000);
++        assert.equal(reopened.contextWindowEvidence, manual ? 48000 : 32000);
++        assert.equal(await observe(reopened, native), manual ? 48000 : 32000);
++        const row = (await p.runtime.providerSettings.getView()).providers
++          .find((entry) => entry.providerId === p.providerId)!
++          .models.find((entry) => entry.modelId === "observed-model")!;
++        assert.equal(row.effectiveBuiltinConfig.properties?.contextWindow, 32000);
++        assert.equal(row.contextEvidenceSource, manual ? "saved" : "provider");
++      } finally {
++        await p.close();
++      }
++    });
++  }
++
++  test(`${native ? "native" : "API"} Host context choices freeze separately from catalog defaults`, async () => {
++    const p = await providerFixture(native);
++    try {
++      await p.runtime.providerSettings.discoverModels(p.providerId);
++      await p.runtime.providerSettings.savePersonalModelDraft({
++        providerId: p.providerId,
++        originalModelId: "observed-model",
++        nextModelId: "observed-model",
++        personalConfig: { properties: { contextWindows: [64000, 96000] } },
++        useRecommendedConfig: true,
++        basedOnRevision: (await p.runtime.providerSettings.getView()).revision,
++      });
++      const selected = p.bind("observed-model", 96000);
++      assert.equal(selected.properties.contextWindow, 96000);
++      assert.equal(selected.contextWindowEvidence, 96000);
++      assert.equal(await observe(selected, native, 96000), 96000);
++      assert.equal(
++        p.runtime.registryService.getModel(p.providerId, "observed-model")!.config.properties
++          .contextWindow,
++        64000,
++      );
++      assert.throws(() => p.bind("observed-model", 128000), /Context window is not supported/);
++      await p.reopen();
++      assert.equal(p.bind("observed-model", 96000).contextWindowEvidence, 96000);
++    } finally {
++      await p.close();
++    }
++  });
++}
+diff --git a/config/README.md b/config/README.md
+index 723cfa9..a20ec8e 100644
+--- a/config/README.md
++++ b/config/README.md
+@@ -42,4 +42,21 @@ do not guess which were edited by the user or silently migrate them away. An ups
+ update the observed layer without erasing those values. This additive contract does not establish
+ capabilities for ID-only API catalogs or solve the inherited generic runtime fallback policy.
+ 
++Native Codex discovery carries the scoped executor's resolved context window from its own fresh
++model manager, with native configuration applied. It supplies neither inferred output limits nor
++membership for unknown IDs. Optional positive integer capacity enters the same observed rule
++layer and survives reopen; explicit corrections retain priority. Missing capacity remains unknown
++through Registry and Host observations. The internal execution budget is never capacity evidence.
++
++Anthropic-compatible model directories retain the current official max_input_tokens/max_tokens
++limits and nested capability support flags, including explicit false. Advertised effort grades
++replace old recommendation lists; only a declared adaptive-thinking type enables adaptive mode.
++Missing/null fields supply no guessed flags or limits. Output token limits stay independent of
++input capacity. Model Studio ASR preserves Audio→Text, while chat eligibility checks both ends.
++
+ An advertised default reasoning level is stored as `optionSpecs.reasoningLevel.defaultValue` and used only when it belongs to the current supported set. New model selection, Composer options and the Agent model catalog use the same public Provider resolver; an absent or unsupported default retains the existing last-supported-level fallback. Explicit Session choices and saved user defaults keep priority. An unknown-only subscription effort list fails refresh explicitly instead of inventing `off`; last successful configuration remains intact.
++
++Named recommendation rules declare exact published `evidenceModelIds` for model facts. Unknown
++private/future suffixes cannot inherit those facts; pure protocol maps still apply independently.
++Legacy broad rules retain internal recommendations only, without confirmed capacity. The scope
++uses the admitted Pi 1.0.1 and fixed-template IDs, not account membership or a second catalogue.
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 53e3510..7a0b944 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1,6 +1,6 @@
+ {
+   "schemaVersion": 1,
+-  "revision": 33,
++  "revision": 34,
+   "config": {
+     "providerConfigRules": {
+       "templateRules": [
+@@ -55,10 +55,7 @@
+               "type": "openai-chat-completions",
+               "baseUrl": "https://api.z.ai/api/coding/paas/v4"
+             },
+-            "builtinModelIds": [
+-              "GLM-5.3",
+-              "GLM-5.3-Flash"
+-            ],
++            "builtinModelIds": ["GLM-5.3", "GLM-5.3-Flash"],
+             "logo": {
+               "type": "builtin",
+               "key": "zai"
+@@ -94,10 +91,7 @@
+               "type": "openai-responses",
+               "baseUrl": "https://api.z.ai/api/v1"
+             },
+-            "builtinModelIds": [
+-              "GLM-5.3",
+-              "GLM-5.3-Flash"
+-            ],
++            "builtinModelIds": ["GLM-5.3", "GLM-5.3-Flash"],
+             "logo": {
+               "type": "builtin",
+               "key": "zai"
+@@ -443,10 +437,7 @@
+               "type": "openai-responses",
+               "baseUrl": "https://api.deepseek.com"
+             },
+-            "builtinModelIds": [
+-              "deepseek-flash",
+-              "deepseek-v4-pro"
+-            ],
++            "builtinModelIds": ["deepseek-flash", "deepseek-v4-pro"],
+             "logo": {
+               "type": "builtin",
+               "key": "deepseek"
+@@ -2391,7 +2382,58 @@
+                 "max": 64000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-5.2",
++            "@cf/zai-org/glm-5.3",
++            "@cf/zai-org/glm-5.3-flash",
++            "GLM-5",
++            "GLM-5-Turbo",
++            "GLM-5.1",
++            "GLM-5.1-Highspeed",
++            "GLM-5.3",
++            "GLM-5.3-Flash",
++            "glm-5",
++            "glm-5-turbo",
++            "glm-5.1",
++            "glm-5.2",
++            "glm-5.2-highspeed",
++            "glm-5.3",
++            "glm-5.3-flash",
++            "glm-5.3-highspeed",
++            "workers-ai/@cf/zai-org/glm-5.2",
++            "workers-ai/@cf/zai-org/glm-5.3",
++            "workers-ai/@cf/zai-org/glm-5.3-flash",
++            "z-ai/glm-5",
++            "z-ai/glm-5-turbo",
++            "z-ai/glm-5.1",
++            "z-ai/glm-5.2",
++            "z-ai/glm-5.3",
++            "z-ai/glm-5.3-flash",
++            "z-ai/glm-5.3-flash:batch",
++            "z-ai/glm-5.3-flashx",
++            "z-ai/glm-5.3-prime",
++            "z-ai/glm-5.3:batch",
++            "zai-glm-5-2",
++            "zai-glm-5-3",
++            "zai-org/GLM-5",
++            "zai-org/GLM-5.1",
++            "zai-org/GLM-5.2",
++            "zai-org/GLM-5.2-Fast",
++            "zai-org/GLM-5.3",
++            "zai-org/GLM-5.3-Fast",
++            "zai-org/GLM-5.3-Flash",
++            "zai.glm-5",
++            "zai/glm-5",
++            "zai/glm-5-turbo",
++            "zai/glm-5.1",
++            "zai/glm-5.2",
++            "zai/glm-5.2-fast",
++            "zai/glm-5.3",
++            "zai/glm-5.3-fast",
++            "zai/glm-5.3-flash",
++            "zai/glm-5.3-flashx"
++          ]
+         },
+         {
+           "modelMatch": ".*GLM-5\\.2(?:[.\\-:/\\[].*)?",
+@@ -2411,7 +2453,18 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-5.2",
++            "glm-5.2",
++            "glm-5.2-highspeed",
++            "workers-ai/@cf/zai-org/glm-5.2",
++            "z-ai/glm-5.2",
++            "zai-org/GLM-5.2",
++            "zai-org/GLM-5.2-Fast",
++            "zai/glm-5.2",
++            "zai/glm-5.2-fast"
++          ]
+         },
+         {
+           "modelMatch": ".*GLM-5-Turbo(?:[.\\-:/\\[].*)?",
+@@ -2431,7 +2484,8 @@
+                 "max": 64000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5-Turbo", "glm-5-turbo", "z-ai/glm-5-turbo", "zai/glm-5-turbo"]
+         },
+         {
+           "modelMatch": ".*glm-5\\.3(?:-flash)?(?:[.\\-:/\\[].*)?",
+@@ -2451,7 +2505,31 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-5.3",
++            "@cf/zai-org/glm-5.3-flash",
++            "GLM-5.3",
++            "GLM-5.3-Flash",
++            "glm-5.3",
++            "glm-5.3-flash",
++            "glm-5.3-highspeed",
++            "workers-ai/@cf/zai-org/glm-5.3",
++            "workers-ai/@cf/zai-org/glm-5.3-flash",
++            "z-ai/glm-5.3",
++            "z-ai/glm-5.3-flash",
++            "z-ai/glm-5.3-flash:batch",
++            "z-ai/glm-5.3-flashx",
++            "z-ai/glm-5.3-prime",
++            "z-ai/glm-5.3:batch",
++            "zai-org/GLM-5.3",
++            "zai-org/GLM-5.3-Fast",
++            "zai-org/GLM-5.3-Flash",
++            "zai/glm-5.3",
++            "zai/glm-5.3-fast",
++            "zai/glm-5.3-flash",
++            "zai/glm-5.3-flashx"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-5\\.3-flashx?(?:[.\\-:/\\[].*)?",
+@@ -2465,17 +2543,25 @@
+             },
+             "optionSpecs": {
+               "reasoningLevel": {
+-                "values": [
+-                  "low",
+-                  "high",
+-                  "max"
+-                ]
++                "values": ["low", "high", "max"]
+               },
+               "maxOutputTokens": {
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-5.3-flash",
++            "GLM-5.3-Flash",
++            "glm-5.3-flash",
++            "workers-ai/@cf/zai-org/glm-5.3-flash",
++            "z-ai/glm-5.3-flash",
++            "z-ai/glm-5.3-flash:batch",
++            "z-ai/glm-5.3-flashx",
++            "zai-org/GLM-5.3-Flash",
++            "zai/glm-5.3-flash",
++            "zai/glm-5.3-flashx"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-5\\.3-flash(?:[.\\-:/\\[].*)?",
+@@ -2487,7 +2573,17 @@
+                 "supportsPdf": true
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-5.3-flash",
++            "GLM-5.3-Flash",
++            "glm-5.3-flash",
++            "workers-ai/@cf/zai-org/glm-5.3-flash",
++            "z-ai/glm-5.3-flash",
++            "z-ai/glm-5.3-flash:batch",
++            "zai-org/GLM-5.3-Flash",
++            "zai/glm-5.3-flash"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-5\\.1(?:[.\\-:/\\[].*)?",
+@@ -2507,7 +2603,15 @@
+                 "max": 64000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "GLM-5.1",
++            "GLM-5.1-Highspeed",
++            "glm-5.1",
++            "z-ai/glm-5.1",
++            "zai-org/GLM-5.1",
++            "zai/glm-5.1"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-5\\.1-highspeed(?:[.\\-:/\\[].*)?",
+@@ -2527,7 +2631,8 @@
+                 "max": 64000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5.1-Highspeed"]
+         },
+         {
+           "modelMatch": ".*glm-5v-turbo(?:[.\\-:/\\[].*)?",
+@@ -2547,7 +2652,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5V-Turbo", "z-ai/glm-5v-turbo", "zai/glm-5v-turbo"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.7(?:[.\\-:/\\[].*)?",
+@@ -2567,7 +2673,24 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-4.7-flash",
++            "GLM-4.7",
++            "GLM-4.7-Flash",
++            "GLM-4.7-FlashX",
++            "glm-4.7",
++            "workers-ai/@cf/zai-org/glm-4.7-flash",
++            "z-ai/glm-4.7",
++            "z-ai/glm-4.7-flash",
++            "zai-org/GLM-4.7",
++            "zai-org/GLM-4.7-Flash",
++            "zai.glm-4.7",
++            "zai.glm-4.7-flash",
++            "zai/glm-4.7",
++            "zai/glm-4.7-flash",
++            "zai/glm-4.7-flashx"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-4\\.7-flashx(?:[.\\-:/\\[].*)?",
+@@ -2587,7 +2710,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.7-FlashX", "zai/glm-4.7-flashx"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.7-flash(?:[.\\-:/\\[].*)?",
+@@ -2607,7 +2731,16 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/zai-org/glm-4.7-flash",
++            "GLM-4.7-Flash",
++            "workers-ai/@cf/zai-org/glm-4.7-flash",
++            "z-ai/glm-4.7-flash",
++            "zai-org/GLM-4.7-Flash",
++            "zai.glm-4.7-flash",
++            "zai/glm-4.7-flash"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-4\\.6(?:[.\\-:/\\[].*)?",
+@@ -2627,7 +2760,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.6", "z-ai/glm-4.6", "zai-org/GLM-4.6", "zai/glm-4.6"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.5(?:[.\\-:/\\[].*)?",
+@@ -2647,7 +2781,17 @@
+                 "max": 98304
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "GLM-4.5",
++            "GLM-4.5-Air",
++            "z-ai/glm-4.5",
++            "z-ai/glm-4.5-air",
++            "zai-org/GLM-4.5",
++            "zai-org/GLM-4.5-Air",
++            "zai/glm-4.5",
++            "zai/glm-4.5-air"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-4\\.5-air(?:[.\\-:/\\[].*)?",
+@@ -2667,7 +2811,13 @@
+                 "max": 98304
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "GLM-4.5-Air",
++            "z-ai/glm-4.5-air",
++            "zai-org/GLM-4.5-Air",
++            "zai/glm-4.5-air"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-4\\.6v(?:[.\\-:/\\[].*)?",
+@@ -2684,7 +2834,15 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "GLM-4.6V",
++            "GLM-4.6V-Flash",
++            "GLM-4.6V-FlashX",
++            "glm-4.6v",
++            "z-ai/glm-4.6v",
++            "zai-org/GLM-4.6V-Flash"
++          ]
+         },
+         {
+           "modelMatch": ".*glm-4\\.6v-flash(?:[.\\-:/\\[].*)?",
+@@ -2701,7 +2859,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.6V-Flash", "zai-org/GLM-4.6V-Flash"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.6v-flashx(?:[.\\-:/\\[].*)?",
+@@ -2718,7 +2877,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.6V-FlashX"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.1v-thinking-flashx(?:[.\\-:/\\[].*)?",
+@@ -2735,7 +2895,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.1V-Thinking-FlashX"]
+         },
+         {
+           "modelMatch": ".*glm-4\\.1v-thinking-flash(?:[.\\-:/\\[].*)?",
+@@ -2752,7 +2913,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4.1V-Thinking-Flash"]
+         },
+         {
+           "modelMatch": ".*glm-4-flashx-250414(?:[.\\-:/\\[].*)?",
+@@ -2769,7 +2931,8 @@
+                 "max": 16384
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4-FlashX-250414"]
+         },
+         {
+           "modelMatch": ".*glm-4-flash-250414(?:[.\\-:/\\[].*)?",
+@@ -2786,7 +2949,8 @@
+                 "max": 16384
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4-Flash-250414"]
+         },
+         {
+           "modelMatch": ".*glm-4v-flash(?:[.\\-:/\\[].*)?",
+@@ -2803,7 +2967,8 @@
+                 "max": 1024
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-4V-Flash"]
+         },
+         {
+           "modelMatch": ".*codegeex-4(?:[.\\-:/\\[].*)?",
+@@ -2820,7 +2985,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["codegeex-4"]
+         },
+         {
+           "modelMatch": ".*charglm-4(?:[.\\-:/\\[].*)?",
+@@ -2837,7 +3003,8 @@
+                 "max": 4096
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["charglm-4"]
+         },
+         {
+           "modelMatch": ".*emohaa(?:[.\\-:/\\[].*)?",
+@@ -2854,7 +3021,8 @@
+                 "max": 4096
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["emohaa"]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.6(?:-(?:sol|terra|luna))?(?:[.\\-:/\\[].*)?",
+@@ -2877,7 +3045,40 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "global.openai.gpt-5.6-luna",
++            "global.openai.gpt-5.6-sol",
++            "global.openai.gpt-5.6-terra",
++            "gpt-5.6",
++            "gpt-5.6-luna",
++            "gpt-5.6-sol",
++            "gpt-5.6-terra",
++            "in.openai.gpt-5.6-luna",
++            "in.openai.gpt-5.6-terra",
++            "openai.gpt-5.6-luna",
++            "openai.gpt-5.6-sol",
++            "openai.gpt-5.6-terra",
++            "openai/gpt-5.6",
++            "openai/gpt-5.6-luna",
++            "openai/gpt-5.6-luna-fast",
++            "openai/gpt-5.6-luna-pro",
++            "openai/gpt-5.6-luna-pro:batch",
++            "openai/gpt-5.6-luna:batch",
++            "openai/gpt-5.6-sol",
++            "openai/gpt-5.6-sol-fast",
++            "openai/gpt-5.6-sol-pro",
++            "openai/gpt-5.6-sol-pro:batch",
++            "openai/gpt-5.6-sol:batch",
++            "openai/gpt-5.6-terra",
++            "openai/gpt-5.6-terra-fast",
++            "openai/gpt-5.6-terra-pro",
++            "openai/gpt-5.6-terra-pro:batch",
++            "openai/gpt-5.6-terra:batch",
++            "us.openai.gpt-5.6-luna",
++            "us.openai.gpt-5.6-sol",
++            "us.openai.gpt-5.6-terra"
++          ]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.3-codex(?:[.\\-:/\\[].*)?",
+@@ -2900,7 +3101,13 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "gpt-5.3-codex",
++            "gpt-5.3-codex-spark",
++            "openai/gpt-5.3-codex",
++            "openai/gpt-5.3-codex-fast"
++          ]
+         },
+         {
+           "modelMatch": ".*gpt-6-astra(?:[.\\-:/\\[].*)?",
+@@ -2923,7 +3130,18 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "global.openai.gpt-6-astra",
++            "gpt-6-astra",
++            "openai.gpt-6-astra",
++            "openai/gpt-6-astra",
++            "openai/gpt-6-astra-fast",
++            "openai/gpt-6-astra-pro",
++            "openai/gpt-6-astra-pro:batch",
++            "openai/gpt-6-astra:batch",
++            "us.openai.gpt-6-astra"
++          ]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.4(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -2946,7 +3164,13 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "gpt-5.4",
++            "openai.gpt-5.4",
++            "openai/gpt-5.4",
++            "openai/gpt-5.4:batch"
++          ]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.4-pro(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -2969,7 +3193,8 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["gpt-5.4-pro", "openai/gpt-5.4-pro", "openai/gpt-5.4-pro:batch"]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.4-mini(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -2992,7 +3217,8 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["gpt-5.4-mini", "openai/gpt-5.4-mini", "openai/gpt-5.4-mini:batch"]
+         },
+         {
+           "modelMatch": ".*gpt-5\\.4-nano(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3015,7 +3241,8 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["gpt-5.4-nano", "openai/gpt-5.4-nano", "openai/gpt-5.4-nano:batch"]
+         },
+         {
+           "modelMatch": ".*claude-(?:fable|opus|sonnet)-5(?:[.\\-:/\\[].*)?",
+@@ -3038,7 +3265,60 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "anthropic.claude-fable-5",
++            "anthropic.claude-fable-5-1",
++            "anthropic.claude-opus-5-5",
++            "anthropic.claude-sonnet-5",
++            "anthropic.claude-sonnet-5-5",
++            "anthropic/claude-fable-5",
++            "anthropic/claude-fable-5.1",
++            "anthropic/claude-fable-5.1:batch",
++            "anthropic/claude-fable-5:batch",
++            "anthropic/claude-opus-5",
++            "anthropic/claude-opus-5-fast",
++            "anthropic/claude-opus-5.5",
++            "anthropic/claude-opus-5.5-fast",
++            "anthropic/claude-opus-5.5:batch",
++            "anthropic/claude-opus-5:batch",
++            "anthropic/claude-sonnet-5",
++            "anthropic/claude-sonnet-5.5",
++            "anthropic/claude-sonnet-5.5:batch",
++            "anthropic/claude-sonnet-5:batch",
++            "au.anthropic.claude-opus-5",
++            "au.anthropic.claude-opus-5-5",
++            "au.anthropic.claude-sonnet-5",
++            "claude-fable-5",
++            "claude-fable-5-1",
++            "claude-fable-5.1",
++            "claude-opus-5",
++            "claude-opus-5-5",
++            "claude-opus-5.5",
++            "claude-sonnet-5",
++            "claude-sonnet-5-5",
++            "claude-sonnet-5.5",
++            "eu.anthropic.claude-fable-5",
++            "eu.anthropic.claude-opus-5",
++            "eu.anthropic.claude-opus-5-5",
++            "eu.anthropic.claude-sonnet-5",
++            "global.anthropic.claude-fable-5",
++            "global.anthropic.claude-fable-5-1",
++            "global.anthropic.claude-opus-5",
++            "global.anthropic.claude-opus-5-5",
++            "global.anthropic.claude-sonnet-5",
++            "global.anthropic.claude-sonnet-5-5",
++            "in.anthropic.claude-opus-5",
++            "in.anthropic.claude-sonnet-5",
++            "jp.anthropic.claude-opus-5",
++            "jp.anthropic.claude-opus-5-5",
++            "jp.anthropic.claude-sonnet-5",
++            "us.anthropic.claude-fable-5",
++            "us.anthropic.claude-fable-5-1",
++            "us.anthropic.claude-opus-5",
++            "us.anthropic.claude-opus-5-5",
++            "us.anthropic.claude-sonnet-5"
++          ]
+         },
+         {
+           "modelMatch": ".*claude-haiku-4[.-]5(?:-20251001)?(?:[.\\-:/\\[].*)?",
+@@ -3058,7 +3338,21 @@
+                 "max": 64000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "anthropic.claude-haiku-4-5-20251001-v1:0",
++            "anthropic/claude-haiku-4.5",
++            "anthropic/claude-haiku-4.5:batch",
++            "au.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "claude-haiku-4-5",
++            "claude-haiku-4-5-20251001",
++            "claude-haiku-4.5",
++            "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "in.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "us.anthropic.claude-haiku-4-5-20251001-v1:0"
++          ]
+         },
+         {
+           "modelMatch": ".*claude-(?:fable|mythos)-5[.-]1(?:[.\\-:/\\[].*)?",
+@@ -3081,7 +3375,16 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "anthropic.claude-fable-5-1",
++            "anthropic/claude-fable-5.1",
++            "anthropic/claude-fable-5.1:batch",
++            "claude-fable-5-1",
++            "claude-fable-5.1",
++            "global.anthropic.claude-fable-5-1",
++            "us.anthropic.claude-fable-5-1"
++          ]
+         },
+         {
+           "modelMatch": ".*grok-4\\.6(?:[.\\-:/\\[].*)?",
+@@ -3104,7 +3407,15 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "global.xai.grok-4.6",
++            "grok-4.6",
++            "spacexai/grok-4.6",
++            "us.xai.grok-4.6",
++            "x-ai/grok-4.6",
++            "xai.grok-4.6"
++          ]
+         },
+         {
+           "modelMatch": ".*grok-build-0\\.1(?:[.\\-:/\\[].*)?",
+@@ -3124,7 +3435,8 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["grok-build-0.1", "spacexai/grok-build-0.1", "x-ai/grok-build-0.1"]
+         },
+         {
+           "modelMatch": ".*grok-4\\.3(?:[.\\-:/\\[].*)?",
+@@ -3144,7 +3456,14 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "grok-4.3",
++            "spacexai/grok-4.3",
++            "x-ai/grok-4.3",
++            "x-ai/grok-4.3:batch",
++            "xai.grok-4.3"
++          ]
+         },
+         {
+           "modelMatch": ".*kimi-k3(?:[.\\-:/\\[].*)?",
+@@ -3164,7 +3483,18 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "accounts/fireworks/models/kimi-k3",
++            "accounts/fireworks/routers/kimi-k3-fast",
++            "global.moonshotai.kimi-k3",
++            "kimi-k3",
++            "moonshotai/Kimi-K3",
++            "moonshotai/kimi-k3",
++            "moonshotai/kimi-k3-fast",
++            "moonshotai/kimi-k3:batch",
++            "us.moonshotai.kimi-k3"
++          ]
+         },
+         {
+           "modelMatch": ".*k3(?:[.\\-:/\\[].*)?",
+@@ -3184,7 +3514,20 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "accounts/fireworks/models/kimi-k3",
++            "accounts/fireworks/routers/kimi-k3-fast",
++            "global.moonshotai.kimi-k3",
++            "k3",
++            "k3-256k",
++            "kimi-k3",
++            "moonshotai/Kimi-K3",
++            "moonshotai/kimi-k3",
++            "moonshotai/kimi-k3-fast",
++            "moonshotai/kimi-k3:batch",
++            "us.moonshotai.kimi-k3"
++          ]
+         },
+         {
+           "modelMatch": ".*k3-256k(?:[.\\-:/\\[].*)?",
+@@ -3204,7 +3547,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["k3-256k"]
+         },
+         {
+           "modelMatch": ".*kimi-k2\\.7-code(?:[.\\-:/\\[].*)?",
+@@ -3224,7 +3568,16 @@
+                 "max": 98304
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/moonshotai/kimi-k2.7-code",
++            "kimi-k2.7-code",
++            "kimi-k2.7-code-highspeed",
++            "moonshotai/Kimi-K2.7-Code",
++            "moonshotai/kimi-k2.7-code",
++            "moonshotai/kimi-k2.7-code-highspeed",
++            "workers-ai/@cf/moonshotai/kimi-k2.7-code"
++          ]
+         },
+         {
+           "modelMatch": ".*kimi-k2\\.6(?:[.\\-:/\\[].*)?",
+@@ -3244,7 +3597,14 @@
+                 "max": 98304
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/moonshotai/kimi-k2.6",
++            "kimi-k2.6",
++            "moonshotai/Kimi-K2.6",
++            "moonshotai/kimi-k2.6",
++            "workers-ai/@cf/moonshotai/kimi-k2.6"
++          ]
+         },
+         {
+           "modelMatch": ".*kimi-k2\\.5(?:[.\\-:/\\[].*)?",
+@@ -3264,7 +3624,13 @@
+                 "max": 98304
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "kimi-k2.5",
++            "moonshotai.kimi-k2.5",
++            "moonshotai/Kimi-K2.5",
++            "moonshotai/kimi-k2.5"
++          ]
+         },
+         {
+           "modelMatch": ".*moonshot-v1-8k(?:[.\\-:/\\[].*)?",
+@@ -3383,7 +3749,14 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "MiniMax-M3",
++            "MiniMaxAI/MiniMax-M3",
++            "accounts/fireworks/models/minimax-m3",
++            "minimax-m3",
++            "minimax/minimax-m3"
++          ]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2(?:[.\\-:/\\[].*)?",
+@@ -3400,7 +3773,32 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "MiniMax-M2",
++            "MiniMax-M2.1",
++            "MiniMax-M2.1-highspeed",
++            "MiniMax-M2.5",
++            "MiniMax-M2.5-highspeed",
++            "MiniMax-M2.7",
++            "MiniMax-M2.7-highspeed",
++            "MiniMaxAI/MiniMax-M2",
++            "MiniMaxAI/MiniMax-M2.1",
++            "MiniMaxAI/MiniMax-M2.5",
++            "MiniMaxAI/MiniMax-M2.7",
++            "minimax-m2.5",
++            "minimax-m2.7",
++            "minimax.minimax-m2",
++            "minimax.minimax-m2.1",
++            "minimax.minimax-m2.5",
++            "minimax/minimax-m2",
++            "minimax/minimax-m2.1",
++            "minimax/minimax-m2.1-lightning",
++            "minimax/minimax-m2.5",
++            "minimax/minimax-m2.5-highspeed",
++            "minimax/minimax-m2.7",
++            "minimax/minimax-m2.7-highspeed"
++          ]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.7(?:[.\\-:/\\[].*)?",
+@@ -3417,7 +3815,15 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "MiniMax-M2.7",
++            "MiniMax-M2.7-highspeed",
++            "MiniMaxAI/MiniMax-M2.7",
++            "minimax-m2.7",
++            "minimax/minimax-m2.7",
++            "minimax/minimax-m2.7-highspeed"
++          ]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.7-highspeed(?:[.\\-:/\\[].*)?",
+@@ -3434,7 +3840,8 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M2.7-highspeed", "minimax/minimax-m2.7-highspeed"]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.5(?:[.\\-:/\\[].*)?",
+@@ -3451,7 +3858,16 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "MiniMax-M2.5",
++            "MiniMax-M2.5-highspeed",
++            "MiniMaxAI/MiniMax-M2.5",
++            "minimax-m2.5",
++            "minimax.minimax-m2.5",
++            "minimax/minimax-m2.5",
++            "minimax/minimax-m2.5-highspeed"
++          ]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.5-highspeed(?:[.\\-:/\\[].*)?",
+@@ -3468,7 +3884,8 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M2.5-highspeed", "minimax/minimax-m2.5-highspeed"]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.1(?:[.\\-:/\\[].*)?",
+@@ -3485,7 +3902,15 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "MiniMax-M2.1",
++            "MiniMax-M2.1-highspeed",
++            "MiniMaxAI/MiniMax-M2.1",
++            "minimax.minimax-m2.1",
++            "minimax/minimax-m2.1",
++            "minimax/minimax-m2.1-lightning"
++          ]
+         },
+         {
+           "modelMatch": ".*MiniMax-M2\\.1-highspeed(?:[.\\-:/\\[].*)?",
+@@ -3502,7 +3927,8 @@
+                 "max": 32000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M2.1-highspeed"]
+         },
+         {
+           "modelMatch": ".*deepseek-v4-flash(?:[.\\-:/\\[].*)?",
+@@ -3523,7 +3949,21 @@
+                 "max": 384000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/deepseek-ai/deepseek-v4-flash-0731",
++            "deepseek-ai/DeepSeek-V4-Flash",
++            "deepseek-ai/DeepSeek-V4-Flash-0731",
++            "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
++            "deepseek-v4-flash",
++            "deepseek-v4-flash-0731",
++            "deepseek-v4-flash-vision-exp",
++            "deepseek/deepseek-v4-flash",
++            "deepseek/deepseek-v4-flash-0731",
++            "deepseek/deepseek-v4-flash-vision-exp",
++            "workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
++            "~deepseek/deepseek-v4-flash-latest"
++          ]
+         },
+         {
+           "modelMatch": ".*deepseek-v4-pro(?:[.\\-:/\\[].*)?",
+@@ -3544,7 +3984,17 @@
+                 "max": 384000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "@cf/deepseek-ai/deepseek-v4-pro-0813",
++            "deepseek-ai/DeepSeek-V4-Pro",
++            "deepseek-ai/DeepSeek-V4-Pro-0813",
++            "deepseek-v4-pro",
++            "deepseek-v4-pro-0813",
++            "deepseek/deepseek-v4-pro",
++            "deepseek/deepseek-v4-pro-0813",
++            "workers-ai/@cf/deepseek-ai/deepseek-v4-pro-0813"
++          ]
+         },
+         {
+           "modelMatch": ".*deepseek-flash(?:[.\\-:/\\[].*)?",
+@@ -3565,7 +4015,12 @@
+                 "max": 384000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "accounts/fireworks/routers/deepseek-flash-latest",
++            "deepseek-flash",
++            "~deepseek/deepseek-flash-latest"
++          ]
+         },
+         {
+           "modelMatch": ".*deepseek-v4[.-]1-flash(?:[.\\-:/\\[].*)?",
+@@ -3586,7 +4041,16 @@
+                 "max": 384000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "deepseek-ai/DeepSeek-V4.1-Flash",
++            "deepseek-ai/DeepSeek-V4.1-Flash-Fast",
++            "deepseek-ai/deepseek-v4.1-flash",
++            "deepseek-v4.1-flash",
++            "deepseek/deepseek-v4.1-flash",
++            "deepseek/deepseek-v4.1-flash-fast",
++            "deepseek/deepseek-v4.1-flash:batch"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.8-(?:max|flash)(?:[.\\-:/\\[].*)?",
+@@ -3607,7 +4071,19 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "alibaba/qwen3.8-flash",
++            "alibaba/qwen3.8-max",
++            "alibaba/qwen3.8-max-0902",
++            "alibaba/qwen3.8-max-prime",
++            "qwen/qwen3.8-flash",
++            "qwen/qwen3.8-max",
++            "qwen/qwen3.8-max-0902",
++            "qwen/qwen3.8-max-prime",
++            "qwen3.8-flash",
++            "qwen3.8-max"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.5-plus(?:[.\\-:/\\[].*)?",
+@@ -3628,7 +4104,13 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "alibaba/qwen3.5-plus",
++            "qwen/qwen3.5-plus-02-15",
++            "qwen/qwen3.5-plus-20260420",
++            "qwen3.5-plus"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.5-flash(?:[.\\-:/\\[].*)?",
+@@ -3649,7 +4131,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["alibaba/qwen3.5-flash", "qwen/qwen3.5-flash-02-23", "qwen3.5-flash"]
+         },
+         {
+           "modelMatch": ".*qwen3-max(?:[.\\-:/\\[].*)?",
+@@ -3666,7 +4149,15 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "alibaba/qwen3-max",
++            "alibaba/qwen3-max-preview",
++            "alibaba/qwen3-max-thinking",
++            "qwen/qwen3-max",
++            "qwen/qwen3-max-thinking",
++            "qwen3-max"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen-plus(?:[.\\-:/\\[].*)?",
+@@ -3686,7 +4177,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen-plus", "qwen/qwen-plus", "qwen/qwen-plus-2025-07-28"]
+         },
+         {
+           "modelMatch": ".*qwen-flash(?:[.\\-:/\\[].*)?",
+@@ -3706,7 +4198,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen-flash"]
+         },
+         {
+           "modelMatch": ".*qwen3-vl-plus(?:[.\\-:/\\[].*)?",
+@@ -3727,7 +4220,8 @@
+                 "max": 32768
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen/qwen3-vl-plus", "qwen3-vl-plus"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-max(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3748,7 +4242,13 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "Qwen/Qwen3.7-Max",
++            "alibaba/qwen3.7-max",
++            "qwen/qwen3.7-max",
++            "qwen3.7-max"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-plus(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3769,7 +4269,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["alibaba/qwen3.7-plus", "qwen/qwen3.7-plus", "qwen3.7-plus"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-flash(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3790,7 +4291,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["alibaba/qwen3.7-flash", "qwen/qwen3.7-flash", "qwen3.7-flash"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.6-plus(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3811,7 +4313,13 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "Qwen/Qwen3.6-Plus",
++            "alibaba/qwen3.6-plus",
++            "qwen/qwen3.6-plus",
++            "qwen3.6-plus"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.6-flash(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -3832,7 +4340,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen/qwen3.6-flash", "qwen3.6-flash"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-max-2026-06-08(?:[:/\\[].*)?",
+@@ -3865,7 +4374,12 @@
+                 "max": 16384
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "alibaba/qwen3.8-omni-flash",
++            "qwen/qwen3.8-omni-flash",
++            "qwen3.8-omni-flash"
++          ]
+         },
+         {
+           "modelMatch": ".*mimo-v2\\.5(?:[.\\-:/\\[].*)?",
+@@ -3886,7 +4400,17 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "XiaomiMiMo/MiMo-V2.5",
++            "XiaomiMiMo/MiMo-V2.5-Pro",
++            "mimo-v2.5",
++            "mimo-v2.5-free",
++            "mimo-v2.5-pro",
++            "mimo-v2.5-pro-ultraspeed",
++            "xiaomi/mimo-v2.5",
++            "xiaomi/mimo-v2.5-pro"
++          ]
+         },
+         {
+           "modelMatch": ".*mimo-v2\\.5-pro(?:[.\\-:/\\[].*)?",
+@@ -3907,7 +4431,13 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "XiaomiMiMo/MiMo-V2.5-Pro",
++            "mimo-v2.5-pro",
++            "mimo-v2.5-pro-ultraspeed",
++            "xiaomi/mimo-v2.5-pro"
++          ]
+         },
+         {
+           "modelMatch": ".*mimo-v2-pro(?:[.\\-:/\\[].*)?",
+@@ -3961,7 +4491,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["XiaomiMiMo/MiMo-V2-Flash"]
+         }
+       ],
+       "modelApiRules": [
+@@ -3972,7 +4503,55 @@
+             "properties": {
+               "supportsMidConversationSystem": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "anthropic.claude-fable-5",
++            "anthropic.claude-fable-5-1",
++            "anthropic.claude-opus-4-8",
++            "anthropic.claude-opus-5-5",
++            "anthropic/claude-fable-5",
++            "anthropic/claude-fable-5.1",
++            "anthropic/claude-fable-5.1:batch",
++            "anthropic/claude-fable-5:batch",
++            "anthropic/claude-opus-4.8",
++            "anthropic/claude-opus-4.8-fast",
++            "anthropic/claude-opus-4.8:batch",
++            "anthropic/claude-opus-5",
++            "anthropic/claude-opus-5-fast",
++            "anthropic/claude-opus-5.5",
++            "anthropic/claude-opus-5.5-fast",
++            "anthropic/claude-opus-5.5:batch",
++            "anthropic/claude-opus-5:batch",
++            "au.anthropic.claude-opus-4-8",
++            "au.anthropic.claude-opus-5",
++            "au.anthropic.claude-opus-5-5",
++            "claude-fable-5",
++            "claude-fable-5-1",
++            "claude-fable-5.1",
++            "claude-opus-4-8",
++            "claude-opus-4.8",
++            "claude-opus-5",
++            "claude-opus-5-5",
++            "claude-opus-5.5",
++            "eu.anthropic.claude-fable-5",
++            "eu.anthropic.claude-opus-4-8",
++            "eu.anthropic.claude-opus-5",
++            "eu.anthropic.claude-opus-5-5",
++            "global.anthropic.claude-fable-5",
++            "global.anthropic.claude-fable-5-1",
++            "global.anthropic.claude-opus-4-8",
++            "global.anthropic.claude-opus-5",
++            "global.anthropic.claude-opus-5-5",
++            "in.anthropic.claude-opus-5",
++            "jp.anthropic.claude-opus-4-8",
++            "jp.anthropic.claude-opus-5",
++            "jp.anthropic.claude-opus-5-5",
++            "us.anthropic.claude-fable-5",
++            "us.anthropic.claude-fable-5-1",
++            "us.anthropic.claude-opus-4-8",
++            "us.anthropic.claude-opus-5",
++            "us.anthropic.claude-opus-5-5"
++          ]
+         },
+         {
+           "modelMatch": ".*",
+@@ -4820,7 +5399,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5.3-Flash", "glm-5.3-flash"]
+         },
+         {
+           "modelMatch": "glm-5\\.3",
+@@ -4849,7 +5429,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5.3", "glm-5.3"]
+         },
+         {
+           "modelMatch": "glm-5\\.2",
+@@ -4878,7 +5459,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["glm-5.2"]
+         },
+         {
+           "modelMatch": "glm-5\\.1",
+@@ -4907,7 +5489,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["GLM-5.1", "glm-5.1"]
+         },
+         {
+           "modelMatch": "kimi-k3",
+@@ -4936,7 +5519,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["kimi-k3"]
+         },
+         {
+           "modelMatch": "kimi-k2\\.7-code",
+@@ -4965,7 +5549,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["kimi-k2.7-code"]
+         },
+         {
+           "modelMatch": "kimi-k2\\.6",
+@@ -4994,7 +5579,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["kimi-k2.6"]
+         },
+         {
+           "modelMatch": "deepseek-v4\\.1-flash",
+@@ -5023,7 +5609,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4.1-flash"]
+         },
+         {
+           "modelMatch": "deepseek-v4-pro",
+@@ -5052,7 +5639,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-pro"]
+         },
+         {
+           "modelMatch": "deepseek-v4-flash",
+@@ -5081,7 +5669,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-flash"]
+         },
+         {
+           "modelMatch": "deepseek-v4-flash-vision-exp",
+@@ -5110,7 +5699,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-flash-vision-exp"]
+         },
+         {
+           "modelMatch": "mimo-v2\\.5",
+@@ -5139,7 +5729,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["mimo-v2.5"]
+         },
+         {
+           "modelMatch": "mimo-v2\\.5-pro",
+@@ -5168,7 +5759,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["mimo-v2.5-pro"]
+         },
+         {
+           "modelMatch": "hy4-preview",
+@@ -5197,7 +5789,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["hy4-preview"]
+         },
+         {
+           "modelMatch": "hy3",
+@@ -5226,7 +5819,8 @@
+                 "map": "{\"max_tokens\": maxOutputTokens}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["hy3"]
+         },
+         {
+           "modelMatch": "minimax-m3",
+@@ -5254,7 +5848,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M3", "minimax-m3"]
+         },
+         {
+           "modelMatch": "minimax-m2\\.7",
+@@ -5282,7 +5877,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M2.7", "minimax-m2.7"]
+         },
+         {
+           "modelMatch": "minimax-m2\\.5",
+@@ -5310,7 +5906,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["MiniMax-M2.5", "minimax-m2.5"]
+         },
+         {
+           "modelMatch": "qwen3\\.8-max",
+@@ -5337,7 +5934,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen3.8-max"]
+         },
+         {
+           "modelMatch": "qwen3\\.8-flash",
+@@ -5364,7 +5962,8 @@
+                 "max": 131072
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen3.8-flash"]
+         },
+         {
+           "modelMatch": "qwen3\\.7-max",
+@@ -5391,7 +5990,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen3.7-max"]
+         },
+         {
+           "modelMatch": "qwen3\\.7-plus",
+@@ -5418,7 +6018,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen3.7-plus"]
+         },
+         {
+           "modelMatch": "qwen3\\.6-plus",
+@@ -5445,7 +6046,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen3.6-plus"]
+         },
+         {
+           "modelMatch": "gpt-5\\.6-luna",
+@@ -5473,7 +6075,8 @@
+                 "max": 128000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["gpt-5.6-luna"]
+         },
+         {
+           "modelMatch": "grok-4\\.6",
+@@ -5501,7 +6104,8 @@
+                 "max": 500000
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["grok-4.6"]
+         },
+         {
+           "modelMatch": ".*(?:glm-|deepseek-|kimi-k2|qwen|mimo-).*",
+@@ -5535,7 +6139,145 @@
+             "properties": {
+               "supportsNativeWebSearch": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "anthropic.claude-fable-5",
++            "anthropic.claude-fable-5-1",
++            "anthropic.claude-haiku-4-5-20251001-v1:0",
++            "anthropic.claude-opus-4-1-20250805-v1:0",
++            "anthropic.claude-opus-4-5-20251101-v1:0",
++            "anthropic.claude-opus-4-6-v1",
++            "anthropic.claude-opus-4-7",
++            "anthropic.claude-opus-4-8",
++            "anthropic.claude-opus-5-5",
++            "anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "anthropic.claude-sonnet-4-6",
++            "anthropic.claude-sonnet-5",
++            "anthropic.claude-sonnet-5-5",
++            "anthropic/claude-3-haiku",
++            "anthropic/claude-fable-5",
++            "anthropic/claude-fable-5.1",
++            "anthropic/claude-fable-5.1:batch",
++            "anthropic/claude-fable-5:batch",
++            "anthropic/claude-haiku-4.5",
++            "anthropic/claude-haiku-4.5:batch",
++            "anthropic/claude-opus-4",
++            "anthropic/claude-opus-4.1",
++            "anthropic/claude-opus-4.1:batch",
++            "anthropic/claude-opus-4.5",
++            "anthropic/claude-opus-4.5:batch",
++            "anthropic/claude-opus-4.6",
++            "anthropic/claude-opus-4.6:batch",
++            "anthropic/claude-opus-4.7",
++            "anthropic/claude-opus-4.7:batch",
++            "anthropic/claude-opus-4.8",
++            "anthropic/claude-opus-4.8-fast",
++            "anthropic/claude-opus-4.8:batch",
++            "anthropic/claude-opus-5",
++            "anthropic/claude-opus-5-fast",
++            "anthropic/claude-opus-5.5",
++            "anthropic/claude-opus-5.5-fast",
++            "anthropic/claude-opus-5.5:batch",
++            "anthropic/claude-opus-5:batch",
++            "anthropic/claude-sonnet-4",
++            "anthropic/claude-sonnet-4.5",
++            "anthropic/claude-sonnet-4.5:batch",
++            "anthropic/claude-sonnet-4.6",
++            "anthropic/claude-sonnet-4.6:batch",
++            "anthropic/claude-sonnet-5",
++            "anthropic/claude-sonnet-5.5",
++            "anthropic/claude-sonnet-5.5:batch",
++            "anthropic/claude-sonnet-5:batch",
++            "apac.anthropic.claude-sonnet-4-20250514-v1:0",
++            "au.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "au.anthropic.claude-opus-4-6-v1",
++            "au.anthropic.claude-opus-4-7",
++            "au.anthropic.claude-opus-4-8",
++            "au.anthropic.claude-opus-5",
++            "au.anthropic.claude-opus-5-5",
++            "au.anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "au.anthropic.claude-sonnet-4-6",
++            "au.anthropic.claude-sonnet-5",
++            "claude-fable-5",
++            "claude-fable-5-1",
++            "claude-fable-5.1",
++            "claude-haiku-4-5",
++            "claude-haiku-4-5-20251001",
++            "claude-haiku-4.5",
++            "claude-opus-4-5",
++            "claude-opus-4-5-20251101",
++            "claude-opus-4-6",
++            "claude-opus-4-7",
++            "claude-opus-4-8",
++            "claude-opus-4.7",
++            "claude-opus-4.8",
++            "claude-opus-5",
++            "claude-opus-5-5",
++            "claude-opus-5.5",
++            "claude-sonnet-4",
++            "claude-sonnet-4-5",
++            "claude-sonnet-4-5-20250929",
++            "claude-sonnet-4-6",
++            "claude-sonnet-4.6",
++            "claude-sonnet-5",
++            "claude-sonnet-5-5",
++            "claude-sonnet-5.5",
++            "eu.anthropic.claude-fable-5",
++            "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "eu.anthropic.claude-opus-4-5-20251101-v1:0",
++            "eu.anthropic.claude-opus-4-6-v1",
++            "eu.anthropic.claude-opus-4-7",
++            "eu.anthropic.claude-opus-4-8",
++            "eu.anthropic.claude-opus-5",
++            "eu.anthropic.claude-opus-5-5",
++            "eu.anthropic.claude-sonnet-4-20250514-v1:0",
++            "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "eu.anthropic.claude-sonnet-4-6",
++            "eu.anthropic.claude-sonnet-5",
++            "global.anthropic.claude-fable-5",
++            "global.anthropic.claude-fable-5-1",
++            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "global.anthropic.claude-opus-4-5-20251101-v1:0",
++            "global.anthropic.claude-opus-4-6-v1",
++            "global.anthropic.claude-opus-4-7",
++            "global.anthropic.claude-opus-4-8",
++            "global.anthropic.claude-opus-5",
++            "global.anthropic.claude-opus-5-5",
++            "global.anthropic.claude-sonnet-4-20250514-v1:0",
++            "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "global.anthropic.claude-sonnet-4-6",
++            "global.anthropic.claude-sonnet-5",
++            "global.anthropic.claude-sonnet-5-5",
++            "in.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "in.anthropic.claude-opus-5",
++            "in.anthropic.claude-sonnet-5",
++            "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "jp.anthropic.claude-opus-4-7",
++            "jp.anthropic.claude-opus-4-8",
++            "jp.anthropic.claude-opus-5",
++            "jp.anthropic.claude-opus-5-5",
++            "jp.anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "jp.anthropic.claude-sonnet-4-6",
++            "jp.anthropic.claude-sonnet-5",
++            "us.anthropic.claude-fable-5",
++            "us.anthropic.claude-fable-5-1",
++            "us.anthropic.claude-haiku-4-5-20251001-v1:0",
++            "us.anthropic.claude-opus-4-1-20250805-v1:0",
++            "us.anthropic.claude-opus-4-5-20251101-v1:0",
++            "us.anthropic.claude-opus-4-6-v1",
++            "us.anthropic.claude-opus-4-7",
++            "us.anthropic.claude-opus-4-8",
++            "us.anthropic.claude-opus-5",
++            "us.anthropic.claude-opus-5-5",
++            "us.anthropic.claude-sonnet-4-20250514-v1:0",
++            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
++            "us.anthropic.claude-sonnet-4-6",
++            "us.anthropic.claude-sonnet-5",
++            "~anthropic/claude-fable-latest",
++            "~anthropic/claude-haiku-latest",
++            "~anthropic/claude-opus-latest",
++            "~anthropic/claude-sonnet-latest"
++          ]
+         },
+         {
+           "modelMatch": ".*(?:kimi-k3|k3|k3-256k)(?:[.\\-:/\\[].*)?",
+@@ -5545,7 +6287,20 @@
+             "properties": {
+               "requiresMfjsToolSchema": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "accounts/fireworks/models/kimi-k3",
++            "accounts/fireworks/routers/kimi-k3-fast",
++            "global.moonshotai.kimi-k3",
++            "k3",
++            "k3-256k",
++            "kimi-k3",
++            "moonshotai/Kimi-K3",
++            "moonshotai/kimi-k3",
++            "moonshotai/kimi-k3-fast",
++            "moonshotai/kimi-k3:batch",
++            "us.moonshotai.kimi-k3"
++          ]
+         },
+         {
+           "modelMatch": ".*",
+@@ -5627,7 +6382,8 @@
+                 "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-flash"]
+         },
+         {
+           "modelMatch": "deepseek-v4-pro",
+@@ -5642,7 +6398,8 @@
+                 "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-pro"]
+         },
+         {
+           "modelMatch": "deepseek-flash",
+@@ -5657,7 +6414,8 @@
+                 "map": "{\n  \"reasoning\": {\n    \"effort\": reasoningLevel == \"disabled\" ? \"none\" : reasoningLevel\n  }\n}"
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-flash"]
+         },
+         {
+           "modelMatch": "deepseek-v4-flash(?:-vision-exp)?",
+@@ -5669,7 +6427,8 @@
+                 "supportsImage": true
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]
+         },
+         {
+           "modelMatch": ".*gpt-6-astra(?:[.\\-:/\\[].*)?",
+@@ -5704,7 +6463,16 @@
+               "contextWindow": 1048576,
+               "supportsJsonSchemaOutput": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "deepseek-ai/DeepSeek-V4.1-Flash",
++            "deepseek-ai/DeepSeek-V4.1-Flash-Fast",
++            "deepseek-ai/deepseek-v4.1-flash",
++            "deepseek-v4.1-flash",
++            "deepseek/deepseek-v4.1-flash",
++            "deepseek/deepseek-v4.1-flash-fast",
++            "deepseek/deepseek-v4.1-flash:batch"
++          ]
+         },
+         {
+           "modelMatch": ".*deepseek-v4[.-]1-flash(?:[.\\-:/\\[].*)?",
+@@ -5740,7 +6508,8 @@
+                 "max": 65536
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["alibaba/qwen3.7-flash", "qwen/qwen3.7-flash", "qwen3.7-flash"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-plus(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -5752,7 +6521,8 @@
+                 "supportsVideo": false
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["alibaba/qwen3.7-plus", "qwen/qwen3.7-plus", "qwen3.7-plus"]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-(?:max|plus|flash)(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -5762,7 +6532,19 @@
+             "properties": {
+               "supportsJsonSchemaOutput": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "Qwen/Qwen3.7-Max",
++            "alibaba/qwen3.7-flash",
++            "alibaba/qwen3.7-max",
++            "alibaba/qwen3.7-plus",
++            "qwen/qwen3.7-flash",
++            "qwen/qwen3.7-max",
++            "qwen/qwen3.7-plus",
++            "qwen3.7-flash",
++            "qwen3.7-max",
++            "qwen3.7-plus"
++          ]
+         },
+         {
+           "modelMatch": ".*qwen3\\.7-(?:max|plus|flash)(?:-20\\d{2}(?:-?\\d{2}){2})?(?:[:/\\[].*)?",
+@@ -5772,7 +6554,19 @@
+             "properties": {
+               "supportsJsonSchemaOutput": true
+             }
+-          }
++          },
++          "evidenceModelIds": [
++            "Qwen/Qwen3.7-Max",
++            "alibaba/qwen3.7-flash",
++            "alibaba/qwen3.7-max",
++            "alibaba/qwen3.7-plus",
++            "qwen/qwen3.7-flash",
++            "qwen/qwen3.7-max",
++            "qwen/qwen3.7-plus",
++            "qwen3.7-flash",
++            "qwen3.7-max",
++            "qwen3.7-plus"
++          ]
+         },
+         {
+           "modelMatch": "qwen/qwen3\\.8-max-0902",
+@@ -5784,7 +6578,8 @@
+                 "values": ["minimal", "low", "medium", "high", "xhigh"]
+               }
+             }
+-          }
++          },
++          "evidenceModelIds": ["qwen/qwen3.8-max-0902"]
+         },
+         {
+           "modelMatch": "qwen/qwen3\\.6-(?:plus|flash)",
+@@ -5794,7 +6589,8 @@
+             "properties": {
+               "supportsJsonSchemaOutput": true
+             }
+-          }
++          },
++          "evidenceModelIds": ["Qwen/Qwen3.6-Plus", "qwen/qwen3.6-flash", "qwen/qwen3.6-plus"]
+         },
+         {
+           "modelMatch": ".*",
+@@ -5809,18 +6605,41 @@
+           }
+         },
+         {
+-          "modelMatch": "(?:deepseek-ai/DeepSeek-V4-Flash|Pro/deepseek-ai/DeepSeek-V4|Pro/zai-org/GLM-5\\.2)",
++          "modelMatch": "deepseek-ai/DeepSeek-V4-Flash",
++          "apiTypeMatch": "openai-chat-completions",
++          "baseUrlMatch": "https://api\\.siliconflow\\.cn/v1/?",
++          "config": {
++            "optionSpecs": {
++              "reasoningLevel": {
++                "values": ["auto", "disabled", "high", "max"],
++                "defaultValue": "auto",
++                "map": "reasoningLevel == \"auto\" ? {} : reasoningLevel == \"disabled\" ? {\"enable_thinking\":false} : {\"enable_thinking\":true,\"reasoning_effort\":reasoningLevel}"
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "Pro/deepseek-ai/DeepSeek-V4",
++          "apiTypeMatch": "openai-chat-completions",
++          "baseUrlMatch": "https://api\\.siliconflow\\.cn/v1/?",
++          "config": {
++            "optionSpecs": {
++              "reasoningLevel": {
++                "values": ["auto", "disabled", "high", "max"],
++                "defaultValue": "auto",
++                "map": "reasoningLevel == \"auto\" ? {} : reasoningLevel == \"disabled\" ? {\"enable_thinking\":false} : {\"enable_thinking\":true,\"reasoning_effort\":reasoningLevel}"
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "Pro/zai-org/GLM-5\\.2",
+           "apiTypeMatch": "openai-chat-completions",
+           "baseUrlMatch": "https://api\\.siliconflow\\.cn/v1/?",
+           "config": {
+             "optionSpecs": {
+               "reasoningLevel": {
+-                "values": [
+-                  "auto",
+-                  "disabled",
+-                  "high",
+-                  "max"
+-                ],
++                "values": ["auto", "disabled", "high", "max"],
+                 "defaultValue": "auto",
+                 "map": "reasoningLevel == \"auto\" ? {} : reasoningLevel == \"disabled\" ? {\"enable_thinking\":false} : {\"enable_thinking\":true,\"reasoning_effort\":reasoningLevel}"
+               }
+diff --git a/package.json b/package.json
+index 8dfb3a6..a892095 100644
+--- a/package.json
++++ b/package.json
+@@ -55,12 +55,12 @@
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts apps/zcode-cli/packages/core/test/model-tool-capability.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index 421003d..ebd5641 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -397,7 +397,16 @@ export class ModelConfigRules {
+   readonly #rules: readonly ModelConfigRule[];
+ 
+   constructor(rules: readonly ModelConfigRule[] = []) {
+-    this.#rules = Object.freeze(rules.map((rule) => Object.freeze({ ...rule })));
++    this.#rules = Object.freeze(
++      rules.map((rule) =>
++        Object.freeze({
++          ...rule,
++          ...("modelMatch" in rule && rule.evidenceModelIds !== undefined
++            ? { evidenceModelIds: Object.freeze([...rule.evidenceModelIds]) }
++            : {}),
++        }),
++      ),
++    );
+     Object.freeze(this);
+   }
+ 
+@@ -419,6 +428,10 @@ export class ModelConfigRules {
+   }
+ 
+   resolve(input: ModelConfigRuleResolutionInput): ModelConfig {
++    return this.#resolve(input, false);
++  }
++
++  #resolve(input: ModelConfigRuleResolutionInput, evidenceOnly: boolean): ModelConfig {
+     let result = ModelConfig.empty();
+     const baseUrl = input.baseUrl == null ? undefined : normalizeBaseURLForRuleMatch(input.baseUrl);
+     for (const rule of this.#rules) {
+@@ -438,6 +451,12 @@ export class ModelConfigRules {
+           result = result.overlay(rule.config);
+         continue;
+       }
++      if (evidenceOnly && !hasModelFacts(rule.config)) continue;
++      if (rule.evidenceModelIds !== undefined) {
++        if (!rule.evidenceModelIds.includes(input.modelId)) continue;
++      } else if (evidenceOnly && !literalModelRuleMatches(rule.modelMatch, input.modelId)) {
++        continue;
++      }
+       // 只放宽推荐规则匹配，不改真实请求里的模型 ID。
+       if (!matchesRule(rule.modelMatch, input.modelId, true)) continue;
+       if (
+@@ -456,11 +475,9 @@ export class ModelConfigRules {
+     return result;
+   }
+ 
+-  /** Only model/route-specific evidence; the universal runtime completion rule is not a provider fact. */
++  /** Exact declared identity evidence; legacy regex recommendations remain internal. */
+   resolveEvidence(input: ModelConfigRuleResolutionInput): ModelConfig {
+-    return new ModelConfigRules(
+-      this.#rules.filter((rule) => !("modelMatch" in rule && rule.modelMatch === ".*")),
+-    ).resolve(input);
++    return this.#resolve(input, true);
+   }
+ 
+   setExact(
+@@ -656,6 +673,35 @@ function matchesRule(pattern: string, value: string, ignoreCase = false): boolea
+   return new RegExp(`^(?:${pattern})$`, ignoreCase ? "i" : undefined).test(value);
+ }
+ 
++function hasModelFacts(config: ModelConfig): boolean {
++  const value = config.toJSON();
++  return (
++    value.enabled !== undefined ||
++    Object.keys(value.properties ?? {}).length > 0 ||
++    value.optionSpecs?.reasoningLevel?.values !== undefined ||
++    value.optionSpecs?.reasoningLevel?.defaultValue !== undefined ||
++    value.optionSpecs?.maxOutputTokens?.max !== undefined ||
++    value.optionSpecs?.speedMode !== undefined
++  );
++}
++
++/** Escaped punctuation can name a literal ID; regex operators/character escapes cannot. */
++function literalModelRuleMatches(pattern: string, modelId: string): boolean {
++  let literal = "";
++  for (let index = 0; index < pattern.length; index++) {
++    const character = pattern[index]!;
++    if (character === "\\") {
++      const escaped = pattern[++index];
++      if (escaped === undefined || /[a-z0-9]/i.test(escaped)) return false;
++      literal += escaped;
++    } else {
++      if (".^$*+?()[]{}|".includes(character)) return false;
++      literal += character;
++    }
++  }
++  return literal === modelId;
++}
++
+ function normalizeBaseURLForRuleMatch(value: string): string | undefined {
+   try {
+     // Host 大小写、默认端口和尾部斜杠不应改变配置命中；URL parser 会保留 path/query 大小写。
+diff --git a/packages/provider/src/config/rule-data-schema.ts b/packages/provider/src/config/rule-data-schema.ts
+index a59e357..6a1ddf8 100644
+--- a/packages/provider/src/config/rule-data-schema.ts
++++ b/packages/provider/src/config/rule-data-schema.ts
+@@ -28,6 +28,17 @@ const patternSchema = z
+ export const modelMatchConfigRuleSchema = z
+   .object({
+     modelMatch: patternSchema,
++    /** Exact published IDs for this rule; never provider/account membership. */
++    evidenceModelIds: z
++      .array(
++        z
++          .string()
++          .min(1)
++          .refine((id) => id === id.trim()),
++      )
++      .refine((ids) => new Set(ids).size === ids.length, "evidenceModelIds cannot repeat")
++      .readonly()
++      .optional(),
+     config: modelConfigDataSchema,
+   })
+   .strict();
+@@ -101,7 +112,11 @@ export const providerTemplateConfigRuleSchema = providerTemplateDataSchema.exten
+     .pick({ logo: true, access: true, api: true, builtinModelIds: true })
+     .extend({
+       access: z
+-        .union([apiKeyAccessDataSchema.omit({ apiKey: true }), subscriptionAccessDataSchema, nativeCliAccessDataSchema])
++        .union([
++          apiKeyAccessDataSchema.omit({ apiKey: true }),
++          subscriptionAccessDataSchema,
++          nativeCliAccessDataSchema,
++        ])
+         .nullable()
+         .optional(),
+     }),
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index b337e97..74e7e00 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -214,7 +214,8 @@ export async function discoverConnectionModels(
+       let config = readDiscoveredModelMetadata(
+         item,
+         openRouterCatalog ? (provider.effectiveConfig.api?.type ?? undefined) : undefined,
+-        togetherCatalog ? "together" : undefined,
++        togetherCatalog ? "together" :
++          !openRouterCatalog && provider.effectiveConfig.api?.type === "anthropic-messages" ? "anthropic" : undefined,
+       );
+       const native = googleMetadata?.get(id);
+       if (native)
+diff --git a/packages/services/src/model-provider/modelDiscoveryCatalogs.ts b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+index 378199a..179cd6b 100644
+--- a/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
++++ b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+@@ -344,7 +344,8 @@ export async function discoverModelStudioModels(
+         Array.isArray(item.capabilities) &&
+         item.capabilities.length &&
+         !item.capabilities.some(
+-          (v: unknown) => v === "TG" || v === "Reasoning" || v === "Multimodal-Omni",
++          // ASR 的文本是转写结果；普通聊天资格由输入/输出两端检查，不能抹掉明确的 Text 输出。
++          (v: unknown) => v === "TG" || v === "Reasoning" || v === "Multimodal-Omni" || v === "ASR",
+         )
+       )
+         config = {
+diff --git a/packages/services/src/model-provider/modelDiscoveryMetadata.ts b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+index 48e787c..9bc2b21 100644
+--- a/packages/services/src/model-provider/modelDiscoveryMetadata.ts
++++ b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+@@ -6,6 +6,10 @@ const record = (value: unknown): Record<string, unknown> =>
+     : {};
+ const positive = (value: unknown): number | undefined =>
+   typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
++const supported = (value: unknown): boolean | undefined => {
++  const flag = typeof value === "boolean" ? value : record(value).supported;
++  return typeof flag === "boolean" ? flag : undefined;
++};
+ const strings = (value: unknown): string[] | undefined =>
+   Array.isArray(value) && value.every((item) => typeof item === "string" && item.trim())
+     ? [...new Set(value as string[])]
+@@ -15,7 +19,7 @@ const strings = (value: unknown): string[] | undefined =>
+ export function readDiscoveredModelMetadata(
+   value: unknown,
+   openRouterApi?: ProviderApiType,
+-  catalogType?: "together",
++  catalogType?: "together" | "anthropic",
+ ): ModelConfigObject {
+   const item = record(value);
+   const architecture = record(item.architecture);
+@@ -27,14 +31,17 @@ export function readDiscoveredModelMetadata(
+   const imageInput =
+     typeof item.supports_image_in === "boolean"
+       ? item.supports_image_in
+-      : typeof capabilities.vision === "boolean" ? capabilities.vision : undefined;
+-  const videoInput = typeof item.supports_video_in === "boolean" ? item.supports_video_in : undefined;
++      : (supported(capabilities.vision) ?? supported(capabilities.image_input));
++  const pdfInput = supported(capabilities.pdf_input);
++  const videoInput =
++    typeof item.supports_video_in === "boolean" ? item.supports_video_in : undefined;
+   const context = positive(
+     item.context_window ??
+       item.contextWindow ??
+       item.context_length ??
+       item.max_context_length ??
+       item.inputTokenLimit ??
++      (catalogType === "anthropic" ? item.max_input_tokens : undefined) ??
+       limits.max_context_length,
+   );
+   const output = positive(
+@@ -43,12 +50,20 @@ export function readDiscoveredModelMetadata(
+       item.max_completion_tokens ??
+       item.outputTokenLimit ??
+       item.max_output_length ??
++      (catalogType === "anthropic" ? item.max_tokens : undefined) ??
+       topProvider.max_completion_tokens ??
+       limits.max_completion_tokens,
+   );
+-  const input = strings(item.input_modalities ?? architecture.input_modalities);
++  const input =
++    strings(item.input_modalities ?? architecture.input_modalities) ??
++    (architecture.modality === "text+vision"
++      ? ["text", "image"]
++      : architecture.modality === "text"
++        ? ["text"]
++        : undefined);
+   const outputs = strings(item.output_modalities ?? architecture.output_modalities);
+   const parameters = strings(item.supported_parameters);
++  const features = strings(item.supported_features);
+   const reasoning = record(item.reasoning);
+   const advertised =
+     reasoning.supported_efforts === null
+@@ -59,14 +74,13 @@ export function readDiscoveredModelMetadata(
+   const values = [...new Set(["auto", ...(levels ?? [])])];
+   const defaultDisabled = reasoning.default_enabled === false && reasoning.mandatory !== true;
+   if (reasoning.mandatory === false && !values.includes("none")) values.push("disabled");
+-  const preferred =
+-    defaultDisabled
+-      ? "auto"
+-      : typeof reasoning.default_effort === "string" &&
+-          reasoning.default_effort !== "none" &&
+-          values.includes(reasoning.default_effort)
+-        ? reasoning.default_effort
+-        : "auto";
++  const preferred = defaultDisabled
++    ? "auto"
++    : typeof reasoning.default_effort === "string" &&
++        reasoning.default_effort !== "none" &&
++        values.includes(reasoning.default_effort)
++      ? reasoning.default_effort
++      : "auto";
+   const effortMap =
+     openRouterApi === "anthropic-messages"
+       ? 'reasoningLevel == "auto" ? {} : reasoningLevel == "disabled" || reasoningLevel == "none" ? {"thinking":{"type":"disabled"}} : {"output_config":{"effort":reasoningLevel}}'
+@@ -74,19 +88,26 @@ export function readDiscoveredModelMetadata(
+   const structured =
+     typeof item.supports_json_schema_output === "boolean"
+       ? item.supports_json_schema_output
+-      : typeof capabilities.structured_outputs === "boolean"
+-        ? capabilities.structured_outputs
+-      : parameters
+-        ? parameters.includes("structured_outputs")
+-        : undefined;
++      : supported(capabilities.structured_outputs) !== undefined
++        ? supported(capabilities.structured_outputs)
++        : features
++          ? features.includes("structured_outputs")
++          : parameters
++            ? parameters.includes("structured_outputs")
++            : undefined;
+   const tools =
+     typeof item.supports_tool_calls === "boolean"
+       ? item.supports_tool_calls
+-      : typeof capabilities.function_calling === "boolean"
+-        ? capabilities.function_calling
+-        : parameters
+-          ? parameters.includes("tools")
+-          : undefined;
++      : supported(capabilities.tools) !== undefined
++        ? supported(capabilities.tools)
++        : supported(capabilities.function_calling) !== undefined
++          ? supported(capabilities.function_calling)
++          : features
++            ? features.includes("tools")
++            : parameters
++              ? parameters.includes("tools")
++              : undefined;
++  const anthropicEffort = readAnthropicEffort(capabilities, catalogType);
+   return {
+     ...(context ||
+     input ||
+@@ -97,6 +118,7 @@ export function readDiscoveredModelMetadata(
+     typeof capabilities.completion_chat === "boolean" ||
+     imageInput !== undefined ||
+     videoInput !== undefined ||
++    pdfInput !== undefined ||
+     structured !== undefined
+       ? {
+           properties: {
+@@ -115,14 +137,15 @@ export function readDiscoveredModelMetadata(
+                 }
+               : outputType === "transcribe"
+                 ? { inputFormat: { supportsText: false, supportsAudio: true } }
+-              : imageInput !== undefined || videoInput !== undefined
+-                ? {
+-                    inputFormat: {
+-                      ...(imageInput !== undefined ? { supportsImage: imageInput } : {}),
+-                      ...(videoInput !== undefined ? { supportsVideo: videoInput } : {}),
+-                    },
+-                  }
+-                : {}),
++                : imageInput !== undefined || videoInput !== undefined || pdfInput !== undefined
++                  ? {
++                      inputFormat: {
++                        ...(imageInput !== undefined ? { supportsImage: imageInput } : {}),
++                        ...(videoInput !== undefined ? { supportsVideo: videoInput } : {}),
++                        ...(pdfInput !== undefined ? { supportsPdf: pdfInput } : {}),
++                      },
++                    }
++                  : {}),
+             ...(item.type === "classifier"
+               ? { outputFormat: { supportsText: false, supportsClassification: true } }
+               : outputs
+@@ -136,21 +159,25 @@ export function readDiscoveredModelMetadata(
+                 : outputType
+                   ? {
+                       outputFormat: {
+-                        supportsText: ["chat", "language", "code", "transcribe"].includes(outputType),
++                        supportsText: ["chat", "language", "code", "transcribe"].includes(
++                          outputType,
++                        ),
+                         supportsImage: outputType === "image",
+                         supportsVideo: outputType === "video",
+                       },
+                     }
+-                : typeof capabilities.completion_chat === "boolean"
+-                  ? { outputFormat: { supportsText: capabilities.completion_chat } }
+-                  : {}),
++                  : typeof capabilities.completion_chat === "boolean"
++                    ? { outputFormat: { supportsText: capabilities.completion_chat } }
++                    : {}),
+             ...(tools !== undefined ? { supportsToolCall: tools } : {}),
+             ...(structured !== undefined ? { supportsJsonSchemaOutput: structured } : {}),
+           },
+         }
+       : {}),
+-    ...(item.active === false || item.archived === true || item.deprecated === true ? { enabled: false } : {}),
+-    ...(output || (openRouterApi && declaredReasoning)
++    ...(item.active === false || item.archived === true || item.deprecated === true
++      ? { enabled: false }
++      : {}),
++    ...(output || (openRouterApi && declaredReasoning) || anthropicEffort
+       ? {
+           optionSpecs: {
+             ...(output ? { maxOutputTokens: { max: output } } : {}),
+@@ -163,8 +190,37 @@ export function readDiscoveredModelMetadata(
+                   },
+                 }
+               : {}),
++            ...(!openRouterApi ? anthropicEffort : {}),
+           },
+         }
+       : {}),
+   };
+ }
++
++function readAnthropicEffort(capabilities: Record<string, unknown>, catalogType?: string) {
++  if (catalogType !== "anthropic") return undefined;
++  const effort = record(capabilities.effort);
++  const levels = ["low", "medium", "high", "xhigh", "max"];
++  if (supported(effort) === undefined) return undefined;
++  if (
++    supported(effort) !== false &&
++    !levels.some((level) => supported(effort[level]) !== undefined)
++  ) {
++    return undefined;
++  }
++  const advertised =
++    supported(effort) === true ? levels.filter((level) => supported(effort[level]) === true) : [];
++  const thinking = record(capabilities.thinking);
++  const adaptive =
++    supported(thinking) === true && supported(record(thinking.types).adaptive) === true;
++  // 支持 thinking 不等于允许关闭（例如 Opus 5.5）；目录只建立其明确返回的 effort 档位。
++  return {
++    reasoningLevel: {
++      values: ["auto", ...advertised],
++      defaultValue: "auto",
++      map: advertised.length
++        ? `reasoningLevel == "auto" ? {} : {${adaptive ? '"thinking":{"type":"adaptive"},' : ""}"output_config":{"effort":reasoningLevel}}`
++        : "{}",
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 4fdad72..db6646c 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -44,6 +44,42 @@ export function mapClaudeNativeModels(
+   }));
+ }
+ 
++export function mapCodexNativeModels(
++  models: Awaited<ReturnType<typeof inspectCodexNativeConnection>>["models"],
++) {
++  return models.map((model) => ({
++    id: model.model,
++    name: model.displayName,
++    config: {
++      properties: {
++        // 原生目录的实际容量优先于旧推荐值；缺失值不补成通用预算。
++        ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
++        inputFormat: {
++          supportsText: model.inputModalities.includes("text"),
++          supportsImage: model.inputModalities.includes("image"),
++          supportsPdf: false,
++          supportsAudio: false,
++          supportsVideo: false,
++        },
++      },
++      optionSpecs: {
++        maxOutputTokens: { map: "{}" },
++        reasoningLevel: {
++          values: [
++            "auto",
++            ...model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
++          ],
++          defaultValue: model.defaultReasoningEffort,
++          map: "{}",
++        },
++        speedMode: model.serviceTiers?.some((tier) => tier.id === "priority")
++          ? ("openai-priority" as const)
++          : null,
++      },
++    },
++  }));
++}
++
+ /** Node host only, injected alongside the existing subscription and CC Switch adapters. */
+ export function createNativeCliConnectionAdapter(
+   resolveEnvironment: () => Promise<Record<string, string>> = async () => ({}),
+@@ -89,35 +125,7 @@ export function createNativeCliConnectionAdapter(
+           planType: inspected.planType,
+           catalog: {
+             source: "provider" as const,
+-            models: inspected.models.map((model) => ({
+-              id: model.model,
+-              name: model.displayName,
+-              config: {
+-                properties: {
+-                  inputFormat: {
+-                    supportsText: model.inputModalities.includes("text"),
+-                    supportsImage: model.inputModalities.includes("image"),
+-                    supportsPdf: false,
+-                    supportsAudio: false,
+-                    supportsVideo: false,
+-                  },
+-                },
+-                optionSpecs: {
+-                  maxOutputTokens: { map: "{}" },
+-                  reasoningLevel: {
+-                    values: [
+-                      "auto",
+-                      ...model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+-                    ],
+-                    defaultValue: model.defaultReasoningEffort,
+-                    map: "{}",
+-                  },
+-                  speedMode: model.serviceTiers?.some((tier) => tier.id === "priority")
+-                    ? ("openai-priority" as const)
+-                    : null,
+-                },
+-              },
+-            })),
++            models: mapCodexNativeModels(inspected.models),
+           },
+         };
+       }
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index c0d27c8..f674570 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -17,7 +17,175 @@ import {
+   createRegistryProviderConfig,
+   completeNewModelSelection,
+ } from "@zcode/provider";
+-import { compileModelOptionMaps } from "../../model-option-map/src/index.js";
++import { compileModelOptionMaps, compileModelOptionMap } from "../../model-option-map/src/index.js";
++
++import { readDiscoveredModelMetadata } from "../src/model-provider/modelDiscoveryMetadata.js";
++
++test("current Anthropic directory limits, negative capabilities and supported effort survive Registry/reopen", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "anthropic",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    const data = {
++      id: "claude-sonnet-5-5",
++      display_name: "Current directory fixture",
++      type: "model",
++      max_input_tokens: 64000,
++      max_tokens: 4096,
++      capabilities: {
++        image_input: { supported: false },
++        pdf_input: { supported: true },
++        structured_outputs: { supported: false },
++        effort: {
++          supported: true,
++          low: { supported: false },
++          medium: { supported: true },
++          high: { supported: false },
++          xhigh: { supported: false },
++          max: { supported: false },
++        },
++        thinking: {
++          supported: true,
++          types: { adaptive: { supported: true }, enabled: { supported: false } },
++        },
++      },
++    };
++    f.setFetch(async (input, init) => {
++      assert.equal(String(input), "https://api.anthropic.com/v1/models");
++      assert.equal(new Headers(init?.headers).get("x-api-key"), "synthetic");
++      return Response.json({ data: [data], has_more: false, last_id: data.id });
++    });
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const model = async () =>
++      (await f.service.getView()).providers.find((p) => p.providerId === providerId)!.models.find(m => m.modelId === data.id)!;
++    let m = await model();
++    assert.equal(m.effectiveConfig.properties?.contextWindow, 64000);
++    assert.equal(m.contextEvidenceSource, "provider");
++    assert.equal(m.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 4096);
++    assert.equal(m.effectiveConfig.properties?.inputFormat?.supportsImage, false);
++    assert.equal(m.effectiveConfig.properties?.inputFormat?.supportsPdf, true);
++    assert.equal(m.effectiveConfig.properties?.supportsJsonSchemaOutput, false);
++    assert.deepEqual(m.effectiveConfig.optionSpecs?.reasoningLevel?.values, [
++      "auto",
++      "medium",
++    ]);
++    assert.equal(m.effectiveConfig.optionSpecs?.reasoningLevel?.defaultValue, "auto");
++    const compiled = compileModelOptionMap(m.effectiveConfig.optionSpecs!.reasoningLevel!.map!, "reasoningLevel");
++    const map = { evaluate: (value: string) => JSON.parse(JSON.stringify(compiled.evaluate(value))) };
++    assert.deepEqual(map.evaluate("medium"), {
++      thinking: { type: "adaptive" },
++      output_config: { effort: "medium" },
++    });
++    assert.deepEqual(map.evaluate("auto"), {});
++    await f.service.savePersonalModelDraft({
++      providerId,
++      originalModelId: data.id,
++      nextModelId: data.id,
++      personalConfig: { properties: { contextWindow: 32000 } },
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    data.max_input_tokens = 128000;
++    data.capabilities.thinking.supported = false;
++    data.capabilities.effort.supported = false;
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    m = await model();
++    assert.equal(m.effectiveConfig.properties?.contextWindow, 32000);
++    assert.deepEqual(m.effectiveConfig.optionSpecs?.reasoningLevel?.values, ["auto"]);
++    assert.deepEqual(
++      {...compileModelOptionMap(
++        m.effectiveConfig.optionSpecs!.reasoningLevel!.map!,
++        "reasoningLevel",
++      ).evaluate("auto")},
++      {},
++    );
++    assert.deepEqual(
++      readDiscoveredModelMetadata(
++        { max_input_tokens: null, max_tokens: 0, capabilities: null },
++        undefined,
++        "anthropic",
++      ),
++      {},
++    );
++    assert.deepEqual(
++      readDiscoveredModelMetadata({ max_input_tokens: 999, max_tokens: 999 }, undefined),
++      {},
++      "Messages-only limit aliases leaked to another catalogue contract",
++    );
++    assert.equal(readDiscoveredModelMetadata({ capabilities: { thinking: { supported: false } } }, undefined, "anthropic").optionSpecs?.reasoningLevel, undefined,
++      "Thinking and effort are independent; no thinking does not establish no effort");
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Cerebras explicit tools/features and text+vision metadata survive discovery/reopen without public enrichment", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-cerebras",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    let tools = false;
++    f.setFetch(async () =>
++      Response.json({
++        data: [
++      { id: "native-tools", capabilities: { tools, function_calling: true } },
++          {
++            id: "feature-vision",
++            supported_features: ["tools", "structured_outputs"],
++            architecture: { modality: "text+vision" },
++          },
++          {
++            id: "feature-text",
++            supported_features: ["json_mode"],
++            architecture: { modality: "text" },
++          },
++          { id: "unknown-multimodal", architecture: { modality: "multimodal" } },
++        ],
++      }),
++    );
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const models = async () =>
++      (await f.service.getView()).providers.find((p) => p.providerId === providerId)!.models;
++    const first = await models();
++    assert.equal(
++      first.find((m) => m.modelId === "native-tools")!.evidenceConfig.properties?.supportsToolCall,
++      false,
++    );
++    const vision = first.find((m) => m.modelId === "feature-vision")!;
++    assert.equal(vision.evidenceConfig.properties?.supportsToolCall, true);
++    assert.equal(vision.evidenceConfig.properties?.supportsJsonSchemaOutput, true);
++    assert.equal(vision.evidenceConfig.properties?.inputFormat?.supportsImage, true);
++    const text = first.find((m) => m.modelId === "feature-text")!;
++    assert.equal(text.evidenceConfig.properties?.inputFormat?.supportsImage, false);
++    assert.equal(
++      text.evidenceConfig.properties?.supportsJsonSchemaOutput,
++      false,
++      "JSON mode is not JSON Schema support",
++    );
++    assert.equal(
++      first.find((m) => m.modelId === "unknown-multimodal")!.evidenceConfig.properties?.inputFormat
++        ?.supportsImage,
++      undefined,
++    );
++    tools = true;
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    assert.equal(
++      (await models()).find((m) => m.modelId === "native-tools")!.evidenceConfig.properties
++        ?.supportsToolCall,
++      true,
++    );
++  } finally {
++    await f.dispose();
++  }
++});
+ 
+ test("model-list diagnostics do not call an unexplained 403 an authentication failure", () => {
+   assert.equal(modelCatalogFailureKind("Model list request failed (401)"), "unauthorized");
+@@ -1317,7 +1485,7 @@ test("regional Model Studio catalog uses native pages/capabilities without rewri
+         success: true,
+         output: {
+           page_no: page,
+-          total: 3,
++          total: 4,
+           models:
+             page === 1
+               ? [
+@@ -1348,6 +1516,15 @@ test("regional Model Studio catalog uses native pages/capabilities without rewri
+                     features: [],
+                     inference_metadata: { request_modality: ["Text"], response_modality: ["Text"] },
+                   },
++                  {
++                    model: "audio-transcription",
++                    capabilities: ["ASR"],
++                    features: [],
++                    inference_metadata: {
++                      request_modality: ["Audio"],
++                      response_modality: ["Text"],
++                    },
++                  },
+                 ],
+         },
+       });
+@@ -1367,6 +1544,20 @@ test("regional Model Studio catalog uses native pages/capabilities without rewri
+     assert.equal(chat.evidenceConfig.properties?.supportsToolCall, true);
+     assert.equal(chat.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 16384);
+     assert.equal(provider.models.find((m) => m.modelId === "text-embed")?.selectable, false);
++    const transcription = provider.models.find((m) => m.modelId === "audio-transcription")!;
++    assert.equal(transcription.evidenceConfig.properties?.inputFormat?.supportsText, false);
++    assert.equal(transcription.evidenceConfig.properties?.inputFormat?.supportsAudio, true);
++    assert.equal(transcription.evidenceConfig.properties?.outputFormat?.supportsText, true);
++    assert.equal(
++      transcription.selectable,
++      false,
++      "audio transcription cannot enter the chat picker",
++    );
++    assert.ok(
++      !(await f.runtime.modelSelection.getView()).providers
++        .flatMap((p) => p.models)
++        .some((m) => m.modelId === "audio-transcription"),
++    );
+     assert.equal(
+       provider.models.find((m) => m.modelId === "wan-image")?.evidenceConfig.properties
+         ?.outputFormat?.supportsImage,
+diff --git a/packages/services/test/model-preferences.test.ts b/packages/services/test/model-preferences.test.ts
+index bc39cc6..862a432 100644
+--- a/packages/services/test/model-preferences.test.ts
++++ b/packages/services/test/model-preferences.test.ts
+@@ -16,6 +16,8 @@ import {
+   ProviderRegistry,
+   ModelConfig,
+   ModelPropertiesConfig,
++  ModelConfigRules,
++  parseZCodeBuiltinModelConfigRules,
+   resolveInitialModelSelection,
+ } from "@zcode/provider";
+ import { createModelCatalogPort } from "../../../apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.js";
+@@ -26,6 +28,98 @@ import {
+ 
+ const selection = (modelId: string) => ({ providerId: "synthetic", modelId });
+ 
++test("exact evidence scopes survive parse, compose and encoding without restricting pure wire maps", () => {
++  const facts = {
++    modelMatch: ".*fixture(?:.*)?",
++    evidenceModelIds: ["fixture"],
++    config: { properties: { contextWindow: 64000 } },
++  };
++  const wire = {
++    modelMatch: ".*fixture(?:.*)?",
++    apiTypeMatch: "openai-chat-completions",
++    config: {
++      optionSpecs: { maxOutputTokens: { map: "{'max_tokens':maxOutputTokens}" } },
++    },
++  };
++  const data = {
++    modelRules: [facts],
++    modelApiRules: [wire],
++    providerSiteRules: [],
++    templateModelRules: [],
++    builtinProviderModelRules: [],
++  };
++  const parsed = parseZCodeBuiltinModelConfigRules(data);
++  const rules = ModelConfigRules.composeEffective(parsed, ModelConfigRules.empty());
++  assert.deepEqual(rules.toZCodeBuiltinJSON(), data);
++  assert.deepEqual(rules.toJSON().modelRules[0]?.evidenceModelIds, ["fixture"]);
++  assert.ok(Object.isFrozen((rules.rules()[0] as any).evidenceModelIds));
++  for (const bad of [[" "], [" fixture"], ["fixture", "fixture"]]) {
++    assert.throws(() =>
++      parseZCodeBuiltinModelConfigRules({
++        ...data,
++        modelRules: [{ ...facts, evidenceModelIds: bad }],
++      }),
++    );
++  }
++  const input = {
++    providerId: "p",
++    modelId: "fixture-future",
++    apiType: "openai-chat-completions" as const,
++  };
++  assert.equal(rules.resolve(input).properties?.contextWindow, undefined);
++  assert.equal(
++    rules.resolve(input).optionSpecs?.maxOutputTokens?.map,
++    wire.config.optionSpecs.maxOutputTokens.map,
++  );
++  assert.deepEqual(rules.resolveEvidence(input).toJSON(), {});
++  assert.equal(
++    rules.resolveEvidence({ ...input, modelId: "fixture" }).properties?.contextWindow,
++    64000,
++  );
++});
++
++test("legacy broad recommendations stay internal while literal and observed/personal facts remain exact", () => {
++  const rules = new ModelConfigRules([
++    {
++      type: "model",
++      modelMatch: ".*legacy.*",
++      config: parseModelConfig({ properties: { contextWindow: 64000 } }),
++    },
++    {
++      type: "model",
++      modelMatch: "literal\\.model",
++      config: parseModelConfig({ properties: { contextWindow: 48000 } }),
++    },
++  ]);
++  const input = { providerId: "p", modelId: "legacy-future" };
++  assert.equal(rules.resolve(input).properties?.contextWindow, 64000);
++  assert.deepEqual(rules.resolveEvidence(input).toJSON(), {});
++  assert.equal(
++    rules.resolveEvidence({ ...input, modelId: "literal.model" }).properties?.contextWindow,
++    48000,
++  );
++  assert.deepEqual(rules.resolveEvidence({ ...input, modelId: "Literal.model" }).toJSON(), {});
++  let personal = ModelConfigRules.empty().withDiscovered("p", [
++    { modelId: input.modelId, config: parseModelConfig({ properties: { contextWindow: 32000 } }) },
++  ]);
++  assert.equal(
++    ModelConfigRules.composeEffective(rules, personal).resolveEvidence(input).properties
++      ?.contextWindow,
++    32000,
++  );
++  personal = personal.setExact(
++    "p",
++    input.modelId,
++    parseModelConfig({ properties: { contextWindow: 24000 } }),
++    true,
++  );
++  assert.equal(
++    ModelConfigRules.composeEffective(rules, personal).resolveEvidence(input).properties
++      ?.contextWindow,
++    24000,
++  );
++});
++
+ test("clearing optional context choices cannot invalidate an otherwise complete model", () => {
+   const model = createRegistryModelConfig(
+     parseModelConfig({
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index fd75df0..b0b1b2b 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -8,10 +8,97 @@ import type { ProviderSettingsFacade } from "@zcode/provider";
+ import { startClaudeNativeLogin } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-login.js";
+ import { requireClaudeSubscriptionAccount } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.js";
+ import { createNativeCliConnectionOperations } from "../src/model-provider/nativeCliConnection.js";
+-import { mapClaudeNativeModels } from "../src/model-provider/nativeCliConnectionAdapter.js";
++import {
++  mapClaudeNativeModels,
++  mapCodexNativeModels,
++} from "../src/model-provider/nativeCliConnectionAdapter.js";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
+ import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
+ 
++test("Codex directory capacity replaces old recommendations and preserves explicit corrections on refresh/reopen", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-capacity-"));
++  let capacity = 384000;
++  const open = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime({
++        personalFilePath: join(directory, "providers.json"),
++        zcodeBuiltinFilePath: fileURLToPath(
++          new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++        ),
++        watch: false,
++        personalPollingIntervalMs: false,
++      }),
++      nativeCli: {
++        inspect: async () => ({
++          accountId: "fixture-native-account",
++          accountName: "Fixture",
++          planType: "pro",
++          catalog: {
++            source: "provider",
++            models: mapCodexNativeModels([
++              {
++                id: "gpt-6-astra",
++                model: "gpt-6-astra",
++                displayName: "Fixture",
++                hidden: false,
++                inputModalities: ["text", "image"],
++                isDefault: true,
++                supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Fixture" }],
++                defaultReasoningEffort: "high",
++                contextWindow: capacity,
++              },
++            ]),
++          },
++        }),
++        login: () => {
++          throw new Error("Fixture is already connected");
++        },
++      },
++    });
++  let runtime = open();
++  try {
++    await runtime.start();
++    const { providerId } = await runtime.providerSettings.createPersonalProvider({
++      templateId: "fleet-chatgpt-native",
++    });
++    await runtime.providerSettings.connectNativeCli(providerId);
++    const model = async () =>
++      (await runtime.providerSettings.getView()).providers.find((p) => p.providerId === providerId)!
++        .models[0]!;
++    assert.equal((await model()).effectiveConfig.properties?.contextWindow, capacity);
++    assert.equal((await model()).contextEvidenceSource, "provider");
++    assert.notEqual(
++      (await model()).evidenceConfig.optionSpecs?.maxOutputTokens?.max,
++      capacity,
++      "Executor capacity must not replace the independent output recommendation",
++    );
++    capacity = 512000;
++    await runtime.providerSettings.discoverModels(providerId);
++    runtime.dispose();
++    runtime = open();
++    await runtime.start();
++    assert.equal((await model()).effectiveConfig.properties?.contextWindow, capacity);
++    await runtime.providerSettings.savePersonalModelDraft({
++      providerId,
++      originalModelId: "gpt-6-astra",
++      nextModelId: "gpt-6-astra",
++      personalConfig: { properties: { contextWindow: 123456 } },
++      basedOnRevision: (await runtime.providerSettings.getView()).revision,
++      useRecommendedConfig: true,
++    });
++    capacity = 64000;
++    await runtime.providerSettings.discoverModels(providerId);
++    runtime.dispose();
++    runtime = open();
++    await runtime.start();
++    assert.equal((await model()).effectiveConfig.properties?.contextWindow, 123456);
++    assert.equal((await model()).contextEvidenceSource, "saved");
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
+ test("native account connection publishes selectable models through the real registry and reopen", async () => {
+   const directory = await mkdtemp(join(tmpdir(), "fleet-native-registry-"));
+   const personalFilePath = join(directory, "providers.json");

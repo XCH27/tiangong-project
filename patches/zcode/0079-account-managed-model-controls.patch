@@ -1,0 +1,60 @@
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index c0d5851..5ff75d4 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -109,6 +109,7 @@ const enUS: Record<string, string> = {
+     "This model is already listed. Enable it to use it.",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
++  "settings.modelProvider.discovery.accountModelsEmpty": "No models are available yet.",
+   "settings.modelProvider.discovery.loading": "Fetching models…",
+   "settings.modelProvider.discovery.available": "Available models",
+   "settings.modelProvider.discovery.allAdded": "All catalog models have been added",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 2aac608..a7db114 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -3465,6 +3465,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.modelConfigIncomplete": "模型配置不完整",
+   "settings.modelProvider.models": "模型列表",
+   "settings.modelProvider.modelsEmpty": "当前没有配置模型，添加模型后可在聊天中使用。",
++  "settings.modelProvider.discovery.accountModelsEmpty": "暂无可用模型。",
+   "settings.modelProvider.addModel": "添加模型",
+   "settings.modelProvider.modelId": "模型 ID",
+   "settings.modelProvider.modelDisplayName": "显示名称",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 8f7002c..138f793 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -615,6 +615,9 @@ export function ProviderModelsSection({
+ }) {
+   const { intl } = useZCodeIntl();
+   const { providerSettingsService } = useServices();
++  const accountManagedModels = ["subscription", "native-cli", "zhipu-account"].includes(
++    providerAccess?.type ?? "",
++  );
+   const [addedModelId, setAddedModelId] = useState<string>();
+   const handleAddModel = async (value: string) => {
+     const model = createManualProviderModel(value);
+@@ -697,7 +700,9 @@ export function ProviderModelsSection({
+             {intl.formatMessage({
+               id: search
+                 ? "settings.modelProvider.discovery.noMatches"
+-                : "settings.modelProvider.modelsEmpty",
++                : accountManagedModels
++                  ? "settings.modelProvider.discovery.accountModelsEmpty"
++                  : "settings.modelProvider.modelsEmpty",
+             })}
+           </div>
+         )}
+@@ -715,9 +720,7 @@ export function ProviderModelsSection({
+       <ModelDiscoverySection
+         providerId={providerId}
+         discoveryEnabled={providerAccess?.type !== "zhipu-account"}
+-        manualAddEnabled={
+-          providerAccess?.type !== "subscription" && providerAccess?.type !== "zhipu-account"
+-        }
++        manualAddEnabled={!accountManagedModels}
+         disabledReason={
+           discoveryBlockedReason
+             ? intl.formatMessage({

@@ -1,0 +1,540 @@
+diff --git a/packages/ui/src/ModelConfigSelect.tsx b/packages/ui/src/ModelConfigSelect.tsx
+index 83929fed3b739d08bcc57410e37168fe88443da9..1dda6f069cdfab790289ea0d32ca8767ca01ef6f 100644
+--- a/packages/ui/src/ModelConfigSelect.tsx
++++ b/packages/ui/src/ModelConfigSelect.tsx
+@@ -48,6 +48,7 @@ import {
+ } from "@/lib/pickerFocus.js";
+ import { RollingToolbarLabel } from "@/chat-input-toolbar/RollingToolbarLabel.js";
+ import { ModelInputCapabilityBadge } from "@/components/ModelInputCapabilityBadge.js";
++import { VirtualComposerModelList } from "@/chat-input-toolbar/VirtualComposerModelList.js";
+ 
+ export interface ModelSelectGroupItem {
+   key: string;
+@@ -237,6 +238,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+   const [modelQuery, setModelQuery] = useState("");
+   const modelSearchRef = useRef<HTMLInputElement>(null);
++  const modelListFocusFirstRef = useRef<(() => void) | null>(null);
+   const open = controlledOpen ?? uncontrolledOpen;
+   const lastOpenRequestKeyRef = useRef(openRequestKey);
+   const hasSelectableModel = modelGroups.length > 0;
+@@ -492,16 +494,23 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+   }, [footerActions, manageModelsLabel, onManageModels, showManageModelsAction]);
+ 
+   const search = modelSubmenu ? modelQuery.trim().toLocaleLowerCase() : "";
+-  const visibleGroups = search
+-    ? modelGroups
+-        .map((group) => ({
+-          ...group,
+-          items: group.items.filter((item) =>
+-            `${group.label} ${item.name} ${item.value}`.toLocaleLowerCase().includes(search),
+-          ),
+-        }))
+-        .filter((group) => group.items.length > 0)
+-    : modelGroups;
++  const visibleGroups = useMemo(
++    () =>
++      search
++        ? modelGroups
++            .map((group) => ({
++              ...group,
++              items: group.items.filter((item) =>
++                `${group.label} ${item.name} ${item.value}`.toLocaleLowerCase().includes(search),
++              ),
++            }))
++            .filter((group) => group.items.length > 0)
++        : modelGroups,
++    [search, modelGroups],
++  );
++  const virtualModels =
++    Boolean(modelSubmenu) &&
++    visibleGroups.reduce((total, group) => total + group.items.length, 0) > 50;
+   const modelOptions = open ? (
+     <>
+       {leadingItems !== undefined && leadingItems.length > 0 ? (
+@@ -510,71 +519,90 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+           {hasSelectableModel ? <DropdownMenuSeparator /> : null}
+         </>
+       ) : null}
+-      {hasSelectableModel && shouldShowProviderLevel
+-        ? visibleGroups.map((group, index) => {
+-            const groupSeparator = shouldRenderModelGroupSeparator(
+-              visibleGroups[index - 1],
+-              group,
+-            ) ? (
+-              <DropdownMenuSeparator />
+-            ) : null;
+-            // One searchable list in the composer: headings distinguish connections
+-            // without a third menu. Other selectors retain their existing hierarchy.
+-            if (group.directItems || modelSubmenu) {
+-              return (
+-                <Fragment key={group.key}>
+-                  {groupSeparator}
+-                  <div>
+-                    <DropdownMenuLabel
+-                      className="flex min-h-8 items-center px-2 py-1"
+-                      data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
+-                      data-model-provider-key={group.key}
+-                    >
+-                      {renderGroupLabel(group)}
+-                    </DropdownMenuLabel>
+-                    {renderProviderConnectionHeader(group)}
+-                    <DropdownMenuRadioGroup value={normalizedValue}>
+-                      {group.items.map((item) => renderModelItem(item))}
+-                    </DropdownMenuRadioGroup>
+-                  </div>
+-                </Fragment>
+-              );
+-            }
+-
+-            const groupSelected = isModelSelectGroupSelected(group, normalizedValue);
++      {virtualModels ? (
++        <VirtualComposerModelList
++          key={search}
++          groups={visibleGroups}
++          value={normalizedValue}
++          focusFirstRef={modelListFocusFirstRef}
++          renderItem={renderModelItem}
++          renderHeading={(group) => (
++            <>
++              <DropdownMenuLabel
++                className="flex min-h-8 items-center px-2 py-1"
++                data-model-provider-key={group.key}
++              >
++                {renderGroupLabel(group)}
++              </DropdownMenuLabel>
++              {renderProviderConnectionHeader(group)}
++            </>
++          )}
++        />
++      ) : hasSelectableModel && shouldShowProviderLevel ? (
++        visibleGroups.map((group, index) => {
++          const groupSeparator = shouldRenderModelGroupSeparator(
++            visibleGroups[index - 1],
++            group,
++          ) ? (
++            <DropdownMenuSeparator />
++          ) : null;
++          // One searchable list in the composer: headings distinguish connections
++          // without a third menu. Other selectors retain their existing hierarchy.
++          if (group.directItems || modelSubmenu) {
+             return (
+               <Fragment key={group.key}>
+                 {groupSeparator}
+-                <DropdownMenuSub>
+-                  <DropdownMenuSubTrigger
+-                    className="min-h-8"
++                <div>
++                  <DropdownMenuLabel
++                    className="flex min-h-8 items-center px-2 py-1"
+                     data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
+                     data-model-provider-key={group.key}
+-                    data-model-provider-selected={groupSelected ? "true" : undefined}
+                   >
+                     {renderGroupLabel(group)}
+-                    {groupSelected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
+-                  </DropdownMenuSubTrigger>
+-                  {/* Provider leaves must escape the combined Model row's scroll clip. */}
+-                  <DropdownMenuPortal>
+-                    <DropdownMenuSubContent
+-                      className={cn(
+-                        "max-h-72 overflow-y-auto",
+-                        // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
+-                        providerSubmenuClassName ??
+-                          "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
+-                      )}
+-                    >
+-                      {renderModelItems(group.items)}
+-                    </DropdownMenuSubContent>
+-                  </DropdownMenuPortal>
+-                </DropdownMenuSub>
++                  </DropdownMenuLabel>
++                  {renderProviderConnectionHeader(group)}
++                  <DropdownMenuRadioGroup value={normalizedValue}>
++                    {group.items.map((item) => renderModelItem(item))}
++                  </DropdownMenuRadioGroup>
++                </div>
+               </Fragment>
+             );
+-          })
+-        : hasSelectableModel
+-          ? renderModelItems(visibleGroups[0]?.items ?? [])
+-          : null}
++          }
++
++          const groupSelected = isModelSelectGroupSelected(group, normalizedValue);
++          return (
++            <Fragment key={group.key}>
++              {groupSeparator}
++              <DropdownMenuSub>
++                <DropdownMenuSubTrigger
++                  className="min-h-8"
++                  data-testid={testId(TID_CHAT_MODEL_SELECT_GROUP, group.key)}
++                  data-model-provider-key={group.key}
++                  data-model-provider-selected={groupSelected ? "true" : undefined}
++                >
++                  {renderGroupLabel(group)}
++                  {groupSelected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
++                </DropdownMenuSubTrigger>
++                {/* Provider leaves must escape the combined Model row's scroll clip. */}
++                <DropdownMenuPortal>
++                  <DropdownMenuSubContent
++                    className={cn(
++                      "max-h-72 overflow-y-auto",
++                      // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
++                      providerSubmenuClassName ??
++                        "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
++                    )}
++                  >
++                    {renderModelItems(group.items)}
++                  </DropdownMenuSubContent>
++                </DropdownMenuPortal>
++              </DropdownMenuSub>
++            </Fragment>
++          );
++        })
++      ) : hasSelectableModel ? (
++        renderModelItems(visibleGroups[0]?.items ?? [])
++      ) : null}
+       {modelSubmenu && visibleGroups.length === 0 && modelSubmenu.emptyLabel ? (
+         <DropdownMenuLabel>{modelSubmenu.emptyLabel}</DropdownMenuLabel>
+       ) : null}
+@@ -730,6 +758,10 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+                           event.stopPropagation();
+                           if (event.key === "ArrowDown") {
+                             event.preventDefault();
++                            if (modelListFocusFirstRef.current) {
++                              modelListFocusFirstRef.current();
++                              return;
++                            }
+                             event.currentTarget
+                               .closest('[data-slot="dropdown-menu-sub-content"]')
+                               ?.querySelector<HTMLElement>('[role="menuitemradio"]')
+diff --git a/packages/ui/src/chat-input-toolbar/VirtualComposerModelList.tsx b/packages/ui/src/chat-input-toolbar/VirtualComposerModelList.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a81fe07119afa9c6493b492921b052e5d93de684
+--- /dev/null
++++ b/packages/ui/src/chat-input-toolbar/VirtualComposerModelList.tsx
+@@ -0,0 +1,145 @@
++import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
++import {
++  cloneElement,
++  isValidElement,
++  useLayoutEffect,
++  useMemo,
++  useRef,
++  useState,
++  type AriaAttributes,
++  type ReactNode,
++  type RefObject,
++} from "react";
++import { DropdownMenuRadioGroup } from "@/components/ui/dropdown-menu.js";
++import type { ModelSelectGroup, ModelSelectGroupItem } from "@/ModelConfigSelect.js";
++
++/** Large catalogs retain the same menu rows; only mounting and full-list keyboard travel differ. */
++export function VirtualComposerModelList({
++  groups,
++  value,
++  renderHeading,
++  renderItem,
++  focusFirstRef,
++}: {
++  groups: readonly ModelSelectGroup[];
++  value: string;
++  renderHeading: (group: ModelSelectGroup) => ReactNode;
++  renderItem: (item: ModelSelectGroupItem) => ReactNode;
++  focusFirstRef: RefObject<(() => void) | null>;
++}) {
++  const rows = useMemo(
++    () =>
++      groups.flatMap((group) => [
++        { key: JSON.stringify(["heading", group.key]), group, item: undefined },
++        ...group.items.map((item) => ({
++          key: JSON.stringify(["model", group.key, item.key]),
++          group,
++          item,
++        })),
++      ]),
++    [groups],
++  );
++  const modelIndexes = useMemo(
++    () => rows.flatMap((row, index) => (row.item ? [index] : [])),
++    [rows],
++  );
++  const scroller = useRef<HTMLDivElement>(null);
++  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
++  const virtualizer = useVirtualizer({
++    count: rows.length,
++    getScrollElement: () => scroller.current,
++    getItemKey: (index) => rows[index]?.key ?? index,
++    estimateSize: () => 32,
++    overscan: 4,
++    // Keep both a pending keyboard destination and actual native/pointer focus.
++    // The latter must be read before scrolling unmounts its DOM row.
++    rangeExtractor: (range) => {
++      const active = document.activeElement;
++      const activeRow =
++        active instanceof HTMLElement && scroller.current?.contains(active)
++          ? active.closest<HTMLElement>("[data-index]")
++          : null;
++      const activeIndex = activeRow ? Number(activeRow.dataset.index) : undefined;
++      return [
++        ...new Set([
++          ...defaultRangeExtractor(range),
++          ...(focusedIndex === null ? [] : [focusedIndex]),
++          ...(activeIndex === undefined ? [] : [activeIndex]),
++        ]),
++      ].sort((a, b) => a - b);
++    },
++  });
++  const move = (index: number | undefined) => {
++    if (index === undefined) return;
++    setFocusedIndex(index);
++    virtualizer.scrollToIndex(index, { align: "auto" });
++  };
++  useLayoutEffect(() => {
++    focusFirstRef.current = () => move(modelIndexes[0]);
++    return () => {
++      focusFirstRef.current = null;
++    };
++  });
++  useLayoutEffect(() => {
++    if (focusedIndex === null) return;
++    scroller.current
++      ?.querySelector<HTMLElement>(`[data-index="${focusedIndex}"] [role^="menuitem"]`)
++      ?.focus({ preventScroll: true });
++  }, [focusedIndex]);
++
++  return (
++    <div
++      ref={scroller}
++      className="h-60 overflow-y-auto"
++      data-composer-virtual-model-list="true"
++      onKeyDownCapture={(event) => {
++        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
++        if (!(event.target as HTMLElement).closest('[role^="menuitem"]')) return;
++        const row = (event.target as HTMLElement).closest<HTMLElement>("[data-index]");
++        if (!row) return;
++        const current = modelIndexes.indexOf(Number(row.dataset.index));
++        const next =
++          event.key === "Home"
++            ? 0
++            : event.key === "End"
++              ? modelIndexes.length - 1
++              : Math.min(
++                  modelIndexes.length - 1,
++                  Math.max(0, current + (event.key === "ArrowDown" ? 1 : -1)),
++                );
++        event.preventDefault();
++        event.stopPropagation();
++        move(modelIndexes[next]);
++      }}
++    >
++      <DropdownMenuRadioGroup
++        value={value}
++        className="relative"
++        style={{ height: virtualizer.getTotalSize() }}
++      >
++        {virtualizer.getVirtualItems().map((row) => {
++          const source = rows[row.index];
++          if (!source) return null;
++          const item = source.item ? renderItem(source.item) : undefined;
++          const content = isValidElement<AriaAttributes>(item)
++            ? cloneElement(item, {
++                "aria-setsize": modelIndexes.length,
++                "aria-posinset": modelIndexes.indexOf(row.index) + 1,
++              })
++            : item;
++          return (
++            <div
++              key={row.key}
++              ref={virtualizer.measureElement}
++              data-index={row.index}
++              className="absolute top-0 left-0 w-full"
++              style={{ transform: `translateY(${row.start}px)` }}
++            >
++              {source.item ? content : renderHeading(source.group)}
++            </div>
++          );
++        })}
++      </DropdownMenuRadioGroup>
++    </div>
++  );
++}
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 96343e59289b320ee39b7b8f3e168e5aa6c53040..73b05a8fcb8ad9a6233922eabfcd3b077161f9bd 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -19,17 +19,19 @@ function Fixture({
+   selectable = false,
+   recovery = false,
+   multiple = false,
++  large = false,
+ }: {
+   width: number;
+   unknown?: boolean;
+   selectable?: boolean;
+   recovery?: boolean;
+   multiple?: boolean;
++  large?: boolean;
+ }) {
+   const ref = useComposerToolbarFit();
+   const [thought, setThought] = useState(unknown ? "unobserved" : "medium");
+   const [context, setContext] = useState(256000);
+-  const [model, setModel] = useState("a");
++  const [model, setModel] = useState(large ? "m-0" : "a");
+   const [speed, setSpeed] = useState<"standard" | "fast">("standard");
+   return (
+     <div ref={ref} className="group/toolbar flex items-center gap-3" style={{ width }}>
+@@ -90,10 +92,16 @@ function Fixture({
+                   key: "provider",
+                   label: multiple ? "Grok" : "Connected provider",
+                   directItems: !multiple,
+-                  items: [
+-                    { key: "a", value: "a", name: "A deliberately long model name" },
+-                    { key: "b", value: "b", name: "Another model" },
+-                  ],
++                  items: large
++                    ? Array.from({ length: 500 }, (_, index) => ({
++                        key: `m-${index}`,
++                        value: `m-${index}`,
++                        name: `Model ${index}`,
++                      }))
++                    : [
++                        { key: "a", value: "a", name: "A deliberately long model name" },
++                        { key: "b", value: "b", name: "Another model" },
++                      ],
+                 },
+                 ...(multiple
+                   ? [
+@@ -137,6 +145,130 @@ function Fixture({
+ }
+ 
+ (window as unknown as Record<string, unknown>).__combinedModelTests = (async () => {
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    const name = `${locale}: 500 models stay bounded and fully keyboard/search reachable`;
++    const node = document.createElement("div");
++    document.body.append(node);
++    node.style.marginTop = "300px";
++    node.style.marginLeft = "220px";
++    const root = createRoot(node);
++    writes = [];
++    const settle = async () =>
++      act(async () => {
++        await new Promise((resolve) => setTimeout(resolve, 180));
++      });
++    try {
++      await act(async () =>
++        root.render(
++          <ZCodeIntlProvider initialLocale={locale}>
++            <TooltipProvider>
++              <Fixture width={560} large />
++            </TooltipProvider>
++          </ZCodeIntlProvider>,
++        ),
++      );
++      const trigger = node.querySelector<HTMLButtonElement>(".composer-model-trigger")!;
++      await act(async () =>
++        trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })),
++      );
++      const model = document.querySelector<HTMLElement>("[data-composer-model-submenu]")!;
++      await act(async () => {
++        model.focus();
++        model.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
++      });
++      await settle();
++      const list = document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-content"]')!;
++      check(
++        list.querySelectorAll('[role="menuitemradio"]').length < 60,
++        "The menu rendered all 500 model controls",
++      );
++      const search = list.querySelector<HTMLInputElement>("input")!;
++      await act(async () =>
++        search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
++      );
++      await settle();
++      check(
++        document.activeElement?.textContent?.trim() === "Model 0",
++        "Search did not reach the first model",
++      );
++      const pageScroll = document.scrollingElement!.scrollTop;
++      await act(async () =>
++        document.activeElement!.dispatchEvent(
++          new KeyboardEvent("keydown", { key: "End", bubbles: true }),
++        ),
++      );
++      await settle();
++      check(
++        document.activeElement?.textContent?.trim() === "Model 499",
++        "End could not reach an unmounted model",
++      );
++      check(
++        document.scrollingElement!.scrollTop === pageScroll,
++        "Model navigation scrolled the surrounding page",
++      );
++      await act(async () =>
++        document.activeElement!.dispatchEvent(
++          new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
++        ),
++      );
++      await settle();
++      check(
++        document.activeElement?.textContent?.trim() === "Model 498",
++        "ArrowUp skipped a model at the virtual boundary",
++      );
++      const hovered = [...list.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
++        (item) => item.textContent?.trim() === "Model 497",
++      )!;
++      await act(async () =>
++        hovered.dispatchEvent(
++          new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
++        ),
++      );
++      check(document.activeElement === hovered, "Pointer focus did not reach its model");
++      const scroller = list.querySelector<HTMLElement>("[data-composer-virtual-model-list]")!;
++      await act(async () => {
++        scroller.scrollTop = 0;
++        scroller.dispatchEvent(new Event("scroll"));
++      });
++      await settle();
++      check(
++        document.activeElement === hovered && hovered.isConnected,
++        `Scrolling lost pointer focus: connected=${hovered.isConnected}, active=${document.activeElement?.textContent?.trim().slice(0, 90)}`,
++      );
++      await act(async () =>
++        document.activeElement!.dispatchEvent(
++          new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
++        ),
++      );
++      await settle();
++      check(document.activeElement?.textContent?.trim() === "Model 0", "Home lost keyboard access");
++      await act(async () => {
++        search.focus();
++        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++          search,
++          "Model 450",
++        );
++        search.dispatchEvent(new Event("input", { bubbles: true }));
++      });
++      await settle();
++      const match = list.querySelector<HTMLElement>('[role="menuitemradio"]');
++      check(
++        match?.textContent?.trim() === "Model 450",
++        "Search lost a model outside the mounted window",
++      );
++      await act(async () => match!.click());
++      check(
++        writes.length === 1 && writes[0] === "model:m-450",
++        "Selection changed more than the exact requested model",
++      );
++      results.push({ name });
++    } catch (error) {
++      results.push({ name, error: String(error) });
++    } finally {
++      await act(async () => root.unmount());
++      node.remove();
++    }
++  }
+   for (const locale of ["zh-CN", "en-US"] as const)
+     for (const dark of [false, true])
+       for (const width of [560, 150]) {

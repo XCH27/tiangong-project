@@ -152,3 +152,26 @@ authorization to implement, because canonical parity and the new product contrac
 - A module below `execution-ready` cannot receive an implementation packet.
 - Real behaviour, restart, permission, evidence, Agent parity, and failure recovery are required
   before usable; tests/typecheck alone are insufficient.
+
+
+## ZK-FIX — owner-authorized existing ZCode rectification (D57)
+
+This corrective gate does not activate historical Craft W1–W5 or select a new product authority.
+The owner explicitly authorized implementation after the source-backed review.
+
+| Slice | Execution gate | Owner | Scope / stop condition |
+|---|---|---|---|
+| ZK-FIX/B | In Progress | Lead | Current-source desktop/CLI build, candidate verification and complete source recipe. Stop at new dependency or data migration. |
+| ZK-FIX/R | In Progress | Sol receipt worker | Session-scoped remote receipts, independent failure handling, controlled disposal and cold receipt readers through existing stores. |
+| ZK-FIX/S | In Progress | Sol shutdown worker | Actual settlement joins, retryable preservation and bounded truthful CLI termination through existing owners. |
+| ZK-FIX/C | In Progress | Sol recovery worker | Current workflow/resume evidence and actual production reader wiring. |
+| ZK-FIX/U | In Progress | Lead | Previously audited Guide and shared preference regressions; original controls and owners only. |
+
+Exact paths and validation are in [the packet](agent-packets/zcode-kernel-rectification.md).
+No capability is promoted from this execution authorization.
+
+D57 integration has completed the local build/store/transport/renderer ladder recorded in
+`DOCUMENT-READINESS.md`. The corrective execution rows remain In Progress while strict inherited
+CLI debt and owner/live-environment acceptance remain separate. This does not open historical
+Craft waves. New competitor/reference intake and plugin-market corrections require their own
+bounded packet; they cannot silently expand these lifecycle slices.

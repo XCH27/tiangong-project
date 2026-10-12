@@ -1,0 +1,186 @@
+diff --git a/package.json b/package.json
+index 4e5de0b..1e3a704 100644
+--- a/package.json
++++ b/package.json
+@@ -60,7 +60,8 @@
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+     "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts packages/services/test/native-cli-login.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+-    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests"
++    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests",
++    "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 650d98a..122c66f 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -36,7 +36,7 @@ export function PlanStatusCardSurface({
+                 <h3
+                   className={cn(
+                     "min-w-0 truncate leading-5 text-foreground",
+-                    compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold",
++                    "text-ui-lg font-semibold",
+                   )}
+                 >
+                   {planTitle}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+index cc7cd5d..898fc0f 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+@@ -137,7 +137,7 @@ export function CredentialDefaultControl({
+         {intl.formatMessage({ id: "settings.modelProvider.credentials.makeDefault" })}
+       </Button>
+       {selected ? (
+-        <span className="col-start-1 row-start-1 self-center justify-self-center text-ui-sm text-foreground-subtle">
++        <span className="col-start-1 row-start-1 self-center justify-self-center text-ui-base text-foreground-subtle">
+           {intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}
+         </span>
+       ) : null}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index b45d957..141401e 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -86,7 +86,7 @@ export function SubscriptionAccountRow({
+             <CollapsibleTrigger asChild>
+               <Button
+                 variant="link"
+-                className="p-0 text-ui-sm"
++                className="p-0"
+                 aria-label={intl.formatMessage(
+                   { id: "settings.modelProvider.credentials.viewAccountAllowance" },
+                   { account: label },
+@@ -134,7 +134,7 @@ export function SubscriptionAccountRow({
+                 {!canRemove ? (
+                   <Button
+                     variant="link"
+-                    className="mt-2 h-auto p-0 text-ui-sm"
++                    className="mt-2 h-auto p-0"
+                     disabled={busy}
+                     onClick={onRemove}
+                   >
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+index 7c64b61..ceb30ae 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+@@ -68,7 +68,7 @@ export function SubscriptionAllowanceDetails({
+                   { percent: numberFormat.format(remaining) },
+                 );
+           return (
+-            <div key={window.id} className="min-w-0 space-y-1.5 text-ui-sm">
++            <div key={window.id} className="min-w-0 space-y-1.5 text-ui-base">
+               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                 <span className="text-foreground-subtle">{label}</span>
+                 <span
+@@ -103,7 +103,7 @@ export function SubscriptionAllowanceDetails({
+                 />
+               ) : null}
+               {window.resetAt && !condensed ? (
+-                <p className="text-foreground-subtle">
++                <p className="text-ui-sm text-foreground-subtle">
+                   {t("resets")} {dateFormat.format(window.resetAt)}
+                   {window.resetAt <= now ? ` · ${t("expired")}` : ""}
+                 </p>
+diff --git a/packages/ui/test/settingsTypography.browser.test.tsx b/packages/ui/test/settingsTypography.browser.test.tsx
+new file mode 100644
+index 0000000..5321963
+--- /dev/null
++++ b/packages/ui/test/settingsTypography.browser.test.tsx
+@@ -0,0 +1,67 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { PlanStatusCardSurface } from "../src/settings/model-provider-section/PlanStatusCardSurface.js";
++import { CredentialDefaultControl } from "../src/settings/model-provider-section/ProviderDraftControls.js";
++import { SubscriptionAllowanceDetails } from "../src/settings/model-provider-section/SubscriptionAllowanceDetails.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++const font = (node: Element) => Number.parseFloat(getComputedStyle(node).fontSize);
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++async function run() {
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    for (const size of [14, 20]) {
++      const node = document.createElement("div");
++      node.style.width = "320px";
++      document.body.append(node);
++      document.documentElement.style.setProperty("--ui-font-size", `${size}px`);
++      const root = createRoot(node);
++      const name = `${locale}: title, state and quota follow the same UI scale at ${size}px`;
++      try {
++        await act(async () => root.render(
++          <ZCodeIntlProvider initialLocale={locale}>
++            <div data-compact><PlanStatusCardSurface compact planTitle="Account" /></div>
++            <div data-full><PlanStatusCardSurface planTitle="Account" /></div>
++            <div data-default>
++              <CredentialDefaultControl selected onSelect={() => {}} />
++            </div>
++            <div data-action>
++              <CredentialDefaultControl selected={false} onSelect={() => {}} />
++            </div>
++            <div data-quota>
++              <SubscriptionAllowanceDetails
++                now={0}
++                result={{
++                  status: "available", source: "fixture", observedAt: 0,
++                  windows: [{ id: "default:primary", windowMinutes: 300, usedPercent: 15, resetAt: 86_400_000 }],
++                }}
++              />
++            </div>
++          </ZCodeIntlProvider>,
++        ));
++        const compact = node.querySelector("[data-compact] h3")!;
++        const full = node.querySelector("[data-full] h3")!;
++        const selected = node.querySelector("[data-default] span.self-center")!;
++        const action = node.querySelector("[data-action] button")!;
++        const quota = node.querySelector("[data-quota] [aria-valuenow]")!.previousElementSibling!;
++        const timestamp = node.querySelector("[data-quota] [aria-valuenow]")!.nextElementSibling!;
++        check(font(action) === size, "Built stylesheet did not load the actual UI size tokens");
++        check(font(compact) === font(full) && font(compact) > font(action), "Density changed account-title hierarchy");
++        check(font(selected) === font(action), "Default state changes font size when selected");
++        check(font(quota) === font(action), "Quota information is smaller than other primary text");
++        check(font(timestamp) < font(quota), "Reset timestamp lost its secondary hierarchy");
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
++  }
++}
++(window as unknown as Record<string, unknown>).__settingsTypographyTests = run().then(() => results);
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 4398a6d..c0cc141 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -1,5 +1,5 @@
+ // Exercise the actual React hooks in the installed desktop renderer, with no accounts or network.
+-import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import { mkdtemp, writeFile, copyFile, readFile, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createRequire } from "node:module";
+@@ -25,7 +25,16 @@ try {
+     loader: { ".svg": "dataurl", ".png": "dataurl" },
+     define: { "process.env.NODE_ENV": '"development"' },
+   });
+-  await writeFile(join(profile, "index.html"), '<script type="module" src="./test.js"></script>');
++  let stylesheet = process.argv[4];
++  if (stylesheet === "--desktop-styles") {
++    const renderer = join(root, "packages/desktop/out/renderer");
++    const html = await readFile(join(renderer, "index.html"), "utf8");
++    const href = html.match(/href="([^"\n]+\.css)"/)?.[1];
++    if (!href) throw new Error("Build the desktop stylesheet before this renderer test");
++    stylesheet = join(renderer, href);
++  }
++  if (stylesheet) await copyFile(resolve(root, stylesheet), join(profile, "test.css"));
++  await writeFile(join(profile, "index.html"), `${stylesheet ? '<link rel="stylesheet" href="./test.css">' : ''}<script type="module" src="./test.js"></script>`);
+   await writeFile(
+     join(profile, "main.cjs"),
+     `

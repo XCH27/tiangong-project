@@ -1,0 +1,1040 @@
+diff --git a/package.json b/package.json
+index 9931d12..98dd48e 100644
+--- a/package.json
++++ b/package.json
+@@ -52,6 +52,7 @@
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
++    "test:embedded-browser": "node scripts/test-embedded-browser.mjs",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+diff --git a/packages/desktop/src/main/desktopWindowChrome.ts b/packages/desktop/src/main/desktopWindowChrome.ts
+index 07840d2..4c75f91 100644
+--- a/packages/desktop/src/main/desktopWindowChrome.ts
++++ b/packages/desktop/src/main/desktopWindowChrome.ts
+@@ -31,6 +31,7 @@ import {
+   resolveDesktopZoomLevelFromFactor,
+ } from "./desktopZoom.js";
+ import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
++import { showEmbeddedBrowserContextMenu } from "./embeddedBrowserContextMenu.js";
+ import {
+   MIN_DESKTOP_WINDOW_HEIGHT,
+   MIN_DESKTOP_WINDOW_WIDTH,
+@@ -345,6 +346,7 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
+   hostWebContents: WebContents;
+   guestWebContents: WebContents;
+   isCodingPlanGuest: boolean;
++  currentApplicationLocale?: () => Locale;
+   resolveBrowserViewOwner?: (webContentsId: number) =>
+     | {
+         workspaceKey: string;
+@@ -358,6 +360,31 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
+   logger: { warn: (...args: unknown[]) => void };
+ }) {
+   let externalBrowserModifierActive = false;
++  const openInternalTab = (url: string, disposition: string) => {
++    if (!isAllowedEmbeddedBrowserNewWindowUrl(url) || options.hostWebContents.isDestroyed()) return;
++    const owner = options.resolveBrowserViewOwner?.(options.guestWebContents.id);
++    options.hostWebContents.send(PlatformChannels.OpenBrowserUrl, {
++      disposition, url,
++      ...(owner ? {
++        workspaceKey: owner.workspaceKey,
++        ...(owner.remoteSessionId ? { remoteSessionId: owner.remoteSessionId } : {}),
++        sessionId: owner.sessionId, browserId: owner.browserId,
++        browserGeneration: owner.browserGeneration, sourceTabId: owner.tabId,
++      } : {}),
++    });
++  };
++
++  if (!options.isCodingPlanGuest) options.guestWebContents.on("context-menu", (_event, params) => {
++    const ownerAtOpen = JSON.stringify(options.resolveBrowserViewOwner?.(options.guestWebContents.id));
++    showEmbeddedBrowserContextMenu({
++      guest: options.guestWebContents, params,
++      locale: options.currentApplicationLocale?.() ?? DEFAULT_LOCALE,
++      openLink: (url) => {
++        if (JSON.stringify(options.resolveBrowserViewOwner?.(options.guestWebContents.id)) !== ownerAtOpen) return;
++        openInternalTab(url, "foreground-tab");
++      },
++    });
++  });
+ 
+   options.guestWebContents.on("before-input-event", (_event, input) => {
+     // 某些平台的 keyUp 仍可能带 modifier 标记，直接记最近一次 modifiers
+@@ -428,21 +455,7 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
+       return { action: "deny" };
+     }
+ 
+-    const owner = options.resolveBrowserViewOwner?.(options.guestWebContents.id);
+-    options.hostWebContents.send(PlatformChannels.OpenBrowserUrl, {
+-      disposition,
+-      url,
+-      ...(owner
+-        ? {
+-            workspaceKey: owner.workspaceKey,
+-            ...(owner.remoteSessionId ? { remoteSessionId: owner.remoteSessionId } : {}),
+-            sessionId: owner.sessionId,
+-            browserId: owner.browserId,
+-            browserGeneration: owner.browserGeneration,
+-            sourceTabId: owner.tabId,
+-          }
+-        : {}),
+-    });
++    openInternalTab(url, disposition);
+     return { action: "deny" };
+   });
+ 
+@@ -683,6 +696,7 @@ export function createBrowserWindow(options: {
+       guestWebContents,
+       hostWebContents: win.webContents,
+       resolveBrowserViewOwner: options.resolveBrowserViewOwner,
++      currentApplicationLocale: options.currentApplicationLocale,
+       // PayPal/relay 的 30x 重定向不保证逐跳触发 will-navigate。
+       // Coding Plan guest 身份必须按初始 src 粘住，不能由当前 URL 解防护。
+       isCodingPlanGuest: pendingWebviewCodingPlanGuestFlags.shift() ?? false,
+diff --git a/packages/desktop/src/main/embeddedBrowserContextMenu.ts b/packages/desktop/src/main/embeddedBrowserContextMenu.ts
+new file mode 100644
+index 0000000..aaa833d
+--- /dev/null
++++ b/packages/desktop/src/main/embeddedBrowserContextMenu.ts
+@@ -0,0 +1,119 @@
++import { clipboard, Menu } from "electron";
++import type { ContextMenuParams, MenuItemConstructorOptions, WebContents } from "electron";
++import { desktopMenuMessageIds, getDesktopMenuMessage, type Locale } from "@zcode/shared";
++
++const browserLabels = {
++  "zh-CN": {
++    openLink: "在新标签页中打开链接",
++    copyLink: "复制链接地址",
++    copyImage: "复制图片",
++    copyImageUrl: "复制图片地址",
++    back: "后退",
++    forward: "前进",
++    reload: "刷新",
++    inspect: "检查元素",
++  },
++  "en-US": {
++    openLink: "Open link in new tab",
++    copyLink: "Copy link address",
++    copyImage: "Copy image",
++    copyImageUrl: "Copy image address",
++    back: "Back",
++    forward: "Forward",
++    reload: "Refresh",
++    inspect: "Inspect element",
++  },
++};
++
++function isWebUrl(value: string): boolean {
++  try {
++    return ["http:", "https:"].includes(new URL(value).protocol);
++  } catch {
++    return false;
++  }
++}
++
++/** Native guest operations use the emitting guest, rather than the shell's focused editor. */
++export function showEmbeddedBrowserContextMenu({
++  guest,
++  params,
++  locale,
++  openLink,
++}: {
++  guest: WebContents;
++  params: ContextMenuParams;
++  locale: Locale;
++  openLink: (url: string) => void;
++}) {
++  const sourceUrl = guest.getURL();
++  let sourceValid = true;
++  const invalidate = (details: { isMainFrame: boolean }) => {
++    if (details.isMainFrame) sourceValid = false;
++  };
++  guest.on("did-start-navigation", invalidate);
++  const labels = browserLabels[locale];
++  const template: MenuItemConstructorOptions[] = [];
++  const guarded = (action: () => void) => () => {
++    if (sourceValid && !guest.isDestroyed() && guest.getURL() === sourceUrl) action();
++  };
++  const separator = () => {
++    if (template.length) template.push({ type: "separator" });
++  };
++  if (isWebUrl(params.linkURL)) {
++    template.push(
++      { label: labels.openLink, click: guarded(() => openLink(params.linkURL)) },
++      { label: labels.copyLink, click: guarded(() => clipboard.writeText(params.linkURL)) },
++    );
++  }
++  if (params.mediaType === "image") {
++    separator();
++    template.push({
++      label: labels.copyImage,
++      click: guarded(() => guest.copyImageAt(params.x, params.y)),
++    });
++    if (isWebUrl(params.srcURL))
++      template.push({
++        label: labels.copyImageUrl,
++        click: guarded(() => clipboard.writeText(params.srcURL)),
++      });
++  }
++  if (params.isEditable) {
++    separator();
++    for (const [id, enabled, action] of [
++      [desktopMenuMessageIds.editUndo, params.editFlags.canUndo, () => guest.undo()],
++      [desktopMenuMessageIds.editRedo, params.editFlags.canRedo, () => guest.redo()],
++      [desktopMenuMessageIds.editCut, params.editFlags.canCut, () => guest.cut()],
++      [desktopMenuMessageIds.editCopy, params.editFlags.canCopy, () => guest.copy()],
++      [desktopMenuMessageIds.editPaste, params.editFlags.canPaste, () => guest.paste()],
++      [desktopMenuMessageIds.editSelectAll, params.editFlags.canSelectAll, () => guest.selectAll()],
++    ] as const)
++      template.push({ label: getDesktopMenuMessage(locale, id), enabled, click: guarded(action) });
++  } else if (params.selectionText.trim()) {
++    separator();
++    template.push({
++      label: getDesktopMenuMessage(locale, desktopMenuMessageIds.editCopy),
++      enabled: params.editFlags.canCopy,
++      click: guarded(() => guest.copy()),
++    });
++  }
++  separator();
++  template.push(
++    {
++      label: labels.back,
++      enabled: guest.navigationHistory.canGoBack(),
++      click: guarded(() => guest.navigationHistory.goBack()),
++    },
++    {
++      label: labels.forward,
++      enabled: guest.navigationHistory.canGoForward(),
++      click: guarded(() => guest.navigationHistory.goForward()),
++    },
++    { label: labels.reload, click: guarded(() => guest.reload()) },
++    { label: labels.inspect, click: guarded(() => guest.inspectElement(params.x, params.y)) },
++  );
++  Menu.buildFromTemplate(template).popup({
++    callback: () => {
++      guest.removeListener("did-start-navigation", invalidate);
++    },
++  });
++}
+diff --git a/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts b/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
+index 5eda3e6..9c1f55f 100644
+--- a/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
++++ b/packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts
+@@ -1,10 +1,17 @@
+ import { contextBridge, ipcRenderer } from "electron";
+-import { PlatformChannels } from "@zcode/shared";
++import { EmbeddedBrowserWebviewChannels, PlatformChannels } from "@zcode/shared";
+ import { installEmbeddedBrowserWheelForwarding } from "./embeddedBrowserWheel.js";
+ 
+ const BRIDGE_KEY = "__zcodeEmbeddedBrowserJavaScriptDialog__";
+ 
+ if (typeof window !== "undefined") {
++  // Guest keyboard events do not bubble through <webview>. Keep this bridge in the
++  // isolated preload; pages get no callable host API, and synthetic keys cannot invoke it.
++  window.addEventListener("keydown", (event) => {
++    if (!event.isTrusted || event.altKey || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
++    event.preventDefault();
++    ipcRenderer.sendToHost(EmbeddedBrowserWebviewChannels.Find);
++  }, true);
+   installEmbeddedBrowserWheelForwarding(window, (channel, payload) => {
+     ipcRenderer.sendToHost(channel, payload);
+   });
+diff --git a/packages/shared/src/channels.ts b/packages/shared/src/channels.ts
+index 82d4b12..823a208 100644
+--- a/packages/shared/src/channels.ts
++++ b/packages/shared/src/channels.ts
+@@ -436,6 +436,8 @@ export type PlatformChannelName = (typeof PlatformChannels)[keyof typeof Platfor
+ 
+ /** Electron `<webview>` 的 `sendToHost` / `ipc-message` 频道，不经过 main process。 */
+ export const EmbeddedBrowserWebviewChannels = {
++  /** A trusted guest keyboard gesture asks its own embedder to open local page search. */
++  Find: "zcode:embedded-browser-find",
+   /** Guest 无法继续消费某方向的滚动时，把二维 delta 转交自由尺寸画布。 */
+   WheelBoundary: "zcode:embedded-browser-wheel-boundary",
+ } as const;
+diff --git a/packages/ui/src/EmbeddedBrowserPaneParts.tsx b/packages/ui/src/EmbeddedBrowserPaneParts.tsx
+index e0d4754..4ade2ac 100644
+--- a/packages/ui/src/EmbeddedBrowserPaneParts.tsx
++++ b/packages/ui/src/EmbeddedBrowserPaneParts.tsx
+@@ -10,7 +10,9 @@ import {
+   MonitorSmartphone,
+   MousePointerClick,
+   RefreshCw,
++  Search,
+   TriangleAlertIcon,
++  X,
+ } from "lucide-react";
+ import {
+   TID_BROWSER_ADDRESS_INPUT,
+@@ -50,6 +52,7 @@ export function BrowserToolbar({
+   onGoForward,
+   onOpenExternal,
+   onOpenDevTools,
++  onFind,
+   onPickElement,
+   onReload,
+   onToggleResponsiveMode,
+@@ -65,6 +68,7 @@ export function BrowserToolbar({
+   onGoForward: () => void;
+   onOpenExternal: () => void;
+   onOpenDevTools: () => void;
++  onFind: () => void;
+   onPickElement: () => void;
+   onReload: () => void;
+   onToggleResponsiveMode: () => void;
+@@ -99,9 +103,9 @@ export function BrowserToolbar({
+         onClick={onGoForward}
+       />
+       <BrowserIconButton
+-        icon={<RefreshCw className={`h-4 w-4 ${browserState.isLoading ? "animate-spin" : ""}`} />}
+-        title={formatMessage({ id: "browser.reload" })}
+-        disabled={!browserState.isReady}
++        icon={browserState.isLoading ? <X className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
++        title={formatMessage({ id: browserState.isLoading ? "browser.stop" : "browser.reload" })}
++        disabled={!browserState.isReady && !browserState.isLoading}
+         dataTestId={TID_BROWSER_REFRESH_BUTTON}
+         onClick={onReload}
+       />
+@@ -146,6 +150,7 @@ export function BrowserToolbar({
+         formatMessage={formatMessage}
+         onOpenExternal={onOpenExternal}
+         onOpenDevTools={onOpenDevTools}
++        onFind={onFind}
+       />
+     </form>
+   );
+@@ -157,12 +162,14 @@ function BrowserToolbarMoreMenu({
+   formatMessage,
+   onOpenDevTools,
+   onOpenExternal,
++  onFind,
+ }: {
+   canOpenDevTools: boolean;
+   canOpenExternal: boolean;
+   formatMessage: (descriptor: { id: string }) => string;
+   onOpenDevTools: () => void;
+   onOpenExternal: () => void;
++  onFind: () => void;
+ }) {
+   const moreLabel = formatMessage({ id: "browser.more" });
+   return (
+@@ -181,6 +188,10 @@ function BrowserToolbarMoreMenu({
+         </DropdownMenuTrigger>
+       </ControlHintTooltip>
+       <DropdownMenuContent align="end" className="w-52">
++        <DropdownMenuItem disabled={!canOpenDevTools} onSelect={onFind}>
++          <Search className="size-4" />
++          <span>{formatMessage({ id: "browser.find" })}</span>
++        </DropdownMenuItem>
+         <DropdownMenuItem
+           data-testid={TID_BROWSER_OPEN_EXTERNAL_ITEM}
+           disabled={!canOpenExternal}
+diff --git a/packages/ui/src/browser-use/BrowserFindBar.tsx b/packages/ui/src/browser-use/BrowserFindBar.tsx
+new file mode 100644
+index 0000000..ffb7e54
+--- /dev/null
++++ b/packages/ui/src/browser-use/BrowserFindBar.tsx
+@@ -0,0 +1,65 @@
++import { useEffect, useRef } from "react";
++import { ChevronDown, ChevronUp, X } from "lucide-react";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import type { useBrowserFind } from "./useBrowserFind.js";
++
++export function BrowserFindBar({ find }: { find: ReturnType<typeof useBrowserFind> }) {
++  const { intl } = useZCodeIntl();
++  const input = useRef<HTMLInputElement>(null);
++  useEffect(() => {
++    input.current?.focus();
++    input.current?.select();
++  }, [find.focusVersion]);
++  const label = intl.formatMessage({ id: "browser.find" });
++  return (
++    <div
++      role="search"
++      aria-label={label}
++      className="flex shrink-0 items-center gap-1 border-b border-border px-3 pb-2"
++    >
++      <Input
++        ref={input}
++        size="sm"
++        className="h-7"
++        value={find.query}
++        maxLength={2048}
++        aria-label={label}
++        placeholder={label}
++        onChange={(event) => find.setQuery(event.target.value)}
++        onKeyDown={(event) => {
++          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
++          event.preventDefault();
++          if (event.shiftKey) find.previous();
++          else find.next();
++        }}
++      />
++      <span aria-live="polite" className="shrink-0 text-ui-sm text-foreground-subtle tabular-nums">
++        {find.query ? `${find.result.activeMatchOrdinal}/${find.result.matches}` : "—"}
++      </span>
++      {[
++        { id: "browser.find.previous", icon: ChevronUp, action: find.previous },
++        { id: "browser.find.next", icon: ChevronDown, action: find.next },
++        { id: "browser.find.close", icon: X, action: () => find.close() },
++      ].map(({ id, icon: Icon, action }) => {
++        const title = intl.formatMessage({ id });
++        return (
++          <ControlHintTooltip key={id} title={title}>
++            <Button
++              type="button"
++              variant="ghost"
++              size="icon-md"
++              aria-label={title}
++              disabled={id !== "browser.find.close" && find.result.matches === 0}
++              onClick={action}
++            >
++              <Icon className="size-4" />
++            </Button>
++          </ControlHintTooltip>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/packages/ui/src/browser-use/UnifiedBrowserView.tsx b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+index 168d48c..5cab4da 100644
+--- a/packages/ui/src/browser-use/UnifiedBrowserView.tsx
++++ b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+@@ -10,6 +10,8 @@ import { useWebElementPicker } from "@/hooks/useWebElementPicker.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { logger } from "@/logger.js";
+ import { BrowserToolbar } from "@/EmbeddedBrowserPaneParts.js";
++import { BrowserFindBar } from "@/browser-use/BrowserFindBar.js";
++import { useBrowserFind } from "@/browser-use/useBrowserFind.js";
+ import { BrowserViewportSurface } from "@/browser-use/BrowserViewportSurface.js";
+ import { BrowserViewportToolbar } from "@/browser-use/BrowserViewportToolbar.js";
+ import { useBrowserResizeOperationWarning } from "@/browser-use/useBrowserResizeOperationWarning.js";
+@@ -129,6 +131,7 @@ export function UnifiedBrowserView({
+   const [hasNavigated, setHasNavigated] = useState(hasInitialNavigation);
+   const [webviewGeneration, setWebviewGeneration] = useState(0);
+   const [webview, setWebview] = useState<ElectronWebviewTag | null>(null);
++  const find = useBrowserFind(webview, isVisible, browserState.isReady);
+   const [guestAttachRetryNonce, setGuestAttachRetryNonce] = useState(0);
+   useBrowserScreenshotSurfaceReady({
+     request: screenshotSurfaceRequest ?? null,
+@@ -905,9 +908,9 @@ export function UnifiedBrowserView({
+   }, [browserState.canGoForward, runWebviewAction, webview]);
+ 
+   const handleReload = useCallback(() => {
+-    if (!webview || !browserState.isReady) return;
+-    runWebviewAction(() => webview.reload());
+-  }, [browserState.isReady, runWebviewAction, webview]);
++    if (!webview || (!browserState.isReady && !browserState.isLoading)) return;
++    runWebviewAction(() => browserState.isLoading ? webview.stop() : webview.reload());
++  }, [browserState.isLoading, browserState.isReady, runWebviewAction, webview]);
+ 
+   const handleOpenDevTools = useCallback(() => {
+     if (!webview || !browserState.isReady) return;
+@@ -1033,6 +1036,7 @@ export function UnifiedBrowserView({
+         onGoForward={handleGoForward}
+         onOpenExternal={handleOpenExternal}
+         onOpenDevTools={handleOpenDevTools}
++        onFind={find.open}
+         onPickElement={handleTogglePicker}
+         onReload={handleReload}
+         onToggleResponsiveMode={handleToggleResponsiveMode}
+@@ -1040,6 +1044,7 @@ export function UnifiedBrowserView({
+         isElementPickerActive={isWebElementPicking}
+         isResponsiveMode={isResponsiveMode}
+       />
++      {find.isOpen ? <BrowserFindBar find={find} /> : null}
+       {isResponsiveMode ? (
+         <BrowserViewportToolbar
+           isVisible={isVisible}
+diff --git a/packages/ui/src/browser-use/useBrowserFind.ts b/packages/ui/src/browser-use/useBrowserFind.ts
+new file mode 100644
+index 0000000..7daae4b
+--- /dev/null
++++ b/packages/ui/src/browser-use/useBrowserFind.ts
+@@ -0,0 +1,117 @@
++import { useCallback, useEffect, useRef, useState } from "react";
++import { EmbeddedBrowserWebviewChannels } from "@zcode/shared";
++import { safeWebviewCall } from "@/embeddedBrowserHelpers.js";
++
++/** Find belongs to this guest, never to the active conversation or another browser tab. */
++export function useBrowserFind(
++  webview: ElectronWebviewTag | null,
++  isVisible: boolean,
++  isReady: boolean,
++) {
++  const [isOpen, setIsOpen] = useState(false);
++  const [focusVersion, setFocusVersion] = useState(0);
++  const [query, setQuery] = useState("");
++  const [result, setResult] = useState({ activeMatchOrdinal: 0, matches: 0 });
++  const requestId = useRef<number | null>(null);
++
++  const close = useCallback(
++    (restoreFocus = true) => {
++      requestId.current = null;
++      setIsOpen(false);
++      setResult({ activeMatchOrdinal: 0, matches: 0 });
++      if (webview)
++        safeWebviewCall(() => {
++          webview.stopFindInPage("clearSelection");
++          if (restoreFocus && isVisible) webview.focus();
++        }, undefined);
++    },
++    [isVisible, webview],
++  );
++
++  const open = useCallback(() => {
++    if (!webview || !isReady || !isVisible) return;
++    setIsOpen(true);
++    setFocusVersion((value) => value + 1);
++  }, [isReady, isVisible, webview]);
++
++  const find = useCallback(
++    (forward: boolean, newSession: boolean) => {
++      if (!webview || !isReady || !query) return;
++      requestId.current = safeWebviewCall(
++        // Electron 41 maps its misleadingly named findNext to Chromium's new_session.
++        // A new query must start a session; subsequent next/previous calls reuse it.
++        () => webview.findInPage(query, { forward, findNext: newSession }),
++        null,
++      );
++    },
++    [isReady, query, webview],
++  );
++
++  useEffect(() => {
++    if (!isOpen || !isReady || !webview) return;
++    requestId.current = null;
++    setResult({ activeMatchOrdinal: 0, matches: 0 });
++    if (query) find(true, true);
++    else safeWebviewCall(() => webview.stopFindInPage("clearSelection"), undefined);
++  }, [find, isOpen, isReady, query, webview]);
++
++  useEffect(() => {
++    if (!webview) return;
++    const onResult = (event: ElectronWebviewFoundInPageEvent) => {
++      // Chromium can finish an older query after the next request/navigation. Ignore it.
++      if (event.result.requestId !== requestId.current) return;
++      setResult({
++        activeMatchOrdinal: event.result.activeMatchOrdinal,
++        matches: event.result.matches,
++      });
++    };
++    const onNavigation = (event: ElectronWebviewNavigationEvent) => {
++      if (event.isMainFrame !== false) close(false);
++    };
++    const onShortcut = (event: ElectronWebviewIpcMessageEvent) => {
++      if (event.channel === EmbeddedBrowserWebviewChannels.Find && isVisible) open();
++    };
++    const onCrash = () => close(false);
++    webview.addEventListener("found-in-page", onResult);
++    webview.addEventListener("did-navigate", onNavigation);
++    webview.addEventListener("did-navigate-in-page", onNavigation);
++    webview.addEventListener("ipc-message", onShortcut);
++    webview.addEventListener("render-process-gone", onCrash);
++    return () => {
++      webview.removeEventListener("found-in-page", onResult);
++      webview.removeEventListener("did-navigate", onNavigation);
++      webview.removeEventListener("did-navigate-in-page", onNavigation);
++      webview.removeEventListener("ipc-message", onShortcut);
++      webview.removeEventListener("render-process-gone", onCrash);
++    };
++  }, [close, isVisible, open, webview]);
++
++  useEffect(() => {
++    if (!isVisible) return;
++    const onKey = (event: KeyboardEvent) => {
++      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
++        if (!isReady) return;
++        event.preventDefault();
++        event.stopPropagation();
++        open();
++      } else if (isOpen && event.key === "Escape") {
++        event.preventDefault();
++        close();
++      }
++    };
++    window.addEventListener("keydown", onKey, true);
++    return () => window.removeEventListener("keydown", onKey, true);
++  }, [close, isOpen, isReady, isVisible, open]);
++
++  return {
++    isOpen,
++    focusVersion,
++    query,
++    result,
++    open,
++    close,
++    setQuery,
++    next: () => find(true, false),
++    previous: () => find(false, false),
++  };
++}
+diff --git a/packages/ui/src/electron-webview.d.ts b/packages/ui/src/electron-webview.d.ts
+index 02b8a81..507fd49 100644
+--- a/packages/ui/src/electron-webview.d.ts
++++ b/packages/ui/src/electron-webview.d.ts
+@@ -53,6 +53,10 @@ declare global {
+     args: unknown[];
+   }
+ 
++  interface ElectronWebviewFoundInPageEvent extends Event {
++    result: { requestId: number; activeMatchOrdinal: number; matches: number; finalUpdate: boolean };
++  }
++
+   interface ElectronWebviewRenderProcessGoneEvent extends Event {
+     details: {
+       reason: ElectronWebviewRenderProcessGoneReason;
+@@ -73,6 +77,9 @@ declare global {
+     goBack(): void;
+     goForward(): void;
+     reload(): void;
++    stop(): void;
++    findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number;
++    stopFindInPage(action: "clearSelection" | "keepSelection" | "activateSelection"): void;
+     openDevTools(): void;
+     setZoomFactor(factor: number): void;
+     addEventListener(
+@@ -80,6 +87,11 @@ declare global {
+       listener: (event: Event) => void,
+       options?: boolean | AddEventListenerOptions,
+     ): void;
++    addEventListener(
++      type: "found-in-page",
++      listener: (event: ElectronWebviewFoundInPageEvent) => void,
++      options?: boolean | AddEventListenerOptions,
++    ): void;
+     addEventListener(
+       type: "did-fail-load",
+       listener: (event: ElectronWebviewDidFailLoadEvent) => void,
+@@ -115,6 +127,11 @@ declare global {
+       listener: (event: Event) => void,
+       options?: boolean | EventListenerOptions,
+     ): void;
++    removeEventListener(
++      type: "found-in-page",
++      listener: (event: ElectronWebviewFoundInPageEvent) => void,
++      options?: boolean | EventListenerOptions,
++    ): void;
+     removeEventListener(
+       type: "did-fail-load",
+       listener: (event: ElectronWebviewDidFailLoadEvent) => void,
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 6685617..25181d4 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1193,6 +1193,11 @@ const enUS: Record<string, string> = {
+   "browser.back": "Back",
+   "browser.forward": "Forward",
+   "browser.reload": "Refresh",
++  "browser.stop": "Stop loading",
++  "browser.find": "Find in page",
++  "browser.find.previous": "Previous match (Shift+Enter)",
++  "browser.find.next": "Next match (Enter)",
++  "browser.find.close": "Close search (Escape)",
+   "browser.more": "More browser actions",
+   "browser.openExternal": "Open in default browser",
+   "browser.devtools": "Open DevTools",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index c83855a..5582d5d 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1070,6 +1070,11 @@ const zhCN: Record<string, string> = {
+   "browser.back": "后退",
+   "browser.forward": "前进",
+   "browser.reload": "刷新",
++  "browser.stop": "停止加载",
++  "browser.find": "在页面中查找",
++  "browser.find.previous": "上一处（Shift+Enter）",
++  "browser.find.next": "下一处（Enter）",
++  "browser.find.close": "关闭查找（Escape）",
+   "browser.more": "更多浏览器操作",
+   "browser.openExternal": "在默认浏览器中打开",
+   "browser.devtools": "打开调试工具",
+diff --git a/packages/ui/test/embeddedBrowser.browser.tsx b/packages/ui/test/embeddedBrowser.browser.tsx
+new file mode 100644
+index 0000000..f24d891
+--- /dev/null
++++ b/packages/ui/test/embeddedBrowser.browser.tsx
+@@ -0,0 +1,151 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { BrowserFindBar } from "../src/browser-use/BrowserFindBar.js";
++import { useBrowserFind } from "../src/browser-use/useBrowserFind.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const globals = window as unknown as Record<string, unknown>;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const wait = async (predicate: () => boolean) => {
++  for (let attempt = 0; attempt < 80; attempt++) {
++    if (predicate()) return;
++    await act(async () => {
++      await new Promise((done) => setTimeout(done, 50));
++    });
++  }
++  throw new Error(
++    "Native guest result timed out: " +
++      JSON.stringify(currentFind?.result) +
++      " / " +
++      currentFind?.query,
++  );
++};
++let currentFind: ReturnType<typeof useBrowserFind>;
++function Find({ guest, visible }: { guest: ElectronWebviewTag; visible: boolean }) {
++  const find = useBrowserFind(guest, visible, true);
++  currentFind = find;
++  return find.isOpen ? <BrowserFindBar find={find} /> : null;
++}
++globals.__embeddedBrowserTests = (async () => {
++  const results: { name: string; error?: string }[] = [];
++  const node = document.createElement("div");
++  document.body.append(node);
++  const root = createRoot(node);
++  const guest = document.createElement("webview");
++  guest.setAttribute("partition", "persist:fleet-browser-proof");
++  guest.style.cssText = "display:flex;width:500px;height:300px";
++  guest.src = `http://127.0.0.1:${new URLSearchParams(location.search).get("port")}/`;
++  const ready = new Promise<void>((done) =>
++    guest.addEventListener("dom-ready", () => done(), { once: true }),
++  );
++  document.body.append(guest);
++  await ready;
++  const render = (locale: "zh-CN" | "en-US", visible = true) =>
++    root.render(
++      <ZCodeIntlProvider initialLocale={locale}>
++        <TooltipProvider>
++          <Find guest={guest} visible={visible} />
++        </TooltipProvider>
++      </ZCodeIntlProvider>,
++    );
++  const test = async (name: string, action: () => Promise<void>) => {
++    try {
++      await action();
++      results.push({ name });
++    } catch (error) {
++      results.push({ name, error: String(error) });
++    }
++  };
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true]) {
++      await test(`${locale} ${dark ? "dark" : "light"}: real guest find, navigation and stale result`, async () => {
++        document.documentElement.classList.toggle("dark", dark);
++        await act(async () => render(locale));
++        await act(async () => currentFind.open());
++        check(node.querySelector('[role="search"]'), "Search bar missing");
++        check(
++          document.activeElement === node.querySelector("input"),
++          "Search did not receive focus",
++        );
++        await act(async () => currentFind.setQuery("needle"));
++        await wait(() => currentFind.result.matches === 2);
++        await act(async () => currentFind.next());
++        await wait(() => currentFind.result.activeMatchOrdinal === 2);
++        await act(async () => currentFind.previous());
++        await wait(() => currentFind.result.activeMatchOrdinal === 1);
++        await act(async () => currentFind.setQuery("absent"));
++        await wait(() => currentFind.result.matches === 0);
++        const late = new Event("found-in-page") as ElectronWebviewFoundInPageEvent;
++        late.result = { requestId: -1, activeMatchOrdinal: 9, matches: 9, finalUpdate: true };
++        await act(async () => guest.dispatchEvent(late));
++        check(currentFind.result.matches === 0, "Stale query overwrote current result");
++        const navigation = new Event("did-navigate") as ElectronWebviewNavigationEvent;
++        navigation.isMainFrame = true;
++        await act(async () => guest.dispatchEvent(navigation));
++        check(!node.querySelector('[role="search"]'), "Old page search survived navigation");
++        check(
++          node.getBoundingClientRect().width <= document.documentElement.clientWidth,
++          "Find controls overflow",
++        );
++      });
++      await act(async () => root.render(null));
++    }
++  await test("Guest Cmd/Ctrl+F, Escape and hidden-tab isolation", async () => {
++    await act(async () => render("zh-CN"));
++    const inputGuest = guest as unknown as { sendInputEvent(input: Record<string, unknown>): void };
++    guest.focus();
++    inputGuest.sendInputEvent({
++      type: "keyDown",
++      keyCode: "F",
++      modifiers: [navigator.platform.includes("Mac") ? "meta" : "control"],
++    });
++    await wait(() => currentFind.isOpen);
++    await act(async () =>
++      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
++    );
++    check(!currentFind.isOpen, "Escape retained guest search");
++    await act(async () => render("zh-CN", false));
++    await act(async () =>
++      window.dispatchEvent(
++        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
++      ),
++    );
++    check(!currentFind.isOpen, "Hidden tab handled another page's shortcut");
++  });
++  await test("Loaded page remains usable and MV3 content script result is observable", async () => {
++    const content = await guest.executeJavaScript(
++      "document.documentElement.dataset.extensionContent",
++    );
++    check(content === "yes", "Native extension did not inject into a real webview guest");
++    const probe = await guest.executeJavaScript("document.documentElement.dataset.extensionProbe");
++    globals.__extensionReport = {
++      contentScript: content,
++      ...(probe ? JSON.parse(String(probe)) : { worker: "no response" }),
++    };
++  });
++  await test("Stop cancels a pending real navigation; reload can be used afterward", async () => {
++    const began = new Promise<void>((done) =>
++      guest.addEventListener("did-start-loading", () => done(), { once: true }),
++    );
++    const stopped = new Promise<void>((done) =>
++      guest.addEventListener("did-stop-loading", () => done(), { once: true }),
++    );
++    void guest.loadURL(new URL("/slow", guest.src).href).catch(() => {});
++    await began;
++    guest.stop();
++    await stopped;
++    await guest.loadURL(new URL("/", guest.src).href);
++    check(
++      String(await guest.executeJavaScript("document.body.textContent")).includes("Browser proof"),
++      "Stop left guest unusable",
++    );
++  });
++  await act(async () => root.unmount());
++  guest.remove();
++  node.remove();
++  return results;
++})();
+diff --git a/scripts/desktop-review-guard.mjs b/scripts/desktop-review-guard.mjs
+new file mode 100644
+index 0000000..d3cb41c
+--- /dev/null
++++ b/scripts/desktop-review-guard.mjs
+@@ -0,0 +1,46 @@
++import { readFile } from "node:fs/promises";
++import { resolve, join } from "node:path";
++import { spawnSync } from "node:child_process";
++import { createRequire } from "node:module";
++const require = createRequire(import.meta.url);
++
++export async function assertDesktopReviewStopped(root) {
++  // Reuse the development review records: a self-check must not start another Electron
++  // beside the visible candidate. This optional guard does not make standalone builds depend on Fleet.
++  const reviews = resolve(root, "../../.fleet/reviews");
++  for (const name of [
++    "project-audit/desktop",
++    "native-executor",
++    "attachment-preview",
++    "model-settings",
++  ]) {
++    let saved;
++    try {
++      saved = JSON.parse(await readFile(join(reviews, name, "review.json"), "utf8"));
++    } catch {
++      continue;
++    }
++    if (
++      !Number.isSafeInteger(saved.pid) ||
++      saved.pid <= 0 ||
++      saved.executable !== require("electron")
++    )
++      continue;
++    try {
++      process.kill(saved.pid, 0);
++    } catch (error) {
++      if (error.code === "ESRCH") continue;
++      throw error;
++    }
++    if (
++      process.platform !== "win32" &&
++      !/Fleet|Electron/i.test(
++        spawnSync("ps", ["-p", String(saved.pid), "-o", "comm="], { encoding: "utf8" }).stdout,
++      )
++    )
++      continue;
++    throw new Error(
++      "Close the existing Fleet review before renderer self-checks; no second Electron was started.",
++    );
++  }
++}
+diff --git a/scripts/test-embedded-browser.mjs b/scripts/test-embedded-browser.mjs
+new file mode 100644
+index 0000000..f014747
+--- /dev/null
++++ b/scripts/test-embedded-browser.mjs
+@@ -0,0 +1,135 @@
++// Native guest proof: real Chromium find, preload keyboard bridge and a local MV3 fixture.
++// No user profile, downloaded extension, account, external network or paid inference is used.
++import { mkdtemp, writeFile, readFile, copyFile, rm, mkdir } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { createRequire } from "node:module";
++import { spawn } from "node:child_process";
++import { assertDesktopReviewStopped } from "./desktop-review-guard.mjs";
++
++const root = resolve(import.meta.dirname, "..");
++const require = createRequire(import.meta.url);
++const { build } = createRequire(new URL("../apps/zcode-cli/package.json", import.meta.url))(
++  "esbuild",
++);
++await assertDesktopReviewStopped(root);
++const profile = await mkdtemp(join(tmpdir(), "fleet-browser-proof-"));
++try {
++  await mkdir(join(profile, "extension"));
++  await writeFile(
++    join(profile, "extension/manifest.json"),
++    JSON.stringify({
++      manifest_version: 3,
++      name: "Fleet local compatibility fixture",
++      version: "1.0.0",
++      permissions: ["storage", "tabs"],
++      host_permissions: ["http://127.0.0.1/*"],
++      background: { service_worker: "worker.js" },
++      action: { default_popup: "popup.html" },
++      content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }],
++    }),
++  );
++  await writeFile(join(profile, "extension/popup.html"), "<p>Local fixture</p>");
++  await writeFile(
++    join(profile, "extension/worker.js"),
++    `
++chrome.runtime.onMessage.addListener((_message, sender, reply) => {
++  chrome.storage.local.set({fixture:true}).then(async () => {
++    const stored = await chrome.storage.local.get('fixture');
++    const tabs = await chrome.tabs.query({});
++    reply({worker:true, storage:stored.fixture, senderTab:sender.tab?.id,
++      tabs:tabs.map(t=>t.id), tabsCreate:typeof chrome.tabs.create, action:typeof chrome.action,
++      contextMenus:typeof chrome.contextMenus, declarativeNetRequest:typeof chrome.declarativeNetRequest,
++      nativeMessaging:typeof chrome.runtime.connectNative, storageSync:typeof chrome.storage.sync});
++  }).catch(e=>reply({worker:true,error:String(e)}));
++  return true;
++});`,
++  );
++  await writeFile(
++    join(profile, "extension/content.js"),
++    `
++document.documentElement.dataset.extensionContent = 'yes';
++chrome.runtime.sendMessage({probe:true}, result => {
++  document.documentElement.dataset.extensionProbe = JSON.stringify(result ?? {error:chrome.runtime.lastError?.message});
++});`,
++  );
++  await build({
++    entryPoints: [join(root, "packages/desktop/src/preload/embeddedBrowserJavaScriptDialog.ts")],
++    outfile: join(profile, "preload.cjs"),
++    bundle: true,
++    format: "cjs",
++    platform: "node",
++    external: ["electron"],
++    tsconfig: join(root, "packages/desktop/tsconfig.json"),
++  });
++  await build({
++    entryPoints: [join(root, "packages/ui/test/embeddedBrowser.browser.tsx")],
++    outfile: join(profile, "test.js"),
++    bundle: true,
++    platform: "browser",
++    format: "esm",
++    tsconfig: join(root, "packages/ui/tsconfig.json"),
++    loader: { ".svg": "dataurl", ".png": "dataurl" },
++    define: {
++      "process.env.NODE_ENV": '"development"',
++      "import.meta.env.DEV": "false",
++      "import.meta.env.PROD": "true",
++    },
++  });
++  const renderer = join(root, "packages/desktop/out/renderer");
++  const html = await readFile(join(renderer, "index.html"), "utf8");
++  const css = html.match(/href="([^"\n]+\.css)"/)?.[1];
++  if (!css) throw new Error("Build desktop styles before this proof");
++  await copyFile(join(renderer, css), join(profile, "test.css"));
++  await writeFile(
++    join(profile, "index.html"),
++    '<link rel="stylesheet" href="./test.css"><script type="module" src="./test.js"></script>',
++  );
++  await writeFile(
++    join(profile, "main.cjs"),
++    `
++const {app,BrowserWindow,session} = require('electron');
++const http = require('node:http');
++app.setPath('userData', ${JSON.stringify(join(profile, "data"))});
++if(process.platform==='darwin') app.dock.hide();
++const server=http.createServer((req,res)=>{
++  if(req.url==='/slow'){res.write('<h1>Pending</h1>');return;}
++  res.end('<h1>Browser proof</h1><p>needle needle</p><input id="field" value="original"><a href="/next">Open next</a>');
++});
++app.whenReady().then(async()=>{
++  await new Promise(done=>server.listen(0,'127.0.0.1',done));
++  const port=server.address().port;
++  const ses=session.fromPartition('persist:fleet-browser-proof');
++  ses.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*']},(r,cb)=>cb({cancel:new URL(r.url).origin!=='http://127.0.0.1:'+port}));
++  const extension=await ses.extensions.loadExtension(${JSON.stringify(join(profile, "extension"))});
++  console.log('Extension loaded:',extension.id,'Electron',process.versions.electron,'Chrome',process.versions.chrome);
++  // Only one disposable window is opened, after the current Fleet review has closed.
++  const win=new BrowserWindow({show:true,width:640,height:600,webPreferences:{webviewTag:true,sandbox:true,contextIsolation:true}});
++  win.webContents.on('will-attach-webview',(_event,prefs)=>{
++    prefs.preload=${JSON.stringify(join(profile, "preload.cjs"))};
++    prefs.sandbox=true;prefs.contextIsolation=true;prefs.nodeIntegration=false;
++  });
++  await win.loadFile(${JSON.stringify(join(profile, "index.html"))},{query:{port:String(port)}});
++  const results=await win.webContents.executeJavaScript('window.__embeddedBrowserTests');
++  if(!Array.isArray(results)) throw new Error('Browser proof did not run');
++  for(const r of results) console.log((r.error?'FAIL ':'PASS ')+r.name+(r.error?': '+r.error:''));
++  const report=await win.webContents.executeJavaScript('window.__extensionReport');
++  console.log('Native extension compatibility:',JSON.stringify(report));
++  app.exit(results.some(r=>r.error)?1:0);
++}).catch(e=>{console.error(e);app.exit(1)});
++setTimeout(()=>{console.error('Browser proof timed out');app.exit(1)},45000);
++`,
++  );
++  const env = { ...process.env };
++  delete env.ELECTRON_RUN_AS_NODE;
++  process.exitCode = await new Promise((done, reject) => {
++    const child = spawn(require("electron"), [join(profile, "main.cjs")], {
++      env,
++      stdio: "inherit",
++    });
++    child.on("error", reject);
++    child.on("exit", (code) => done(code ?? 1));
++  });
++} finally {
++  await rm(profile, { recursive: true, force: true });
++}
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 947d216..8dd504a 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -4,25 +4,14 @@ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createRequire } from "node:module";
+ import { spawn } from "node:child_process";
+-import { spawnSync } from "node:child_process";
++import { assertDesktopReviewStopped } from "./desktop-review-guard.mjs";
+ 
+ const require = createRequire(import.meta.url);
+ const { build } = createRequire(new URL("../apps/zcode-cli/package.json", import.meta.url))(
+   "esbuild",
+ );
+ const root = resolve(import.meta.dirname, "..");
+-// Reuse the development review records: a self-check must not start another Electron
+-// beside the visible candidate. This optional guard does not make standalone builds depend on Fleet.
+-const reviews = resolve(root, "../../.fleet/reviews");
+-for (const name of ["project-audit/desktop", "native-executor", "attachment-preview", "model-settings"]) {
+-  let saved;
+-  try { saved = JSON.parse(await readFile(join(reviews, name, "review.json"), "utf8")); }
+-  catch { continue; }
+-  if (!Number.isSafeInteger(saved.pid) || saved.pid <= 0 || saved.executable !== require("electron")) continue;
+-  try { process.kill(saved.pid, 0); } catch (error) { if (error.code === "ESRCH") continue; throw error; }
+-  if (process.platform !== "win32" && !/Fleet|Electron/i.test(spawnSync("ps", ["-p", String(saved.pid), "-o", "comm="], { encoding: "utf8" }).stdout)) continue;
+-  throw new Error("Close the existing Fleet review before renderer self-checks; no second Electron was started.");
+-}
++await assertDesktopReviewStopped(root);
+ const entry = process.argv[2] ?? "packages/ui/test/usageHooks.browser.tsx";
+ const resultKey = process.argv[3] ?? "__usageHookTests";
+ if (!/^__[a-zA-Z0-9]+$/.test(resultKey)) throw new Error("Invalid renderer result key");

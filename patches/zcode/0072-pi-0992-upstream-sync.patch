@@ -1,0 +1,382 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 04494cc03d283cfe99bd47b61d443c0cea15367f..8cad52be22c2ecbf3bcf832b93a61b2df7b1c1a8 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -22,7 +22,7 @@ Codex account deduplication belongs to this same subscription owner. The officia
+ member (`chatgpt_account_user_id`) and user (`chatgpt_user_id`, then `user_id`); AIUsage's
+ `AccountStore+Persistence.swift` likewise uses a workspace/user tuple. Compare these claims only
+ inside credentials returned by the existing OAuth exchange, with matching workspace scope; never
+-use a displayed email or label as identity. Pi 0.87.1 supplies the access token and workspace ID;
++use a displayed email or label as identity. Pi 0.99.2 supplies the access token and workspace ID;
+ optional ID-token claims are usable only if retained by that same credential owner. Conflicting
+ claims or known workspace/member identities cannot merge, even with equal refresh material.
+ Workspace-only or legacy unknown identities stay separate unless their exact nonempty refresh
+@@ -95,7 +95,7 @@ checks reject stale account results; no credential/model storage owner or schema
+ Official catalog display names are shown alongside exact IDs; the existing model identity remains
+ the ID. Unknown capabilities stay unknown and use the existing metadata editor.
+ 
+-Subscription login occupies the API-key section; no extra settings route or app login. The services and adapter packages pin `@earendil-works/pi-ai@0.87.1`; this adds only model transport
++Subscription login occupies the API-key section; no extra settings route or app login. The services and adapter packages pin `@earendil-works/pi-ai@0.99.2`; this adds only model transport
+ and OAuth drivers, not the Pi Agent execution loop, tools, Session or permission storage. Native Pi
+ stream events are converted at the existing model seam. Text, images, tools, reasoning replay and
+ cache usage have offline fixtures; unsupported native tools, structured output and raw file inputs
+diff --git a/apps/zcode-cli/packages/adapters/package.json b/apps/zcode-cli/packages/adapters/package.json
+index 3d96b78d9cb82169d0f6bc3b5c265a96611a8ec7..9a4786dcfa11d03fcca84ed6a116fb6375f6e42c 100644
+--- a/apps/zcode-cli/packages/adapters/package.json
++++ b/apps/zcode-cli/packages/adapters/package.json
+@@ -107,7 +107,7 @@
+     "@ai-sdk/openai": "^3.0.58",
+     "@ai-sdk/openai-compatible": "^2.0.58",
+     "@anthropic-ai/claude-agent-sdk": "0.3.258",
+-    "@earendil-works/pi-ai": "0.87.1",
++    "@earendil-works/pi-ai": "0.99.2",
+     "@modelcontextprotocol/client": "2.0.0",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+diff --git a/apps/zcode-cli/packages/core/package.json b/apps/zcode-cli/packages/core/package.json
+index bfa9b21ef21f1d0e2ac64d9bc5bec83bf644d7c5..1a61706b386a86b7549693d5886735e030ca3154 100644
+--- a/apps/zcode-cli/packages/core/package.json
++++ b/apps/zcode-cli/packages/core/package.json
+@@ -31,8 +31,8 @@
+     "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+-    "@earendil-works/pi-ai": "0.99.1",
+-    "@earendil-works/pi-coding-agent": "0.99.1",
++    "@earendil-works/pi-ai": "0.99.2",
++    "@earendil-works/pi-coding-agent": "0.99.2",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+     "@zcode/shared": "workspace:*",
+diff --git a/packages/services/package.json b/packages/services/package.json
+index 0ebcd7eed71c8ed8ce058710977c4df33d113cb1..bce56bb60f4dee09fc02e065bde6ac7718a18482 100644
+--- a/packages/services/package.json
++++ b/packages/services/package.json
+@@ -18,7 +18,7 @@
+   },
+   "dependencies": {
+     "@zcode/adapters": "workspace:*",
+-    "@earendil-works/pi-ai": "0.87.1",
++    "@earendil-works/pi-ai": "0.99.2",
+     "@larksuiteoapi/node-sdk": "1.64.0",
+     "@zcode/provider": "workspace:*",
+     "@zcode/provider-node": "workspace:*",
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+index c33ef988836d0f976c085e0927635f82b0c29971..4d82553b1b8d288e9a0c500ce9da324fc7b7fff9 100644
+--- a/packages/services/src/model-provider/subscriptionCatalog.ts
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -25,13 +25,14 @@ export function createSubscriptionProviders(
+ }
+ 
+ export const GROK_SUBSCRIPTION_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
+-// Grok Build's client-version header, pinned to Cindy's verified compatibility baseline.
++// CLIProxyAPI b467a83: chat-proxy raised its accepted client floor; /models alone does not prove chat access.
++export const GROK_SUBSCRIPTION_CLIENT_VERSION = "1.0.44";
+ export function grokSubscriptionHeaders(credential: OAuthCredential): Record<string, string> {
+   return {
+     Authorization: `Bearer ${credential.access}`,
+     Accept: "application/json",
+     "X-XAI-Token-Auth": "xai-grok-cli",
+-    "x-grok-client-version": "1.0.3",
++    "x-grok-client-version": GROK_SUBSCRIPTION_CLIENT_VERSION,
+     ...(typeof credential.accountId === "string" ? { "x-userid": credential.accountId } : {}),
+   };
+ }
+diff --git a/packages/services/test/subscription-catalog.test.ts b/packages/services/test/subscription-catalog.test.ts
+index 4e7d7c01b1fb586ec4ce31f78dd81ba57f956e2e..c2dfaea5849635fad0d0cd402b3d60f40bf3d3b3 100644
+--- a/packages/services/test/subscription-catalog.test.ts
++++ b/packages/services/test/subscription-catalog.test.ts
+@@ -4,8 +4,20 @@ import {
+   identifyGrokSubscription,
+   parseNativeSubscriptionCatalog,
+   readNativeSubscriptionCatalog,
++  grokSubscriptionHeaders,
++  bindNativeSubscriptionAuth,
++  GROK_SUBSCRIPTION_CLIENT_VERSION,
+ } from "../src/model-provider/subscriptionCatalog.js";
+ 
++test("Grok catalog and inference share the current compatible client identity", () => {
++  const credential = { type: "oauth", access: "synthetic-token", refresh: "synthetic-refresh", expires: 0, accountId: "fixture" } as never;
++  const headers = grokSubscriptionHeaders(credential);
++  const inference = bindNativeSubscriptionAuth("xai", credential, { apiKey: "synthetic-token", headers: {} });
++  assert.equal(headers["x-grok-client-version"], GROK_SUBSCRIPTION_CLIENT_VERSION);
++  assert.equal(inference.headers["x-grok-client-version"], GROK_SUBSCRIPTION_CLIENT_VERSION);
++  assert.equal(GROK_SUBSCRIPTION_CLIENT_VERSION, "1.0.44");
++});
++
+ test("Codex account catalog preserves current IDs and only server-declared metadata", () => {
+   const result = parseNativeSubscriptionCatalog("openai-codex", {
+     models: [
+diff --git a/patches/@earendil-works__pi-ai@0.87.1.patch b/patches/@earendil-works__pi-ai@0.99.2.patch
+similarity index 100%
+rename from patches/@earendil-works__pi-ai@0.87.1.patch
+rename to patches/@earendil-works__pi-ai@0.99.2.patch
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index a9df7d36d49ec39cca98a5bd4f1c037ae8bb4142..208a719961228ccaecea43d7528fc6280d63f584 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -18,9 +18,9 @@ patchedDependencies:
+   '@arms/rum-electron@0.0.3':
+     hash: 36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97
+     path: patches/@arms__rum-electron@0.0.3.patch
+-  '@earendil-works/pi-ai@0.87.1':
++  '@earendil-works/pi-ai@0.99.2':
+     hash: 1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9
+-    path: patches/@earendil-works__pi-ai@0.87.1.patch
++    path: patches/@earendil-works__pi-ai@0.99.2.patch
+ 
+ importers:
+ 
+@@ -149,8 +149,8 @@ importers:
+         specifier: 0.3.258
+         version: 0.3.258(@anthropic-ai/sdk@0.124.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)
+       '@earendil-works/pi-ai':
+-        specifier: 0.87.1
+-        version: 0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
++        specifier: 0.99.2
++        version: 0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@modelcontextprotocol/client':
+         specifier: 2.0.0
+         version: 2.0.0
+@@ -369,11 +369,11 @@ importers:
+   apps/zcode-cli/packages/core:
+     dependencies:
+       '@earendil-works/pi-ai':
+-        specifier: 0.99.1
+-        version: 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        specifier: 0.99.2
++        version: 0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-coding-agent':
+-        specifier: 0.99.1
+-        version: 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)
++        specifier: 0.99.2
++        version: 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)
+       '@zcode/contracts':
+         specifier: workspace:*
+         version: link:../contracts
+@@ -969,8 +969,8 @@ importers:
+   packages/services:
+     dependencies:
+       '@earendil-works/pi-ai':
+-        specifier: 0.87.1
+-        version: 0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
++        specifier: 0.99.2
++        version: 0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
+       '@larksuiteoapi/node-sdk':
+         specifier: 1.64.0
+         version: 1.64.0
+@@ -1851,47 +1851,38 @@ packages:
+   '@dukelib/sheets-wasm@0.1.21':
+     resolution: {integrity: sha512-YJpLUo/K7N9iGZv+A74D8o6XlT1VjMdlq9i/pIj/DwAO9/7jqppaV60VdL0TgJ0UzUlbhChWR+qQGNTmESINlw==}
+ 
+-  '@earendil-works/chord@0.99.1':
+-    resolution: {integrity: sha512-4xyn0IBzJ+Xu/iOGi2hjXJGAR61QEhEWZsIqTDqr+GmItdquYwBO5jYFnqGiBaTqlY12/EpM7QHoEKSHbyvOug==}
++  '@earendil-works/chord@0.99.2':
++    resolution: {integrity: sha512-2dJWiNsOJm/ioBl1fhpJmw0hIjFUhM0CAteEnVkiVG0Kg4LimR7Asq8PfjclEvrbCPsDntzy7rGKhTZObI9TZw==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-agent-core@0.99.1':
+-    resolution: {integrity: sha512-zywvWnj5FujeuFI/x/CJHwwxhcLIQgjqseTA+bQgX4O8gJTcgjRd/I8SZnQDqJvxC9QcV12ujiGLviv6EgwcCg==}
++  '@earendil-works/pi-agent-core@0.99.2':
++    resolution: {integrity: sha512-VX0QMcg8HKBsv1bYP2NwmutBYa44OrwmtqR6Dq7QC3Ln8X/IlpHhUxB5L1JgnXNUUkTm8Wg/HZhzS797NBDMCQ==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-ai@0.87.1':
+-    resolution: {integrity: sha512-X/3PfQBnnoeVdO9Cv8zHghUMglzlgNZYGNzoPnbRoGnHl3Rw3TlA2UKSUB7BRHUOxMryHXYa8dnjWZlbRheDZA==}
++  '@earendil-works/pi-ai@0.99.2':
++    resolution: {integrity: sha512-9RFOEdY+ZTJ1AI+UuAFs4RM0tF2Tje/R/CEv9gWTJHt0iTu8XHZs64U/EIZxNSllFmec/4HfwsOxYj1qQek9bg==}
+     engines: {node: '>=22.19.0'}
+     hasBin: true
+ 
+-  '@earendil-works/pi-ai@0.99.1':
+-    resolution: {integrity: sha512-4nV9JKc94iPX8bwdGPc2nTuVPKIPsffhnp3WoN9NYCNqbtoOF8LhYcIs/+Sn/alroqJK/5QRu6/Z6Ck+n0hyBA==}
+-    engines: {node: '>=22.19.0'}
+-    hasBin: true
+-
+-  '@earendil-works/pi-codemode@0.99.1':
+-    resolution: {integrity: sha512-oh8TMsBI3SWTN3xTQtX8u5n+BKhnVXcFagroWumfn6/WWfBnDYL/LmeQtjLb83WRTb9rcu+ZdK8rFa4vggvCJg==}
++  '@earendil-works/pi-codemode@0.99.2':
++    resolution: {integrity: sha512-PVxNGu4l7LI92MvwUbaY3trjznU1Mlp2OMGwHwCWzLsjG7/lDa8xf6ei+Gws7VCt+Ri1tO+nFVl9KV2EeX7HWg==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-coding-agent@0.99.1':
+-    resolution: {integrity: sha512-cWUrTOqA5M73cOYMgsh9PlhDrsBhavd+n5kVY6F7BGbGl1RjqCteVCoeVMVqhngoGACVDyw1tbLjajL8l9jrHg==}
++  '@earendil-works/pi-coding-agent@0.99.2':
++    resolution: {integrity: sha512-6R1BZ2N77CrVcGf3eC2KovTz1Q4RYiAeydvVWQT546N2fi1nBc81aURlbOZCgruWoW9VY/UrLzDynF4YTolpoA==}
+     engines: {node: '>=22.19.0'}
+     hasBin: true
+ 
+-  '@earendil-works/pi-mcp@0.99.1':
+-    resolution: {integrity: sha512-YCFGPkmDzLwQuIzwfbP6Vuk/g/ukKpZhwTpbcfzomuI1Fkiu6hHRkOGwAqsO3G8cTkZWkM8vmOkFJjStQNC4qA==}
++  '@earendil-works/pi-mcp@0.99.2':
++    resolution: {integrity: sha512-ISk6OIsiUzmULF+sUilLnENGKo9/gVDxZG2CTEq8f4dbp70AXOr/hMiwOjtcrlX6xBd4UMUsIz4EPTOlU6U+HA==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-telemetry@0.87.1':
+-    resolution: {integrity: sha512-MC6TRQH5lgMXpcN+Vku2WMI2T8BsiUPzMQHGo81uqFZD3/9O79WWJAysEDGuzduP6R4tvtgwMLwmqIxynM10JQ==}
++  '@earendil-works/pi-telemetry@0.99.2':
++    resolution: {integrity: sha512-WThYU4XM6jjjzH4FzLdreN7QAPS9SDdokL0W0Ldheg1ssCIJkfpK7PgebFm7/PoQub7OiXx+SRF6B/oF7z7lXA==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-telemetry@0.99.1':
+-    resolution: {integrity: sha512-9PBPjGk+TXRtuMianpqBbHBpYpyKusESF6rwdmgD0WTZSTUQXhcKEO0hAINRLuSwy4V7yPvXV+EVV0ONY7mbpQ==}
+-    engines: {node: '>=22.19.0'}
+-
+-  '@earendil-works/pi-tui@0.99.1':
+-    resolution: {integrity: sha512-gZp0Guat96Fr1AuC/xqVz5B2lulZakp/PxD1lXx3lSgBdjiqmwYhJbcQ0HRrGAfy0WtMGn9b05RJr5qJf7oIuw==}
++  '@earendil-works/pi-tui@0.99.2':
++    resolution: {integrity: sha512-IOcNnd390NCIwBEKeOiBK/bvaR7Z+vEsvB5TtKsFdsY/vAZE6qRHbQqt6jpTefTiKPfQlwG8eS1BU42DeG2v4w==}
+     engines: {node: '>=22.19.0'}
+ 
+   '@ecies/ciphers@0.2.6':
+@@ -8549,17 +8540,6 @@ packages:
+     resolution: {integrity: sha512-smsWv2LzFjP03xmvFoJ331ss6h+jixfA4UUV/Bsiyuu4YJPfN+FIQGOIiv4w9/+MoHkfkJ22UIaQWRVFRfH6Vw==}
+     engines: {node: '>=20'}
+ 
+-  openai@6.40.0:
+-    resolution: {integrity: sha512-MWtTjd/gQt4jpbji61NTgFWJLoY/PdRJ6wG9/ZDRMYNMlBKrCrSlkLI+KgHP1vR1qT6LKSAyAqIxno6lcK9JiA==}
+-    peerDependencies:
+-      ws: ^8.18.0
+-      zod: ^3.25 || ^4.0
+-    peerDependenciesMeta:
+-      ws:
+-        optional: true
+-      zod:
+-        optional: true
+-
+   openai@7.19.0:
+     resolution: {integrity: sha512-MX2s3u2L5racTO0CC/SWpCOasJQBCJrqLKXK+l82cAhdeF8mPMBEe/gxMm0ZFa2xpKpOFLRjxv5afYEZbBXmbQ==}
+     engines: {node: '>=22.0.0'}
+@@ -11187,15 +11167,15 @@ snapshots:
+ 
+   '@dukelib/sheets-wasm@0.1.21': {}
+ 
+-  '@earendil-works/chord@0.99.1':
++  '@earendil-works/chord@0.99.2':
+     dependencies:
+       esbuild: 0.28.2
+ 
+-  '@earendil-works/pi-agent-core@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-agent-core@0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+-      '@earendil-works/chord': 0.99.1
+-      '@earendil-works/pi-ai': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+-      '@earendil-works/pi-telemetry': 0.99.1
++      '@earendil-works/chord': 0.99.2
++      '@earendil-works/pi-ai': 0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-telemetry': 0.99.2
+       diff: 8.0.4
+       ignore: 7.0.8
+       typebox: 1.3.27
+@@ -11213,32 +11193,36 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)':
++  '@earendil-works/pi-ai@0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+-      '@earendil-works/pi-telemetry': 0.87.1
++      '@earendil-works/pi-telemetry': 0.99.2
+       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))
+       '@smithy/node-http-handler': 4.12.1
+       http-proxy-agent: 9.1.0
+       https-proxy-agent: 9.1.0
+-      openai: 6.40.0(ws@8.20.0)(zod@4.6.5)
++      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
+       partial-json: 0.1.7
+       typebox: 1.3.27
+     transitivePeerDependencies:
++      - '@aws-sdk/credential-provider-node'
+       - '@modelcontextprotocol/sdk'
++      - '@smithy/hash-node'
++      - '@smithy/signature-v4'
+       - bufferutil
+       - kerberos
+       - supports-color
++      - undici
+       - utf-8-validate
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-ai@0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+-      '@earendil-works/pi-telemetry': 0.99.1
++      '@earendil-works/pi-telemetry': 0.99.2
+       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))
+       '@smithy/node-http-handler': 4.12.1
+       http-proxy-agent: 9.1.0
+@@ -11259,18 +11243,18 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-codemode@0.99.1':
++  '@earendil-works/pi-codemode@0.99.2':
+     dependencies:
+       quickjs-wasi: 3.6.2
+ 
+-  '@earendil-works/pi-coding-agent@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)':
++  '@earendil-works/pi-coding-agent@0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)':
+     dependencies:
+-      '@earendil-works/chord': 0.99.1
+-      '@earendil-works/pi-agent-core': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+-      '@earendil-works/pi-ai': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+-      '@earendil-works/pi-codemode': 0.99.1
+-      '@earendil-works/pi-mcp': 0.99.1
+-      '@earendil-works/pi-tui': 0.99.1
++      '@earendil-works/chord': 0.99.2
++      '@earendil-works/pi-agent-core': 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 0.99.2(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-codemode': 0.99.2
++      '@earendil-works/pi-mcp': 0.99.2
++      '@earendil-works/pi-tui': 0.99.2
+       '@silvia-odwyer/photon-node': 0.3.4
+       chalk: 6.0.0
+       cross-spawn: 7.0.6
+@@ -11299,15 +11283,13 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-mcp@0.99.1':
++  '@earendil-works/pi-mcp@0.99.2':
+     dependencies:
+       cross-spawn: 7.0.6
+ 
+-  '@earendil-works/pi-telemetry@0.87.1': {}
+-
+-  '@earendil-works/pi-telemetry@0.99.1': {}
++  '@earendil-works/pi-telemetry@0.99.2': {}
+ 
+-  '@earendil-works/pi-tui@0.99.1':
++  '@earendil-works/pi-tui@0.99.2':
+     dependencies:
+       get-east-asian-width: 1.6.0
+       marked: 18.0.11
+@@ -18277,9 +18259,11 @@ snapshots:
+       powershell-utils: 0.1.0
+       wsl-utils: 0.3.1
+ 
+-  openai@6.40.0(ws@8.20.0)(zod@4.6.5):
++  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5):
+     optionalDependencies:
+-      ws: 8.20.0
++      '@aws-sdk/credential-provider-node': 3.972.84
++      '@smithy/signature-v4': 5.7.4
++      undici: 6.24.1
+       zod: 4.6.5
+ 
+   openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5):
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index b1b1568479c4d40482cad2f349cec613dca959c4..9b2519cd22861a7fc7f61e1a97ce9e8e788f44fa 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -38,4 +38,4 @@ patchedDependencies:
+   "@arms/rum-electron@0.0.3": "patches/@arms__rum-electron@0.0.3.patch"
+   "@ai-sdk/openai-compatible@2.0.60": "patches/@ai-sdk__openai-compatible@2.0.60.patch"
+   "@ai-sdk/anthropic@3.0.81": "patches/@ai-sdk__anthropic@3.0.81.patch"
+-  "@earendil-works/pi-ai@0.87.1": "patches/@earendil-works__pi-ai@0.87.1.patch"
++  "@earendil-works/pi-ai@0.99.2": "patches/@earendil-works__pi-ai@0.99.2.patch"

@@ -1,0 +1,301 @@
+diff --git a/apps/zcode-cli/docs/permission-dispatch.md b/apps/zcode-cli/docs/permission-dispatch.md
+new file mode 100644
+index 0000000..0843cdf
+--- /dev/null
++++ b/apps/zcode-cli/docs/permission-dispatch.md
+@@ -0,0 +1,26 @@
++# Permission at tool dispatch
++
++The existing PermissionService, Project rules writer and permission broker remain the only
++permission authorities. The executor retains whether this exact call received an explicit
++approval; this transient fact is neither a new grant store nor a Project rule.
++The binding captures the exact normalized input bytes, while the final synchronous registration
++and handler checks retain tool identity. Existing trusted hook and tool-specific approval gates
++keep their call-scoped authorization; ordinary automatic rule allowances do not acquire one.
++
++```text
++initial policy → optional broker approval → started event → current-policy recheck → handler
++                                                     └→ changed Ask / Deny: refuse dispatch
++```
++
++A Project rule changed from automatic Allow to Ask before dispatch cannot inherit the old
++automatic allowance. Refuse that attempt with a reason requiring a fresh approval; a resubmitted
++call uses the ordinary broker. An unchanged Ask already approved for this call must not ask twice.
++Current Deny, a revoked registration, changed handler and cancellation still prevent execution.
++
++Desktop continuous delivery and remote replay observe the same existing permission/tool events.
++No protocol, storage schema, mode policy, approval UI or persisted grant is migrated.
++
++Acceptance uses AgentRuntime.executeTurn with controlled model replies, the real Project/SQLite
++writer and a real local effect: Allow→Ask, Allow→Deny, approved Ask→Ask, and a subsequent fresh
++request through the original broker. Rules change during the awaited started-event publication,
++before the actual effect, rather than replacing the permission checker with a mock.
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index b82c8df..274067b 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -487,6 +487,7 @@ async function executeToolCallImpl(
+       mode,
+       executionInput,
+       toolCall: canonicalToolCall,
++      approvedInput: permissionResult.approvedInput,
+     });
+     if (revoked) {
+       await emitPermissionDenied(deps, canonicalToolCall, revoked.reason, traceContext);
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/permission-flow.ts b/apps/zcode-cli/packages/core/src/tool/executor/permission-flow.ts
+index 49ed540..da30207 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/permission-flow.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/permission-flow.ts
+@@ -12,7 +12,7 @@ import {
+ } from "@zcode/contracts";
+ import type { HookRunResult } from "../../hooks/index.js";
+ import type { PermissionContext } from "../../permission/service.js";
+-import type { ExecutableToolCall, ToolEntry, ToolExecutionResult } from "../types.js";
++import type { ExecutableToolCall, ToolEntry } from "../types.js";
+ import { normalizeToolExecutionInput } from "../input-normalization.js";
+ import { resolveToolApproval } from "./approval-gate.js";
+ import { createErrorResult, createPermissionErrorResult } from "./errors.js";
+@@ -28,16 +28,16 @@ import {
+   resolveRuntimePermissionContext,
+ } from "./permission-capability.js";
+ import { buildDefaultPermissionUpdates } from "./permission-suggestions.js";
+-import { recheckPermissionHookModifiedInput } from "./permission-input-recheck.js";
++import {
++  approvedToolInput,
++  recheckPermissionHookModifiedInput,
++  type ToolPermissionFlowResult,
++} from "./permission-input-recheck.js";
+ import type { ToolExecutorDeps } from "./types.js";
+ import { summarizeInput } from "./utils.js";
+ import { validateInput } from "./validation.js";
+ import { applyMemoryFilePermission } from "./memory-file-permission.js";
+ 
+-type ToolPermissionFlowResult =
+-  | { allowed: true; executionInput: unknown; permissionWaitMs?: number }
+-  | { allowed: false; result: ToolExecutionResult };
+-
+ export async function resolveToolPermission(
+   deps: ToolExecutorDeps,
+   toolCall: ExecutableToolCall,
+@@ -122,7 +122,9 @@ export async function resolveToolPermission(
+ 
+   if (permissionDecision.allowed) {
+     telemetry?.setPermissionDecision("not_required");
+-    return { allowed: true, executionInput };
++    return permissionDecision.ruleId === "hook.PreToolUse.allow"
++      ? approvedToolInput(executionInput)
++      : { allowed: true, executionInput };
+   }
+ 
+   if (permissionDecision.decision === "deny") {
+@@ -154,7 +156,7 @@ export async function resolveToolPermission(
+   const approval = resolveToolApproval(deps, toolCall, entry, executionInput, traceContext);
+   if (approval.gate === "proceed") {
+     telemetry?.setPermissionDecision("not_required");
+-    return { allowed: true, executionInput };
++    return approvedToolInput(executionInput);
+   }
+ 
+   const requestId = `perm_${crypto.randomUUID()}`;
+@@ -405,11 +407,8 @@ export async function resolveToolPermission(
+ 
+   telemetry?.setPermissionDecision("granted");
+   if (resolvedPermission.decision !== "modify") {
+-    return {
+-      allowed: true,
+-      executionInput: useNormalizedHookModifiedInput ? normalizedHookModifiedInput : executionInput,
+-      permissionWaitMs,
+-    };
++    const input = useNormalizedHookModifiedInput ? normalizedHookModifiedInput : executionInput;
++    return approvedToolInput(input, permissionWaitMs);
+   }
+ 
+   const modifiedInput = useNormalizedHookModifiedInput
+@@ -427,5 +426,5 @@ export async function resolveToolPermission(
+       result: createErrorResult(toolCall, modifiedInputValidation),
+     };
+   }
+-  return { allowed: true, executionInput: modifiedInput, permissionWaitMs };
++  return approvedToolInput(modifiedInput, permissionWaitMs);
+ }
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts b/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
+index 57ee24f..70fb03b 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/permission-input-recheck.ts
+@@ -9,7 +9,7 @@ import {
+ } from "@zcode/contracts";
+ 
+ import type { PermissionDecisionResult, PermissionContext } from "../../permission/service.js";
+-import type { ExecutableToolCall, ToolEntry } from "../types.js";
++import type { ExecutableToolCall, ToolEntry, ToolExecutionResult } from "../types.js";
+ import { applyMemoryFilePermission, targetsMemoryFile } from "./memory-file-permission.js";
+ import {
+   resolveRuntimePermissionCapability,
+@@ -24,6 +24,20 @@ interface PermissionHookInputRecheckResult {
+   permissionDecision?: PermissionDecisionResult;
+ }
+ 
++export type ToolPermissionFlowResult =
++  | { allowed: true; executionInput: unknown; permissionWaitMs?: number; approvedInput?: string }
++  | { allowed: false; result: ToolExecutionResult };
++
++/** Call-scoped authorization captures bytes, not a mutable input object or an automatic rule. */
++export function approvedToolInput(executionInput: unknown, permissionWaitMs?: number) {
++  return {
++    allowed: true as const,
++    executionInput,
++    approvedInput: JSON.stringify(executionInput),
++    permissionWaitMs,
++  };
++}
++
+ /** An approval authorizes this input; it cannot override a rule revoked while awaiting it. */
+ export async function recheckToolDispatchPermission(input: {
+   deps: ToolExecutorDeps;
+@@ -31,6 +45,7 @@ export async function recheckToolDispatchPermission(input: {
+   mode: CollaborationMode;
+   executionInput: unknown;
+   toolCall: ExecutableToolCall;
++  approvedInput?: string;
+ }): Promise<PermissionDecisionResult | undefined> {
+   let projectRules: PermissionRuleset | null;
+   try {
+@@ -65,7 +80,20 @@ export async function recheckToolDispatchPermission(input: {
+     projectRules,
+     input.entry.resolvePermissionRulePolicy?.(input.executionInput, runtime),
+   );
+-  return decision.decision === "deny" ? decision : undefined;
++  if (decision.decision === "deny") return decision;
++  // 自动 Allow 不是本次输入的明确批准。发布 started 期间新增 Ask 时必须退回原审批路径，
++  // 但已批准的同一输入不重复询问；注册对象/handler 仍由调用者在此后同步复核。
++  if (
++    decision.decision === "ask" &&
++    (input.approvedInput === undefined ||
++      input.approvedInput !== JSON.stringify(input.executionInput))
++  ) {
++    return {
++      ...decision,
++      reason: `Permission rules changed before ${input.toolCall.name} executed. Request the operation again for a fresh approval.`,
++    };
++  }
++  return undefined;
+ }
+ 
+ export async function recheckPermissionHookModifiedInput(input: {
+diff --git a/apps/zcode-cli/packages/core/test/permission-revocation.test.ts b/apps/zcode-cli/packages/core/test/permission-revocation.test.ts
+index 75ad94e..51263c0 100644
+--- a/apps/zcode-cli/packages/core/test/permission-revocation.test.ts
++++ b/apps/zcode-cli/packages/core/test/permission-revocation.test.ts
+@@ -2,6 +2,112 @@ import assert from "node:assert/strict";
+ import test from "node:test";
+ import { fixture, reply, call } from "./helpers/pi-runtime-fixture.js";
+ 
++test("a permission approval cannot authorize a later mutation of its input", async () => {
++  const approved = { value: "approved input" };
++  const f = await fixture(undefined, false, {
++    deps: {
++      eventSink: {
++        async onSessionEvent(event) {
++          if (event.type === "tool_call_started") approved.value = "unapproved replacement";
++        },
++      },
++    },
++  });
++  try {
++    f.permissionWith(async () => ({ decision: "modify", modifiedInput: approved }));
++    f.steps.push(
++      () => reply("Request", [call("input", "original")]),
++      () => reply("Done"),
++    );
++    await f.runtime.executeTurn("Request approval for a specific input");
++    assert.equal(f.permissionCalls, 1);
++    assert.equal(f.effects, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++for (const trustedGate of ["hook", "tool"] as const) {
++  test(`unchanged call-specific ${trustedGate} approval retains its original path`, async () => {
++    const f = await fixture(
++      undefined,
++      false,
++      trustedGate === "hook"
++        ? {
++            deps: {
++              hookRunner: {
++                run: async () => ({ additionalContexts: [], permissionBehavior: "allow" }),
++              },
++            },
++          }
++        : {},
++    );
++    try {
++      if (trustedGate === "tool")
++        f.runtime.getToolRegistry().get("Probe")!.prepareApproval = () => ({ gate: "proceed" });
++      f.steps.push(
++        () => reply("Request", [call("trusted", "approved")]),
++        () => reply("Done"),
++      );
++      await f.runtime.executeTurn("Use the existing call-specific approval");
++      assert.equal(f.effects, 1);
++      assert.equal(f.permissionCalls, 0);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++for (const tightenedPolicy of ["ask", "deny"] as const) {
++  test(`a new Project ${tightenedPolicy} cannot reuse an automatic Allow`, async () => {
++    let tighten = true;
++    const f = await fixture(undefined, false, {
++      deps: {
++        eventSink: {
++          async onSessionEvent(event) {
++            if (!tighten || event.type !== "tool_call_started") return;
++            tighten = false;
++            const session = await f.store.getSession("session" as never);
++            assert.ok(session);
++            await f.store.saveProjectPermission({
++              projectID: session.projectID,
++              permission: { version: 1, [tightenedPolicy]: [{ toolName: "Probe" }] },
++            });
++          },
++        },
++      },
++    });
++    try {
++      f.steps.push(
++        async () => {
++          const session = await f.store.getSession("session" as never);
++          assert.ok(session);
++          await f.store.saveProjectPermission({
++            projectID: session.projectID,
++            permission: { version: 1, allow: [{ toolName: "Probe" }] },
++          });
++          return reply("Use the automatic permission", [call("automatic", "must not run")]);
++        },
++        () => reply("The rule changed"),
++      );
++      await f.runtime.executeTurn("Execute while the Project policy changes");
++      assert.equal(f.effects, 0, "a tightened rule must stop the previously allowed effect");
++      assert.equal(f.permissionCalls, 0, "the first attempt only had an automatic allowance");
++      if (tightenedPolicy === "deny") return;
++      f.steps.push(
++        () => reply("Request again", [call("fresh", "approved")]),
++        () => reply("Done"),
++      );
++      await f.runtime.executeTurn("Request the same operation under the current Ask rule");
++      assert.equal(f.effects, 1);
++      assert.equal(f.permissionCalls, 1, "this call's explicit approval is not asked twice");
++      assert.equal(await f.read(), "approved");
++    } finally {
++      await f.close();
++    }
++  });
++}
++
+ for (const revoked of [false, true]) {
+   test(
+     `a pending approval ${revoked ? "cannot override a later project denial" : "still executes once when its project rules allow it"}`,

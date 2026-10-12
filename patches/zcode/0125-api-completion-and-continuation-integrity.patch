@@ -1,0 +1,2636 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts b/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts
+new file mode 100644
+index 0000000..b3c668a
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts
+@@ -0,0 +1,211 @@
++import { wrapLanguageModel, type LanguageModel } from "ai";
++import { ModelErrorCode, ModelProtocolError } from "@zcode/contracts";
++import {
++  scopedOpenRouterMetadata,
++  takeOpenRouterDetails,
++  withoutOpenRouterDetails,
++  type OpenRouterReasoningScope,
++} from "./openrouter-reasoning.js";
++import {
++  attachSdkUsageObservation,
++  withReportedCostMetadata,
++  type UsageObservationScope,
++} from "./provider-usage-observation.js";
++
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type FinishReason = Awaited<ReturnType<ApiModel["doGenerate"]>>["finishReason"];
++export type CompletionProtocol = "chat-completions" | "responses" | "messages";
++
++/** Completion control is protocol-specific; SDK EOF alone does not settle a Host request. */
++export function withApiCompletionEvidence(
++  model: ApiModel,
++  protocol: CompletionProtocol,
++  scope?: OpenRouterReasoningScope,
++  usageScope?: UsageObservationScope,
++): ApiModel {
++  const observationScope = usageScope ?? {
++    providerId: model.provider,
++    modelId: model.modelId,
++    protocol,
++  };
++  const rejectIncomplete = (): never => {
++    // SDK 的自然 EOF 会合成 finish。只有对应协议的上游完成事实才能授权 Host 后续工具；
++    // 保留 public V3 元数据/usage，不把 raw 调试帧传到 Session 或再解析一次 SSE。
++    throw new ModelProtocolError(
++      ModelErrorCode.InvalidModelResponse,
++      `${protocol} ended without valid provider completion evidence`,
++      {
++        modelId: model.modelId,
++        source: "provider",
++        errorPhase: "parse",
++        exceptionKind: "protocol",
++        retryable: false,
++      },
++    );
++  };
++  const assertFinishReason = (reason: FinishReason | undefined) => {
++    if (
++      typeof reason?.raw !== "string" ||
++      !reason.raw.trim() ||
++      reason.raw.trim().toLowerCase() === "error" ||
++      reason.unified === "error"
++    )
++      rejectIncomplete();
++  };
++  return wrapLanguageModel({
++    model,
++    middleware: {
++      specificationVersion: "v3",
++      async transformParams({ type, params }) {
++        return type === "stream" && protocol === "responses"
++          ? { ...params, includeRawChunks: true }
++          : params;
++      },
++      async wrapGenerate({ doGenerate }) {
++        const result = await doGenerate();
++        try {
++          if (protocol === "responses") {
++            const status = record(result.response?.body)?.status;
++            if (status !== "completed" && status !== "incomplete") rejectIncomplete();
++          } else assertFinishReason(result.finishReason);
++          const providerMetadata = withReportedCostMetadata(
++            result.providerMetadata,
++            observationScope,
++          );
++          if (!scope) return { ...result, providerMetadata };
++          const details = takeOpenRouterDetails(result.providerMetadata);
++          return {
++            ...result,
++            providerMetadata: withoutOpenRouterDetails(providerMetadata),
++            content: [
++              ...result.content.map((part) =>
++                part.type === "reasoning"
++                  ? {
++                      ...part,
++                      providerMetadata: scopedOpenRouterMetadata(scope, part.providerMetadata),
++                    }
++                  : part,
++              ),
++              ...(details
++                ? [{ type: "reasoning" as const, text: "", providerMetadata: details }]
++                : []),
++            ],
++          };
++        } catch (error) {
++          throw attachSdkUsageObservation(
++            error,
++            result.usage,
++            result.providerMetadata,
++            observationScope,
++            record(result.response?.body)?.usage,
++          );
++        }
++      },
++      async wrapStream({ doStream }) {
++        const result = await doStream();
++        let finished = false;
++        let failed = false;
++        let responsesTerminal = false;
++        let responseId: string | undefined;
++        let responseUsage: unknown;
++        return {
++          ...result,
++          stream: result.stream.pipeThrough(
++            new TransformStream({
++              transform(part, controller) {
++                try {
++                  if (protocol === "responses" && part.type === "raw") {
++                    const event = record(part.rawValue);
++                    const response = record(event?.response);
++                    if (response?.usage) responseUsage = response.usage;
++                    if (event?.type === "response.created" && typeof response?.id === "string")
++                      responseId = response.id;
++                    if (
++                      event?.type === "response.completed" ||
++                      event?.type === "response.incomplete"
++                    ) {
++                      const expected =
++                        event.type === "response.completed" ? "completed" : "incomplete";
++                      if (
++                        response?.status !== expected ||
++                        (responseId && response.id !== undefined && response.id !== responseId)
++                      )
++                        rejectIncomplete();
++                      responsesTerminal = true;
++                    }
++                    return; // Only control state is retained; raw payloads remain SDK-private.
++                  }
++                  if (part.type === "error") failed = true;
++                  if (part.type === "finish") {
++                    // 原始 error part 仍由既有错误链处理，不能被完成校验替换。
++                    if (!failed) {
++                      if (protocol === "responses") {
++                        if (!responsesTerminal || part.finishReason.unified === "error")
++                          rejectIncomplete();
++                      } else assertFinishReason(part.finishReason);
++                    }
++                    finished = true;
++                    if (scope && !failed) {
++                      const details = takeOpenRouterDetails(part.providerMetadata);
++                      if (details) {
++                        controller.enqueue({
++                          type: "reasoning-start",
++                          id: "fleet-openrouter-replay",
++                        });
++                        controller.enqueue({
++                          type: "reasoning-end",
++                          id: "fleet-openrouter-replay",
++                          providerMetadata: details,
++                        });
++                      }
++                      controller.enqueue({
++                        ...part,
++                        providerMetadata: withoutOpenRouterDetails(
++                          withReportedCostMetadata(part.providerMetadata, observationScope),
++                        ),
++                      });
++                      return;
++                    }
++                  }
++                  if (
++                    scope &&
++                    (part.type === "reasoning-start" ||
++                      part.type === "reasoning-delta" ||
++                      part.type === "reasoning-end")
++                  ) {
++                    controller.enqueue({
++                      ...part,
++                      providerMetadata: scopedOpenRouterMetadata(
++                        scope,
++                        "providerMetadata" in part ? part.providerMetadata : undefined,
++                      ),
++                    });
++                    return;
++                  }
++                  controller.enqueue(part);
++                } catch (error) {
++                  throw attachSdkUsageObservation(
++                    error,
++                    part.type === "finish" ? part.usage : undefined,
++                    "providerMetadata" in part ? part.providerMetadata : undefined,
++                    observationScope,
++                    responseUsage,
++                  );
++                }
++              },
++              flush() {
++                if (!finished && !failed) rejectIncomplete();
++              },
++            }),
++          ),
++        };
++      },
++    },
++  });
++}
++
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts b/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts
+new file mode 100644
+index 0000000..cc10af4
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts
+@@ -0,0 +1,319 @@
++import type { MetadataExtractor } from "@ai-sdk/openai-compatible";
++import { wrapLanguageModel, type LanguageModel } from "ai";
++import { ModelErrorCode, ModelProtocolError, type ModelMessageContent } from "@zcode/contracts";
++
++export interface GoogleToolSignatureScope {
++  providerId: string;
++  modelId: string;
++  baseURL: string;
++}
++const NAMESPACE = "fleetGoogle";
++const OFFICIAL_CHAT_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type Metadata = NonNullable<Awaited<ReturnType<ApiModel["doGenerate"]>>["providerMetadata"]>;
++interface ToolSignature {
++  id: string;
++  signature: string;
++}
++
++/** A model name, alias, proxy path or another Google API is not this protocol route. */
++export function isOfficialGoogleChatBaseURL(baseURL: string): boolean {
++  try {
++    const url = new URL(baseURL);
++    return (
++      url.origin === "https://generativelanguage.googleapis.com" &&
++      url.pathname.replace(/\/$/, "") === "/v1beta/openai" &&
++      !url.username &&
++      !url.password &&
++      !url.search &&
++      !url.hash
++    );
++  } catch {
++    return false;
++  }
++}
++
++function scopeFrom(value: unknown): GoogleToolSignatureScope | undefined {
++  const scoped = record(value);
++  if (
++    typeof scoped?.providerId !== "string" ||
++    !scoped.providerId.trim() ||
++    typeof scoped.modelId !== "string" ||
++    !scoped.modelId.trim() ||
++    typeof scoped.baseURL !== "string" ||
++    !isOfficialGoogleChatBaseURL(scoped.baseURL)
++  )
++    return undefined;
++  return { providerId: scoped.providerId, modelId: scoped.modelId, baseURL: OFFICIAL_CHAT_BASE };
++}
++function requireScope(scope: GoogleToolSignatureScope): GoogleToolSignatureScope {
++  const normalized = scopeFrom(scope);
++  if (!normalized)
++    throw new ModelProtocolError(
++      ModelErrorCode.InvalidModelRequest,
++      "Google tool signatures require a bound model and the official Chat route",
++    );
++  return normalized;
++}
++export function googleToolSignatureScope(metadata: unknown): GoogleToolSignatureScope | undefined {
++  return scopeFrom(record(metadata)?.[NAMESPACE]);
++}
++export function matchesGoogleToolSignatureScope(
++  metadata: unknown,
++  target: GoogleToolSignatureScope | undefined,
++): boolean {
++  const source = googleToolSignatureScope(metadata);
++  const destination = scopeFrom(target);
++  return (
++    !!source &&
++    !!destination &&
++    source.providerId === destination.providerId &&
++    source.modelId === destination.modelId &&
++    source.baseURL === destination.baseURL
++  );
++}
++function invalid(message: string): never {
++  throw new ModelProtocolError(ModelErrorCode.InvalidModelResponse, message);
++}
++
++/** Request-local associations; a reused id in another assistant response starts a fresh collector. */
++function collector(scope: GoogleToolSignatureScope) {
++  const byIndex = new Map<number, { id?: string; signature?: string }>();
++  const indexById = new Map<string, number>();
++  const ingest = (tool: unknown, position?: number) => {
++    const item = record(tool);
++    if (!item) invalid("Invalid Google tool signature association");
++    const id = item.id;
++    if (id !== undefined && id !== null && (typeof id !== "string" || !id))
++      invalid("Invalid Google tool signature id");
++    const declaredIndex = position ?? item.index;
++    if (
++      declaredIndex !== undefined &&
++      (typeof declaredIndex !== "number" ||
++        !Number.isSafeInteger(declaredIndex) ||
++        declaredIndex < 0)
++    )
++      invalid("Invalid Google tool signature index");
++    const google = record(record(item.extra_content)?.google);
++    const signature = google?.thought_signature;
++    if (
++      signature !== undefined &&
++      signature !== null &&
++      (typeof signature !== "string" || !signature)
++    )
++      invalid("Invalid Google thought signature");
++    const knownIndex = typeof id === "string" ? indexById.get(id) : undefined;
++    const index =
++      declaredIndex ??
++      knownIndex ??
++      (typeof id === "string" ? Math.max(-1, ...byIndex.keys()) + 1 : undefined);
++    if (index === undefined) invalid("Google tool signature delta has no unambiguous identity");
++    if (knownIndex !== undefined && knownIndex !== index)
++      invalid("Google tool signature id belongs to contradictory indexes");
++    const previous = byIndex.get(index) ?? {};
++    if (typeof id === "string" && previous.id && previous.id !== id)
++      invalid("Google tool signature index changed identity");
++    if (typeof signature === "string" && previous.signature && previous.signature !== signature)
++      invalid("Google tool call returned contradictory signatures");
++    const next = {
++      id: typeof id === "string" ? id : previous.id,
++      signature: typeof signature === "string" ? signature : previous.signature,
++    };
++    byIndex.set(index, next);
++    if (next.id) indexById.set(next.id, index);
++  };
++  return {
++    process(value: unknown, streaming: boolean) {
++      const choices = record(value)?.choices;
++      const choice = Array.isArray(choices) ? record(choices[0]) : undefined;
++      const calls = record(choice?.[streaming ? "delta" : "message"])?.tool_calls;
++      if (calls === undefined || calls === null) return;
++      if (!Array.isArray(calls)) invalid("Invalid Google tool signature call batch");
++      calls.forEach((tool, position) => ingest(tool, streaming ? undefined : position));
++    },
++    metadata(): Metadata | undefined {
++      const signatures: ToolSignature[] = [];
++      for (const item of byIndex.values()) {
++        if (!item.signature) continue;
++        if (!item.id) invalid("Google thought signature has no completed tool identity");
++        signatures.push({ id: item.id, signature: item.signature });
++      }
++      return signatures.length
++        ? {
++            [NAMESPACE]: { ...scope, serializedToolSignatures: JSON.stringify(signatures) },
++          }
++        : undefined;
++    },
++  };
++}
++
++export function createGoogleToolSignatureExtractor(
++  scope: GoogleToolSignatureScope,
++): MetadataExtractor {
++  const bound = requireScope(scope);
++  return {
++    async extractMetadata({ parsedBody }) {
++      const current = collector(bound);
++      current.process(parsedBody, false);
++      return current.metadata();
++    },
++    createStreamExtractor() {
++      const current = collector(bound);
++      return {
++        processChunk: (chunk) => current.process(chunk, true),
++        buildMetadata: () => current.metadata(),
++      };
++    },
++  };
++}
++
++function signaturesFrom(metadata: unknown, scope: GoogleToolSignatureScope): ToolSignature[] {
++  if (!matchesGoogleToolSignatureScope(metadata, scope)) return [];
++  const serialized = record(record(metadata)?.[NAMESPACE])?.serializedToolSignatures;
++  if (typeof serialized !== "string") invalid("Missing Google tool signature carrier");
++  let values: unknown;
++  try {
++    values = JSON.parse(serialized);
++  } catch {
++    invalid("Invalid Google tool signature carrier");
++  }
++  if (
++    !Array.isArray(values) ||
++    !values.every((value) => {
++      const item = record(value);
++      return (
++        typeof item?.id === "string" &&
++        item.id.length > 0 &&
++        typeof item.signature === "string" &&
++        item.signature.length > 0
++      );
++    })
++  )
++    invalid("Invalid Google tool signature carrier");
++  return values as ToolSignature[];
++}
++function withoutCarrier(metadata: Metadata | undefined): Metadata | undefined {
++  if (!metadata || !(NAMESPACE in metadata)) return metadata;
++  const { [NAMESPACE]: _carrier, ...remaining } = metadata;
++  return remaining;
++}
++function carrier(
++  metadata: Metadata | undefined,
++  scope: GoogleToolSignatureScope,
++): Metadata | undefined {
++  const values = signaturesFrom(metadata, scope);
++  if (!values.length) return undefined;
++  const byId = new Map<string, string>();
++  for (const { id, signature } of values) {
++    if (byId.has(id) && byId.get(id) !== signature)
++      invalid("Contradictory Google signature carrier");
++    byId.set(id, signature);
++  }
++  return {
++    [NAMESPACE]: {
++      ...scope,
++      serializedToolSignatures: JSON.stringify(
++        [...byId].map(([id, signature]) => ({ id, signature })),
++      ),
++    },
++  };
++}
++
++/** The existing assistant reasoning part is the sole durable opaque replay carrier. */
++export function withGoogleToolSignatureCarrier(
++  model: ApiModel,
++  scope: GoogleToolSignatureScope,
++): ApiModel {
++  const bound = requireScope(scope);
++  if (model.modelId !== bound.modelId)
++    throw new ModelProtocolError(
++      ModelErrorCode.InvalidModelRequest,
++      "Google signature model scope mismatch",
++    );
++  const assertCompleted = (reason: Awaited<ReturnType<ApiModel["doGenerate"]>>["finishReason"]) => {
++    if (
++      !reason.raw?.trim() ||
++      reason.raw.trim().toLowerCase() === "error" ||
++      reason.unified === "error"
++    )
++      invalid("Google Chat signature carrier requires provider completion evidence");
++  };
++  return wrapLanguageModel({
++    model,
++    middleware: {
++      specificationVersion: "v3",
++      async wrapGenerate({ doGenerate }) {
++        const result = await doGenerate();
++        assertCompleted(result.finishReason);
++        const opaque = carrier(result.providerMetadata, bound);
++        return {
++          ...result,
++          providerMetadata: withoutCarrier(result.providerMetadata),
++          content: [
++            ...result.content,
++            ...(opaque ? [{ type: "reasoning" as const, text: "", providerMetadata: opaque }] : []),
++          ],
++        };
++      },
++      async wrapStream({ doStream }) {
++        const result = await doStream();
++        let failed = false;
++        return {
++          ...result,
++          stream: result.stream.pipeThrough(
++            new TransformStream({
++              transform(part, controller) {
++                if (part.type === "error") failed = true;
++                if (part.type !== "finish") {
++                  controller.enqueue(part);
++                  return;
++                }
++                if (!failed) assertCompleted(part.finishReason);
++                const opaque = failed ? undefined : carrier(part.providerMetadata, bound);
++                if (opaque) {
++                  controller.enqueue({
++                    type: "reasoning-start",
++                    id: "fleet-google-tool-signatures",
++                  });
++                  controller.enqueue({
++                    type: "reasoning-end",
++                    id: "fleet-google-tool-signatures",
++                    providerMetadata: opaque,
++                  });
++                }
++                controller.enqueue({
++                  ...part,
++                  providerMetadata: withoutCarrier(part.providerMetadata),
++                });
++              },
++            }),
++          ),
++        };
++      },
++    },
++  });
++}
++
++/** Only this assistant batch and its exact producing route/model may replay these signatures. */
++export function googleToolSignatureReplay(
++  content: ModelMessageContent,
++  target: GoogleToolSignatureScope | undefined,
++): ReadonlyMap<string, string> | undefined {
++  const bound = scopeFrom(target);
++  if (!Array.isArray(content) || !bound) return undefined;
++  const signatures = new Map<string, string>();
++  for (const block of content) {
++    if (block.type !== "reasoning") continue;
++    for (const { id, signature } of signaturesFrom(block.providerOptions, bound)) {
++      if (signatures.has(id) && signatures.get(id) !== signature)
++        invalid("Contradictory Google signature carrier in assistant batch");
++      signatures.set(id, signature);
++    }
++  }
++  return signatures.size ? signatures : undefined;
++}
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts b/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts
+new file mode 100644
+index 0000000..e0be5d4
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts
+@@ -0,0 +1,214 @@
++import type { ModelMessage as AiSdkModelMessage } from "ai";
++import {
++  modelMessageContentToText,
++  type ModelMessageContent,
++  type ModelMessageContentBlock,
++  type ModelCacheControl,
++  type ModelInputFormat,
++} from "@zcode/contracts";
++import { dataUrlToDataContent, unsupportedInputMediaText } from "./media-transform-policy.js";
++import { ModelErrorCode } from "@zcode/contracts";
++import { AiSdkModelAdapterError } from "./errors.js";
++import type { ModelInputMessage } from "@zcode/contracts";
++import {
++  googleToolSignatureReplay,
++  googleToolSignatureScope,
++} from "./google-thought-signatures.js";
++
++type AiSdkUserContent = Extract<AiSdkModelMessage, { role: "user" }>["content"];
++type AiSdkProviderOptions = NonNullable<
++  Extract<AiSdkModelMessage, { role: "system" }>["providerOptions"]
++>;
++interface UserContentTransformOptions {
++  stripMedia?: boolean;
++  inputFormat?: ModelInputFormat;
++}
++interface ApiMessageTransformOptions {
++  apiFormat?: string;
++  providerOptions?: Record<string, unknown>;
++  providerKind?: string;
++}
++
++export function resolveApiFormat(options: ApiMessageTransformOptions): string | undefined {
++  if (typeof options.apiFormat === "string") return options.apiFormat;
++  const apiFormat = options.providerOptions?.apiFormat;
++  return typeof apiFormat === "string" ? apiFormat : undefined;
++}
++
++export function toAiSdkToolCallParts(
++  calls: ModelInputMessage["toolCalls"],
++  content: ModelMessageContent,
++  options: ApiMessageTransformOptions,
++): Array<
++  Extract<
++    Extract<Extract<AiSdkModelMessage, { role: "assistant" }>["content"], unknown[]>[number],
++    { type: "tool-call" }
++  >
++> {
++  const signatures = googleToolSignatureReplay(
++    content,
++    googleToolSignatureScope(options.providerOptions),
++  );
++  return (
++    calls?.map((call) => ({
++      type: "tool-call",
++      toolCallId: call.id,
++      toolName: projectToolNameForProvider(call.name, options),
++      input: call.input,
++      ...(signatures?.has(call.id)
++        ? { providerOptions: { google: { thoughtSignature: signatures.get(call.id)! } } }
++        : {}),
++    })) ?? []
++  );
++}
++
++export function projectToolNameForProvider(
++  toolName: unknown,
++  options: ApiMessageTransformOptions,
++): string {
++  if (typeof toolName !== "string") {
++    throw new AiSdkModelAdapterError(
++      ModelErrorCode.InvalidModelRequest,
++      "Tool model messages require toolCallId and toolName",
++    );
++  }
++  if (toolName.trim().length > 0) return toolName;
++
++  const apiFormat = resolveApiFormat(options);
++  if (apiFormat !== undefined) {
++    return apiFormat === "anthropic-messages" ? toolName : "empty_tool_name";
++  }
++
++  // OpenAI-compatible wire 不可靠接受空 function name，但历史中的原始
++  // 名称仍需保留给 Anthropic 回放；占位值只在 provider 投影边界生成。
++  return options.providerKind === "anthropic" ? toolName : "empty_tool_name";
++}
++
++const EMPTY_USER_CONTENT_FALLBACK = "(no content)";
++
++export function toAiSdkUserContent(
++  content: ModelMessageContent,
++  options: UserContentTransformOptions,
++): AiSdkUserContent {
++  // 附件-only query 拆出 prompt attachment 后可能留下空 user
++  // content，空白占位又可能被 provider trim 后视为缺失 prompt。只在 wire
++  // 序列化边界使用固定 fallback，避免改写 session 事实、UI 可见 query 和标题种子。
++  if (typeof content === "string") return content || EMPTY_USER_CONTENT_FALLBACK;
++
++  const parts = content.flatMap((block) => contentBlockToAiSdkUserParts(block, options));
++  return parts.length > 0 ? parts : EMPTY_USER_CONTENT_FALLBACK;
++}
++
++function contentBlockToAiSdkUserParts(
++  block: ModelMessageContentBlock,
++  options: UserContentTransformOptions,
++): Extract<AiSdkUserContent, unknown[]> {
++  switch (block.type) {
++    case "text":
++      return block.text.length > 0 ? [{ type: "text", text: block.text }] : [];
++
++    case "reasoning":
++      return block.text.length > 0 ? [{ type: "text", text: block.text }] : [];
++
++    case "image": {
++      if (options.stripMedia) {
++        return [{ type: "text", text: modelMessageContentToText([block]) }];
++      }
++      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
++      if (unsupportedText) {
++        return [
++          {
++            type: "text",
++            text: unsupportedText,
++          },
++        ];
++      }
++      const data = dataUrlToDataContent(block.dataUrl);
++      if (!data) {
++        return [
++          {
++            type: "text",
++            text: "ERROR: Image file is empty or corrupted. Inform the user.",
++          },
++        ];
++      }
++      return [{ type: "image", image: data.data, mediaType: block.mediaType }];
++    }
++
++    case "video": {
++      if (options.stripMedia) {
++        return [{ type: "text", text: modelMessageContentToText([block]) }];
++      }
++      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
++      if (unsupportedText) {
++        return [
++          {
++            type: "text",
++            text: unsupportedText,
++          },
++        ];
++      }
++      const data = dataUrlToDataContent(block.dataUrl);
++      if (!data) {
++        return [
++          {
++            type: "text",
++            text: "ERROR: Video file is empty or corrupted. Inform the user.",
++          },
++        ];
++      }
++      // AI SDK 无 video part 类型；mediaType 为自由 string，video/* file part 由
++      // patch 后的 @ai-sdk/openai-compatible / @ai-sdk/anthropic 转成 video_url / video block。
++      return [{ type: "file", data: data.data, mediaType: block.mediaType }];
++    }
++
++    case "file": {
++      if (block.text !== undefined && block.text.length > 0) {
++        return [{ type: "text", text: block.text }];
++      }
++      if (options.stripMedia) {
++        return [{ type: "text", text: modelMessageContentToText([block]) }];
++      }
++      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
++      if (unsupportedText) {
++        return [
++          {
++            type: "text",
++            text: unsupportedText,
++          },
++        ];
++      }
++      const data = block.dataUrl ? dataUrlToDataContent(block.dataUrl) : undefined;
++      if (data) {
++        return [
++          {
++            type: "file",
++            data: data.data,
++            filename: block.name,
++            mediaType: block.mediaType,
++          },
++        ];
++      }
++      return [{ type: "text", text: modelMessageContentToText([block]) }];
++    }
++
++    case "resource_link":
++      return [{ type: "text", text: modelMessageContentToText([block]) }];
++  }
++}
++
++export function providerOptionsForCacheControl(
++  cacheControl: ModelCacheControl | undefined,
++): { providerOptions: AiSdkProviderOptions } | Record<string, never> {
++  if (!cacheControl) {
++    return {};
++  }
++
++  return {
++    providerOptions: {
++      anthropic: {
++        cacheControl: { ...cacheControl },
++      },
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+index cbc66e3..b454048 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+@@ -22,9 +22,22 @@ import {
+   type ModelRequestAuth,
+ } from "@zcode/contracts";
+ import { getEnabledApiKeys, type RegistryProviderConfig } from "@zcode/provider";
+-import { withOpenRouterAttributionHeaders } from "@zcode/shared";
++import {
++  withOpenRouterAttributionHeaders,
++  isOpenRouterApiBaseUrl,
++  normalizeOpenRouterApiBaseUrl,
++  resolveUsageBillingProvider,
++} from "@zcode/shared";
+ import { createAnthropicCompatFetch } from "./anthropic-stream-compat.js";
+ import { createOpenAIResponsesJsonCompatFetch } from "./openai-responses-json-compat.js";
++import { withApiCompletionEvidence, type CompletionProtocol } from "./api-completion-evidence.js";
++import { withProviderUsageExtractor } from "./provider-usage-observation.js";
++import { createOpenRouterReasoningExtractor } from "./openrouter-reasoning.js";
++import {
++  createGoogleToolSignatureExtractor,
++  isOfficialGoogleChatBaseURL,
++  withGoogleToolSignatureCarrier,
++} from "./google-thought-signatures.js";
+ import { createModelOptionMapFetch, type RawRequestBodyCapture } from "./model-option-map-fetch.js";
+ import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
+ import { createOfficialCodingPlanGatewayFetch } from "./official-coding-plan-gateway.js";
+@@ -280,6 +293,7 @@ export class AiSdkModelExecution {
+       optionValues,
+       rawRequestBodyCapture,
+       snapshot.supportsJsonSchemaOutput,
++      String(snapshot.modelId),
+     );
+     return {
+       baseURL: providerConfig.baseURL,
+@@ -288,7 +302,28 @@ export class AiSdkModelExecution {
+       modelId: snapshot.modelId,
+       model: factory(snapshot.modelId.toString()),
+       providerKind: providerConfig.kind,
+-      providerOptions: providerConfig.providerOptions,
++      providerOptions: {
++        ...providerConfig.providerOptions,
++        ...(providerConfig.kind === "openai-compatible" &&
++        isOpenRouterApiBaseUrl(providerConfig.baseURL)
++          ? {
++              fleetOpenRouter: {
++                providerId: String(snapshot.providerId),
++                modelId: String(snapshot.modelId),
++              },
++            }
++          : {}),
++        ...(providerConfig.kind === "openai-compatible" &&
++        isOfficialGoogleChatBaseURL(providerConfig.baseURL)
++          ? {
++              fleetGoogle: {
++                providerId: String(snapshot.providerId),
++                modelId: String(snapshot.modelId),
++                baseURL: providerConfig.baseURL,
++              },
++            }
++          : {}),
++      },
+       rawRequestBodyCapture,
+     };
+   }
+@@ -300,7 +335,15 @@ export class AiSdkModelExecution {
+     optionValues: ModelOptionValues | undefined,
+     rawRequestBodyCapture: RawRequestBodyCapture,
+     supportsJsonSchemaOutput: boolean,
++    modelId: string,
+   ): LanguageModelFactory {
++    const usageScope = (protocol: CompletionProtocol) => ({
++      providerId,
++      modelId,
++      protocol,
++      billingProvider: resolveUsageBillingProvider(providerConfig.baseURL),
++      authKind: providerConfig.access.type === "zhipu-account" ? "subscription" : "api-key",
++    });
+     const enabledKeys =
+       providerConfig.access.type === "api-key" ||
+       providerConfig.access.type === "zhipu-coding-plan-api-key"
+@@ -378,7 +421,13 @@ export class AiSdkModelExecution {
+           fetch: createOpenAIResponsesJsonCompatFetch(optionFetch),
+           headers,
+         });
+-        return provider.responses as LanguageModelFactory;
++        return (modelId) =>
++          withApiCompletionEvidence(
++            provider.responses(modelId),
++            "responses",
++            undefined,
++            usageScope("responses"),
++          );
+       }
+ 
+       case "anthropic": {
+@@ -388,7 +437,13 @@ export class AiSdkModelExecution {
+           fetch: createAnthropicCompatFetch(optionFetch),
+           headers: withAnthropicAuthorizationHeader(apiKey, headers),
+         });
+-        return provider as LanguageModelFactory;
++        return (modelId) =>
++          withApiCompletionEvidence(
++            provider(modelId),
++            "messages",
++            undefined,
++            usageScope("messages"),
++          );
+       }
+ 
+       case "openai-compatible": {
+@@ -403,8 +458,36 @@ export class AiSdkModelExecution {
+           // 缺少这一装配时 SDK 默认 false，会把已声明支持的 Schema 静默降为 JSON object。
+           // 使用 binding 冻结的模型事实，不按供应商或实时 Registry 另查一套能力。
+           supportsStructuredOutputs: supportsJsonSchemaOutput,
++          metadataExtractor: withProviderUsageExtractor(
++            isOpenRouterApiBaseUrl(providerConfig.baseURL)
++              ? createOpenRouterReasoningExtractor({ providerId, modelId })
++              : isOfficialGoogleChatBaseURL(providerConfig.baseURL)
++                ? createGoogleToolSignatureExtractor({
++                    providerId,
++                    modelId,
++                    baseURL: providerConfig.baseURL,
++                  })
++                : undefined,
++            usageScope("chat-completions"),
++          ),
+         });
+-        return provider as LanguageModelFactory;
++        return (id) => {
++          const model = withApiCompletionEvidence(
++            provider(id),
++            "chat-completions",
++            isOpenRouterApiBaseUrl(providerConfig.baseURL)
++              ? { providerId, modelId: id }
++              : undefined,
++            usageScope("chat-completions"),
++          );
++          return isOfficialGoogleChatBaseURL(providerConfig.baseURL)
++            ? withGoogleToolSignatureCarrier(model, {
++                providerId,
++                modelId: id,
++                baseURL: providerConfig.baseURL,
++              })
++            : model;
++        };
+       }
+     }
+   }
+@@ -456,7 +539,7 @@ function toAiSdkProviderConfig(
+   if (apiKeys && apiKeys.length === 0) throw new Error("No enabled API key is configured");
+   const common = {
+     ...(apiKeys ? { apiKey: apiKeys[0]! } : {}),
+-    baseURL: config.api.baseUrl,
++    baseURL: normalizeOpenRouterApiBaseUrl(config.api.baseUrl),
+     ...(config.api.headers ? { headers: { ...config.api.headers } } : {}),
+     providerOptions: { apiFormat: config.api.type },
+     access: config.access,
+diff --git a/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts b/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts
+new file mode 100644
+index 0000000..7f0da0b
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts
+@@ -0,0 +1,170 @@
++import type { MetadataExtractor } from "@ai-sdk/openai-compatible";
++import type { LanguageModel } from "ai";
++import { ModelErrorCode, ModelProtocolError, type ModelMessageContent } from "@zcode/contracts";
++
++export interface OpenRouterReasoningScope {
++  providerId: string;
++  modelId: string;
++}
++const NAMESPACE = "fleetOpenRouter";
++type SdkModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type SdkMetadata = NonNullable<Awaited<ReturnType<SdkModel["doGenerate"]>>["providerMetadata"]>;
++type Detail = SdkMetadata[string] & { type: string };
++
++export function createOpenRouterReasoningExtractor(
++  scope: OpenRouterReasoningScope,
++): MetadataExtractor {
++  const metadata = (details: Detail[]) =>
++    details.length
++      ? {
++          [NAMESPACE]: {
++            providerId: scope.providerId,
++            modelId: scope.modelId,
++            serializedDetails: JSON.stringify(details),
++          },
++        }
++      : undefined;
++  return {
++    async extractMetadata({ parsedBody }) {
++      return metadata(readDetails(record(choice(parsedBody)?.message)?.reasoning_details));
++    },
++    createStreamExtractor() {
++      const details: Detail[] = [];
++      return {
++        processChunk(value) {
++          for (const detail of readDetails(record(choice(value)?.delta)?.reasoning_details)) {
++            const last = details.at(-1);
++            // 只合并同一逻辑块的连续文本 delta；不同 id/index/格式或不透明 encrypted 块保持顺序。
++            const field =
++              detail.type === "reasoning.text"
++                ? "text"
++                : detail.type === "reasoning.summary"
++                  ? "summary"
++                  : undefined;
++            if (
++              field &&
++              last?.type === detail.type &&
++              ["id", "index", "format"].every((key) => last[key] === detail[key]) &&
++              (!last.signature || !detail.signature || last.signature === detail.signature)
++            ) {
++              last[field] = String(last[field]) + String(detail[field]);
++              if (!last.signature && detail.signature !== undefined)
++                last.signature = detail.signature;
++            } else details.push({ ...detail });
++          }
++        },
++        buildMetadata: () => metadata(details),
++      };
++    },
++  };
++}
++
++export function openRouterScope(metadata: unknown): OpenRouterReasoningScope | undefined {
++  const scoped = record(record(metadata)?.[NAMESPACE]);
++  return typeof scoped?.providerId === "string" && typeof scoped.modelId === "string"
++    ? { providerId: scoped.providerId, modelId: scoped.modelId }
++    : undefined;
++}
++
++export function matchesOpenRouterScope(
++  metadata: unknown,
++  target: OpenRouterReasoningScope | undefined,
++): boolean {
++  const scope = openRouterScope(metadata);
++  return (
++    !!scope &&
++    !!target &&
++    scope.providerId === target.providerId &&
++    scope.modelId === target.modelId
++  );
++}
++
++export function scopedOpenRouterMetadata(
++  scope: OpenRouterReasoningScope,
++  metadata?: SdkMetadata,
++): SdkMetadata {
++  return { ...metadata, [NAMESPACE]: { ...metadata?.[NAMESPACE], ...scope } };
++}
++
++/** Completed details have one durable home: the existing assistant reasoning part. */
++export function takeOpenRouterDetails(metadata: SdkMetadata | undefined): SdkMetadata | undefined {
++  const details = metadata?.[NAMESPACE];
++  if (typeof details?.serializedDetails !== "string") return undefined;
++  const parsed = readDetails(JSON.parse(details.serializedDetails));
++  if (!parsed.length) return undefined;
++  return { [NAMESPACE]: { ...details } };
++}
++
++export function withoutOpenRouterDetails(
++  metadata: SdkMetadata | undefined,
++): SdkMetadata | undefined {
++  if (!metadata || !(NAMESPACE in metadata)) return metadata;
++  const { [NAMESPACE]: _details, ...remaining } = metadata;
++  return remaining;
++}
++
++export function openRouterReplayDetails(
++  content: ModelMessageContent,
++  target: OpenRouterReasoningScope | undefined,
++) {
++  if (!Array.isArray(content) || !target) return undefined;
++  const details = content
++    .filter(
++      (block) =>
++        block.type === "reasoning" && matchesOpenRouterScope(block.providerOptions, target),
++    )
++    .flatMap((block) => {
++      const serialized = record(
++        record(block.type === "reasoning" ? block.providerOptions : undefined)?.[NAMESPACE],
++      )?.serializedDetails;
++      return typeof serialized === "string" ? readDetails(JSON.parse(serialized)) : [];
++    });
++  return details.length ? details : undefined;
++}
++
++function readDetails(value: unknown): Detail[] {
++  if (value === undefined || value === null) return [];
++  if (
++    !Array.isArray(value) ||
++    !value.every((entry) => {
++      const item = record(entry);
++      if (!item) return false;
++      const field =
++        item.type === "reasoning.text"
++          ? "text"
++          : item.type === "reasoning.summary"
++            ? "summary"
++            : item.type === "reasoning.encrypted"
++              ? "data"
++              : undefined;
++      return (
++        field &&
++        typeof item[field] === "string" &&
++        (item.id === undefined || item.id === null || typeof item.id === "string") &&
++        (item.format === undefined || typeof item.format === "string") &&
++        (item.index === undefined ||
++          (typeof item.index === "number" &&
++            Number.isSafeInteger(item.index) &&
++            item.index >= 0)) &&
++        (item.signature === undefined ||
++          item.signature === null ||
++          typeof item.signature === "string")
++      );
++    })
++  )
++    throw new ModelProtocolError(
++      ModelErrorCode.InvalidModelResponse,
++      "Invalid OpenRouter reasoning_details",
++    );
++  return value as Detail[];
++}
++
++function choice(value: unknown): Record<string, unknown> | undefined {
++  const choices = record(value)?.choices;
++  return Array.isArray(choices) ? record(choices[0]) : undefined;
++}
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts b/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts
+new file mode 100644
+index 0000000..ce7816b
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts
+@@ -0,0 +1,205 @@
++import type { MetadataExtractor } from "@ai-sdk/openai-compatible";
++import type { LanguageModel } from "ai";
++import type { ModelUsage } from "@zcode/contracts";
++
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type SdkUsage = Awaited<ReturnType<ApiModel["doGenerate"]>>["usage"];
++type Metadata = NonNullable<Awaited<ReturnType<ApiModel["doGenerate"]>>["providerMetadata"]>;
++export interface UsageObservationScope {
++  providerId: string;
++  modelId: string;
++  protocol: "chat-completions" | "responses" | "messages";
++  billingProvider?: string;
++  authKind?: string;
++}
++const NAMESPACE = "fleetProviderUsage";
++
++/** The SDK parser owns framing; its public raw metadata callback retains only reported usage. */
++export function withProviderUsageExtractor(
++  extractor: MetadataExtractor | undefined,
++  scope: UsageObservationScope,
++): MetadataExtractor {
++  const metadata = (raw: unknown): Metadata | undefined => {
++    const observed = observation(raw, scope);
++    return observed
++      ? { [NAMESPACE]: { serializedUsage: JSON.stringify(safeUsage(raw, scope)), ...scope } }
++      : undefined;
++  };
++  return {
++    async extractMetadata({ parsedBody }) {
++      const raw = record(parsedBody)?.usage;
++      try {
++        return { ...(await extractor?.extractMetadata({ parsedBody })), ...metadata(raw) };
++      } catch (error) {
++        throw attachUsageObservation(error, observation(raw, scope));
++      }
++    },
++    createStreamExtractor() {
++      const current = extractor?.createStreamExtractor();
++      let raw: unknown;
++      return {
++        processChunk(value) {
++          const reported = record(value)?.usage;
++          if (observation(reported, scope)) raw = reported;
++          try {
++            current?.processChunk(value);
++          } catch (error) {
++            throw attachUsageObservation(error, observation(raw, scope));
++          }
++        },
++        buildMetadata() {
++          try {
++            return { ...current?.buildMetadata(), ...metadata(raw) };
++          } catch (error) {
++            throw attachUsageObservation(error, observation(raw, scope));
++          }
++        },
++      };
++    },
++  };
++}
++
++export function attachSdkUsageObservation(
++  error: unknown,
++  usage: SdkUsage | undefined,
++  metadata: Metadata | undefined,
++  scope: UsageObservationScope,
++  native?: unknown,
++) {
++  const retained = record(metadata?.[NAMESPACE]);
++  const raw =
++    native ??
++    (typeof retained?.serializedUsage === "string"
++      ? JSON.parse(retained.serializedUsage)
++      : usage?.raw);
++  return attachUsageObservation(error, observation(raw, scope, metadata));
++}
++
++export function withReportedCostMetadata(
++  metadata: Metadata | undefined,
++  scope: UsageObservationScope,
++): Metadata | undefined {
++  const retained = record(metadata?.[NAMESPACE]);
++  if (typeof retained?.serializedUsage !== "string") return metadata;
++  const known = observation(JSON.parse(retained.serializedUsage), scope);
++  return known
++    ? {
++        ...metadata,
++        fleetAccounting: {
++          ...record(metadata?.fleetAccounting),
++          ...known.providerMetadata.fleetAccounting,
++        },
++      }
++    : metadata;
++}
++
++function safeUsage(raw: unknown, scope: UsageObservationScope) {
++  const value = record(raw);
++  const safe: Record<string, unknown> = {};
++  for (const key of [
++    "prompt_tokens",
++    "completion_tokens",
++    "input_tokens",
++    "output_tokens",
++    "total_tokens",
++    "cache_read_input_tokens",
++    "cache_creation_input_tokens",
++  ])
++    if (count(value?.[key]) !== undefined) safe[key] = value![key];
++  for (const key of [
++    "prompt_tokens_details",
++    "input_tokens_details",
++    "completion_tokens_details",
++    "output_tokens_details",
++  ]) {
++    const nested = record(value?.[key]);
++    const selected: Record<string, number> = {};
++    for (const field of ["cached_tokens", "cache_write_tokens", "reasoning_tokens"]) {
++      const reported = count(nested?.[field]);
++      if (reported !== undefined) selected[field] = reported;
++    }
++    if (Object.keys(selected).length) safe[key] = selected;
++  }
++  if (
++    scope.billingProvider === "openrouter" &&
++    typeof value?.cost === "number" &&
++    Number.isFinite(value.cost) &&
++    value.cost >= 0
++  )
++    safe.cost = value.cost;
++  return safe;
++}
++
++/** No completion flag or tool output is produced by an accounting-only observation. */
++function attachUsageObservation(error: unknown, value: ReturnType<typeof observation>) {
++  if (error instanceof Error && value) {
++    Object.assign(error, {
++      context: { ...record(record(error)?.context), fleetUsageObservation: value },
++    });
++  }
++  return error;
++}
++
++function observation(raw: unknown, scope: UsageObservationScope, metadata?: Metadata) {
++  const reported = record(raw);
++  if (!reported) return undefined;
++  const input = count(reported.prompt_tokens ?? reported.input_tokens);
++  const output = count(reported.completion_tokens ?? reported.output_tokens);
++  const inputDetails = record(reported.prompt_tokens_details ?? reported.input_tokens_details);
++  const outputDetails = record(
++    reported.completion_tokens_details ?? reported.output_tokens_details,
++  );
++  const cacheRead = count(inputDetails?.cached_tokens ?? reported.cache_read_input_tokens);
++  const cacheWrite = count(
++    inputDetails?.cache_write_tokens ?? reported.cache_creation_input_tokens,
++  );
++  const inputTokens =
++    scope.protocol === "messages" && input !== undefined
++      ? input + (cacheRead ?? 0) + (cacheWrite ?? 0)
++      : input;
++  const usd =
++    scope.billingProvider === "openrouter" &&
++    typeof reported.cost === "number" &&
++    Number.isFinite(reported.cost) &&
++    reported.cost >= 0
++      ? reported.cost
++      : undefined;
++  const usage: ModelUsage = {
++    inputTokens,
++    outputTokens: output,
++    totalTokens: count(reported.total_tokens),
++    cacheReadTokens: cacheRead,
++    cacheWriteTokens: cacheWrite,
++    reasoningTokens: count(outputDetails?.reasoning_tokens),
++  };
++  if (Object.values(usage).every((value) => value === undefined) && usd === undefined)
++    return undefined;
++  const {
++    fleetOpenRouter: _router,
++    fleetGoogle: _google,
++    [NAMESPACE]: _raw,
++    ...remaining
++  } = metadata ?? {};
++  return {
++    providerId: scope.providerId,
++    modelId: scope.modelId,
++    usage,
++    providerMetadata: {
++      ...remaining,
++      fleetAccounting: {
++        ...record(remaining.fleetAccounting),
++        ...(scope.billingProvider ? { billingProvider: scope.billingProvider } : {}),
++        ...(scope.authKind ? { authKind: scope.authKind } : {}),
++        ...(usd !== undefined ? { reportedRequestUsd: usd } : {}),
++      },
++    },
++  };
++}
++function count(value: unknown): number | undefined {
++  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
++}
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/reasoning-history-normalization.ts b/apps/zcode-cli/packages/adapters/src/model/reasoning-history-normalization.ts
+index 660ff6a..cafcd2b 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/reasoning-history-normalization.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/reasoning-history-normalization.ts
+@@ -8,6 +8,8 @@ import type {
+ } from "@zcode/contracts";
+ import { BUILTIN_MODEL_PROVIDER_IDS } from "@zcode/shared";
+ import { getStatusCode, unwrapRetryError } from "./failure-inspection.js";
++import { openRouterScope, matchesOpenRouterScope } from "./openrouter-reasoning.js";
++import { googleToolSignatureScope } from "./google-thought-signatures.js";
+ 
+ const EMPTY_ASSISTANT_CONTENT_FALLBACK = "(no content)";
+ const REJECTED_REASONING_FALLBACK = "[Thinking removed]";
+@@ -98,6 +100,20 @@ function removeCrossModelReasoning(
+   if (!targetModel) return messages;
+ 
+   return filterReasoningBlocks(messages, (block, message) => {
++    if (Object.hasOwn(block.providerOptions ?? {}, "fleetGoogle")) {
++      const scope = googleToolSignatureScope(block.providerOptions);
++      if (
++        !scope ||
++        scope.providerId !== targetModel.providerId ||
++        scope.modelId !== targetModel.modelId
++      )
++        return true;
++    }
++    if (
++      openRouterScope(block.providerOptions) &&
++      !matchesOpenRouterScope(block.providerOptions, targetModel)
++    )
++      return true;
+     if (!message.providerId || !message.modelId) return false;
+     if (
+       message.modelId === targetModel.modelId &&
+@@ -267,6 +283,8 @@ function contentAsBlocks(content: ModelMessageContent): ModelMessageContentBlock
+ function isSignedOrRedactedReasoning(block: ModelReasoningContentBlock): boolean {
+   const anthropic = anthropicOptions(block.providerOptions);
+   return (
++    Object.hasOwn(block.providerOptions ?? {}, "fleetGoogle") ||
++    openRouterScope(block.providerOptions) !== undefined ||
+     (typeof anthropic.signature === "string" && anthropic.signature.length > 0) ||
+     typeof anthropic.redactedData === "string"
+   );
+diff --git a/apps/zcode-cli/packages/adapters/src/model/transform.ts b/apps/zcode-cli/packages/adapters/src/model/transform.ts
+index 7eaffc1..e692cf3 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/transform.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/transform.ts
+@@ -6,7 +6,6 @@ import { type ModelMessage as AiSdkModelMessage, type ToolResultPart } from "ai"
+ import {
+   ModelErrorCode,
+   modelMessageContentToText,
+-  type ModelCacheControl,
+   type ModelInputMessage,
+   type ModelInputFormat,
+   type ModelMessageContent,
+@@ -24,6 +23,18 @@ import {
+ import { dataUrlToDataContent, unsupportedInputMediaText } from "./media-transform-policy.js";
+ import { normalizeOpenAiCompatibleSystemMessages } from "./system-message-compat.js";
+ import { isNativeVideoInput, validateAiSdkVideoInputs } from "./input-media-validation.js";
++import {
++  toAiSdkUserContent,
++  providerOptionsForCacheControl,
++  projectToolNameForProvider,
++  resolveApiFormat,
++  toAiSdkToolCallParts,
++} from "./message-content-transforms.js";
++import {
++  openRouterScope,
++  matchesOpenRouterScope,
++  openRouterReplayDetails,
++} from "./openrouter-reasoning.js";
+ 
+ export interface AiSdkMessageTransformOptions {
+   apiFormat?: string;
+@@ -37,11 +48,9 @@ type AiSdkAssistantMessage = Extract<AiSdkModelMessage, { role: "assistant" }>;
+ type AiSdkAssistantContent = AiSdkAssistantMessage["content"];
+ type AiSdkAssistantContentPart = Extract<AiSdkAssistantContent, unknown[]>[number];
+ type AiSdkToolResultOutput = ToolResultPart["output"];
+-type AiSdkProviderOptions = NonNullable<
+-  Extract<AiSdkModelMessage, { role: "system" }>["providerOptions"]
+->;
+ type AiSdkAssistantTransformOptions = AiSdkMessageTransformOptions & {
+   stripOpenAiResponsesStoredReasoning?: boolean;
++  stripOpenRouterReasoning?: boolean;
+ };
+ 
+ export function toAiSdkMessages(
+@@ -88,13 +97,27 @@ export function toAiSdkMessages(
+         break;
+ 
+       case "assistant": {
++        const cache = providerOptionsForCacheControl(message.cacheControl);
++        const details = openRouterReplayDetails(
++          message.content,
++          openRouterScope(options.providerOptions),
++        );
+         transformedMessages.push({
+           role: "assistant",
+           content: toAiSdkAssistantContent(message.content, message.toolCalls, {
+             ...options,
+             stripOpenAiResponsesStoredReasoning: shouldStripOpenAiResponsesStoredReasoning,
++            stripOpenRouterReasoning: details !== undefined,
+           }),
+-          ...providerOptionsForCacheControl(message.cacheControl),
++          ...cache,
++          ...(details
++            ? {
++                providerOptions: {
++                  ...cache.providerOptions,
++                  openaiCompatible: { reasoning_details: details },
++                },
++              }
++            : {}),
+         });
+         break;
+       }
+@@ -270,15 +293,7 @@ function toAiSdkAssistantContent(
+   toolCalls: ModelInputMessage["toolCalls"],
+   options: AiSdkAssistantTransformOptions,
+ ): AiSdkAssistantContent {
+-  const toolCallParts =
+-    toolCalls?.map(
+-      (toolCall): AiSdkAssistantContentPart => ({
+-        type: "tool-call",
+-        toolCallId: toolCall.id,
+-        toolName: projectToolNameForProvider(toolCall.name, options),
+-        input: toolCall.input,
+-      }),
+-    ) ?? [];
++  const toolCallParts = toAiSdkToolCallParts(toolCalls, content, options);
+ 
+   if (typeof content === "string" && toolCallParts.length === 0) {
+     return content;
+@@ -303,6 +318,15 @@ function contentBlockToAiSdkAssistantParts(
+       return block.text.length > 0 ? [{ type: "text", text: block.text }] : [];
+ 
+     case "reasoning": {
++      // Google 的该 part 是工具签名载体，不能作为任何模型的普通 thinking 回放。
++      if (Object.hasOwn(block.providerOptions ?? {}, "fleetGoogle")) return [];
++      // 不透明回放只属于原 OpenRouter 连接/模型；其他协议或未验证代理不能收到该元数据。
++      if (
++        options.stripOpenRouterReasoning ||
++        (openRouterScope(block.providerOptions) &&
++          !matchesOpenRouterScope(block.providerOptions, openRouterScope(options.providerOptions)))
++      )
++        return [];
+       if (
+         options.stripOpenAiResponsesStoredReasoning === true &&
+         hasOpenAiStoredReasoningItemId(block.providerOptions)
+@@ -349,34 +373,6 @@ function shouldStripStoredReasoningForOpenAiResponsesStatelessReplay(
+   return true;
+ }
+ 
+-function resolveApiFormat(options: AiSdkMessageTransformOptions): string | undefined {
+-  if (typeof options.apiFormat === "string") return options.apiFormat;
+-  const apiFormat = options.providerOptions?.apiFormat;
+-  return typeof apiFormat === "string" ? apiFormat : undefined;
+-}
+-
+-function projectToolNameForProvider(
+-  toolName: unknown,
+-  options: AiSdkMessageTransformOptions,
+-): string {
+-  if (typeof toolName !== "string") {
+-    throw new AiSdkModelAdapterError(
+-      ModelErrorCode.InvalidModelRequest,
+-      "Tool model messages require toolCallId and toolName",
+-    );
+-  }
+-  if (toolName.trim().length > 0) return toolName;
+-
+-  const apiFormat = resolveApiFormat(options);
+-  if (apiFormat !== undefined) {
+-    return apiFormat === "anthropic-messages" ? toolName : "empty_tool_name";
+-  }
+-
+-  // OpenAI-compatible wire 不可靠接受空 function name，但历史中的原始
+-  // 名称仍需保留给 Anthropic 回放；占位值只在 provider 投影边界生成。
+-  return options.providerKind === "anthropic" ? toolName : "empty_tool_name";
+-}
+-
+ function hasOpenAiStoredReasoningItemId(providerOptions: unknown): boolean {
+   const openaiOptions = objectRecord(objectRecord(providerOptions).openai);
+   return typeof openaiOptions.itemId === "string" && openaiOptions.itemId.length > 0;
+@@ -387,132 +383,3 @@ function objectRecord(value: unknown): Record<string, unknown> {
+     ? (value as Record<string, unknown>)
+     : {};
+ }
+-
+-const EMPTY_USER_CONTENT_FALLBACK = "(no content)";
+-
+-function toAiSdkUserContent(
+-  content: ModelMessageContent,
+-  options: AiSdkMessageTransformOptions,
+-): AiSdkUserContent {
+-  // 附件-only query 拆出 prompt attachment 后可能留下空 user
+-  // content，空白占位又可能被 provider trim 后视为缺失 prompt。只在 wire
+-  // 序列化边界使用固定 fallback，避免改写 session 事实、UI 可见 query 和标题种子。
+-  if (typeof content === "string") return content || EMPTY_USER_CONTENT_FALLBACK;
+-
+-  const parts = content.flatMap((block) => contentBlockToAiSdkUserParts(block, options));
+-  return parts.length > 0 ? parts : EMPTY_USER_CONTENT_FALLBACK;
+-}
+-
+-function contentBlockToAiSdkUserParts(
+-  block: ModelMessageContentBlock,
+-  options: AiSdkMessageTransformOptions,
+-): Extract<AiSdkUserContent, unknown[]> {
+-  switch (block.type) {
+-    case "text":
+-      return block.text.length > 0 ? [{ type: "text", text: block.text }] : [];
+-
+-    case "reasoning":
+-      return block.text.length > 0 ? [{ type: "text", text: block.text }] : [];
+-
+-    case "image": {
+-      if (options.stripMedia) {
+-        return [{ type: "text", text: modelMessageContentToText([block]) }];
+-      }
+-      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
+-      if (unsupportedText) {
+-        return [
+-          {
+-            type: "text",
+-            text: unsupportedText,
+-          },
+-        ];
+-      }
+-      const data = dataUrlToDataContent(block.dataUrl);
+-      if (!data) {
+-        return [
+-          {
+-            type: "text",
+-            text: "ERROR: Image file is empty or corrupted. Inform the user.",
+-          },
+-        ];
+-      }
+-      return [{ type: "image", image: data.data, mediaType: block.mediaType }];
+-    }
+-
+-    case "video": {
+-      if (options.stripMedia) {
+-        return [{ type: "text", text: modelMessageContentToText([block]) }];
+-      }
+-      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
+-      if (unsupportedText) {
+-        return [
+-          {
+-            type: "text",
+-            text: unsupportedText,
+-          },
+-        ];
+-      }
+-      const data = dataUrlToDataContent(block.dataUrl);
+-      if (!data) {
+-        return [
+-          {
+-            type: "text",
+-            text: "ERROR: Video file is empty or corrupted. Inform the user.",
+-          },
+-        ];
+-      }
+-      // AI SDK 无 video part 类型；mediaType 为自由 string，video/* file part 由
+-      // patch 后的 @ai-sdk/openai-compatible / @ai-sdk/anthropic 转成 video_url / video block。
+-      return [{ type: "file", data: data.data, mediaType: block.mediaType }];
+-    }
+-
+-    case "file": {
+-      if (block.text !== undefined && block.text.length > 0) {
+-        return [{ type: "text", text: block.text }];
+-      }
+-      if (options.stripMedia) {
+-        return [{ type: "text", text: modelMessageContentToText([block]) }];
+-      }
+-      const unsupportedText = unsupportedInputMediaText(block, options.inputFormat);
+-      if (unsupportedText) {
+-        return [
+-          {
+-            type: "text",
+-            text: unsupportedText,
+-          },
+-        ];
+-      }
+-      const data = block.dataUrl ? dataUrlToDataContent(block.dataUrl) : undefined;
+-      if (data) {
+-        return [
+-          {
+-            type: "file",
+-            data: data.data,
+-            filename: block.name,
+-            mediaType: block.mediaType,
+-          },
+-        ];
+-      }
+-      return [{ type: "text", text: modelMessageContentToText([block]) }];
+-    }
+-
+-    case "resource_link":
+-      return [{ type: "text", text: modelMessageContentToText([block]) }];
+-  }
+-}
+-
+-function providerOptionsForCacheControl(
+-  cacheControl: ModelCacheControl | undefined,
+-): { providerOptions: AiSdkProviderOptions } | Record<string, never> {
+-  if (!cacheControl) {
+-    return {};
+-  }
+-
+-  return {
+-    providerOptions: {
+-      anthropic: {
+-        cacheControl: { ...cacheControl },
+-      },
+-    },
+-  };
+-}
+diff --git a/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts b/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts
+new file mode 100644
+index 0000000..de2e8f4
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts
+@@ -0,0 +1,329 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
++import {
++  createGoogleToolSignatureExtractor,
++  googleToolSignatureReplay,
++  googleToolSignatureScope,
++  isOfficialGoogleChatBaseURL,
++  matchesGoogleToolSignatureScope,
++  withGoogleToolSignatureCarrier,
++  type GoogleToolSignatureScope,
++} from "../src/model/google-thought-signatures.js";
++import { withApiCompletionEvidence } from "../src/model/api-completion-evidence.js";
++
++const scope: GoogleToolSignatureScope = {
++  providerId: "account-independent-google-api",
++  modelId: "synthetic-gemini-model",
++  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
++};
++const signature = "synthetic+/signature=\u0000\nopaque";
++const extra = (value = signature) => ({ google: { thought_signature: value } });
++const tool = (id = "same-id", value = signature) => ({
++  id,
++  index: 0,
++  type: "function",
++  function: { name: "Probe", arguments: '{"value":"read-only"}' },
++  extra_content: extra(value),
++});
++const chunk = (calls: unknown[]) => ({ choices: [{ index: 0, delta: { tool_calls: calls } }] });
++const prompt = [{ role: "user" as const, content: [{ type: "text" as const, text: "Probe" }] }];
++const tools = [
++  {
++    type: "function" as const,
++    name: "Probe",
++    inputSchema: { type: "object", properties: { value: { type: "string" } } },
++  },
++];
++const normalizedScope = { ...scope, baseURL: scope.baseURL.slice(0, -1) };
++const content = (providerOptions: any) => [
++  { type: "reasoning" as const, text: "", providerOptions },
++];
++
++function sdkFixture(late: boolean, streaming: boolean, withFinish = true) {
++  const captured: any[] = [];
++  const fetch: typeof globalThis.fetch = async (input, init) => {
++    captured.push(JSON.parse(await new Request(input, init).text()));
++    if (!streaming)
++      return Response.json({
++        choices: [
++          {
++            message: { role: "assistant", content: null, tool_calls: [tool()] },
++            finish_reason: withFinish ? "tool_calls" : null,
++          },
++        ],
++      });
++    const first = tool();
++    if (late) delete (first as any).extra_content;
++    const frames = [chunk([first])];
++    if (late)
++      frames.push(chunk([{ index: 0, function: { arguments: "" }, extra_content: extra() }]));
++    if (withFinish)
++      frames.push({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] } as never);
++    return new Response(
++      frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n",
++      { headers: { "content-type": "text/event-stream" } },
++    );
++  };
++  const provider = createOpenAICompatible({
++    name: "custom-google-alias",
++    baseURL: scope.baseURL,
++    apiKey: "synthetic-unused-key",
++    fetch,
++    metadataExtractor: createGoogleToolSignatureExtractor(scope),
++  });
++  const model = withGoogleToolSignatureCarrier(
++    withApiCompletionEvidence(provider(scope.modelId), "chat-completions"),
++    scope,
++  );
++  return { model, captured };
++}
++
++test("official route is exact; aliases, proxies, native Google routes and URL credentials cannot qualify", () => {
++  assert.equal(isOfficialGoogleChatBaseURL(scope.baseURL), true);
++  assert.equal(isOfficialGoogleChatBaseURL(normalizedScope.baseURL), true);
++  for (const baseURL of [
++    "https://proxy.example/v1beta/openai",
++    "https://generativelanguage.googleapis.com.evil/v1beta/openai",
++    "http://generativelanguage.googleapis.com/v1beta/openai",
++    "https://generativelanguage.googleapis.com/v1beta",
++    "https://generativelanguage.googleapis.com/v1beta/openai?key=secret",
++    "https://user@generativelanguage.googleapis.com/v1beta/openai",
++  ]) {
++    assert.equal(isOfficialGoogleChatBaseURL(baseURL), false, baseURL);
++    assert.throws(
++      () => createGoogleToolSignatureExtractor({ ...scope, baseURL }),
++      /official Chat route/,
++    );
++  }
++  assert.throws(() => createGoogleToolSignatureExtractor({ ...scope, modelId: "" }), /bound model/);
++});
++
++test("nonstream signatures keep original bytes and remain isolated to each response", async () => {
++  const extractor = createGoogleToolSignatureExtractor(scope);
++  const metadata = await extractor.extractMetadata({
++    parsedBody: { choices: [{ message: { tool_calls: [tool()] } }] },
++  });
++  assert.deepEqual(googleToolSignatureScope(metadata), normalizedScope);
++  assert.equal(googleToolSignatureReplay(content(metadata), scope)?.get("same-id"), signature);
++  const next = await extractor.extractMetadata({
++    parsedBody: {
++      choices: [{ message: { tool_calls: [tool("same-id", "another-assistant-signature")] } }],
++    },
++  });
++  assert.equal(
++    googleToolSignatureReplay(content(next), scope)?.get("same-id"),
++    "another-assistant-signature",
++  );
++  assert.equal(googleToolSignatureReplay(content(metadata), scope)?.get("same-id"), signature);
++});
++
++test("signature may arrive before identity or after name; parallel unsigned calls never borrow it", () => {
++  const current = createGoogleToolSignatureExtractor(scope).createStreamExtractor();
++  current.processChunk(chunk([{ index: 0, function: { arguments: "" }, extra_content: extra() }]));
++  current.processChunk(
++    chunk([
++      { index: 0, id: "first", function: { name: "Probe", arguments: "{}" } },
++      { index: 1, id: "second", function: { name: "Probe", arguments: "{}" } },
++    ]),
++  );
++  current.processChunk(
++    chunk([{ index: 1, function: { arguments: "" }, extra_content: extra("second-signature") }]),
++  );
++  const replay = googleToolSignatureReplay(content(current.buildMetadata()), scope);
++  assert.deepEqual(
++    [...replay!],
++    [
++      ["first", signature],
++      ["second", "second-signature"],
++    ],
++  );
++  const unsigned = createGoogleToolSignatureExtractor(scope).createStreamExtractor();
++  unsigned.processChunk(
++    chunk([
++      tool("first"),
++      { index: 1, id: "second", function: { name: "Probe", arguments: "{}" } },
++    ]),
++  );
++  assert.deepEqual(
++    [...googleToolSignatureReplay(content(unsigned.buildMetadata()), scope)!],
++    [["first", signature]],
++  );
++});
++
++test("stream collectors do not retain signatures when upstream ids recur in another response", () => {
++  const extractor = createGoogleToolSignatureExtractor(scope);
++  const first = extractor.createStreamExtractor();
++  first.processChunk(chunk([tool()]));
++  const second = extractor.createStreamExtractor();
++  second.processChunk(chunk([tool("same-id", "new-signature")]));
++  assert.equal(
++    googleToolSignatureReplay(content(first.buildMetadata()), scope)?.get("same-id"),
++    signature,
++  );
++  assert.equal(
++    googleToolSignatureReplay(content(second.buildMetadata()), scope)?.get("same-id"),
++    "new-signature",
++  );
++});
++
++for (const contradictory of [
++  { index: 0, id: "replacement" },
++  { index: 1, id: "same-id" },
++  { index: 0, extra_content: extra("different-signature") },
++])
++  test(`contradictory association fails: ${JSON.stringify(contradictory)}`, () => {
++    const current = createGoogleToolSignatureExtractor(scope).createStreamExtractor();
++    current.processChunk(chunk([tool()]));
++    assert.throws(
++      () => current.processChunk(chunk([contradictory])),
++      /contradictory|changed identity/,
++    );
++  });
++
++test("an orphan, ambiguous or malformed signature is not guessed or concatenated", () => {
++  for (const calls of [
++    [{ extra_content: extra() }],
++    [{ index: 0, extra_content: { google: { thought_signature: 123 } } }],
++    [{ index: -1, id: "bad", extra_content: extra() }],
++  ])
++    assert.throws(
++      () =>
++        createGoogleToolSignatureExtractor(scope)
++          .createStreamExtractor()
++          .processChunk(chunk(calls)),
++      /Google/,
++    );
++  const orphan = createGoogleToolSignatureExtractor(scope).createStreamExtractor();
++  orphan.processChunk(chunk([{ index: 0, extra_content: extra() }]));
++  assert.throws(() => orphan.buildMetadata(), /completed tool identity/);
++});
++
++test("foreign model/provider/proxy/missing scope or metadata never replays an opaque signature", async () => {
++  const metadata = await createGoogleToolSignatureExtractor(scope).extractMetadata({
++    parsedBody: { choices: [{ message: { tool_calls: [tool()] } }] },
++  });
++  for (const target of [
++    undefined,
++    { ...scope, modelId: "foreign-model" },
++    { ...scope, providerId: "foreign-provider" },
++    { ...scope, baseURL: "https://proxy.example/v1beta/openai" },
++  ]) {
++    assert.equal(matchesGoogleToolSignatureScope(metadata, target), false);
++    assert.equal(googleToolSignatureReplay(content(metadata), target), undefined);
++  }
++  assert.equal(
++    googleToolSignatureReplay(
++      content({
++        fleetGoogle: { serializedToolSignatures: '[{"id":"same-id","signature":"unscoped"}]' },
++      }),
++      scope,
++    ),
++    undefined,
++  );
++  assert.equal(googleToolSignatureReplay(content(undefined), scope), undefined);
++});
++
++for (const [streaming, late] of [
++  [false, false],
++  [true, false],
++  [true, true],
++]) {
++  test(`installed SDK + public V3 carrier: ${streaming ? (late ? "late streaming" : "first streaming") : "nonstream"}`, async () => {
++    const f = sdkFixture(late!, streaming!);
++    let opaque: any;
++    let metadata: any;
++    if (!streaming) {
++      const response = await f.model.doGenerate({ prompt, tools });
++      opaque = response.content.find(
++        (part) => part.type === "reasoning" && part.text === "",
++      )?.providerMetadata;
++      metadata = response.providerMetadata;
++    } else {
++      const response = await f.model.doStream({ prompt, tools });
++      const events = [];
++      for await (const event of response.stream) events.push(event);
++      const carrierEvent = events.find(
++        (event) => event.type === "reasoning-end" && event.id === "fleet-google-tool-signatures",
++      );
++      opaque =
++        carrierEvent && "providerMetadata" in carrierEvent
++          ? carrierEvent.providerMetadata
++          : undefined;
++      metadata = events.find((event) => event.type === "finish")?.providerMetadata;
++      assert.equal(
++        events.filter(
++          (event) => event.type === "reasoning-end" && event.id === "fleet-google-tool-signatures",
++        ).length,
++        1,
++      );
++      assert.ok(
++        events.findIndex((event) => event.type === "tool-call") <
++          events.findIndex((event) => event === carrierEvent),
++        "carrier follows complete tool input",
++      );
++    }
++    assert.ok(opaque, "alias-independent opaque carrier");
++    assert.equal(metadata?.fleetGoogle, undefined, "accounting has no duplicate opaque carrier");
++    const replay = googleToolSignatureReplay(content(JSON.parse(JSON.stringify(opaque))), scope);
++    assert.equal(
++      replay?.get("same-id"),
++      signature,
++      "serialized cold carrier preserves original bytes",
++    );
++    // Public SDK serializer requires the fixed Google namespace, regardless of provider alias.
++    const wire: any[] = [];
++    const destination = createOpenAICompatible({
++      name: "another-google-alias",
++      baseURL: scope.baseURL,
++      fetch: async (input, init) => {
++        wire.push(JSON.parse(await new Request(input, init).text()));
++        return Response.json({
++          choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
++        });
++      },
++    });
++    await destination(scope.modelId).doGenerate({
++      prompt: [
++        ...prompt,
++        {
++          role: "assistant",
++          content: [
++            {
++              type: "tool-call",
++              toolCallId: "same-id",
++              toolName: "Probe",
++              input: { value: "read-only" },
++              providerOptions: { google: { thoughtSignature: replay!.get("same-id")! } },
++            },
++          ],
++        },
++      ],
++    });
++    assert.equal(
++      wire[0].messages[1].tool_calls[0].extra_content.google.thought_signature,
++      signature,
++    );
++  });
++}
++
++test("absence of provider completion cannot publish a carrier even when the SDK observed signatures", async () => {
++  const f = sdkFixture(false, true, false);
++  const response = await f.model.doStream({ prompt, tools });
++  const observed: any[] = [];
++  await assert.rejects(async () => {
++    for await (const part of response.stream) observed.push(part);
++  }, /completion evidence/);
++  assert.equal(
++    observed.some((part) => part.id === "fleet-google-tool-signatures"),
++    false,
++  );
++});
++
++test("wrapper cannot bind a carrier to another model", () => {
++  const f = sdkFixture(false, false);
++  assert.throws(
++    () => withGoogleToolSignatureCarrier(f.model, { ...scope, modelId: "other" }),
++    /model scope mismatch/,
++  );
++});
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model-error-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model-error-usage.ts
+new file mode 100644
+index 0000000..7d8c09e
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model-error-usage.ts
+@@ -0,0 +1,50 @@
++import type { Model, ModelUsage } from "@zcode/contracts";
++
++/** Failed model decoding can still report consumption; this never supplies a completed response. */
++export function readModelErrorUsage(
++  error: unknown,
++  model: Model,
++):
++  | {
++      usage: ModelUsage;
++      providerMetadata?: Record<string, unknown>;
++    }
++  | undefined {
++  const seen = new Set<unknown>();
++  for (
++    let current = record(error), depth = 0;
++    current && depth < 12 && !seen.has(current);
++    depth++
++  ) {
++    seen.add(current);
++    const observed = record(record(current.context)?.fleetUsageObservation);
++    const usage = record(observed?.usage);
++    if (
++      observed?.providerId === String(model.providerId) &&
++      observed.modelId === String(model.modelId) &&
++      usage
++    ) {
++      const known: ModelUsage = {};
++      for (const key of [
++        "inputTokens",
++        "outputTokens",
++        "totalTokens",
++        "cacheReadTokens",
++        "cacheWriteTokens",
++        "reasoningTokens",
++      ] as const) {
++        const value = usage[key];
++        if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
++          known[key] = value;
++      }
++      return { usage: known, providerMetadata: record(observed.providerMetadata) };
++    }
++    current = record(current.cause ?? current.lastError ?? current.error);
++  }
++  return undefined;
++}
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-recovery.ts b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-recovery.ts
+index 0ad1d7f..a9e2f7a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-recovery.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-recovery.ts
+@@ -5,6 +5,7 @@ import {
+   TurnMachineImpl,
+ } from "../deps.js";
+ import type { MessageId, Model, ToolCallId, TraceContext } from "../deps.js";
++import { ModelErrorCode } from "@zcode/contracts";
+ import { createStreamRecoveryAnchorId, createStreamingToolAttemptId } from "../helpers/index.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { recordModelHistoryRound, type RegularTurnLoopState } from "./turn-loop-state.js";
+@@ -12,6 +13,15 @@ import { recordModelHistoryRound, type RegularTurnLoopState } from "./turn-loop-
+ // 越过 adapter 重试边界后，SSE stall 只能靠 core recovery 从安全锚点重开流；
+ // 只恢复 1 次会让连续短暂抖动直接失败，和模型默认 10 次 retry 的用户预期差距过大。
+ const STREAM_RECOVERY_MAX_RETRIES = 10;
++export function isTerminalModelProtocolFailure(error: unknown): boolean {
++  for (const entry of walkErrorRecords(error)) {
++    if (
++      entry.code === ModelErrorCode.InvalidModelResponse ||
++      asRecord(entry.context)?.code === ModelErrorCode.InvalidModelResponse
++    ) return true;
++  }
++  return false;
++}
+ const PREVIOUS_MESSAGE_ANCHOR_SUFFIX = "previous-message-anchor";
+ const START_PLAN_BUSY_PROVIDER_CODES = new Set(["3008", "3009", "3010"]);
+ const START_PLAN_BUSY_RETRY_PROVIDER_IDS = new Set([
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+index 0fa0786..6807e8f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts
+@@ -22,6 +22,7 @@ import {
+   emitStreamRecoveryStarted,
+   hasStreamRecoveryBudget,
+   recoverPartialAssistantOutputFailure,
++  isTerminalModelProtocolFailure,
+ } from "./streaming-recovery.js";
+ import { executeToolCallsForModelStep } from "./turn-tools.js";
+ import { mcpToolPartMetadata } from "./tool-part-metadata.js";
+@@ -146,7 +147,11 @@ export function createStreamingToolCoordinator(
+     },
+ 
+     async recoverFromModelFailure(error, assistantCreatedAt, recoveryOptions = {}) {
+-      if (state.turnAbortSignal.aborted || !hasStreamRecoveryBudget(state)) return false;
++      if (
++        state.turnAbortSignal.aborted ||
++        !hasStreamRecoveryBudget(state) ||
++        isTerminalModelProtocolFailure(error)
++      ) return false;
+       const recoveryEventOptions = {
+         ...options,
+         ...(recoveryOptions.failedRequestId
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index dbae314..0b3c5dd 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -20,6 +20,7 @@ import { toolUsageId } from "../usage-identity.js";
+ import { isModelContextExceededError } from "../helpers/index.js";
+ import { isGrokBuildFastModel } from "@zcode/shared";
+ import { recoverPendingModelUsage, retainPendingModelUsage } from "./usage-recovery.js";
++import { readModelErrorUsage } from "./model-error-usage.js";
+ 
+ type ModelUsageQuerySource =
+   | "main_turn"
+@@ -63,10 +64,12 @@ export async function recordModelUsageFact(
+   if (!usageStore) return;
+ 
+   const completedAt = Date.now();
+-  const accounting = input.result?.providerMetadata?.fleetAccounting as
++  const observed = readModelErrorUsage(input.error, input.model);
++  const providerMetadata = input.result?.providerMetadata ?? observed?.providerMetadata;
++  const accounting = providerMetadata?.fleetAccounting as
+     | Record<string, unknown>
+     | undefined;
+-  const usage = input.result?.usage;
++  const usage = input.result?.usage ?? observed?.usage;
+   const networkEvents = modelNetworkEvents(input.events.slice(input.networkEventStartIndex));
+   const retryCount = networkEvents.filter((event) => event.type === "model_retry_scheduled").length;
+   const failedNetworkEvent = networkEvents.findLast(
+@@ -121,9 +124,9 @@ export async function recordModelUsageFact(
+     errorMessage: errorInfo.message,
+     rawUsage: usage,
+     providerMetadata: {
+-      ...input.result?.providerMetadata,
++      ...providerMetadata,
+       fleetAccounting: {
+-        ...(input.result?.providerMetadata?.fleetAccounting as Record<string, unknown> | undefined),
++        ...(providerMetadata?.fleetAccounting as Record<string, unknown> | undefined),
+         workspacePath: runtime.workspaceRoot,
+         requestedSpeedMode:
+           accounting?.billingProvider === "xai" &&
+diff --git a/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts b/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts
+new file mode 100644
+index 0000000..3023098
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts
+@@ -0,0 +1,258 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { DatabaseSync } from "node:sqlite";
++import { join } from "node:path";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++const usage = { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14,
++  prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 2 } };
++const call = { index: 0, id: "original-call", type: "function",
++  function: { name: "Probe", arguments: '{"value":"must-not-execute"}' } };
++const frame = (delta: unknown, finish_reason: unknown = null, reported?: typeof usage) => ({
++  id: "fixture", object: "chat.completion.chunk", created: 1, model: "model-a",
++  choices: [{ index: 0, delta, finish_reason }], ...(reported ? { usage: reported } : {}),
++});
++const sse = (frames: unknown[], done = true) => new Response(
++  frames.map((value) => `${typeof value === "string" ? value : `data: ${JSON.stringify(value)}`}\n\n`).join("") +
++  (done ? "data: [DONE]\n\n" : ""), { headers: { "content-type": "text/event-stream" } },
++);
++
++function model(transport: typeof fetch, api = "openai-chat-completions", baseUrl = "https://synthetic.example/v1") {
++  const adapter = new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 } });
++  return adapter.createModel({
++    providerId: "fixture", modelId: "model-a",
++    providerConfig: { access: { type: "api-key", apiKey: "synthetic-key" },
++      api: { type: api, baseUrl } } as never,
++    modelConfig: {
++      properties: { contextWindow: 65536, requiresMfjsToolSchema: false,
++        inputFormat: { supportsText: true, supportsImage: false, supportsAudio: false,
++          supportsVideo: false, supportsPdf: false }, outputFormat: { supportsText: true },
++        supportsToolCall: true, supportsJsonSchemaOutput: false, supportsNativeWebSearch: false,
++        supportsMidConversationSystem: true },
++      optionSpecs: { reasoningLevel: { values: ["off"], default: "off", map: "{}" },
++        maxOutputTokens: { max: 256, default: 256, map: api === "openai-responses"
++          ? "{'max_output_tokens': maxOutputTokens}" : "{'max_tokens': maxOutputTokens}" } },
++    } as never,
++    options: { reasoningLevel: "off", maxOutputTokens: 256 },
++  });
++}
++
++for (const streaming of [false, true]) {
++  for (const failure of ["missing", "empty", "malformed", "error"] as const) {
++    test(`Chat Completions ${streaming ? "stream" : "JSON"} ${failure} completion cannot admit a Host effect`, async () => {
++      const f = await fixture(undefined, streaming);
++      let requests = 0;
++      const candidate = model(async () => {
++        requests++;
++        if (requests > 1) return streaming
++          ? sse([frame({ role: "assistant", content: "safe recovery" }, "stop", usage)])
++          : Response.json({ id: "safe", created: 1, model: "model-a",
++            choices: [{ index: 0, message: { role: "assistant", content: "safe recovery" }, finish_reason: "stop" }], usage });
++        const rawReason = failure === "missing" ? undefined : failure === "empty" ? "" : failure === "malformed" ? 42 : "error";
++        if (!streaming) return Response.json({ id: "unfinished", created: 1, model: "model-a",
++          choices: [{ index: 0, message: { role: "assistant", content: "unfinished",
++            tool_calls: [{ id: call.id, type: call.type, function: call.function }] }, finish_reason: rawReason }] });
++        return sse([frame({ role: "assistant", content: "unfinished", tool_calls: [call] }, rawReason)], false);
++      });
++      try {
++        (f.runtime as any).modelFactory = () => candidate;
++        await f.runtime.executeTurn("Reject unfinished fixture tools").catch(() => {});
++        assert.equal(f.effects, 0, "An unconfirmed completion reached the actual Host handler");
++        assert.equal(f.permissionCalls, 0, "An unconfirmed completion requested effect approval");
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          const receipts = db.prepare("select status, finish_reason, raw_usage_json from model_usage order by started_at, id").all();
++          assert.ok(receipts.length);
++          assert.notEqual(receipts[0]!.status, "completed", "The unfinished physical request became a completed usage fact");
++        } finally { db.close(); }
++        await f.reopen();
++        assert.equal(f.effects, 0, "Cold reopen replayed an unfinished effect");
++      } finally { await f.close(); }
++    });
++  }
++}
++
++test("Chat Completions retains one completion and real counters after a repeated OpenRouter usage-tail finish", async () => {
++  const candidate = model(async () => sse([
++    ": OPENROUTER PROCESSING", frame({ role: "assistant", reasoning_content: "thought" }),
++    frame({ content: "complete" }, "stop"), frame({ content: "", role: "assistant" }, "stop", usage),
++  ]));
++  const events: any[] = [];
++  for await (const event of candidate.streamText({ messages: [{ role: "user", content: "fixture" }] })) events.push(event);
++  const finishes = events.filter((event) => event.type === "finish");
++  assert.equal(finishes.length, 1);
++  assert.equal(finishes[0].providerMetadata.rawFinishReason, "stop");
++  assert.deepEqual(finishes[0].usage, { inputTokens: 11, outputTokens: 3, totalTokens: 14,
++    cacheReadTokens: 4, cacheWriteTokens: undefined, reasoningTokens: 2 });
++  assert.equal(events.filter((event) => event.type === "reasoning_delta").map((event) => event.text).join(""), "thought");
++});
++
++test("Chat Completions preserves a structured mid-stream provider error without tool admission", async () => {
++  const f = await fixture(undefined, true);
++  const candidate = model(async () => sse([
++    frame({ role: "assistant", content: "partial" }),
++    { ...frame({ content: "" }, "error"), error: { code: "context_length_exceeded", message: "Fixture context rejected" } },
++  ]));
++  try {
++    (f.runtime as any).modelFactory = () => candidate;
++    await assert.rejects(f.runtime.executeTurn("Retain the provider failure"), (error: unknown) => {
++      const causes: any[] = [];
++      for (let current = error as any; current; current = current.cause) causes.push(current);
++      assert.ok(causes.some((cause) => cause.providerCode === "context_length_exceeded"));
++      assert.ok(causes.some((cause) => cause.message === "Fixture context rejected"));
++      return true;
++    });
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++  } finally { await f.close(); }
++});
++
++for (const api of ["openai-responses", "anthropic-messages"]) {
++  for (const streaming of [false, true]) {
++    test(`${api} ${streaming ? "stream" : "JSON"} without its terminal evidence cannot execute a Host tool`, async () => {
++      const f = await fixture(undefined, streaming);
++      let requests = 0;
++      const candidate = model(async () => {
++        requests++;
++        const safe = requests > 1;
++        if (api === "openai-responses") {
++          const output = safe
++            ? [{ type: "message", id: "message", role: "assistant", status: "completed",
++              content: [{ type: "output_text", text: "safe", annotations: [] }] }]
++            : [{ type: "function_call", id: "fc", call_id: call.id, name: "Probe",
++              arguments: call.function.arguments, status: "completed" }];
++          const response = { id: "response", created_at: 1, model: "model-a", output,
++            ...(safe ? { status: "completed", usage: { input_tokens: 11, output_tokens: 3, total_tokens: 14 } } : {}) };
++          if (!streaming) return Response.json(response);
++          return sse([{ type: "response.created", response: { id: "response", created_at: 1, model: "model-a" } },
++            ...(safe ? [{ type: "response.output_item.done", output_index: 0, item: output[0] },
++              { type: "response.completed", response }] : [
++              { type: "response.output_item.added", output_index: 0, item: { ...output[0], arguments: "" } },
++              { type: "response.function_call_arguments.delta", item_id: "fc", output_index: 0, delta: call.function.arguments },
++              { type: "response.output_item.done", output_index: 0, item: output[0] },
++            ])], false);
++        }
++        const content = safe ? [{ type: "text", text: "safe" }]
++          : [{ type: "tool_use", id: call.id, name: "Probe", input: { value: "must-not-execute" } }];
++        const message = { id: "message", type: "message", role: "assistant", model: "model-a", content,
++          usage: { input_tokens: 11, output_tokens: 3 }, ...(safe ? { stop_reason: "end_turn" } : {}) };
++        if (!streaming) return Response.json(message);
++        const frames = [{ type: "message_start", message: { ...message, content: [], usage: { input_tokens: 11, output_tokens: 0 } } },
++          { type: "content_block_start", index: 0, content_block: safe ? { type: "text", text: "" }
++            : { type: "tool_use", id: call.id, name: "Probe", input: {} } },
++          { type: "content_block_delta", index: 0, delta: safe ? { type: "text_delta", text: "safe" }
++            : { type: "input_json_delta", partial_json: call.function.arguments } },
++          { type: "content_block_stop", index: 0 }, ...(safe ? [
++            { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } },
++            { type: "message_stop" },
++          ] : [])];
++        return new Response(frames.map((value) => `event: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`).join(""),
++          { headers: { "content-type": "text/event-stream" } });
++      }, api);
++      try {
++        (f.runtime as any).modelFactory = () => candidate;
++        await f.runtime.executeTurn("Reject unconfirmed protocol completion").catch(() => {});
++        assert.equal(f.effects, 0);
++        assert.equal(f.permissionCalls, 0);
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try { assert.notEqual(db.prepare("select status from model_usage order by started_at, id limit 1").get()!.status, "completed"); }
++        finally { db.close(); }
++        await f.reopen(); assert.equal(f.effects, 0);
++      } finally { await f.close(); }
++    });
++  }
++}
++
++for (const streaming of [false, true]) {
++  test(`Responses valid incomplete ${streaming ? "stream" : "JSON"} retains output-limit evidence and counters`, async () => {
++    const response = { id: "response", created_at: 1, model: "model-a", status: "incomplete",
++      incomplete_details: { reason: "max_output_tokens" },
++      output: [{ type: "message", id: "message", role: "assistant", status: "incomplete",
++        content: [{ type: "output_text", text: "partial", annotations: [] }] }],
++      usage: { input_tokens: 11, output_tokens: 3, total_tokens: 14 } };
++    const candidate = model(async () => streaming ? sse([
++      { type: "response.created", response: { id: response.id, created_at: 1, model: "model-a" } },
++      { type: "response.output_item.added", output_index: 0, item: response.output[0] },
++      { type: "response.output_text.delta", item_id: "message", delta: "partial" },
++      { type: "response.output_item.done", output_index: 0, item: response.output[0] },
++      { type: "response.incomplete", response },
++    ]) : Response.json(response), "openai-responses");
++    const request = { messages: [{ role: "user" as const, content: "fixture" }] };
++    if (streaming) {
++      const events: any[] = []; for await (const event of candidate.streamText(request)) events.push(event);
++      const finish = events.find((event) => event.type === "finish");
++      assert.equal(finish.finishReason, "length"); assert.equal(finish.usage.inputTokens, 11);
++      assert.equal(events.some((event) => event.type === "raw"), false);
++    } else { const result = await candidate.generateText(request); assert.equal(result.finishReason, "length"); assert.equal(result.usage.inputTokens, 11); }
++  });
++}
++
++test("Chat Completions Stop closes its real local response without completion or effects", async () => {
++  const { createServer } = await import("node:http");
++  const started = Promise.withResolvers<void>();
++  const closed = Promise.withResolvers<void>();
++  let requests = 0;
++  const server = createServer((request, response) => {
++    request.resume(); requests++;
++    response.writeHead(200, { "content-type": "text/event-stream" });
++    response.write(`data: ${JSON.stringify(frame({ role: "assistant", content: "partial" }))}\n\n`);
++    response.on("close", closed.resolve); started.resolve();
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address() as { port: number };
++  const f = await fixture(undefined, true);
++  let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++  try {
++    (f.runtime as any).modelFactory = () => model(fetch, "openai-chat-completions", `http://127.0.0.1:${address.port}/v1`);
++    running = f.runtime.executeTurn("Stop the actual local stream");
++    await started.promise; f.runtime.stopActiveForegroundExecution();
++    await running.catch(() => {}); await closed.promise;
++    assert.equal(requests, 1); assert.equal(f.effects, 0); assert.equal(f.permissionCalls, 0);
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    try { assert.notEqual(db.prepare("select status from model_usage limit 1").get()!.status, "completed"); }
++    finally { db.close(); }
++  } finally {
++    f.runtime.stopActiveForegroundExecution(); await running?.catch(() => {}); await f.close();
++    server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
++  }
++});
++
++for (const failure of ["usage-before-EOF", "completed-invalid-reasoning"] as const) {
++  test(`${failure} retains reported usage/cost as an error without effects or model replay`, async () => {
++    const f = await fixture(undefined, failure === "usage-before-EOF");
++    let requests = 0;
++    const candidate = model(async () => {
++      requests++;
++      if (requests > 1) return sse([frame({ role: "assistant", content: "safe recovery" }, "stop", usage)]);
++      const reported = { ...usage, cost: 0.031 };
++      if (failure === "completed-invalid-reasoning") return Response.json({
++        id: "failed-extraction", created: 1, model: "model-a",
++        choices: [{ index: 0, finish_reason: "tool_calls", message: { role: "assistant", content: "tool",
++          tool_calls: [{ id: call.id, type: call.type, function: call.function }],
++          reasoning_details: [{ type: "reasoning.encrypted", data: 42 }] } }], usage: reported,
++      });
++      return sse([frame({ role: "assistant", content: "unfinished", tool_calls: [call] }),
++        frame({ role: "assistant", content: "" }, null, reported)], false);
++    }, "openai-chat-completions", "https://openrouter.ai/api/v1");
++    try {
++      (f.runtime as any).modelFactory = () => candidate;
++      await f.runtime.executeTurn("Retain reported consumption on protocol failure").catch(() => {});
++      assert.equal(f.effects, 0); assert.equal(f.permissionCalls, 0);
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        const first = db.prepare("select * from model_usage order by started_at, id limit 1").get()!;
++        assert.equal(first.status, "error");
++        assert.equal(first.input_tokens, 11, "Known input disappeared with rejected completion");
++        assert.equal(first.output_tokens, 3);
++        assert.equal(first.cache_read_input_tokens, 4);
++        assert.equal(first.reasoning_tokens, 2);
++        assert.equal(first.provider_total_tokens, 14);
++        const metadata = JSON.parse(String(first.provider_metadata_json));
++        assert.equal(metadata.fleetAccounting.reportedRequestUsd, 0.031);
++        assert.equal(requests, 1, "A terminal protocol failure started another model request");
++      } finally { db.close(); }
++      await f.reopen(); assert.equal(f.effects, 0); assert.equal(requests, 1);
++    } finally { await f.close(); }
++  });
++}
+diff --git a/apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts b/apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts
+new file mode 100644
+index 0000000..c954bbd
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts
+@@ -0,0 +1,86 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++const baseURL = "https://generativelanguage.googleapis.com/v1beta/openai";
++const scope = { providerId: "fixture", modelId: "model-a", baseURL };
++const opaque = "opaque-original-google-signature";
++const usage = { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 };
++const call = { id: "original-call", type: "function", function: { name: "Probe", arguments: '{"value":"once"}' } };
++function model(transport: typeof fetch, target = scope) {
++  return new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 } }).createModel({
++    providerId: target.providerId, modelId: target.modelId,
++    providerConfig: { access: { type: "api-key", apiKey: "synthetic-key" },
++      api: { type: "openai-chat-completions", baseUrl: target.baseURL } } as never,
++    modelConfig: { properties: { contextWindow: 65536, requiresMfjsToolSchema: false,
++      inputFormat: { supportsText: true, supportsImage: false, supportsVideo: false, supportsAudio: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall: true, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: true },
++      optionSpecs: { reasoningLevel: { values: ["off"], default: "off", map: "{}" },
++        maxOutputTokens: { max: 256, default: 256, map: "{'max_tokens':maxOutputTokens}" } } } as never,
++    options: { reasoningLevel: "off", maxOutputTokens: 256 },
++  });
++}
++
++for (const mode of ["JSON", "first", "late"] as const) {
++  test(`Google ${mode} signature survives actual Host tool continuation and cold SQLite reopen`, async () => {
++    const f = await fixture(undefined, mode !== "JSON");
++    const bodies: any[] = [];
++    const transport: typeof fetch = async (raw, init) => {
++      const request = new Request(raw, init); assert.equal(request.url, `${baseURL}/chat/completions`);
++      const body = await request.json() as any; bodies.push(body);
++      if (bodies.length > 1) {
++        const assistant = body.messages.find((message: any) => message.role === "assistant" && message.tool_calls?.some((value: any) => value.id === call.id));
++        assert.equal(assistant.tool_calls.find((value: any) => value.id === call.id).extra_content.google.thought_signature, opaque);
++        assert.equal(assistant.reasoning_content, undefined);
++      }
++      if (!body.stream) return Response.json({ id: "response", created: 1, model: "model-a",
++        choices: [{ index: 0, message: { role: "assistant", content: bodies.length === 1 ? "tool" : "finished",
++          ...(bodies.length === 1 ? { tool_calls: [{ ...call, extra_content: { google: { thought_signature: opaque } } }] } : {}) },
++          finish_reason: bodies.length === 1 ? "tool_calls" : "stop" }], usage });
++      const frame = (delta: unknown, finish_reason: string | null = null, reported?: typeof usage) => ({
++        id: "response", created: 1, model: "model-a", choices: [{ index: 0, delta, finish_reason }], ...(reported ? { usage: reported } : {}),
++      });
++      const frames = bodies.length === 1 ? [
++        frame({ role: "assistant", content: "tool", tool_calls: [{ index: 0, ...call,
++          ...(mode === "first" ? { extra_content: { google: { thought_signature: opaque } } } : {}) }] }),
++        ...(mode === "late" ? [frame({ tool_calls: [{ index: 0, function: { arguments: "" },
++          extra_content: { google: { thought_signature: opaque } } }] })] : []),
++        frame({}, "tool_calls", usage),
++      ] : [frame({ role: "assistant", content: "finished" }, "stop", usage)];
++      return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n",
++        { headers: { "content-type": "text/event-stream" } });
++    };
++    try {
++      (f.runtime as any).modelFactory = () => model(transport);
++      await f.runtime.executeTurn("One signature-bound fixture effect");
++      assert.equal(f.effects, 1); assert.equal(f.permissionCalls, 1); assert.equal(bodies.length, 2);
++      await f.reopen(); (f.runtime as any).modelFactory = () => model(transport);
++      await f.runtime.executeTurn("Continue the original signed tool history");
++      assert.equal(f.effects, 1); assert.equal(bodies.length, 3);
++      assert.ok(JSON.stringify(await f.store.messages({ sessionID: "session" as never })).includes(opaque));
++    } finally { await f.close(); }
++  });
++}
++
++for (const target of [ { ...scope, modelId: "model-b" }, { ...scope, providerId: "other" },
++  { ...scope, baseURL: "https://proxy.example/v1" } ]) {
++  test(`Google tool signature cannot cross ${JSON.stringify(target)}`, async () => {
++    let body: any;
++    const candidate = model(async (raw, init) => {
++      body = await new Request(raw, init).json();
++      return Response.json({ id: "safe", created: 1, model: target.modelId,
++        choices: [{ index: 0, message: { role: "assistant", content: "safe" }, finish_reason: "stop" }], usage });
++    }, target);
++    await candidate.generateText({ messages: [{ role: "user", content: "initial" },
++      { role: "assistant", providerId: scope.providerId as never, modelId: scope.modelId as never,
++        content: [{ type: "reasoning", text: "", providerOptions: { fleetGoogle: { ...scope,
++          serializedToolSignatures: JSON.stringify([{ id: call.id, signature: opaque }]) } } }, { type: "text", text: "visible answer" }],
++        toolCalls: [{ id: call.id, name: "Probe", input: { value: "once" } }] },
++      { role: "tool", toolCallId: call.id, toolName: "Probe", content: "saved result" },
++    ] });
++    assert.equal(JSON.stringify(body).includes(opaque), false);
++    assert.equal(body.messages.find((value: any) => value.role === "assistant").tool_calls[0].extra_content, undefined);
++  });
++}
+diff --git a/apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts b/apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts
+new file mode 100644
+index 0000000..1eabb38
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts
+@@ -0,0 +1,104 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++const scope = { providerId: "fixture", modelId: "model-a" };
++const format = "anthropic-claude-v1";
++const details = [
++  { type: "reasoning.text", text: "first second", signature: "signed-text", id: "text-0", index: 0, format },
++  { type: "reasoning.encrypted", data: "opaque-encrypted", id: "encrypted-1", index: 1, format },
++  { type: "reasoning.text", text: "separate", signature: "signed-other", id: "text-2", index: 2, format },
++  { type: "reasoning.text", text: "also separate", signature: "signed-last", id: "text-3", index: 3, format },
++];
++const usage = { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14,
++  prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 2 } };
++const wireCall = { id: "call", type: "function", function: { name: "Probe", arguments: '{"value":"once"}' } };
++
++function apiModel(transport: typeof fetch, target = scope, baseUrl = "https://openrouter.ai/api") {
++  return new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 } }).createModel({
++    ...target, providerConfig: { access: { type: "api-key", apiKey: "synthetic-key" },
++      api: { type: "openai-chat-completions", baseUrl } } as never,
++    modelConfig: { properties: { contextWindow: 65536, requiresMfjsToolSchema: false,
++      inputFormat: { supportsText: true, supportsImage: false, supportsVideo: false, supportsAudio: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall: true, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: true },
++      optionSpecs: { reasoningLevel: { values: ["off"], default: "off", map: "{}" },
++        maxOutputTokens: { max: 256, default: 256, map: "{'max_tokens':maxOutputTokens}" } } } as never,
++    options: { reasoningLevel: "off", maxOutputTokens: 256 },
++  });
++}
++
++for (const streaming of [false, true]) {
++  test(`OpenRouter ${streaming ? "stream fragments" : "JSON"} preserves scoped signed/encrypted tool replay and cold history`, async () => {
++    const f = await fixture(undefined, streaming);
++    const bodies: any[] = [];
++    const transport: typeof fetch = async (raw, init) => {
++      const request = new Request(raw, init);
++      assert.equal(request.url, "https://openrouter.ai/api/v1/chat/completions");
++      const body = await request.json() as any; bodies.push(body);
++      if (bodies.length > 1) {
++        const assistant = body.messages.find((message: any) => message.role === "assistant" && message.tool_calls?.some((call: any) => call.id === "call"));
++        assert.deepEqual(assistant.reasoning_details, details);
++        assert.equal(assistant.reasoning_content, undefined, "Structured replay duplicated plaintext reasoning");
++      }
++      if (!body.stream) return Response.json({ id: "response", created: 1, model: "model-a",
++        choices: [{ index: 0, message: { role: "assistant", content: bodies.length === 1 ? "tool" : "finished",
++          ...(bodies.length === 1 ? { reasoning_content: "displayed thought", reasoning_details: details, tool_calls: [wireCall] } : {}) },
++          finish_reason: bodies.length === 1 ? "tool_calls" : "stop" }], usage });
++      const frame = (delta: unknown, finish_reason: string | null = null, reported?: typeof usage) => ({
++        id: "response", created: 1, model: "model-a", choices: [{ index: 0, delta, finish_reason }], ...(reported ? { usage: reported } : {}),
++      });
++      const frames = bodies.length === 1 ? [
++        frame({ role: "assistant", reasoning_content: "displayed thought", reasoning_details: [
++          { ...details[0], text: "first ", signature: null },
++        ] }),
++        frame({ reasoning_details: [{ ...details[0], text: "second" }, ...details.slice(1)] }),
++        frame({ content: "tool", tool_calls: [{ index: 0, ...wireCall }] }),
++        frame({}, "tool_calls"), frame({ role: "assistant", content: "" }, "tool_calls", usage),
++      ] : [frame({ role: "assistant", content: "finished" }, "stop", usage)];
++      return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n",
++        { headers: { "content-type": "text/event-stream" } });
++    };
++    try {
++      (f.runtime as any).modelFactory = () => apiModel(transport);
++      await f.runtime.executeTurn("One scoped fixture effect");
++      assert.equal(f.effects, 1); assert.equal(f.permissionCalls, 1); assert.equal(bodies.length, 2);
++      await f.reopen();
++      (f.runtime as any).modelFactory = () => apiModel(transport);
++      await f.runtime.executeTurn("Continue from cold history");
++      assert.equal(bodies.length, 3); assert.equal(f.effects, 1);
++      const entries = await f.store.messages({ sessionID: "session" as never });
++      const serialized = JSON.stringify(entries);
++      assert.ok(serialized.includes("opaque-encrypted"));
++      assert.ok(serialized.includes("displayed thought"));
++      const metadata = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(metadata.accounting?.[0]?.requestCount, 3);
++    } finally { await f.close(); }
++  });
++}
++
++for (const target of [
++  { providerId: "other", modelId: "model-a" }, { providerId: "fixture", modelId: "model-b" },
++  { ...scope, baseUrl: "https://proxy.example/v1" },
++]) {
++  test(`OpenRouter opaque/plain reasoning cannot cross ${JSON.stringify(target)}`, async () => {
++    let body: any;
++    const candidate = apiModel(async (raw, init) => {
++      body = await new Request(raw, init).json();
++      return Response.json({ id: "safe", created: 1, model: target.modelId,
++        choices: [{ index: 0, message: { role: "assistant", content: "safe" }, finish_reason: "stop" }], usage });
++    }, target, "baseUrl" in target ? target.baseUrl : undefined);
++    const metadata = { fleetOpenRouter: { ...scope } };
++    await candidate.generateText({ messages: [{ role: "user", content: "initial" },
++      { role: "assistant", providerId: scope.providerId as never, modelId: scope.modelId as never,
++        content: [{ type: "reasoning", text: "private thought", providerOptions: metadata },
++          { type: "reasoning", text: "", providerOptions: { fleetOpenRouter: { ...scope, serializedDetails: JSON.stringify(details) } } },
++          { type: "text", text: "visible answer" }], toolCalls: [{ id: wireCall.id, name: "Probe", input: { value: "once" } }] },
++      { role: "tool", toolCallId: wireCall.id, toolName: "Probe", content: "saved result" },
++    ] });
++    assert.equal(JSON.stringify(body).includes("private thought"), false);
++    assert.equal(JSON.stringify(body).includes("opaque-encrypted"), false);
++    assert.ok(JSON.stringify(body).includes("visible answer"));
++  });
++}
+diff --git a/package.json b/package.json
+index 274fe31..00a473b 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:decision-classifier && pnpm run test:decision-host && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+diff --git a/packages/shared/src/openrouter-attribution.ts b/packages/shared/src/openrouter-attribution.ts
+index 20e32f1..863b1f9 100644
+--- a/packages/shared/src/openrouter-attribution.ts
++++ b/packages/shared/src/openrouter-attribution.ts
+@@ -3,6 +3,44 @@ export const OPENROUTER_ATTRIBUTION_HEADERS = {
+   "X-OpenRouter-Categories": "programming-app",
+ } as const;
+ 
++/** Same official service, legacy root alias; never rewrite a proxy or a saved URL. */
++export function normalizeOpenRouterApiBaseUrl(baseUrl: string): string {
++  try {
++    const url = new URL(baseUrl);
++    if (
++      url.origin === "https://openrouter.ai" &&
++      !url.username &&
++      !url.password &&
++      /^\/api\/?$/.test(url.pathname) &&
++      !url.search &&
++      !url.hash
++    ) {
++      url.pathname = "/api/v1";
++      return url.href;
++    }
++  } catch {
++    /* The existing provider validator owns invalid addresses. */
++  }
++  return baseUrl;
++}
++
++export function isOpenRouterApiBaseUrl(baseUrl: string | null | undefined): boolean {
++  if (!baseUrl) return false;
++  try {
++    const url = new URL(normalizeOpenRouterApiBaseUrl(baseUrl));
++    return (
++      url.origin === "https://openrouter.ai" &&
++      !url.username &&
++      !url.password &&
++      /^\/api\/v1\/?$/.test(url.pathname) &&
++      !url.search &&
++      !url.hash
++    );
++  } catch {
++    return false;
++  }
++}
++
+ export function isOpenRouterBaseUrl(baseUrl: string | undefined): boolean {
+   const trimmed = baseUrl?.trim();
+   if (!trimmed) {

@@ -1,0 +1,136 @@
+diff --git a/package.json b/package.json
+index 98dd48e..62ea6dc 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -52,7 +52,8 @@
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+-    "test:embedded-browser": "node scripts/test-embedded-browser.mjs",
++    "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
++    "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+diff --git a/packages/ui/src/hooks/useAppPanels.ts b/packages/ui/src/hooks/useAppPanels.ts
+index dbc8df4..91f542a 100644
+--- a/packages/ui/src/hooks/useAppPanels.ts
++++ b/packages/ui/src/hooks/useAppPanels.ts
+@@ -47,6 +47,7 @@ import {
+   getActiveSidePaneTab,
+   getVisibleSidePaneTabs,
+   sidePaneOwnerKey,
++  resolveUnscopedBrowserPopup,
+   markBrowserUseSidePaneTabOperation,
+   reorderSidePaneTab,
+   resolveSidePaneScopeState,
+@@ -383,7 +384,12 @@ export function useAppPanels(options: {
+       const payload: EmbeddedBrowserOpenUrlRequest =
+         typeof request === "string" ? { url: request, disposition: "foreground-tab" } : request;
+       const sourceWorkspaceKey = payload.workspaceKey ?? activeWorkspaceKeyRef.current;
+-      const sourceSessionId = payload.sessionId ?? sidePaneOwnerIdRef.current;
++      const unscopedPopup = payload.browserId === "unclaimed-iab" && payload.sessionId === "unscoped";
++      const draftOwner = unscopedPopup
++        ? resolveUnscopedBrowserPopup(latestSidePaneMemoryRef.current.sidePaneState, payload)
++        : null;
++      if (unscopedPopup && !draftOwner) return;
++      const sourceSessionId = unscopedPopup ? draftOwner!.sessionId : payload.sessionId ?? sidePaneOwnerIdRef.current;
+       const sourceRemoteSessionId =
+         payload.remoteSessionId ?? workspaceRemoteSessionId ?? undefined;
+       const isCurrentOwner =
+diff --git a/packages/ui/src/lib/workspaceSidePane.ts b/packages/ui/src/lib/workspaceSidePane.ts
+index 86e6dd2..2edb2de 100644
+--- a/packages/ui/src/lib/workspaceSidePane.ts
++++ b/packages/ui/src/lib/workspaceSidePane.ts
+@@ -1051,6 +1051,20 @@ export function sidePaneOwnerKey(taskId: string | null | undefined): string {
+   return taskId ?? "__draft__";
+ }
+ 
++/** Map the main process's non-claimable sentinel back to the exact human draft tab.
++ * Do not substitute the active task: late popups must never acquire another task's scope.
++ */
++export function resolveUnscopedBrowserPopup(
++  current: WorkspaceSidePaneState | null,
++  payload: { sourceTabId?: string; workspaceKey?: string; remoteSessionId?: string },
++): { sessionId: null } | null {
++  const source = current?.tabs.find((tab) => tab.id === payload.sourceTabId);
++  if (!source || source.type !== "browser" || source.ownerTaskId != null) return null;
++  if (!payload.workspaceKey || source.workspaceKey !== payload.workspaceKey) return null;
++  if ((source.remoteSessionId ?? "") !== (payload.remoteSessionId ?? "")) return null;
++  return { sessionId: null };
++}
++
+ const WORKSPACE_GLOBAL_SIDE_PANE_TAB_TYPES = new Set<WorkspaceSidePaneTab["type"]>([
+   "git",
+   "developer-tools",
+diff --git a/packages/ui/test/browserPopupScope.test.ts b/packages/ui/test/browserPopupScope.test.ts
+new file mode 100644
+index 0000000..b746aeb
+--- /dev/null
++++ b/packages/ui/test/browserPopupScope.test.ts
+@@ -0,0 +1,56 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { openBrowserSidePane, resolveUnscopedBrowserPopup } from "../src/lib/workspaceSidePane.js";
++
++test("Unscoped human popup resolves the source draft; no active conversation is inferred", () => {
++  const current = openBrowserSidePane(null, {
++    tabId: "browser:source",
++    workspaceKey: "workspace-a",
++    ownerTaskId: null,
++  });
++  assert.deepEqual(
++    resolveUnscopedBrowserPopup(current, {
++      sourceTabId: "browser:source",
++      workspaceKey: "workspace-a",
++    }),
++    { sessionId: null },
++  );
++  assert.equal(
++    resolveUnscopedBrowserPopup(current, {
++      sourceTabId: "browser:source",
++      workspaceKey: "workspace-b",
++    }),
++    null,
++  );
++  assert.equal(
++    resolveUnscopedBrowserPopup(current, {
++      sourceTabId: "browser:closed",
++      workspaceKey: "workspace-a",
++    }),
++    null,
++  );
++  assert.equal(
++    resolveUnscopedBrowserPopup(current, {
++      sourceTabId: "browser:source",
++      workspaceKey: "workspace-a",
++      remoteSessionId: "foreign",
++    }),
++    null,
++  );
++  assert.equal(resolveUnscopedBrowserPopup(current, { sourceTabId: "browser:source" }), null);
++});
++
++test("A task-owned tab cannot be reassigned to the draft by an unscoped popup", () => {
++  const current = openBrowserSidePane(null, {
++    tabId: "browser:source",
++    workspaceKey: "workspace-a",
++    ownerTaskId: "task-a",
++  });
++  assert.equal(
++    resolveUnscopedBrowserPopup(current, {
++      sourceTabId: "browser:source",
++      workspaceKey: "workspace-a",
++    }),
++    null,
++  );
++});

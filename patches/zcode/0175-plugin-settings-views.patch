@@ -1,0 +1,587 @@
+From f37cc4d4a857ac289d169645b719cb440020d5b7 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 10:53:10 -0700
+Subject: [PATCH] =?UTF-8?q?Settings=20=E2=86=92=20Plugins=20is=20the=20one?=
+ =?UTF-8?q?=20management=20page:=20Skills,=20MCP,=20Commands=20and=20Hooks?=
+ =?UTF-8?q?=20are=20its=20views=20(OV-100)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The four separate sidebar pages listed the same items as the Plugins tabs.
+They remain routable aliases that open Plugins on the matching view. The
+embedded Hooks view loads the shared plugin store with the page's host,
+scope and Project list, so views no longer overwrite each other's list.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ packages/ui/src/SettingsPage.tsx              | 55 ++------------
+ packages/ui/src/lib/settingsNavigation.ts     |  2 +-
+ packages/ui/src/settings/HooksSection.tsx     | 44 +++++++++--
+ packages/ui/src/settings/PluginsSection.tsx   | 75 ++++++++++++++++---
+ .../ui/src/settings/settingsPageConfig.ts     | 30 +++++++-
+ packages/ui/src/settingsPageHelpers.tsx       |  9 ++-
+ packages/ui/test/pluginSettingsViews.test.ts  | 27 +++++++
+ 7 files changed, 176 insertions(+), 66 deletions(-)
+ create mode 100644 packages/ui/test/pluginSettingsViews.test.ts
+
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index 607e401..37d44d8 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -75,7 +75,6 @@ import { SubagentsSection } from "@/settings/SubagentsSection.js";
+ import { AutomationsSection } from "@/settings/AutomationsSection.js";
+ import { SegmentPill } from "@/settings/PluginStoreListView.js";
+ import { PluginsSection } from "@/settings/PluginsSection.js";
+-import { HooksSection } from "@/settings/HooksSection.js";
+ import { WorkspaceFileSearchSection } from "@/settings/WorkspaceFileSearchSection.js";
+ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
+ import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
+@@ -110,6 +109,8 @@ import {
+   GeneralSectionContent,
+   GeneralSectionHeader,
+   resolveSettingsSectionForPlatform,
++  SETTINGS_PLUGIN_VIEW_TABS,
++  settingsSidebarSection,
+ } from "./settingsPageHelpers.js";
+ import { AppearanceSectionContent } from "./settingsCodePreview.js";
+ import type { SettingsSectionId } from "@/lib/settingsNavigation.js";
+@@ -1487,7 +1488,8 @@ export function SettingsPage({
+                           {groupLabel}
+                         </div>
+                         {group.sections.map(({ id, icon: Icon, titleId }) => {
+-                          const isActive = activeSection === id;
++                          const isActive =
++                            settingsSidebarSection(activeSection, settingsSections) === id;
+                           const label = intl.formatMessage({ id: titleId });
+ 
+                           const openSection = () => {
+@@ -1851,13 +1853,13 @@ export function SettingsPage({
+                               workspaceDisplayNames={memoryWorkspaceDisplayNames}
+                             />
+                           </ServiceProvider>
+-                        ) : activeSection === "plugin" ? (
++                        ) : settingsSidebarSection(activeSection, settingsSections) === "plugin" ? (
+                           <PluginsSection
+-                            key={`plugin:${settingsSectionNavigationVersion}`}
++                            key={`${activeSection}:${settingsSectionNavigationVersion}`}
+                             isDesktop={Boolean(isDesktop)}
+                             isMacDesktop={Boolean(isMacDesktop)}
+                             isWindowsDesktop={Boolean(isWindowsDesktop)}
+-                            initialTab={pluginTab}
++                            initialTab={SETTINGS_PLUGIN_VIEW_TABS[activeSection] ?? pluginTab}
+                             initialScopeKey={pluginScopeKey}
+                             workspacePath={activeWorkspacePath}
+                             workspaceIdentity={activeWorkspaceIdentity}
+@@ -1869,32 +1871,6 @@ export function SettingsPage({
+                               onBack?.();
+                             }}
+                           />
+-                        ) : activeSection === "mcp" ? (
+-                          <PluginsSection
+-                            key={`mcp:${settingsSectionNavigationVersion}`}
+-                            mode="mcp"
+-                            workspacePath={activeWorkspacePath}
+-                            workspaceIdentity={activeWorkspaceIdentity}
+-                            onCreateTask={onCreateTask}
+-                            onOpenPluginStore={(_returnScopeKey, intent) => {
+-                              // 添加市场与浏览插件都先离开设置层，再显示商店。
+-                              requestPluginStoreOpen({ returnScopeKey: "user", intent });
+-                              onBack?.();
+-                            }}
+-                          />
+-                        ) : activeSection === "skill" ? (
+-                          <PluginsSection
+-                            key={`skill:${settingsSectionNavigationVersion}`}
+-                            mode="skill"
+-                            workspacePath={activeWorkspacePath}
+-                            workspaceIdentity={activeWorkspaceIdentity}
+-                            onCreateTask={onCreateTask}
+-                            onOpenPluginStore={(_returnScopeKey, intent) => {
+-                              // 添加市场与浏览插件都先离开设置层，再显示商店。
+-                              requestPluginStoreOpen({ returnScopeKey: "user", intent });
+-                              onBack?.();
+-                            }}
+-                          />
+                         ) : activeSection === "migration" ? (
+                           <MigrationSection
+                             workspacePath={activeWorkspacePath}
+@@ -1939,23 +1915,6 @@ export function SettingsPage({
+                             workspacePath={activeWorkspacePath}
+                             workspaceIdentity={activeWorkspaceIdentity}
+                           />
+-                        ) : activeSection === "commands" ? (
+-                          <PluginsSection
+-                            mode="command"
+-                            workspacePath={activeWorkspacePath}
+-                            workspaceIdentity={activeWorkspaceIdentity}
+-                            onCreateTask={onCreateTask}
+-                            onOpenPluginStore={(_returnScopeKey, intent) => {
+-                              // 添加市场与浏览插件都先离开设置层，再显示商店。
+-                              requestPluginStoreOpen({ returnScopeKey: "user", intent });
+-                              onBack?.();
+-                            }}
+-                          />
+-                        ) : activeSection === "hooks" ? (
+-                          <HooksSection
+-                            workspacePath={activeWorkspacePath}
+-                            workspaceIdentity={activeWorkspaceIdentity}
+-                          />
+                         ) : activeSection === "workspaceFileSearch" ? (
+                           <WorkspaceFileSearchSection
+                             workspacePath={activeWorkspacePath}
+diff --git a/packages/ui/src/lib/settingsNavigation.ts b/packages/ui/src/lib/settingsNavigation.ts
+index 2b0a4b9..ae2d3b6 100644
+--- a/packages/ui/src/lib/settingsNavigation.ts
++++ b/packages/ui/src/lib/settingsNavigation.ts
+@@ -22,7 +22,7 @@ export type SettingsSectionId =
+   | "shortcuts";
+ 
+ type SettingsUsageTabTarget = "app" | "codingPlan";
+-type SettingsPluginTabTarget = "plugins" | "mcps" | "skills" | "commands";
++type SettingsPluginTabTarget = "plugins" | "mcps" | "skills" | "commands" | "hooks";
+ type SettingsPluginNavigationOrigin = "plugin-store";
+ 
+ const SETTINGS_SECTION_INTENT_KEY = "zcode-settings-section-intent",
+diff --git a/packages/ui/src/settings/HooksSection.tsx b/packages/ui/src/settings/HooksSection.tsx
+index 87bf6ff..0a263a4 100644
+--- a/packages/ui/src/settings/HooksSection.tsx
++++ b/packages/ui/src/settings/HooksSection.tsx
+@@ -30,7 +30,7 @@ import {
+   resolveUniquePluginListingByName,
+ } from "@/settings/pluginStoreListing.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+-import { isWorkspaceTab } from "@/store/tabStore.js";
++import { isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
+ import {
+   shouldShowWorkspaceHookTrustNotice,
+   WorkspaceHookTrustNotice,
+@@ -39,6 +39,19 @@ import {
+ interface HooksSectionProps {
+   workspacePath?: string | null;
+   workspaceIdentity?: string;
++  /**
++   * Hosted as a view of Settings → Plugins (OV-100): the page owns scope, search and the count, so
++   * this section renders without its own toolbar and reports its count and editor state.
++   */
++  embedded?: {
++    scopeKey: string;
++    onScopeKeyChange: (scopeKey: string) => void;
++    searchQuery: string;
++    onVisibleCountChange?: (count: number) => void;
++    onEditorOpenChange?: (open: boolean) => void;
++    /** The page's scope list, so a scope key resolves to the same Project in every view. */
++    workspaceTabs: WorkspaceTabState[];
++  };
+ }
+ 
+ function isEditableHook(hook: Hook): boolean {
+@@ -137,7 +150,7 @@ function filterPluginHooksByScope(
+   );
+ }
+ 
+-export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionProps) {
++export function HooksSection({ workspacePath, workspaceIdentity, embedded }: HooksSectionProps) {
+   const { intl, locale } = useZCodeIntl();
+   const confirmDialog = useConfirmDialog();
+   const hooksState = useHooksStore();
+@@ -152,9 +165,10 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+   const initializePlugins = usePluginManagementStore((state) => state.initialize);
+   const [viewMode, setViewMode] = useState<"list" | "form">("list");
+   const [editingHook, setEditingHook] = useState<Hook | null>(null);
+-  const [query, setQuery] = useState("");
++  const [ownQuery, setQuery] = useState("");
++  const query = embedded ? embedded.searchQuery : ownQuery;
+   const tabs = useTabStore((state) => state.tabs);
+-  const workspaceTabs = useMemo(() => {
++  const ownWorkspaceTabs = useMemo(() => {
+     const seen = new Set<string>();
+     return tabs
+       .filter(isWorkspaceTab)
+@@ -166,12 +180,16 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+         return true;
+       });
+   }, [tabs]);
+-  const [selectedScopeKey, setSelectedScopeKey] = useState("user");
++  const workspaceTabs = embedded ? embedded.workspaceTabs : ownWorkspaceTabs;
++  const [ownScopeKey, setOwnScopeKey] = useState("user");
++  const selectedScopeKey = embedded ? embedded.scopeKey : ownScopeKey;
++  const setSelectedScopeKey = embedded ? embedded.onScopeKeyChange : setOwnScopeKey;
+   const deferredQuery = useDeferredValue(query);
+   const selectedWorkspace = workspaceTabs.find(
+     (tab) => getPluginWorkspaceKey(tab) === selectedScopeKey,
+   );
+   const activeScope: HookScope = selectedWorkspace ? "project" : "user";
++  const pluginConfigScope = activeScope === "project" ? "workspace" : "user";
+   const targetWorkspacePath = selectedWorkspace?.workspacePath ?? workspacePath;
+   const targetWorkspaceIdentity = selectedWorkspace?.workspaceIdentity ?? workspaceIdentity;
+   const targetWorkspaceKey = targetWorkspacePath
+@@ -283,10 +301,14 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+     void initializePlugins({
+       workspacePath: targetWorkspacePath,
+       workspaceIdentity: targetWorkspaceIdentity,
++      // The plugin store is shared with the other Plugins views; load the same scoped projection
++      // they read, or the views overwrite each other's list.
++      configScope: pluginConfigScope,
+       pluginService: pluginManagementService,
+     });
+   }, [
+     initializePlugins,
++    pluginConfigScope,
+     pluginManagementService,
+     targetServiceResolution.rpcReady,
+     targetWorkspaceIdentity,
+@@ -305,6 +327,7 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+         ? initializePlugins({
+             workspacePath: targetWorkspacePath,
+             workspaceIdentity: targetWorkspaceIdentity,
++            configScope: pluginConfigScope,
+             pluginService: pluginManagementService,
+           })
+         : Promise.resolve(),
+@@ -313,6 +336,7 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+     hooksService,
+     hooksState.initialize,
+     initializePlugins,
++    pluginConfigScope,
+     pluginManagementService,
+     targetServiceResolution.rpcReady,
+     targetWorkspaceIdentity,
+@@ -433,6 +457,14 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+     [hooksService, hooksState.importHook, intl, invalidateDraft],
+   );
+ 
++  const embeddedVisibleCount =
++    filteredEditableHooks.length + filteredCompatibilityHooks.length + filteredPluginHooks.length;
++  const reportVisibleCount = embedded?.onVisibleCountChange;
++  useEffect(() => reportVisibleCount?.(embeddedVisibleCount), [embeddedVisibleCount, reportVisibleCount]);
++  const reportEditorOpen = embedded?.onEditorOpenChange;
++  const editorOpen = viewMode === "form" && targetServiceResolution.rpcReady;
++  useEffect(() => reportEditorOpen?.(editorOpen), [editorOpen, reportEditorOpen]);
++
+   if (viewMode === "form" && targetServiceResolution.rpcReady) {
+     return (
+       <>
+@@ -480,6 +512,7 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+   });
+   return (
+     <div className="space-y-6" data-testid="hooks-settings-section">
++      {embedded ? null : (
+       <div className="flex min-w-0 flex-wrap items-center gap-3">
+         <div className="flex min-w-0 flex-wrap items-center gap-3">
+           <PluginScopeMenu
+@@ -508,6 +541,7 @@ export function HooksSection({ workspacePath, workspaceIdentity }: HooksSectionP
+           })}
+         />
+       </div>
++      )}
+ 
+       {showWorkspaceHookTrustNotice ? <WorkspaceHookTrustNotice hooks={editableHooks} /> : null}
+ 
+diff --git a/packages/ui/src/settings/PluginsSection.tsx b/packages/ui/src/settings/PluginsSection.tsx
+index 0a71a3b..93d9d36 100644
+--- a/packages/ui/src/settings/PluginsSection.tsx
++++ b/packages/ui/src/settings/PluginsSection.tsx
+@@ -34,6 +34,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { McpSettingsSection } from "@/settings/McpSettingsSection.js";
+ import { SkillsSection } from "@/settings/SkillsSection.js";
+ import { CommandsSection } from "@/settings/CommandsSection.js";
++import { HooksSection } from "@/settings/HooksSection.js";
+ import { SettingsSearchInput } from "@/settings/SettingsSearchInput.js";
+ import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
+ import { PluginStoreAvatar } from "@/settings/PluginStoreAvatar.js";
+@@ -97,11 +98,12 @@ import {
+   useRemoteSyncDialogIntent,
+ } from "@/settings/RemoteSyncActions.js";
+ 
+-type PluginTabTarget = "plugins" | "mcps" | "skills" | "commands";
+-type PluginTab = Exclude<PluginTabTarget, "commands">;
++// OV-100: Settings → Plugins is the one management page; every primitive is a view of it.
++type PluginTabTarget = "plugins" | "mcps" | "skills" | "commands" | "hooks";
++type PluginTab = PluginTabTarget;
+ 
+ function normalizePluginTab(tab: PluginTabTarget): PluginTab {
+-  return tab === "commands" ? "plugins" : tab;
++  return tab;
+ }
+ 
+ function getPluginTabCountClass(tab: PluginTabTarget, selectedTab: PluginTabTarget): string {
+@@ -1022,18 +1024,21 @@ export function PluginsSection({
+     mcps: "",
+     skills: "",
+     commands: "",
++    hooks: "",
+   });
+   const [capabilityCounts, setCapabilityCounts] = useState<Record<PluginTabTarget, number>>({
+     plugins: 0,
+     mcps: 0,
+     skills: 0,
+     commands: 0,
++    hooks: 0,
+   });
+   const [mcpEditorOpen, setMcpEditorOpen] = useState(false);
+   const [skillDetailOpen, setSkillDetailOpen] = useState(false);
+   const [mcpFormScopeKey, setMcpFormScopeKey] = useState<string | null>(null);
+   const [pluginDetailOpen, setPluginDetailOpen] = useState(false);
+   const [commandEditorOpen, setCommandEditorOpen] = useState(false);
++  const [hookEditorOpen, setHookEditorOpen] = useState(false);
+   const [commandFormScopeKey, setCommandFormScopeKey] = useState<string | null>(null);
+   const activeSearchQuery = searchQueries[selectedTab];
+   const selectedScope: PluginScope = useMemo(() => {
+@@ -1137,6 +1142,9 @@ export function PluginsSection({
+     },
+     [selectedScope.key, selectedTargetKey],
+   );
++  const updateHookCount = useCallback((count: number) => {
++    setCapabilityCounts((current) => (current.hooks === count ? current : { ...current, hooks: count }));
++  }, []);
+   const handleMcpEditorOpenChange = useCallback((open: boolean) => {
+     setMcpEditorOpen(open);
+     if (!open) setMcpFormScopeKey(null);
+@@ -1168,7 +1176,7 @@ export function PluginsSection({
+           }
+         }}
+       >
+-        {!mcpEditorOpen && !pluginDetailOpen && !commandEditorOpen ? (
++        {!mcpEditorOpen && !pluginDetailOpen && !commandEditorOpen && !hookEditorOpen ? (
+           <div className="flex min-w-0 flex-wrap items-center gap-3">
+             <div className="flex min-w-0 flex-wrap items-center gap-3">
+               <PluginScopeMenu
+@@ -1194,6 +1202,17 @@ export function PluginsSection({
+                       {capabilityCounts.plugins}
+                     </span>
+                   </TabsTrigger>
++                  <TabsTrigger
++                    value="skills"
++                    className="h-7 flex-none rounded-full px-3 hover:bg-hover data-active:!bg-selected data-active:hover:!bg-hover after:hidden"
++                  >
++                    {intl.formatMessage({
++                      id: "settings.plugin.tab.skills",
++                    })}
++                    <span className={getPluginTabCountClass("skills", selectedTab)}>
++                      {capabilityCounts.skills}
++                    </span>
++                  </TabsTrigger>
+                   <TabsTrigger
+                     value="mcps"
+                     className="h-7 flex-none rounded-full px-3 hover:bg-hover data-active:!bg-selected data-active:hover:!bg-hover after:hidden"
+@@ -1206,14 +1225,25 @@ export function PluginsSection({
+                     </span>
+                   </TabsTrigger>
+                   <TabsTrigger
+-                    value="skills"
++                    value="commands"
+                     className="h-7 flex-none rounded-full px-3 hover:bg-hover data-active:!bg-selected data-active:hover:!bg-hover after:hidden"
+                   >
+                     {intl.formatMessage({
+-                      id: "settings.plugin.tab.skills",
++                      id: "settings.plugin.tab.commands",
+                     })}
+-                    <span className={getPluginTabCountClass("skills", selectedTab)}>
+-                      {capabilityCounts.skills}
++                    <span className={getPluginTabCountClass("commands", selectedTab)}>
++                      {capabilityCounts.commands}
++                    </span>
++                  </TabsTrigger>
++                  <TabsTrigger
++                    value="hooks"
++                    className="h-7 flex-none rounded-full px-3 hover:bg-hover data-active:!bg-selected data-active:hover:!bg-hover after:hidden"
++                  >
++                    {intl.formatMessage({
++                      id: "settings.hooks.title",
++                    })}
++                    <span className={getPluginTabCountClass("hooks", selectedTab)}>
++                      {capabilityCounts.hooks}
+                     </span>
+                   </TabsTrigger>
+                 </TabsList>
+@@ -1268,7 +1298,9 @@ export function PluginsSection({
+                       ? "settings.mcp.searchPlaceholder"
+                       : selectedTab === "skills"
+                         ? "settings.skills.searchPlaceholder"
+-                        : "settings.commands.searchPlaceholder",
++                        : selectedTab === "hooks"
++                          ? "settings.hooks.searchPlaceholder"
++                          : "settings.commands.searchPlaceholder",
+               })}
+             />
+           </div>
+@@ -1363,7 +1395,7 @@ export function PluginsSection({
+             )}
+           </TabsContent>
+         ) : null}
+-        {mode === "command" ? (
++        {mode === "plugin" || mode === "command" ? (
+           <TabsContent
+             forceMount
+             value="commands"
+@@ -1394,6 +1426,29 @@ export function PluginsSection({
+             )}
+           </TabsContent>
+         ) : null}
++        {mode === "plugin" ? (
++          <TabsContent
++            forceMount
++            value="hooks"
++            className={hookEditorOpen ? "data-[state=inactive]:hidden" : "mt-6 data-[state=inactive]:hidden"}
++          >
++            <HooksSection
++              // Same host as the other views: they share one plugin store keyed by this target.
++              workspacePath={preferredHost?.workspacePath ?? activeWorkspacePath}
++              workspaceIdentity={
++                preferredHost ? preferredHost.workspaceIdentity : activeWorkspaceIdentity
++              }
++              embedded={{
++                scopeKey: selectedScopeKey,
++                onScopeKeyChange: setPickedScopeKey,
++                searchQuery: searchQueries.hooks,
++                onVisibleCountChange: updateHookCount,
++                onEditorOpenChange: setHookEditorOpen,
++                workspaceTabs,
++              }}
++            />
++          </TabsContent>
++        ) : null}
+       </Tabs>
+     </div>
+   );
+diff --git a/packages/ui/src/settings/settingsPageConfig.ts b/packages/ui/src/settings/settingsPageConfig.ts
+index b70f3f7..458340f 100644
+--- a/packages/ui/src/settings/settingsPageConfig.ts
++++ b/packages/ui/src/settings/settingsPageConfig.ts
+@@ -40,6 +40,11 @@ interface SettingsSectionDefinition {
+   contentTitleId?: string;
+   titleBadgeId?: string;
+   groupId: SettingsSectionGroupId;
++  /**
++   * OV-100: a view of another section's page. It stays routable for existing links, is not listed
++   * in the sidebar, and highlights its target there.
++   */
++  sidebarAliasOf?: SettingsSectionId;
+ }
+ 
+ const BASE_SETTINGS_SECTION_GROUPS: Array<{
+@@ -95,18 +100,24 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+     id: "mcp",
+     icon: Cable,
+     titleId: "settings.mcpTitle",
++    contentTitleId: "settings.plugins.title",
++    sidebarAliasOf: "plugin",
+     groupId: "agentCapabilities",
+   },
+   {
+     id: "skill",
+     icon: WandSparkles,
+     titleId: "settings.skills.title",
++    contentTitleId: "settings.plugins.title",
++    sidebarAliasOf: "plugin",
+     groupId: "agentCapabilities",
+   },
+   {
+     id: "commands",
+     icon: Terminal,
+     titleId: "settings.commands.title",
++    contentTitleId: "settings.plugins.title",
++    sidebarAliasOf: "plugin",
+     groupId: "agentCapabilities",
+   },
+   {
+@@ -120,6 +131,8 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+     id: "hooks",
+     icon: Anchor,
+     titleId: "settings.hooks.title",
++    contentTitleId: "settings.plugins.title",
++    sidebarAliasOf: "plugin",
+     groupId: "agentCapabilities",
+   },
+   {
+@@ -182,7 +195,9 @@ export function createSettingsPageConfig({
+   });
+   const settingsSectionGroups = BASE_SETTINGS_SECTION_GROUPS.map((group) => ({
+     ...group,
+-    sections: settingsSections.filter((section) => section.groupId === group.id),
++    sections: settingsSections.filter(
++      (section) => section.groupId === group.id && !section.sidebarAliasOf,
++    ),
+   })).filter((group) => group.sections.length > 0);
+ 
+   return { settingsSectionGroups, settingsSections };
+@@ -200,4 +215,17 @@ export function resolveSettingsSectionForPlatform(
+   return visibleSections[0]?.id ?? "general";
+ }
+ 
++/** The Plugins-page view each alias section opens (OV-100). */
++export const SETTINGS_PLUGIN_VIEW_TABS: Partial<
++  Record<SettingsSectionId, "skills" | "mcps" | "commands" | "hooks">
++> = { skill: "skills", mcp: "mcps", commands: "commands", hooks: "hooks" };
++
++/** The sidebar entry that represents a section (its alias target, or itself). */
++export function settingsSidebarSection(
++  section: SettingsSectionId,
++  sections: ReadonlyArray<Pick<SettingsSectionDefinition, "id" | "sidebarAliasOf">>,
++): SettingsSectionId {
++  return sections.find((candidate) => candidate.id === section)?.sidebarAliasOf ?? section;
++}
++
+ export type { SettingsSectionId };
+diff --git a/packages/ui/src/settingsPageHelpers.tsx b/packages/ui/src/settingsPageHelpers.tsx
+index 25cd56d..5d0ab34 100644
+--- a/packages/ui/src/settingsPageHelpers.tsx
++++ b/packages/ui/src/settingsPageHelpers.tsx
+@@ -35,12 +35,19 @@ import { normalizeInterfaceMode, type InterfaceMode } from "@/lib/interfaceMode.
+ import {
+   createSettingsPageConfig,
+   resolveSettingsSectionForPlatform,
++  SETTINGS_PLUGIN_VIEW_TABS,
++  settingsSidebarSection,
+   type SettingsSectionId,
+ } from "@/settings/settingsPageConfig.js";
+ 
+ export type { Locale, LocalePreference } from "@zcode/shared";
+ export { type SettingsSectionId };
+-export { createSettingsPageConfig, resolveSettingsSectionForPlatform };
++export {
++  createSettingsPageConfig,
++  resolveSettingsSectionForPlatform,
++  SETTINGS_PLUGIN_VIEW_TABS,
++  settingsSidebarSection,
++};
+ 
+ const TASK_AUTO_ARCHIVE_DAY_OPTIONS = [3, 7, 14, 30] as const;
+ const ZCODE_INTERACTION_BEHAVIOR_OPTIONS: readonly ZCodeInteractionBehavior[] = ["queue", "guide"];
+diff --git a/packages/ui/test/pluginSettingsViews.test.ts b/packages/ui/test/pluginSettingsViews.test.ts
+new file mode 100644
+index 0000000..467d35c
+--- /dev/null
++++ b/packages/ui/test/pluginSettingsViews.test.ts
+@@ -0,0 +1,27 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import {
++  createSettingsPageConfig,
++  resolveSettingsSectionForPlatform,
++  SETTINGS_PLUGIN_VIEW_TABS,
++  settingsSidebarSection,
++} from "../src/settings/settingsPageConfig.js";
++
++// OV-100: Skills, MCP, Commands and Hooks are views of the one Plugins page. Their sidebar entries
++// are retired, but every existing link to them must still open that page on the matching view.
++test("plugin primitives are views of the one Plugins page, not separate sidebar entries", () => {
++  const { settingsSectionGroups, settingsSections } = createSettingsPageConfig({
++    isDesktop: true,
++    isMacDesktop: true,
++    isWindowsDesktop: false,
++  });
++  const sidebar = settingsSectionGroups.flatMap((group) => group.sections.map((section) => section.id));
++  assert.ok(sidebar.includes("plugin"));
++  for (const alias of ["mcp", "skill", "commands", "hooks"] as const) {
++    assert.ok(!sidebar.includes(alias), `${alias} must not be its own sidebar entry`);
++    assert.equal(resolveSettingsSectionForPlatform(alias, settingsSections), alias, `${alias} stays routable`);
++    assert.equal(settingsSidebarSection(alias, settingsSections), "plugin", `${alias} highlights Plugins`);
++    assert.ok(SETTINGS_PLUGIN_VIEW_TABS[alias], `${alias} opens a Plugins view`);
++  }
++  assert.equal(settingsSidebarSection("general", settingsSections), "general");
++});
+-- 
+2.54.0 (Apple Git-157)
+

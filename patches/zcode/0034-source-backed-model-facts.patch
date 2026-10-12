@@ -1,0 +1,354 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index c3d0635..980eb88 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -660,3 +660,16 @@ Every route still needs that account's model catalog and a real request before i
+ | Together AI | Chat | — | Current catalog route only; live execution is unverified. |
+ | Google | Chat compatibility | — | Native Gemini consumer login is absent ([compatibility](https://ai.google.dev/gemini-api/docs/openai)). |
+ | SiliconFlow | Chat | — | [Chat reference](https://docs.siliconflow.cn/docs/api/chat-completions-post). |
++
++### Effective model facts versus safety defaults
++
++The global `modelMatch: ".*"` rule exists to complete the current runtime contract, but its
++200K context, 32K output, tool support and enabled/disabled effort choices are not provider
++metadata. Keep that runtime fallback until the transport contract can represent unknowns. Add a
++read-only sparse evidence projection from the existing ordered model-rule owner: exact provider
++observations, explicit personal corrections and model-specific built-in recommendations count;
++unqualified wildcard rules do not. Settings must show a value only when that field has evidence,
++and mark built-in recommendations separately from provider-reported data. Unknown remains unknown
++in the model row/editor and must not be advertised as an actual context capacity. The runtime
++fallback remains traceable and is never written into personal corrections by viewing/editing a
++model. No new model store, inferred entitlement or paid test is introduced.
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index ded6ca9..eaeea52 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -435,6 +435,13 @@ export class ModelConfigRules {
+     return result;
+   }
+ 
++  /** Only model/route-specific evidence; the universal runtime completion rule is not a provider fact. */
++  resolveEvidence(input: ModelConfigRuleResolutionInput): ModelConfig {
++    return new ModelConfigRules(
++      this.#rules.filter((rule) => !("modelMatch" in rule && rule.modelMatch === ".*")),
++    ).resolve(input);
++  }
++
+   setExact(
+     providerId: string,
+     modelId: string,
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index dd16857..cb30646 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -121,6 +121,8 @@ export interface ProviderSettingsModelCandidateView {
+   readonly modelId: ModelId;
+   readonly builtin: boolean;
+   readonly effectiveBuiltinConfig: ModelConfigObject;
++  readonly evidenceConfig?: ModelConfigObject;
++  readonly contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "unknown";
+   readonly personalExactConfig?: ModelConfigObject;
+   readonly useRecommendedConfig?: boolean;
+   readonly effectiveConfig: RegistryModelConfigObject | ModelConfigObject;
+@@ -135,6 +137,7 @@ export type ProviderSettingsModelView = ProviderSettingsModelCandidateView;
+ export interface ModelConfigResolution {
+   readonly inheritedConfig: ModelConfigObject;
+   readonly effectiveConfig: ModelConfigObject;
++  readonly evidenceConfig?: ModelConfigObject;
+   readonly issues: readonly ConfigValidationIssue[];
+ }
+ 
+@@ -273,6 +276,15 @@ export class ProviderSettingsFacade {
+       return Object.freeze({
+         inheritedConfig: config.toJSON(),
+         effectiveConfig: config.toJSON(),
++        evidenceConfig: modelRules
++          .resolveEvidence({
++            providerId: input.providerId,
++            templateId: provider.templateId,
++            modelId: input.modelId,
++            apiType: provider.config.api?.type,
++            baseUrl: provider.config.api?.baseUrl,
++          })
++          .toJSON(),
+         issues: Object.freeze([
+           ...config.validateComplete(["providers", input.providerId, "models", input.modelId]),
+         ]),
+@@ -310,6 +322,18 @@ export class ProviderSettingsFacade {
+     return Object.freeze({
+       inheritedConfig: inheritedConfig.toJSON(),
+       effectiveConfig: config.toJSON(),
++      evidenceConfig: ModelConfigRules.composeEffective(
++        snapshot.config.zcodeBuiltinModelRules,
++        personalRules,
++      )
++        .resolveEvidence({
++          providerId: input.providerId,
++          templateId: provider.templateId,
++          modelId: input.modelId,
++          apiType: provider.config.api?.type,
++          baseUrl: provider.config.api?.baseUrl,
++        })
++        .toJSON(),
+       issues: Object.freeze([
+         ...config.validateComplete(["providers", input.providerId, "models", input.modelId]),
+       ]),
+@@ -704,6 +728,8 @@ function createProviderSettingsView(input: {
+             modelId: model.modelId,
+             builtin: model.source === "builtin",
+             effectiveBuiltinConfig: model.effectiveBuiltinConfig.toJSON(),
++            evidenceConfig: model.evidenceConfig.toJSON(),
++            contextEvidenceSource: model.contextEvidenceSource,
+             ...(personalModelConfig ? { personalExactConfig: personalModelConfig.toJSON() } : {}),
+             ...(personalModelRule
+               ? { useRecommendedConfig: personalModelRule.type !== "manual-provider-model" }
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 02af465..5d8b3a4 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -163,6 +163,8 @@ export interface ResolvedProviderModelCandidate {
+   readonly source: "builtin" | "personal";
+   readonly config: ModelConfig;
+   readonly effectiveBuiltinConfig: ModelConfig;
++  readonly evidenceConfig: ModelConfig;
++  readonly contextEvidenceSource: "provider" | "manual" | "saved" | "builtin" | "unknown";
+   readonly issues: readonly ConfigValidationIssue[];
+   readonly enabled: boolean;
+   readonly executable: boolean;
+@@ -281,20 +283,37 @@ export class ProviderConfigResolver {
+       const providerExecutable =
+         enabled && accessEntitled && accountCurrent && providerIssues.length === 0;
+       const models = orderedModelIds.map((modelId): ResolvedProviderModel => {
+-        let modelConfig = effectiveModelRules.resolve({
++        const modelIdentity = {
+           providerId,
+           templateId,
+           modelId,
+           apiType: config.api?.type,
+           baseUrl: config.api?.baseUrl,
+-        });
+-        const effectiveBuiltinConfig = recommendedModelRules.resolve({
+-          providerId,
+-          templateId,
+-          modelId,
+-          apiType: config.api?.type,
+-          baseUrl: config.api?.baseUrl,
+-        });
++        };
++        let modelConfig = effectiveModelRules.resolve(modelIdentity);
++        const evidenceConfig = effectiveModelRules.resolveEvidence(modelIdentity);
++        const effectiveBuiltinConfig = recommendedModelRules.resolve(modelIdentity);
++        const exact = input.personalModels.getExact(providerId, modelId);
++        const exactRule = input.personalModels.getExactRule(providerId, modelId);
++        const discovered = input.personalModels
++          .rules()
++          .find(
++            (rule) =>
++              rule.type === "discovered-provider-model" &&
++              rule.providerId === providerId &&
++              rule.modelId === modelId,
++          );
++        const contextEvidenceSource =
++          exact?.properties?.contextWindow != null
++            ? exactRule?.type === "manual-provider-model"
++              ? "manual"
++              : "saved"
++            : discovered?.config.properties?.contextWindow != null
++              ? "provider"
++              : input.zcodeBuiltinModelRules.resolveEvidence(modelIdentity).properties
++                    ?.contextWindow != null
++                ? "builtin"
++                : "unknown";
+         if (config.access?.type === "subscription") {
+           const observed = input.personalModels
+             .rules()
+@@ -351,6 +370,8 @@ export class ProviderConfigResolver {
+           source: builtinIds.has(modelId) ? "builtin" : "personal",
+           config: modelConfig,
+           effectiveBuiltinConfig,
++          evidenceConfig,
++          contextEvidenceSource,
+           issues: Object.freeze(modelIssues),
+           enabled: modelEnabled,
+           executable,
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 7760094..ba35afd 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -201,6 +201,33 @@ test("discovery persists the whole catalog, survives restart, and preserves disa
+   }
+ });
+ 
++test("unreported capability fields never become provider facts through the runtime fallback", async () => {
++  const f = await fixture();
++  try {
++    await f.service.addPersonalModel(f.providerId, "unknown-model", {});
++    let model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
++    assert.equal(model.effectiveConfig.properties?.contextWindow, 200_000);
++    assert.equal(model.evidenceConfig?.properties?.contextWindow, undefined);
++    assert.equal(model.contextEvidenceSource, "unknown");
++    f.setFetch(async () =>
++      Response.json({ data: [{ id: "unknown-model", context_window: 480_000 }] }),
++    );
++    await f.service.discoverModels(f.providerId);
++    model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
++    assert.equal(model.evidenceConfig?.properties?.contextWindow, 480_000);
++    assert.equal(model.contextEvidenceSource, "provider");
++    f.setFetch(async () => Response.json({ data: [{ id: "unknown-model" }] }));
++    await f.service.discoverModels(f.providerId);
++    await f.restart();
++    model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
++    assert.equal(model.evidenceConfig?.properties?.contextWindow, undefined);
++    assert.equal(model.contextEvidenceSource, "unknown");
++    assert.equal(model.effectiveConfig.properties?.contextWindow, 200_000);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("failed or partial catalogs never alter persisted models; manual add remains available", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 510eb5e..ea8d317 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,11 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.contextWindowUnknown": "Context window unconfirmed",
++  "settings.modelProvider.contextWindowSource.provider": "Provider-reported",
++  "settings.modelProvider.contextWindowSource.manual": "Manual setting",
++  "settings.modelProvider.contextWindowSource.saved": "Saved, source unconfirmed",
++  "settings.modelProvider.contextWindowSource.builtin": "Built-in recommendation",
++  "settings.modelProvider.contextWindowSource.unknown": "Source unconfirmed",
+   "settings.modelProvider.allowance.windowsUnavailable": "Usage allowance is unavailable",
+   "settings.modelProvider.testFailure.unsaved":
+     "Save the pending address or key changes before testing.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index ecf1593..0f52477 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,11 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.contextWindowUnknown": "上下文窗口未确认",
++  "settings.modelProvider.contextWindowSource.provider": "上游返回",
++  "settings.modelProvider.contextWindowSource.manual": "手动设置",
++  "settings.modelProvider.contextWindowSource.saved": "已保存，来源未确认",
++  "settings.modelProvider.contextWindowSource.builtin": "内置推荐",
++  "settings.modelProvider.contextWindowSource.unknown": "来源未确认",
+   "settings.modelProvider.allowance.windowsUnavailable": "暂未获取到额度",
+   "settings.modelProvider.testFailure.unsaved": "连接有未保存的修改，请先保存地址或密钥，再测试。",
+   "settings.modelProvider.testFailure.environment":
+diff --git a/packages/ui/src/lib/providerSettingsFormProjection.ts b/packages/ui/src/lib/providerSettingsFormProjection.ts
+index 53ad0b0..cd9744e 100644
+--- a/packages/ui/src/lib/providerSettingsFormProjection.ts
++++ b/packages/ui/src/lib/providerSettingsFormProjection.ts
+@@ -31,6 +31,8 @@ function projectProviderSettingsProviders(
+       modelId: model.modelId,
+       builtin: model.builtin,
+       inheritedConfig: structuredClone(model.effectiveBuiltinConfig),
++      evidenceConfig: structuredClone(model.evidenceConfig ?? {}),
++      contextEvidenceSource: model.contextEvidenceSource ?? "unknown",
+       personalConfig: structuredClone(model.personalExactConfig ?? {}),
+       useRecommendedConfig: model.useRecommendedConfig,
+       config: structuredClone(model.effectiveConfig),
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index 5ac4bf6..148387b 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -54,6 +54,8 @@ export interface ProviderSettingsFormModel {
+   builtin: boolean;
+   /** Personal Rule 叠加前的 Built-in Rule 解析结果，用于编辑器表达继承与稀疏覆盖。 */
+   inheritedConfig?: ModelConfigObject;
++  evidenceConfig?: ModelConfigObject;
++  contextEvidenceSource?: "provider" | "manual" | "saved" | "builtin" | "unknown";
+   personalConfig: ModelConfigObject;
+   /** 缺省或 true 表示跟随 Built-in 推荐配置；false 表示固定个人配置。 */
+   useRecommendedConfig?: boolean;
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index eda9f52..9f175e6 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -257,14 +257,18 @@ export function ModelRowInput({
+       : null);
+   const shouldShowTestButton = Boolean(onTest);
+   const testDisabled = !providerEnabled || isTesting || !draft.idValue.trim() || !onTest;
+-  const contextWindowLabel = formatModelContextWindowLabel(
+-    model.config.properties?.contextWindow ?? 0,
+-    locale,
+-  );
+-  const contextWindowAccessibleLabel = intl.formatMessage(
+-    { id: "settings.modelProvider.contextWindowBadgeLabel" },
+-    { value: contextWindowLabel },
+-  );
++  const reportedContextWindow = model.evidenceConfig?.properties?.contextWindow;
++  const contextWindowLabel = reportedContextWindow
++    ? formatModelContextWindowLabel(reportedContextWindow, locale)
++    : "—";
++  const contextWindowAccessibleLabel = reportedContextWindow
++    ? `${intl.formatMessage(
++        { id: "settings.modelProvider.contextWindowBadgeLabel" },
++        { value: contextWindowLabel },
++      )} · ${intl.formatMessage({
++        id: `settings.modelProvider.contextWindowSource.${model.contextEvidenceSource ?? "unknown"}`,
++      })}`
++    : intl.formatMessage({ id: "settings.modelProvider.contextWindowUnknown" });
+ 
+   return (
+     <div className="space-y-2 px-3 py-2">
+@@ -285,7 +289,7 @@ export function ModelRowInput({
+           </span>
+           {shouldShowModelVisionBadge(
+             model.modelId,
+-            model.config.properties?.inputFormat?.supportsImage,
++            model.evidenceConfig?.properties?.inputFormat?.supportsImage,
+             providerAccess,
+           ) ? (
+             <ModelInputCapabilityBadge />
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+index 4b1fba8..145058e 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+@@ -62,7 +62,7 @@ export function createProviderModelDraftValues(
+   model: ProviderSettingsFormModel,
+ ): ProviderModelDraftValues {
+   // 配置不完整时编辑器就是修复入口，不能在打开前抛错；数值保留空输入，能力控件用保守初值。
+-  const properties = model.config.properties ?? {};
++  const properties = model.evidenceConfig?.properties ?? {};
+   const inputFormat = properties?.inputFormat;
+   return {
+     idValue: model.modelId,
+@@ -89,7 +89,9 @@ export function createProviderModelDraftValues(
+     supportsJsonSchemaOutputValue: properties.supportsJsonSchemaOutput ?? false,
+     supportsNativeWebSearchValue: properties.supportsNativeWebSearch ?? false,
+     supportsMidConversationSystemValue: properties.supportsMidConversationSystem ?? false,
+-    reasoningLevelValuesValue: [...(model.config.optionSpecs?.reasoningLevel?.values ?? [])],
++    reasoningLevelValuesValue: [
++      ...(model.evidenceConfig?.optionSpecs?.reasoningLevel?.values ?? []),
++    ],
+     reasoningLevelMapValue:
+       typeof model.personalConfig.optionSpecs?.reasoningLevel?.map === "string"
+         ? model.personalConfig.optionSpecs.reasoningLevel.map
+diff --git a/packages/ui/src/settings/model-provider-section/useProviderModelDraft.ts b/packages/ui/src/settings/model-provider-section/useProviderModelDraft.ts
+index 5a030df..eea6021 100644
+--- a/packages/ui/src/settings/model-provider-section/useProviderModelDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/useProviderModelDraft.ts
+@@ -64,6 +64,7 @@ export function useProviderModelDraft({
+         ...model,
+         inheritedConfig: resolution.inheritedConfig,
+         config: resolution.inheritedConfig,
++        evidenceConfig: resolution.evidenceConfig,
+       };
+     if (rawDraft.idValue.trim() === model.modelId) return model;
+     return { ...model, config: {}, inheritedConfig: undefined };
+@@ -113,7 +114,7 @@ export function useProviderModelDraft({
+     restore,
+     commit,
+     overrides: modelDraftOverrides(draft),
+-    inheritedConfig: currentModel.inheritedConfig,
++    inheritedConfig: currentModel.evidenceConfig ?? {},
+     pending:
+       smart &&
+       Boolean(resolve) &&

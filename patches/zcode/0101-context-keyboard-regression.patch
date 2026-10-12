@@ -1,0 +1,64 @@
+diff --git a/packages/ui/test/contextCapacity.browser.test.tsx b/packages/ui/test/contextCapacity.browser.test.tsx
+index 74fd4dd0cefa57f951a64613691e5f6f7281550e..aaff67831d22559c5d8c5ffff5520cd455866593 100644
+--- a/packages/ui/test/contextCapacity.browser.test.tsx
++++ b/packages/ui/test/contextCapacity.browser.test.tsx
+@@ -43,6 +43,32 @@ function Capacity({ capacity }: { capacity?: number }) {
+         await act(async () => render(256000));
+         const trigger = node.querySelector<HTMLButtonElement>("button")!;
+         check(trigger, "Known capacity remained hidden until first inference");
++        await act(async () => {
++          trigger.dispatchEvent(
++            new PointerEvent("pointerover", { pointerType: "mouse", bubbles: true }),
++          );
++          trigger.dispatchEvent(
++            new PointerEvent("pointerdown", { pointerType: "mouse", bubbles: true }),
++          );
++          trigger.focus();
++          trigger.dispatchEvent(
++            new PointerEvent("pointerup", { pointerType: "mouse", bubbles: true }),
++          );
++          trigger.click();
++          await new Promise((resolve) => setTimeout(resolve, 10));
++        });
++        check(document.activeElement === trigger, "Click changed the ring's focused trigger");
++        await act(async () => {
++          trigger.dispatchEvent(
++            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
++          );
++          await new Promise((resolve) => setTimeout(resolve, 10));
++        });
++        check(
++          !document.querySelector('[data-slot="hover-card-content"][data-state="open"]'),
++          "Escape left the pinned Token ring open",
++        );
++        check(document.activeElement === trigger, "Escape did not preserve trigger focus");
+         await act(async () => trigger.click());
+         check(
+           document.body.textContent?.includes("256K"),
+@@ -64,6 +90,26 @@ function Capacity({ capacity }: { capacity?: number }) {
+           !document.body.textContent?.includes("256K"),
+           "Old capacity leaked after selection changed",
+         );
++        // App shortcuts run in window capture. A prevented event must still reach
++        // the existing Radix layer's own Escape handler without a global override.
++        const preventShortcut = (event: KeyboardEvent) => {
++          if (event.key === "Escape") event.preventDefault();
++        };
++        window.addEventListener("keydown", preventShortcut, true);
++        try {
++          await act(async () => {
++            trigger.dispatchEvent(
++              new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
++            );
++            await new Promise((resolve) => setTimeout(resolve, 10));
++          });
++          check(
++            !document.querySelector('[data-slot="hover-card-content"][data-state="open"]'),
++            "A window shortcut swallowed the ring's Escape dismissal",
++          );
++        } finally {
++          window.removeEventListener("keydown", preventShortcut, true);
++        }
+         results.push({ name });
+       } catch (error) {
+         results.push({ name, error: String(error) });

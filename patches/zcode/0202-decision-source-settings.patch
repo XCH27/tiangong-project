@@ -1,0 +1,1886 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index d59c342..81b1162 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -300,3 +300,16 @@ still use the original Host/Pi, request, receipt and usage path.
+ The same empty set governs context/Skill discovery and effect admission; a hallucinated call
+ obtains neither permission nor an effect. Unknown/true capability and no-model local catalogues
+ retain their existing behavior. Actual SDK JSON/SSE fixtures cover all three API formats and reopen.
++
++## Auxiliary source configuration
++
++Craft `332533f` AiSettingsPage keeps decision key source, endpoint and model inside the optional
++AI-purpose section; it does not add TypeSafe/Laya to its ordinary connection picker. Fleet adapts
++this interaction through its existing Provider and Personal owners. Dedicated template creation
++moves to Default models → Auxiliary decisions, without credential migration or record deletion.
++Only System One source forms expose these fields; generic wire-format switching is excluded.
++Existing connection/model reuse remains available under OV-097. Current TypeSafe models/score
++contracts document `jev-1.13.0` and finite rubric scores including fractions. New source defaults
++use the pin while all previous alias records survive. Connection and model writes settle before
++preference binding; an acknowledgement/preference failure retains the committed connection for
++retry, with explicit inference still off. Navigation/unmount/service changes fence delayed binding.
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index f22d52a..275faf8 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2425,7 +2425,7 @@
+               "type": "typesafe-system-one",
+               "baseUrl": "https://api.typesafe.ai/v1"
+             },
+-            "builtinModelIds": ["jev-latest"]
++            "builtinModelIds": ["jev-1.13.0", "jev-latest"]
+           }
+         },
+         {
+@@ -2454,7 +2454,7 @@
+               "type": "typesafe-system-one",
+               "baseUrl": "http://127.0.0.1:8000/v1"
+             },
+-            "builtinModelIds": ["multilingual", "typed-decisions"]
++            "builtinModelIds": ["auto", "multilingual", "typed-decisions"]
+           }
+         },
+         {
+diff --git a/package.json b/package.json
+index fac7aaf..76a46c5 100644
+--- a/package.json
++++ b/package.json
+@@ -73,10 +73,10 @@
+     "test:conversation-outputs": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/conversationOutputs.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/conversationOutputs.browser.test.tsx __conversationOutputTests --desktop-styles",
+     "test:page-assistant": "tsx --test packages/services/test/page-assistant.test.ts packages/services/test/page-assistant-rpc.test.ts apps/zcode-cli/packages/core/test/page-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/page-assistant-lifecycle.test.ts",
+     "test:catalog-filter-ui": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/providerCatalogFilters.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/providerCatalogFilters.browser.test.tsx __providerCatalogFilterTests --desktop-styles --focused-window",
+-    "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles",
++    "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/decisionSourceSettings.browser.test.tsx __decisionSourceSettingsTests --desktop-styles",
+     "test:decision-classifier": "tsx --test apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+-    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts",
++    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts apps/zcode-cli/packages/adapters/test/decision-single-attempt.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+     "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts",
+     "lint:cli": "pnpm --dir apps/zcode-cli lint"
+diff --git a/packages/provider/src/classifier-models.ts b/packages/provider/src/classifier-models.ts
+index 48b2bc5..437dfb6 100644
+--- a/packages/provider/src/classifier-models.ts
++++ b/packages/provider/src/classifier-models.ts
+@@ -125,7 +125,7 @@ export function decisionModelCandidates(
+ export function isPublishedClassifier(value: string | null | undefined, id: string): boolean {
+   const gateway = classifierGateway(value);
+   const ids: Record<string, readonly string[]> = {
+-    "api.typesafe.ai": ["jev-latest"],
++    "api.typesafe.ai": ["jev-1.13.0", "jev-latest"],
+     "openrouter.ai": [
+       "typesafe/jev-1.13",
+       "~typesafe/jev-latest",
+diff --git a/packages/services/test/model-purpose-defaults.test.ts b/packages/services/test/model-purpose-defaults.test.ts
+index d5b0abb..562e283 100644
+--- a/packages/services/test/model-purpose-defaults.test.ts
++++ b/packages/services/test/model-purpose-defaults.test.ts
+@@ -561,3 +561,48 @@ test("new conversation policies persist in Personal while preserving fixed and a
+     await f.close();
+   }
+ });
++
++test("new TypeSafe source has the published pin and existing alias bindings survive cold reopen", async () => {
++  const f = await fixture();
++  try {
++    const before = (await f.service.getView()).preferencesRevision;
++    const { providerId } = await f.runtime.configService.createPersonalProvider({
++      templateId: "fleet-typesafe-system-one",
++      initialConfig: parseProviderConfig({
++        access: { type: "api-key", apiKey: "synthetic-typesafe-fixture" },
++      }),
++    });
++    await f.runtime.registryService.refresh("dedicated-source-created");
++    let view = await f.service.getView();
++    assert.notEqual(view.preferencesRevision, before);
++    for (const modelId of ["jev-1.13.0", "jev-latest"])
++      assert.ok(
++        view.classifierModels?.some(
++          (entry) => entry.providerId === providerId && entry.modelId === modelId,
++        ),
++      );
++    const alias = { providerId, modelId: "jev-latest" };
++    await f.service.savePreferences({
++      expectedRevision: view.preferencesRevision,
++      decisionModelSettings: { enabled: false, selection: alias },
++    });
++    await f.reopen();
++    view = await f.service.getView();
++    assert.deepEqual(view.decisionModelSettings?.selection, alias);
++    assert.equal(view.decisionModelSettings?.enabled, false);
++    const pin = { providerId, modelId: "jev-1.13.0" };
++    await f.service.savePreferences({
++      expectedRevision: view.preferencesRevision,
++      decisionModelSettings: { enabled: false, selection: pin },
++    });
++    await f.reopen();
++    assert.deepEqual((await f.service.getView()).decisionModelSettings?.selection, pin);
++    assert.ok(
++      (await f.service.getView()).classifierModels?.some(
++        (entry) => entry.providerId === providerId && entry.modelId === "jev-latest",
++      ),
++    );
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index ab07478..81cd219 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7575,6 +7575,18 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.modelOptions.context": "Context",
+   "chat.toolbar.modelOptions.model": "Model",
+   "settings.modelProvider.apiKeyOptional": "API Key (optional)",
++  "settings.modelDefaults.decision.title": "Auxiliary decision model",
++  "settings.modelDefaults.decision.customSource": "Custom decision service",
++  "settings.modelDefaults.decision.source": "Decision source",
++  "settings.modelDefaults.decision.setupSource": "Set up {name}",
++  "settings.modelDefaults.decision.addressHelp": "Enter the service base URL ending in /v1. This configures the System One classifier interface; saving does not install, start or test the service.",
++  "settings.modelDefaults.decision.address": "Service address",
++  "settings.modelDefaults.decision.configureSource": "Save source",
++  "settings.modelDefaults.decision.sourceSaveFailed": "Saving or binding failed. Your input is retained; retry the saved source.",
++  "settings.modelDefaults.decision.sourceSaveUncertain": "The source may be saved. Reload and select the saved connection.",
++  "settings.modelDefaults.decision.reloadSources": "Reload sources",
++  "settings.modelDefaults.decision.connection": "Connection configuration",
++  "settings.modelDefaults.decision.back": "Back to auxiliary decisions",
+   "settings.modelDefaults.decision.manageConnection": "Connection settings",
+   "settings.modelDefaults.decision": "Auxiliary decision model",
+   "settings.modelDefaults.decision.description":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index ecb5c8f..85a5449 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -7168,6 +7168,18 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.modelOptions.context": "上下文",
+   "chat.toolbar.modelOptions.model": "模型",
+   "settings.modelProvider.apiKeyOptional": "API Key（可选）",
++  "settings.modelDefaults.decision.title": "辅助决策模型",
++  "settings.modelDefaults.decision.customSource": "自定义决策服务",
++  "settings.modelDefaults.decision.source": "决策来源",
++  "settings.modelDefaults.decision.setupSource": "配置 {name}",
++  "settings.modelDefaults.decision.addressHelp": "填写服务的基地址，以 /v1 结尾。这里只配置 System One 分类接口；保存不会安装、启动或测试服务。",
++  "settings.modelDefaults.decision.address": "服务地址",
++  "settings.modelDefaults.decision.configureSource": "保存来源",
++  "settings.modelDefaults.decision.sourceSaveFailed": "保存或绑定失败，输入已保留，请重试。",
++  "settings.modelDefaults.decision.sourceSaveUncertain": "来源可能已保存，请重新读取并选择已保存的连接。",
++  "settings.modelDefaults.decision.reloadSources": "重新读取来源",
++  "settings.modelDefaults.decision.connection": "连接配置",
++  "settings.modelDefaults.decision.back": "返回辅助决策设置",
+   "settings.modelDefaults.decision.manageConnection": "连接设置",
+   "settings.modelDefaults.decision": "辅助决策模型",
+   "settings.modelDefaults.decision.description":
+diff --git a/packages/ui/src/settings/AutomaticModelTiers.tsx b/packages/ui/src/settings/AutomaticModelTiers.tsx
+index 8305caf..4f8703e 100644
+--- a/packages/ui/src/settings/AutomaticModelTiers.tsx
++++ b/packages/ui/src/settings/AutomaticModelTiers.tsx
+@@ -34,18 +34,36 @@ export function AutomaticModelTiers({
+         const label = intl.formatMessage({ id: `settings.modelDefaults.tier.${tier}` });
+         return (
+           <SettingsRow
++            breakpoint="md"
+             key={tier}
+             label={label}
+-            description={tier === "standard" ? intl.formatMessage({ id: "settings.modelDefaults.tier.hint" }) : undefined}
++            description={
++              tier === "standard"
++                ? intl.formatMessage({ id: "settings.modelDefaults.tier.hint" })
++                : undefined
++            }
+             control={
+               <ModelConfigSelect
+                 modelGroups={groups}
+                 triggerTestId={`model-tier-${tier}`}
+-                normalizedValue={selection ? encodeCustomModelValue(selection.providerId, selection.modelId) : "none"}
+-                triggerLabel={selection?.modelId ?? intl.formatMessage({ id: "settings.modelDefaults.tier.none" })}
++                normalizedValue={
++                  selection
++                    ? encodeCustomModelValue(selection.providerId, selection.modelId)
++                    : "none"
++                }
++                triggerLabel={
++                  selection?.modelId ??
++                  intl.formatMessage({ id: "settings.modelDefaults.tier.none" })
++                }
+                 tooltipTitle={label}
+                 accessibleLabel={selection ? `${selection.providerId}/${selection.modelId}` : label}
+-                leadingItems={[{ key: "none", value: "none", name: intl.formatMessage({ id: "settings.modelDefaults.tier.none" }) }]}
++                leadingItems={[
++                  {
++                    key: "none",
++                    value: "none",
++                    name: intl.formatMessage({ id: "settings.modelDefaults.tier.none" }),
++                  },
++                ]}
+                 showManageModelsAction={false}
+                 focusSelectorOnClose={null}
+                 footerActions={[]}
+@@ -54,11 +72,15 @@ export function AutomaticModelTiers({
+                 lockReasonMessage=""
+                 isItemLocked={() => false}
+                 triggerIcon={<></>}
+-                triggerClassName={selectTriggerVariants({ size: "lg", className: "min-w-0 w-64 max-w-full" })}
++                triggerClassName={selectTriggerVariants({
++                  size: "lg",
++                  className: "min-w-0 w-64 max-w-full",
++                })}
+                 onValueChange={(value) => {
+                   const picked = value === "none" ? undefined : parseModelPickerValue(value);
+                   const next: Tiers = { ...tiers };
+-                  if (picked) next[tier] = { providerId: picked.providerId, modelId: picked.modelId };
++                  if (picked)
++                    next[tier] = { providerId: picked.providerId, modelId: picked.modelId };
+                   else delete next[tier];
+                   void onChange({ ...decision, automaticTiers: next });
+                 }}
+diff --git a/packages/ui/src/settings/DecisionModelDefaults.tsx b/packages/ui/src/settings/DecisionModelDefaults.tsx
+index c3f8c8e..96609b6 100644
+--- a/packages/ui/src/settings/DecisionModelDefaults.tsx
++++ b/packages/ui/src/settings/DecisionModelDefaults.tsx
+@@ -1,152 +1,270 @@
+-import type { DecisionModelSettings } from "@zcode/shared";
++import { useRef, useState } from "react";
++import type { DecisionModelRef, DecisionModelSettings } from "@zcode/shared";
+ import type { ModelSelectionView } from "@zcode/services";
++import { resolveProviderTemplateName } from "@zcode/provider";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { Switch } from "@/components/ui/switch.js";
+-import { selectTriggerVariants } from "@/components/ui/select.js";
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectTrigger,
++  SelectValue,
++  selectTriggerVariants,
++} from "@/components/ui/select.js";
++import { Button } from "@/components/ui/button.js";
+ import { SettingsRow, SettingsGroupCard } from "@/settings/SettingsPageParts.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
+-import { ModelConfigHelp } from "@/settings/model-provider-section/ModelConfigHelp.js";
++import { ModelConfigHelp } from "./model-provider-section/ModelConfigHelp.js";
++import {
++  isDedicatedDecisionSource,
++  customDecisionSourceTemplate,
++} from "./model-provider-section/providerTemplateCatalog.js";
++import { DecisionSourceEditor, type DecisionSourceControls } from "./DecisionSourceEditor.js";
+ 
+-/** Separate operation family; all writes still go through the parent Personal writer. */
++/** Purpose configuration uses the same Provider records and Personal preference writer. */
+ export function DecisionModelDefaults({
+   view,
+   pending,
+   onChange,
+   onManageConnection,
++  sourceControls,
++  onSourceSaved,
+ }: {
+   view: ModelSelectionView | null;
+   pending: boolean;
+-  onChange(settings: DecisionModelSettings): void | Promise<void>;
++  onChange(settings: DecisionModelSettings): void | boolean | Promise<void | boolean>;
+   onManageConnection?(providerId?: string): void;
++  sourceControls?: DecisionSourceControls;
++  onSourceSaved?(selection: DecisionModelRef, current: () => boolean): Promise<boolean>;
+ }) {
+-  const { intl } = useZCodeIntl();
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.modelDefaults.decision.${key}` });
+   const decision = view?.decisionModelSettings ?? { enabled: false };
+-  const classifiers = view?.classifierModels ?? [];
+-  const decisionAvailable = classifiers.some(
+-    (model) =>
+-      model.providerId === decision.selection?.providerId &&
+-      model.modelId === decision.selection?.modelId,
++  const candidates = view?.classifierModels ?? [];
++  const [draftSource, setDraftSource] = useState<string>();
++  const [sourceBusy, setSourceBusy] = useState(false);
++  const sourceEpoch = useRef(0);
++  const source = draftSource ?? decision.selection?.providerId ?? "none";
++  const templates = sourceControls
++    ? [...sourceControls.templates.filter(isDedicatedDecisionSource), customDecisionSourceTemplate]
++    : [];
++  const template = source.startsWith("template:")
++    ? templates.find((entry) => `template:${entry.templateId}` === source)
++    : undefined;
++  const provider = sourceControls?.providers.find((entry) => entry.providerId === source);
++  const sourceTemplate =
++    template ??
++    (provider && isDedicatedDecisionSource(provider)
++      ? (templates.find((entry) => entry.templateId === provider.templateId) ??
++        customDecisionSourceTemplate)
++      : undefined);
++  const providerIds = [
++    ...new Set([
++      ...candidates.map((entry) => entry.providerId),
++      ...(sourceControls?.providers
++        .filter(isDedicatedDecisionSource)
++        .map((entry) => entry.providerId) ?? []),
++      ...(decision.selection ? [decision.selection.providerId] : []),
++    ]),
++  ];
++  const available = candidates.some(
++    (entry) =>
++      entry.providerId === decision.selection?.providerId &&
++      entry.modelId === decision.selection?.modelId,
+   );
+-  const decisionGroups = [...new Set(classifiers.map((model) => model.providerId))].map(
+-    (providerId) => ({
+-      key: providerId,
+-      label: classifiers.find((model) => model.providerId === providerId)!.providerName,
+-      directItems: true,
+-      items: classifiers
+-        .filter((model) => model.providerId === providerId)
+-        .map((model) => ({
+-          key: model.modelId,
+-          name: model.modelId,
+-          value: encodeCustomModelValue(providerId, model.modelId),
+-        })),
+-    }),
+-  );
+-  const saveDecision = onChange;
++  const selectedCandidates = candidates.filter((entry) => entry.providerId === source);
++  const sourceLabel = (id: string) =>
++    sourceControls?.providers.find((entry) => entry.providerId === id)?.providerName ??
++    candidates.find((entry) => entry.providerId === id)?.providerName ??
++    id;
++  const chooseSource = async (value: string) => {
++    if (sourceBusy || pending) return;
++    const current =
++      decision.selection?.providerId === value ? decision.selection : selectedForSource(value);
++    const { selection: _old, ...rest } = decision;
++    const epoch = ++sourceEpoch.current;
++    const accepted = await onChange({
++      ...rest,
++      enabled: Boolean(current && decision.enabled),
++      ...(current ? { selection: current } : {}),
++    });
++    if (accepted === false || sourceEpoch.current !== epoch) return;
++    setDraftSource(value);
++  };
++  const selectedForSource = (id: string): DecisionModelRef | undefined => {
++    const first = candidates.find((entry) => entry.providerId === id);
++    return first && { providerId: first.providerId, modelId: first.modelId };
++  };
+   return (
+     <div data-decision-model-settings>
+       <SettingsGroupCard>
+         <SettingsRow
++          breakpoint="md"
+           label={
+             <span className="inline-flex items-center">
+-              {intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++              {t("title")}
+               <ModelConfigHelp
+                 field="advanced"
+-                label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
+-                copy={`${intl.formatMessage({ id: "settings.modelDefaults.decision.description" })}\n\n${intl.formatMessage({ id: "settings.modelDefaults.decision.notice" })}`}
++                label={t("title")}
++                copy={`${t("description")}\n\n${t("notice")}`}
+               />
+             </span>
+           }
+           control={
+             <Switch
+-              aria-label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++              aria-label={t("title")}
+               checked={decision.enabled}
+               disabled={
+-                pending || !view?.preferencesRevision || (!decision.enabled && !decisionAvailable)
++                sourceBusy ||
++                pending ||
++                !view?.preferencesRevision ||
++                (!decision.enabled && !available)
+               }
+-              onCheckedChange={(enabled) => void saveDecision({ ...decision, enabled })}
++              onCheckedChange={(enabled) => void onChange({ ...decision, enabled })}
+             />
+           }
+         />
+         <SettingsRow
+-          label={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
++          breakpoint="md"
++          label={t("source")}
+           control={
+-            <ModelConfigSelect
+-              modelGroups={decisionGroups}
+-              normalizedValue={
+-                decision.selection
+-                  ? encodeCustomModelValue(
+-                      decision.selection.providerId,
+-                      decision.selection.modelId,
+-                    )
+-                  : "none"
+-              }
+-              triggerLabel={
+-                decision.selection?.modelId ??
+-                intl.formatMessage({
+-                  id: classifiers.length
+-                    ? "settings.modelDefaults.decision.choose"
+-                    : "settings.modelDefaults.decision.addFirst",
+-                })
+-              }
+-              tooltipTitle={intl.formatMessage({ id: "settings.modelDefaults.decision.model" })}
+-              leadingItems={[
+-                {
+-                  key: "none",
+-                  value: "none",
+-                  name: intl.formatMessage({ id: "settings.modelDefaults.decision.none" }),
+-                },
+-              ]}
+-              showManageModelsAction={Boolean(onManageConnection)}
+-              manageModelsLabel={intl.formatMessage({
+-                id: "settings.modelDefaults.decision.manageConnection",
+-              })}
+-              onManageModels={() => onManageConnection?.(decision.selection?.providerId)}
+-              focusSelectorOnClose={null}
+-              footerActions={[]}
+-              labelVisibilityClassName="inline-flex"
+-              disabled={pending || !view?.preferencesRevision}
+-              lockReasonMessage=""
+-              isItemLocked={() => false}
+-              triggerIcon={<></>}
+-              triggerClassName={selectTriggerVariants({
+-                size: "lg",
+-                className: "min-w-0 w-64 max-w-full",
+-              })}
+-              triggerBadge={
+-                decision.selection && !decisionAvailable ? (
+-                  <span className="text-ui-sm text-warning">
+-                    {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
+-                  </span>
+-                ) : undefined
+-              }
+-              onValueChange={(value) => {
+-                const selection =
+-                  value === "none"
+-                    ? undefined
+-                    : classifiers.find(
+-                        (model) =>
+-                          encodeCustomModelValue(model.providerId, model.modelId) === value,
+-                      );
+-                if (value !== "none" && !selection) return;
+-                // 保留自动选择的档位设置；只替换决策模型本身。
+-                const { selection: _previous, ...rest } = decision;
+-                void saveDecision({
+-                  ...rest,
+-                  enabled: Boolean(selection && decision.enabled),
+-                  ...(selection
+-                    ? {
+-                        selection: {
+-                          providerId: selection.providerId,
+-                          modelId: selection.modelId,
+-                        },
+-                      }
+-                    : {}),
+-                });
+-              }}
+-            />
++            <Select
++              value={source}
++              disabled={sourceBusy || pending || !view?.preferencesRevision}
++              onValueChange={(value) => void chooseSource(value)}
++            >
++              <SelectTrigger className="w-64 min-w-0 max-w-full" size="lg" aria-label={t("source")}>
++                <SelectValue />
++              </SelectTrigger>
++              <SelectContent>
++                <SelectItem value="none">{t("none")}</SelectItem>
++                {providerIds.map((id) => (
++                  <SelectItem key={id} value={id}>
++                    {sourceLabel(id)}
++                  </SelectItem>
++                ))}
++                {templates.map((entry) => (
++                  <SelectItem key={entry.templateId} value={`template:${entry.templateId}`}>
++                    {intl.formatMessage(
++                      { id: "settings.modelDefaults.decision.setupSource" },
++                      { name: resolveProviderTemplateName(entry.templateId, entry, locale) },
++                    )}
++                  </SelectItem>
++                ))}
++              </SelectContent>
++            </Select>
+           }
+         />
++        {decision.selection?.providerId === source && !available ? (
++          <p role="status" className="px-4 py-2 text-ui-base text-warning">
++            {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
++          </p>
++        ) : null}
++        {sourceTemplate && sourceControls && onSourceSaved ? (
++          <DecisionSourceEditor
++            key={source}
++            source={source}
++            template={sourceTemplate}
++            provider={provider}
++            controls={sourceControls}
++            selectedModelId={
++              decision.selection?.providerId === source ? decision.selection.modelId : undefined
++            }
++            onBusy={setSourceBusy}
++            onSaved={async (selection, mounted) => {
++              const epoch = sourceEpoch.current;
++              const accepted = await onSourceSaved(
++                selection,
++                () => mounted() && sourceEpoch.current === epoch,
++              );
++              if (accepted && mounted() && sourceEpoch.current === epoch) {
++                setSourceBusy(false);
++                sourceEpoch.current++;
++                setDraftSource(undefined);
++              }
++              return accepted;
++            }}
++          />
++        ) : source !== "none" && !template ? (
++          <SettingsRow
++            breakpoint="md"
++            label={t("model")}
++            control={
++              <ModelConfigSelect
++                modelGroups={[
++                  {
++                    key: source,
++                    label: sourceLabel(source),
++                    directItems: true,
++                    items: selectedCandidates.map((entry) => ({
++                      key: entry.modelId,
++                      name: entry.modelId,
++                      value: encodeCustomModelValue(source, entry.modelId),
++                    })),
++                  },
++                ]}
++                normalizedValue={
++                  decision.selection?.providerId === source
++                    ? encodeCustomModelValue(source, decision.selection.modelId)
++                    : "none"
++                }
++                triggerLabel={
++                  decision.selection?.providerId === source
++                    ? decision.selection.modelId
++                    : t("choose")
++                }
++                tooltipTitle={t("model")}
++                leadingItems={[]}
++                showManageModelsAction={false}
++                focusSelectorOnClose={null}
++                labelVisibilityClassName="inline-flex"
++                disabled={sourceBusy || pending || !view?.preferencesRevision}
++                lockReasonMessage=""
++                isItemLocked={() => false}
++                triggerIcon={<></>}
++                triggerClassName={selectTriggerVariants({
++                  size: "lg",
++                  className: "w-64 min-w-0 max-w-full",
++                })}
++                triggerBadge={
++                  decision.selection && !available ? (
++                    <span className="text-ui-sm text-warning">
++                      {intl.formatMessage({ id: "settings.modelDefaults.unavailableBadge" })}
++                    </span>
++                  ) : undefined
++                }
++                onValueChange={(value) => {
++                  const next = selectedCandidates.find(
++                    (entry) => encodeCustomModelValue(source, entry.modelId) === value,
++                  );
++                  if (next)
++                    void onChange({
++                      ...decision,
++                      selection: { providerId: source, modelId: next.modelId },
++                    });
++                }}
++              />
++            }
++          />
++        ) : null}
++        {source !== "none" && !template && onManageConnection ? (
++          <SettingsRow
++            breakpoint="md"
++            label={t("connection")}
++            control={
++              <Button
++                type="button"
++                variant="outline"
++                disabled={sourceBusy || pending}
++                onClick={() => onManageConnection(source)}
++              >
++                {t("manageConnection")}
++              </Button>
++            }
++          />
++        ) : null}
+       </SettingsGroupCard>
+     </div>
+   );
+diff --git a/packages/ui/src/settings/DecisionSourceEditor.tsx b/packages/ui/src/settings/DecisionSourceEditor.tsx
+new file mode 100644
+index 0000000..c987261
+--- /dev/null
++++ b/packages/ui/src/settings/DecisionSourceEditor.tsx
+@@ -0,0 +1,237 @@
++import { useEffect, useRef, useState } from "react";
++import {
++  isLocalClassifierEndpoint,
++  type ProviderConfigObject,
++  type ProviderSettingsTemplateView,
++} from "@zcode/provider";
++import type { DecisionModelRef } from "@zcode/shared";
++import type {
++  ProviderSettingsFormProvider,
++  ProviderSettingsSaveHandler,
++  ProviderSettingsSaveReceipt,
++} from "@/lib/providerSettingsFormTypes.js";
++import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
++import { Input } from "@/components/ui/input.js";
++import { Button } from "@/components/ui/button.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { SettingsRow } from "./SettingsPageParts.js";
++import { ModelConfigHelp } from "./model-provider-section/ModelConfigHelp.js";
++import { PresetProviderApiKeyBanner } from "./model-provider-section/PresetProviderApiKeyBanner.js";
++import { ApiKeyInput } from "./model-provider-section/ApiKeyInput.js";
++import {
++  newProviderSetupDraft,
++  providerSetupConfig,
++} from "./model-provider-section/providerSetupDraft.js";
++import {
++  readProviderDraftValues,
++  resolvePendingProviderDraftSave,
++} from "./model-provider-section/ProviderDraftSave.js";
++
++/** All accepted state remains in the existing Provider facade; this interface carries commands. */
++export interface DecisionSourceControls {
++  templates: readonly ProviderSettingsTemplateView[];
++  providers: readonly ProviderSettingsFormProvider[];
++  revision?: number;
++  reload(): void | Promise<unknown>;
++  openExternal?(url: string): void | Promise<unknown>;
++  create(templateId: string, config: ProviderConfigObject): Promise<ProviderSettingsSaveReceipt>;
++  save: ProviderSettingsSaveHandler;
++  addModel(providerId: string, modelId: string): Promise<ProviderSettingsSaveReceipt>;
++}
++
++export function DecisionSourceEditor({
++  source,
++  provider,
++  template,
++  controls,
++  selectedModelId,
++  onSaved,
++  onBusy,
++}: {
++  source: string;
++  provider?: ProviderSettingsFormProvider;
++  template: ProviderSettingsTemplateView;
++  controls: DecisionSourceControls;
++  selectedModelId?: string;
++  onSaved(selection: DecisionModelRef, current: () => boolean): Promise<boolean>;
++  onBusy(busy: boolean): void;
++}) {
++  const { intl } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.modelDefaults.decision.${key}` });
++  const seed = provider ? readProviderDraftValues(provider) : undefined;
++  const [url, setUrl] = useState(seed?.baseUrlValue ?? template.config.api?.baseUrl ?? "");
++  const [key, setKey] = useState(seed?.apiKeyValue ?? "");
++  const [model, setModel] = useState(
++    selectedModelId ?? template.config.builtinModelIds?.[0] ?? "auto",
++  );
++  const [visible, setVisible] = useState(false);
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState(false);
++  const [uncertainCreation, setUncertainCreation] = useState(false);
++  const saveLock = useRef(false);
++  const receipt = useRef<ProviderSettingsSaveReceipt | undefined>(
++    provider && controls.revision !== undefined
++      ? { provider, revision: controls.revision }
++      : undefined,
++  );
++  const mounted = useRef(true);
++  useEffect(() => {
++    mounted.current = true;
++    return () => {
++      mounted.current = false;
++    };
++  }, []);
++  const optional = isLocalClassifierEndpoint(url);
++  const keyAccess = provider?.config.access ?? template.config.access;
++  const keyUrl =
++    keyAccess && "apiKeyManagementUrl" in keyAccess ? keyAccess.apiKeyManagementUrl : undefined;
++  const newConfig = providerSetupConfig(
++    template,
++    { ...newProviderSetupDraft(template), baseUrl: url, primary: key },
++    ["typesafe-system-one"],
++  );
++  const valid = Boolean(newConfig && model.trim());
++  const save = async () => {
++    if (saveLock.current || uncertainCreation || !valid || !newConfig) return;
++    saveLock.current = true;
++    let creating = false;
++    setBusy(true);
++    onBusy(true);
++    setError(false);
++    try {
++      let saved = receipt.current;
++      if (!saved) {
++        creating = true;
++        saved = await controls.create(template.templateId, newConfig);
++        creating = false;
++        receipt.current = saved; // A failed later preference write must not create a duplicate.
++      } else {
++        const draft = readProviderDraftValues(saved.provider);
++        const pending = resolvePendingProviderDraftSave({
++          provider: saved.provider,
++          draft: { ...draft, baseUrlValue: url, apiKeyValue: key },
++          now: Date.now,
++        });
++        if (pending) {
++          saved = await controls.save(pending, saved.revision);
++          receipt.current = saved;
++        }
++      }
++      const modelId = model.trim();
++      if (!saved.provider.models.some((entry) => entry.modelId === modelId)) {
++        saved = await controls.addModel(saved.provider.providerId, modelId);
++        receipt.current = saved;
++      }
++      if (!mounted.current) return;
++      if (
++        !(await onSaved({ providerId: saved.provider.providerId, modelId }, () => mounted.current))
++      )
++        setError(true);
++    } catch {
++      if (mounted.current) {
++        setError(true);
++        if (creating) setUncertainCreation(true);
++      }
++    } finally {
++      saveLock.current = false;
++      if (mounted.current) {
++        setBusy(false);
++        onBusy(false);
++      }
++    }
++  };
++  return (
++    <div
++      data-decision-source-editor={source}
++      {...(receipt.current
++        ? pageAssistantScope(
++            { feature: "model-settings", providerId: receipt.current.provider.providerId },
++            receipt.current.provider.providerName ?? receipt.current.provider.providerId,
++          )
++        : {})}
++    >
++      <SettingsRow
++        breakpoint="md"
++        label={
++          <span className="inline-flex items-center">
++            {t("address")}
++            <ModelConfigHelp field="advanced" label={t("address")} copy={t("addressHelp")} />
++          </span>
++        }
++        control={
++          <Input
++            aria-label={t("address")}
++            value={url}
++            disabled={busy}
++            onChange={(event) => {
++              setUrl(event.target.value);
++              setError(false);
++            }}
++          />
++        }
++      />
++      <SettingsRow
++        breakpoint="md"
++        label={intl.formatMessage({
++          id: optional ? "settings.modelProvider.apiKeyOptional" : "settings.modelProvider.apiKey",
++        })}
++        control={
++          <ApiKeyInput
++            value={key}
++            visible={visible}
++            readOnly={busy}
++            onChange={(value) => {
++              setKey(value);
++              setError(false);
++            }}
++            onBlur={() => {}}
++            onToggleVisibility={() => setVisible(!visible)}
++          />
++        }
++      />
++      {keyUrl && controls.openExternal ? (
++        <div className="px-4 pb-3">
++          <PresetProviderApiKeyBanner onOpenApiKey={() => void controls.openExternal?.(keyUrl)} />
++        </div>
++      ) : null}
++      <SettingsRow
++        breakpoint="md"
++        label={t("model")}
++        control={
++          <Input
++            aria-label={t("model")}
++            value={model}
++            disabled={busy}
++            onChange={(event) => {
++              setModel(event.target.value);
++              setError(false);
++            }}
++          />
++        }
++      />
++      <SettingsRow
++        breakpoint="md"
++        label={t("configureSource")}
++        control={
++          <Button
++            type="button"
++            disabled={busy || uncertainCreation || !valid}
++            onClick={() => void save()}
++          >
++            {intl.formatMessage({ id: busy ? "common.saving" : "settings.modelProvider.save" })}
++          </Button>
++        }
++      />
++      {error ? (
++        <div className="px-4 pb-3">
++          <p role="alert" className="text-ui-base text-destructive">
++            {t(uncertainCreation ? "sourceSaveUncertain" : "sourceSaveFailed")}
++          </p>
++          <Button type="button" variant="outline" onClick={() => void controls.reload()}>
++            {t("reloadSources")}
++          </Button>
++        </div>
++      ) : null}
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index f45f6c1..ae24a62 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -1,3 +1,8 @@
++import { projectProviderSettingsSaveReceipt } from "@/lib/providerSettingsFormProjection.js";
++import {
++  isDedicatedDecisionSource,
++  DECISION_CUSTOM_TEMPLATE_ID,
++} from "./model-provider-section/providerTemplateCatalog.js";
+ import { SlidersHorizontal } from "lucide-react";
+ import { ModelPurposeDefaults } from "./ModelPurposeDefaults.js";
+ import type { ProviderConfigObject } from "@zcode/provider";
+@@ -77,6 +82,7 @@ export function ModelProviderSection({
+   const [target, setTarget] = useState(() => consumePendingSettingsModelProviderTarget());
+   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
++  const [decisionDetailId, setDecisionDetailId] = useState<string>();
+   const [defaultsOpen, setDefaultsOpen] = useState(false);
+   const [renameRequest, setRenameRequest] = useState<{ providerId: string; id: string }>();
+   const [creatingProvider, setCreatingProvider] = useState(false);
+@@ -91,12 +97,23 @@ export function ModelProviderSection({
+     setSelectedNodeKey,
+     intl,
+   });
++  const decisionDetailProvider = modelProviders.find(
++    (entry) => entry.providerId === decisionDetailId,
++  );
++  const detailNavItem = decisionDetailProvider
++    ? {
++        key: createCustomProviderNodeKey(decisionDetailProvider.providerId),
++        type: "custom" as const,
++        label: decisionDetailProvider.providerName ?? decisionDetailProvider.providerId,
++        provider: decisionDetailProvider,
++        statusActive: decisionDetailProvider.executable,
++      }
++    : selectedNavItem;
+   const selectedAssistantProvider =
+-    selectedNavItem?.type === "custom" && selectedNavItem.provider
++    detailNavItem?.type === "custom" && detailNavItem.provider
+       ? {
+-          providerId: selectedNavItem.provider.providerId,
+-          providerName:
+-            selectedNavItem.provider.providerName || selectedNavItem.provider.providerId,
++          providerId: detailNavItem.provider.providerId,
++          providerName: detailNavItem.provider.providerName || detailNavItem.provider.providerId,
+         }
+       : null;
+   // Targets are actual saved connection IDs, including custom and subscription providers.
+@@ -104,11 +121,13 @@ export function ModelProviderSection({
+   const targetExists = target && modelProviders.some((p) => p.providerId === target.providerId);
+   useEffect(() => {
+     if (!target || !targetExists) return;
+-    setDefaultsOpen(false);
++    const provider = modelProviders.find((entry) => entry.providerId === target.providerId)!;
++    setDecisionDetailId(isDedicatedDecisionSource(provider) ? provider.providerId : undefined);
++    setDefaultsOpen(isDedicatedDecisionSource(provider));
+     setSelectedNodeKey(createCustomProviderNodeKey(target.providerId));
+     setTemplatePickerOpen(false);
+     setTarget(undefined);
+-  }, [target, targetExists]);
++  }, [target, targetExists, modelProviders]);
+   useEffect(() => {
+     if (!pendingModelProviderTarget) return;
+     setTarget(pendingModelProviderTarget);
+@@ -192,6 +211,7 @@ export function ModelProviderSection({
+       }}
+       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
+       onAddProvider={() => {
++        setDecisionDetailId(undefined);
+         setDefaultsOpen(false);
+         setTarget(undefined);
+         setTemplatePickerOpen(true);
+@@ -200,6 +220,7 @@ export function ModelProviderSection({
+       selectedNodeKey={defaultsOpen ? null : selectedNodeKey}
+       onSelectNavItem={(item) => {
+         setRenameRequest(undefined);
++        setDecisionDetailId(undefined);
+         setDefaultsOpen(false);
+         setTarget(undefined);
+         setSelectedNodeKey(item.key);
+@@ -228,6 +249,7 @@ export function ModelProviderSection({
+             aria-current={defaultsOpen ? "page" : undefined}
+             onClick={() => {
+               setTarget(undefined);
++              setDecisionDetailId(undefined);
+               setTemplatePickerOpen(false);
+               setDefaultsOpen(true);
+             }}
+@@ -248,8 +270,29 @@ export function ModelProviderSection({
+           {intl.formatMessage({ id: "settings.modelProvider.navigationUnavailable" })}
+         </p>
+       ) : null}
+-      {defaultsOpen ? (
++      {defaultsOpen && !decisionDetailProvider ? (
+         <ModelPurposeDefaults
++          sourceControls={{
++            templates: providerTemplates,
++            providers: modelProviders,
++            revision: providerSettingsView?.revision,
++            reload,
++            openExternal: (url) => platform.openExternal(url),
++            create: async (templateId, initialConfig) => {
++              const created = await createPersonalProvider({
++                templateId: templateId === DECISION_CUSTOM_TEMPLATE_ID ? undefined : templateId,
++                providerName:
++                  templateId === DECISION_CUSTOM_TEMPLATE_ID
++                    ? intl.formatMessage({ id: "settings.modelDefaults.decision.customSource" })
++                    : undefined,
++                initialConfig,
++                locale,
++              });
++              return projectProviderSettingsSaveReceipt(created.view, created.providerId);
++            },
++            save: handleSave,
++            addModel: (providerId, modelId) => addPersonalModel(providerId, modelId, {}, true),
++          }}
+           onManageConnection={(providerId) => {
+             if (
+               providerId &&
+@@ -263,7 +306,7 @@ export function ModelProviderSection({
+             }
+           }}
+         />
+-      ) : templatePickerOpen || (!loading && !selectedNavItem) ? (
++      ) : templatePickerOpen || (!loading && !detailNavItem) ? (
+         <ProviderTemplatePicker
+           templates={providerTemplates}
+           creating={creatingProvider}
+@@ -288,13 +331,18 @@ export function ModelProviderSection({
+             selectedAssistantProvider?.providerName,
+           )}
+         >
++          {decisionDetailProvider ? (
++            <Button type="button" variant="ghost" onClick={() => setDecisionDetailId(undefined)}>
++              {intl.formatMessage({ id: "settings.modelDefaults.decision.back" })}
++            </Button>
++          ) : null}
+           <ModelProviderSectionDetail
+             renameRequest={renameRequest}
+             onRenameConsumed={() => setRenameRequest(undefined)}
+             connectProviderId={connectProviderId}
+             onConnectConsumed={() => setConnectProviderId(undefined)}
+             providerSettingsView={providerSettingsView}
+-            selectedNavItem={selectedNavItem}
++            selectedNavItem={detailNavItem}
+             onSave={handleSave}
+             onAddPersonalModel={addPersonalModel}
+             onSavePersonalModelDraft={savePersonalModelDraft}
+@@ -304,8 +352,8 @@ export function ModelProviderSection({
+             onTestModel={testModelConnectivity}
+             onConnectionChanged={invalidateConnectionTest}
+             expandedAccountId={
+-              selectedNavItem?.type === "custom" && selectedNavItem.provider
+-                ? expandedAccountByProvider[selectedNavItem.provider.providerId]
++              detailNavItem?.type === "custom" && detailNavItem.provider
++                ? expandedAccountByProvider[detailNavItem.provider.providerId]
+                 : undefined
+             }
+             onExpandedAccountChange={(providerId, accountId) =>
+diff --git a/packages/ui/src/settings/ModelPurposeDefaults.tsx b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+index 6732e3c..492fbc2 100644
+--- a/packages/ui/src/settings/ModelPurposeDefaults.tsx
++++ b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+@@ -1,5 +1,5 @@
+-import { useRef, useState } from "react";
+-import { ZCODE_AGENT_PROVIDER, type ModelSelection } from "@zcode/shared";
++import { useEffect, useRef, useState } from "react";
++import { ZCODE_AGENT_PROVIDER, type ModelSelection, type DecisionModelRef } from "@zcode/shared";
+ import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -21,6 +21,7 @@ import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+ import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ 
++import type { DecisionSourceControls } from "./DecisionSourceEditor.js";
+ import { AutomaticModelTiers } from "./AutomaticModelTiers.js";
+ import { DecisionModelDefaults } from "./DecisionModelDefaults.js";
+ 
+@@ -28,10 +29,21 @@ const PURPOSES = ["conversation", "page-assistant", "vision-bridge"] as const;
+ /** Purpose choices share the Personal writer; Project and subagent choices keep their own owners. */
+ export function ModelPurposeDefaults({
+   onManageConnection,
+-}: { onManageConnection?(providerId?: string): void } = {}) {
++  sourceControls,
++}: {
++  onManageConnection?(providerId?: string): void;
++  sourceControls?: DecisionSourceControls;
++} = {}) {
+   const { modelSelectionService } = useBaseWorkspaceServices();
+   const read = useModelSelectionServiceView(modelSelectionService);
+   const { intl } = useZCodeIntl();
++  const mounted = useRef(true);
++  useEffect(() => {
++    mounted.current = true;
++    return () => {
++      mounted.current = false;
++    };
++  }, []);
+   const owner = useRef({ service: modelSelectionService, generation: 0 });
+   if (owner.current.service !== modelSelectionService)
+     owner.current = { service: modelSelectionService, generation: owner.current.generation + 1 };
+@@ -53,7 +65,7 @@ export function ModelPurposeDefaults({
+     : [];
+   const save = async (patch: Parameters<typeof modelSelectionService.savePreferences>[0]) => {
+     if (!view?.preferencesRevision || pending || saveLock.current === owner.current.generation)
+-      return;
++      return false;
+     const generation = owner.current.generation;
+     saveLock.current = generation;
+     setSaveState({ generation, pending: true });
+@@ -62,9 +74,10 @@ export function ModelPurposeDefaults({
+         expectedRevision: view.preferencesRevision,
+         ...patch,
+       });
++      return true;
+     } catch (cause) {
+       const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+-      if (owner.current.generation !== generation) return;
++      if (owner.current.generation !== generation) return false;
+       setSaveState({
+         generation,
+         pending: true,
+@@ -77,6 +90,7 @@ export function ModelPurposeDefaults({
+                 ? "settings.modelDefaults.unsupported"
+                 : "settings.modelDefaults.failed",
+       });
++      return false;
+     } finally {
+       if (saveLock.current === generation) saveLock.current = undefined;
+       if (owner.current.generation === generation) {
+@@ -85,6 +99,44 @@ export function ModelPurposeDefaults({
+       }
+     }
+   };
++  const bindSource = async (
++    selection: DecisionModelRef,
++    current: () => boolean,
++  ): Promise<boolean> => {
++    const generation = owner.current.generation;
++    if (saveLock.current === generation) return false;
++    saveLock.current = generation;
++    setSaveState({ generation, pending: true });
++    try {
++      const fresh = await modelSelectionService.getView();
++      if (
++        !mounted.current ||
++        generation !== owner.current.generation ||
++        !current() ||
++        !fresh.preferencesRevision
++      )
++        return false;
++      await modelSelectionService.savePreferences({
++        expectedRevision: fresh.preferencesRevision,
++        decisionModelSettings: {
++          ...fresh.decisionModelSettings,
++          enabled: fresh.decisionModelSettings?.enabled === true,
++          selection,
++        },
++      });
++      return true;
++    } catch {
++      if (mounted.current && generation === owner.current.generation)
++        setSaveState({ generation, pending: true, errorKey: "settings.modelDefaults.failed" });
++      return false;
++    } finally {
++      if (saveLock.current === generation) saveLock.current = undefined;
++      if (mounted.current && generation === owner.current.generation) {
++        setSaveState((state) => ({ ...state, pending: false }));
++        read.reload();
++      }
++    }
++  };
+   const change = (purpose: (typeof PURPOSES)[number], selection: ModelSelection | null) =>
+     save(
+       purpose === "conversation"
+@@ -120,6 +172,7 @@ export function ModelPurposeDefaults({
+       </div>
+       <SettingsGroupCard>
+         <SettingsRow
++          breakpoint="md"
+           label={intl.formatMessage({ id: "settings.modelDefaults.policy" })}
+           control={
+             <Select
+@@ -221,6 +274,7 @@ export function ModelPurposeDefaults({
+           });
+           return (
+             <SettingsRow
++              breakpoint="md"
+               key={purpose}
+               label={label}
+               control={
+@@ -293,15 +347,20 @@ export function ModelPurposeDefaults({
+             view={view}
+             groups={groups}
+             pending={pending}
+-            onChange={(settings) => save({ decisionModelSettings: settings })}
++            onChange={async (settings) => {
++              await save({ decisionModelSettings: settings });
++            }}
+           />
+         ) : null}
+       </SettingsGroupCard>
+       <DecisionModelDefaults
++        key={owner.current.generation}
+         view={view}
+         pending={pending}
+         onChange={(settings) => save({ decisionModelSettings: settings })}
+         onManageConnection={onManageConnection}
++        sourceControls={sourceControls}
++        onSourceSaved={bindSource}
+       />
+       {read.state.status === "loading" ? (
+         <p className="text-ui-sm text-foreground-subtle">
+diff --git a/packages/ui/src/settings/SettingsPageParts.tsx b/packages/ui/src/settings/SettingsPageParts.tsx
+index 73c5ad2..6642905 100644
+--- a/packages/ui/src/settings/SettingsPageParts.tsx
++++ b/packages/ui/src/settings/SettingsPageParts.tsx
+@@ -112,12 +112,14 @@ export function SettingsRow({
+   control,
+   detail,
+   controlLayout = "default",
++  breakpoint = "lg",
+ }: {
+   label: ReactNode;
+   description?: ReactNode;
+   control: ReactNode;
+   detail?: ReactNode;
+   controlLayout?: "default" | "wide";
++  breakpoint?: "md" | "lg";
+ }) {
+   return (
+     // Adapt to the form column, not the viewport: the named sidebar consumes real width.
+@@ -126,8 +128,12 @@ export function SettingsRow({
+         className={cn(
+           "grid items-center gap-4",
+           controlLayout === "wide"
+-            ? "grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_280px]"
+-            : "grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_192px]",
++            ? breakpoint === "md"
++              ? "grid-cols-1 @md:grid-cols-[minmax(0,1fr)_280px]"
++              : "grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_280px]"
++            : breakpoint === "md"
++              ? "grid-cols-1 @md:grid-cols-[minmax(0,1fr)_192px]"
++              : "grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_192px]",
+         )}
+       >
+         <div className="min-w-0">
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 89486f8..f17bcce 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -103,6 +103,7 @@ export function ProviderTemplatePicker({
+   const categoryTemplates = templates.filter(
+     // 套餐归类不能删掉已支持的登录入口；具体接入仍走原模板和同一个账号 owner。
+     (template) =>
++      template.config.api?.type !== "typesafe-system-one" &&
+       !connectionRouteRestriction(template.config?.access) &&
+       providerConnectionCategory(template) === category,
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+index 36ec21b..c5fcfc9 100644
+--- a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -4,6 +4,25 @@ import {
+   type ProviderTemplateLocale,
+ } from "@zcode/provider";
+ 
++/** A dedicated typed source is configured in auxiliary settings, through the same Provider owner. */
++export function isDedicatedDecisionSource(source: {
++  config: import("@zcode/provider").ProviderConfigObject;
++}): boolean {
++  return (
++    source.config.api?.type === "typesafe-system-one" && source.config.access?.type === "api-key"
++  );
++}
++export const DECISION_CUSTOM_TEMPLATE_ID = "decision-custom";
++export const customDecisionSourceTemplate: ProviderSettingsTemplateView = {
++  templateId: DECISION_CUSTOM_TEMPLATE_ID,
++  templateNameMap: { "zh-CN": "自定义决策服务", "en-US": "Custom decision service" },
++  config: {
++    access: { type: "api-key" },
++    api: { type: "typesafe-system-one", baseUrl: "" },
++    builtinModelIds: ["jev-1.13.0"],
++  },
++};
++
+ export interface ProviderVendor {
+   id: string;
+   label: string;
+diff --git a/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts b/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
+index f6e8b5f..51f4fa7 100644
+--- a/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
++++ b/packages/ui/src/settings/model-provider-section/useModelProviderNavigation.ts
+@@ -1,3 +1,4 @@
++import { isDedicatedDecisionSource } from "./providerTemplateCatalog.js";
+ import { useEffect, useMemo } from "react";
+ import {
+   getProviderFormLabel,
+@@ -28,7 +29,10 @@ export function useModelProviderNavigation({
+   const navigationItems = useMemo<ModelProviderNavGroup["items"]>(
+     () =>
+       sortModelProvidersForDisplay(
+-        modelProviders.filter((provider) => provider.config.group === "standard-personal"),
++        modelProviders.filter(
++          (provider) =>
++            provider.config.group === "standard-personal" && !isDedicatedDecisionSource(provider),
++        ),
+         displayOrder,
+       ).map((provider) => ({
+         key: createCustomProviderNodeKey(provider.providerId),
+diff --git a/packages/ui/test/connectionIntake.browser.test.tsx b/packages/ui/test/connectionIntake.browser.test.tsx
+index ef77834..9a21fba 100644
+--- a/packages/ui/test/connectionIntake.browser.test.tsx
++++ b/packages/ui/test/connectionIntake.browser.test.tsx
+@@ -197,43 +197,7 @@ async function run() {
+           "Confirmed Antigravity addition did not use its original native operation",
+         );
+         await click(zh ? "API 与本地服务" : "API & local services");
+-        check(
+-          buttons().some((b) => b.textContent?.trim() === "TypeSafe Jev"),
+-          "TypeSafe service identity is hidden",
+-        );
+-        check(
+-          !node.textContent?.includes(zh ? "决策模型 API" : "Decision model API"),
+-          "Generic classifier card remains",
+-        );
+-        await click(zh ? "Laya（本地服务）" : "Laya (local service)");
+-        const save = node.querySelector<HTMLButtonElement>('button[type="submit"]');
+-        const url = node.querySelector<HTMLInputElement>("#provider-setup-url");
+-        check(save && url, "Local classifier setup missing");
+-        check(
+-          !save.disabled &&
+-            node.textContent?.includes(zh ? "API Key（可选）" : "API Key (optional)"),
+-          "Local setup still requires a key",
+-        );
+-        const enterUrl = async (value: string) =>
+-          act(async () => {
+-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+-              url,
+-              value,
+-            );
+-            url.dispatchEvent(new Event("input", { bubbles: true }));
+-          });
+-        await enterUrl("https://classifier.example/v1");
+-        check(save.disabled, "Remote classifier was allowed without a key");
+-        await enterUrl("http://127.0.0.1:8000/v1");
+-        check(!save.disabled, "Loopback setup stayed blocked");
+-        await act(async () => save.click());
+-        check(
+-          created.length === 5 &&
+-            created.at(-1)?.[0] === "fleet-laya-local" &&
+-            created.at(-1)?.[2] === false,
+-          "Local classifier did not use its existing provider creation operation",
+-        );
+-        check(created.at(-1)?.[1]?.access?.apiKey === "", "Empty local key was not preserved");
++        check(!buttons().some((b) => b.textContent?.trim() === "TypeSafe Jev" || b.textContent?.trim() === (zh ? "Laya（本地服务）" : "Laya (local service)")), "Dedicated decision source leaked into ordinary Add provider");
+         results.push({ name });
+       } catch (error) {
+         results.push({ name, error: error instanceof Error ? error.message : String(error) });
+diff --git a/packages/ui/test/decisionSourceSettings.browser.test.tsx b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+new file mode 100644
+index 0000000..5e6db6e
+--- /dev/null
++++ b/packages/ui/test/decisionSourceSettings.browser.test.tsx
+@@ -0,0 +1,430 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ProviderSettingsFacade, parseProviderTemplateMap } from "@zcode/provider";
++import builtin from "../../../config/provider/zcode-builtin.json";
++import {
++  customDecisionSourceTemplate,
++  DECISION_CUSTOM_TEMPLATE_ID,
++} from "../src/settings/model-provider-section/providerTemplateCatalog.js";
++import { ModelPurposeDefaults } from "../src/settings/ModelPurposeDefaults.js";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { useRemoteWorkspaceSessionStore } from "../src/store/remoteWorkspaceSessionStore.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: { name: string; error?: string }[] = [];
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
++const templates = new ProviderSettingsFacade({
++  getSnapshot: () => ({
++    registry: { revision: 1 },
++    config: {
++      zcodeBuiltinProviderTemplates: parseProviderTemplateMap(
++        builtin.config.providerConfigRules.templateRules,
++      ),
++    },
++    resolution: { registryProviders: [], resolvedProviders: [] },
++    account: { states: {} },
++  }),
++} as never).getView().providerTemplates;
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++async function fixture(locale = "en-US") {
++  const node = document.createElement("div");
++  node.style.width = "320px";
++  document.body.append(node);
++  const root = createRoot(node);
++  const previous = useRemoteWorkspaceSessionStore.getState().baseServices;
++  useRemoteWorkspaceSessionStore.setState({ baseServices: null });
++  const listeners = new Set<(view: any) => void>();
++  const providers: any[] = [];
++  let revision = 1;
++  let settings: any = {
++    enabled: false,
++    automaticTiers: { standard: { providerId: "chat", modelId: "main" } },
++  };
++  const events: any[] = [];
++  let failBinding = false;
++  let loseCreationAck = false;
++  let delayCreation: Promise<unknown> | undefined;
++  let closed = false;
++  const view = () => ({
++    revision,
++    preferencesRevision: `personal-${revision}`,
++    decisionModelSettings: settings,
++    providers: providers.map((provider) => ({
++      providerId: provider.providerId,
++      providerName: provider.providerName,
++      config: provider.config,
++      models: provider.models,
++    })),
++    classifierModels: providers.flatMap((provider) =>
++      provider.models.map((model: any) => ({
++        providerId: provider.providerId,
++        providerName: provider.providerName,
++        modelId: model.modelId,
++        lane: "classifier",
++      })),
++    ),
++  });
++  const publish = () => {
++    for (const listener of listeners) listener(view());
++  };
++  const service = {
++    onDidChange: (listener: (view: any) => void) => {
++      listeners.add(listener);
++      return { dispose: () => listeners.delete(listener) };
++    },
++    getView: async () => view(),
++    savePreferences: async (patch: any) => {
++      events.push({ kind: "preference", patch });
++      check(
++        patch.expectedRevision === `personal-${revision}`,
++        "Binding used a pre-creation revision",
++      );
++      if (failBinding && patch.decisionModelSettings?.selection) {
++        failBinding = false;
++        throw new Error("preference commit failed");
++      }
++      settings = patch.decisionModelSettings ?? settings;
++      revision++;
++      publish();
++      return settings;
++    },
++  };
++  const controls = {
++    templates,
++    providers,
++    get revision() {
++      return revision;
++    },
++    reload: async () => publish(),
++    create: async (templateId: string, config: any) => {
++      events.push({ kind: "create", templateId, config });
++      await delayCreation;
++      const template =
++        templates.find((entry) => entry.templateId === templateId) ?? customDecisionSourceTemplate;
++      const provider = {
++        providerId: "local-source",
++        providerName: "Saved local source",
++        templateId: templateId === DECISION_CUSTOM_TEMPLATE_ID ? undefined : templateId,
++        config: {
++          ...template.config,
++          ...config,
++          api: { ...template.config.api, ...config.api },
++          access: { ...template.config.access, ...config.access },
++        },
++        personalConfig: config,
++        enabled: true,
++        hasPersonalConfig: true,
++        models: (templateId === DECISION_CUSTOM_TEMPLATE_ID
++          ? []
++          : (template.config.builtinModelIds ?? [])
++        ).map((modelId) => ({
++          modelId,
++          config: { enabled: true },
++          personalConfig: {},
++          executable: false,
++        })),
++      };
++      providers.push(provider);
++      revision++;
++      publish();
++      if (loseCreationAck) {
++        loseCreationAck = false;
++        throw new Error("creation acknowledgement lost");
++      }
++      return { provider, revision };
++    },
++    save: async (provider: any, basedOnRevision: number) => {
++      events.push({ kind: "save", provider, basedOnRevision });
++      check(basedOnRevision === revision, "Provider draft lost its write revision");
++      providers.splice(0, providers.length, provider);
++      revision++;
++      publish();
++      return { provider, revision };
++    },
++    addModel: async (providerId: string, modelId: string) => {
++      events.push({ kind: "add-model", providerId, modelId });
++      const provider = providers.find((entry) => entry.providerId === providerId)!;
++      provider.models.push({
++        modelId,
++        config: { enabled: true },
++        personalConfig: {},
++        executable: false,
++      });
++      revision++;
++      publish();
++      return { provider, revision };
++    },
++  };
++  await act(async () =>
++    root.render(
++      <ServiceProvider services={{ modelSelectionService: service } as never}>
++        <ZCodeIntlProvider initialLocale={locale as never}>
++          <TooltipProvider>
++            <ModelPurposeDefaults sourceControls={controls as never} />
++          </TooltipProvider>
++        </ZCodeIntlProvider>
++      </ServiceProvider>,
++    ),
++  );
++  const zh = locale === "zh-CN";
++  const choose = async (name: string) => {
++    const trigger = node.querySelector<HTMLButtonElement>(
++      `[aria-label="${zh ? "决策来源" : "Decision source"}"]`,
++    )!;
++    await act(async () =>
++      trigger.dispatchEvent(
++        new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse", button: 0 }),
++      ),
++    );
++    await frame();
++    const item = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
++      (entry) => entry.textContent?.trim() === name,
++    );
++    check(item, "Missing source: " + name);
++    await act(async () => item!.click());
++  };
++  const saveButton = () =>
++    [...node.querySelectorAll<HTMLButtonElement>("button")].find(
++      (entry) => entry.textContent?.trim() === (zh ? "保存" : "Save"),
++    )!;
++  const enter = async (label: string, value: string) => {
++    const input = node.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
++    check(input, "Missing input " + label);
++    await act(async () => {
++      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
++      input.dispatchEvent(new Event("input", { bubbles: true }));
++    });
++  };
++  return {
++    node,
++    controls,
++    providers,
++    events,
++    view,
++    choose,
++    enter,
++    saveButton,
++    async laya() {
++      await choose(zh ? "配置 Laya（本地服务）" : "Set up Laya (local service)");
++    },
++    failBinding() {
++      failBinding = true;
++    },
++    loseAck() {
++      loseCreationAck = true;
++    },
++    delay(value: Promise<unknown>) {
++      delayCreation = value;
++    },
++    async save() {
++      await act(async () => saveButton().click());
++    },
++    async close() {
++      if (!closed) {
++        closed = true;
++        await act(async () => root.unmount());
++        node.remove();
++        useRemoteWorkspaceSessionStore.setState({ baseServices: previous });
++      }
++    },
++  };
++}
++(window as any).__decisionSourceSettingsTests = (async () => {
++  for (const locale of ["zh-CN", "en-US"])
++    for (const theme of ["theme-zai-light", "theme-zai-dark"]) {
++      await test(`${locale}/${theme}: dedicated fields stay inside auxiliary settings and bind after the existing source writer`, async () => {
++        document.documentElement.className = theme;
++        const f = await fixture(locale);
++        const zh = locale === "zh-CN";
++        try {
++          await f.laya();
++          check(
++            !f.node.querySelector('[role="tablist"]'),
++            "An unrelated chat wire format appeared in a System One form",
++          );
++          check(
++            f.node.textContent?.includes(zh ? "API Key（可选）" : "API Key (optional)"),
++            "Local key became mandatory",
++          );
++          check(!f.saveButton().disabled, "Keyless local source cannot be saved");
++          await f.enter(zh ? "服务地址" : "Service address", "https://classifier.example/v1");
++          check(f.saveButton().disabled, "Remote keyless source was admitted");
++          await f.enter(zh ? "服务地址" : "Service address", "http://127.0.0.1:8000/v1");
++          await f.save();
++          check(
++            f.events.filter((entry) => entry.kind === "create").length === 1,
++            "Creation duplicated",
++          );
++          check(
++            f.view().decisionModelSettings.selection?.providerId === "local-source" &&
++              f.view().decisionModelSettings.selection.modelId === "auto",
++            "Saved source was not bound: " + JSON.stringify(f.view().decisionModelSettings),
++          );
++          check(!f.view().decisionModelSettings.enabled, "Saving configuration enabled inference");
++          check(
++            !f.node.querySelector<HTMLButtonElement>(
++              `[aria-label="${zh ? "决策来源" : "Decision source"}"]`,
++            )?.disabled,
++            "Source controls stayed locked after binding/remount",
++          );
++          check(
++            f.view().decisionModelSettings.automaticTiers.standard.modelId === "main",
++            "Source setup replaced automatic tiers",
++          );
++          check(
++            document.documentElement.scrollWidth <= innerWidth,
++            "Narrow source configuration escaped the window",
++          );
++        } finally {
++          await f.close();
++        }
++      });
++    }
++  await test("source form retains two columns beside a scrollbar at 500px and stacks at 320px", async () => {
++    const f = await fixture();
++    try {
++      await f.laya();
++      const source = f.node.querySelector("[data-decision-source-editor]")!;
++      const grid = source.querySelector<HTMLElement>(".grid")!;
++      check(
++        getComputedStyle(grid).gridTemplateColumns.trim().split(" ").length === 1,
++        "Narrow controls do not stack",
++      );
++      f.node.style.width = "500px";
++      await frame();
++      check(
++        getComputedStyle(grid).gridTemplateColumns.trim().split(" ").length === 2,
++        "Scrollbar-width form unnecessarily doubled its rows",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("TypeSafe setup begins with the published pin and retains its historical alias", async () => {
++    const f = await fixture();
++    try {
++      await f.choose("Set up TypeSafe Jev");
++      check(
++        f.node.querySelector<HTMLInputElement>('input[aria-label="Decision model"]')?.value ===
++          "jev-1.13.0",
++        "New source followed a moving alias",
++      );
++      const template = templates.find((entry) => entry.templateId === "fleet-typesafe-system-one")!;
++      check(
++        template.config.builtinModelIds?.includes("jev-latest"),
++        "Historical alias membership was removed",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("custom source stays editable in auxiliary settings after binding without a template identity", async () => {
++    const f = await fixture();
++    try {
++      await f.choose("Set up Custom decision service");
++      await f.enter("Service address", "http://127.0.0.1:8000/v1");
++      await f.enter("Decision model", "my-classifier");
++      await f.save();
++      check(
++        f.providers[0]?.templateId === undefined,
++        "Custom source invented a persisted template",
++      );
++      check(
++        f.view().decisionModelSettings.selection?.modelId === "my-classifier",
++        "Custom model was not bound after membership save",
++      );
++      check(
++        f.node.querySelector<HTMLInputElement>('input[aria-label="Service address"]')?.value ===
++          "http://127.0.0.1:8000/v1",
++        "Saved custom source lost its inline configuration",
++      );
++      check(
++        f.events.filter((entry) => entry.kind === "create").length === 1 &&
++          f.events.filter((entry) => entry.kind === "add-model").length === 1,
++        "Custom source duplicated creation or model registration",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("failed preference binding retries the committed source without another creation", async () => {
++    const f = await fixture();
++    try {
++      await f.laya();
++      f.failBinding();
++      await f.save();
++      check(
++        f.providers.length === 1 && f.node.querySelector('[role="alert"]'),
++        "Committed source or failure diagnosis was lost",
++      );
++      await f.save();
++      check(
++        f.events.filter((entry) => entry.kind === "create").length === 1,
++        "Retry created a replacement",
++      );
++      check(
++        f.view().decisionModelSettings.selection?.providerId === "local-source",
++        "Retry did not bind retained source",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("unknown creation acknowledgement fences replay and the saved source can be selected explicitly", async () => {
++    const f = await fixture();
++    try {
++      await f.laya();
++      f.loseAck();
++      await f.save();
++      check(
++        f.saveButton().disabled && f.providers.length === 1,
++        "Unknown creation was left replayable",
++      );
++      await f.choose("Saved local source");
++      check(
++        f.events.filter((entry) => entry.kind === "create").length === 1,
++        "Selecting the saved source created another",
++      );
++      check(
++        f.view().decisionModelSettings.selection?.providerId === "local-source",
++        "Saved source is unreachable after acknowledgement failure",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("leaving the page during creation cannot bind a delayed source into a newer settings view", async () => {
++    const f = await fixture();
++    let complete!: () => void;
++    const delay = new Promise<void>((resolve) => {
++      complete = resolve;
++    });
++    try {
++      await f.laya();
++      f.delay(delay);
++      const before = f.events.filter((entry) => entry.kind === "preference").length;
++      await f.save();
++      await f.close();
++      await act(async () => complete());
++      check(
++        f.events.filter((entry) => entry.kind === "preference").length === before,
++        "Delayed source changed preferences after unmount",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  return results;
++})();
+diff --git a/packages/ui/test/modelPurposeDefaults.browser.test.tsx b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+index 8782b45..f494087 100644
+--- a/packages/ui/test/modelPurposeDefaults.browser.test.tsx
++++ b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+@@ -593,7 +593,7 @@ async function run() {
+       await f.close();
+     }
+   });
+-  await test("eligible decision choices reuse connections, remain opt-in and share the original revision", async () => {
++  await test("decision source reuses existing models, stays opt-in and keeps its original connection owner", async () => {
+     const f = await fixture();
+     const h = host({
+       ...catalog(),
+@@ -605,44 +605,26 @@ async function run() {
+     try {
+       await f.render(h);
+       const section = f.node.querySelector("[data-decision-model-settings]")!;
++      const chooseSource = async (name: string) => {
++        const trigger = section.querySelector<HTMLButtonElement>('[aria-label="Decision source"]')!;
++        await act(async () =>
++          trigger.dispatchEvent(
++            new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++          ),
++        );
++        await frame();
++        const row = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
++          (entry) => entry.textContent?.trim() === name,
++        );
++        check(row, "Source unavailable: " + name);
++        await act(async () => row!.click());
++      };
+       const toggle = section.querySelector<HTMLButtonElement>('[role="switch"]')!;
+       check(
+         toggle.disabled && toggle.getAttribute("aria-checked") === "false",
+-        "Classifier starts enabled or without a selected model",
+-      );
+-      const picker = section.querySelector<HTMLButtonElement>("button[data-model-current-value]")!;
+-      await act(async () =>
+-        picker.dispatchEvent(
+-          new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
+-        ),
+-      );
+-      await frame();
+-      check(
+-        option(encodeCustomModelValue("typed", "jev-latest")),
+-        "Classifier is absent from its purpose picker",
+-      );
+-      check(
+-        option(encodeCustomModelValue("connected", "alpha")),
+-        "An eligible existing chat model was lost from the decision picker",
+-      );
+-      const addConnection = [
+-        ...document.querySelectorAll<HTMLElement>('[role="menuitem"],button'),
+-      ].find((entry) => entry.textContent?.trim() === "Connection settings");
+-      check(addConnection, "Empty decision setting has no setup route");
+-      await act(async () => addConnection!.click());
+-      equal(
+-        f.managedTargets,
+-        [undefined],
+-        "Empty setting did not request the existing add-connection entry",
+-      );
+-      check(h.writes.length === 0, "Opening setup enabled inference");
+-      await act(async () =>
+-        picker.dispatchEvent(
+-          new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
+-        ),
++        "Decision starts enabled or without a source",
+       );
+-      await frame();
+-      await act(async () => option(encodeCustomModelValue("typed", "jev-latest"))!.click());
++      await chooseSource("TypeSafe");
+       equal(
+         h.writes[0]?.patch,
+         {
+@@ -652,39 +634,30 @@ async function run() {
+             selection: { providerId: "typed", modelId: "jev-latest" },
+           },
+         },
+-        "Selecting a classifier invoked or enabled inference",
++        "Source choice enabled inference or lost revision",
+       );
+       await h.commit(0);
+       await act(async () => toggle.click());
+-      equal(
+-        h.writes[1]?.patch,
+-        {
+-          expectedRevision: "personal-8",
+-          decisionModelSettings: {
+-            enabled: true,
+-            selection: { providerId: "typed", modelId: "jev-latest" },
+-          },
+-        },
+-        "Enablement lost its bound selection/revision",
+-      );
+       await h.commit(1);
+-      await act(async () =>
+-        picker.dispatchEvent(
+-          new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
+-        ),
+-      );
+-      await frame();
+-      const manage = [...document.querySelectorAll<HTMLElement>('[role="menuitem"],button')].find(
++      const manage = [...section.querySelectorAll<HTMLButtonElement>("button")].find(
+         (entry) => entry.textContent?.trim() === "Connection settings",
+       );
+-      check(manage, "Missing connection recovery action");
++      check(manage, "Saved source lost its original management actions");
+       await act(async () => manage!.click());
++      equal(f.managedTargets, ["typed"], "Source management changed owner");
++      await chooseSource("Existing chat");
+       equal(
+-        f.managedTargets,
+-        [undefined, "typed"],
+-        "Manage did not return to the selected existing connection",
++        h.writes[2]?.patch.decisionModelSettings,
++        { enabled: true, selection: { providerId: "connected", modelId: "alpha" } },
++        "Existing chat reuse was lost",
++      );
++      await h.commit(2);
++      await chooseSource("No decision model");
++      await h.commit(3);
++      check(
++        toggle.getAttribute("aria-checked") === "false" && toggle.disabled,
++        "Clearing source left inference enabled",
+       );
+-      check(h.writes.length === 2, "Managing a connection unexpectedly changed decision settings");
+     } finally {
+       await f.close();
+     }

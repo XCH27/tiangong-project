@@ -1,0 +1,58 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 321dd49..0bfe795 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -337,6 +337,10 @@ a changed or deleted target/selection conflicts, never rebinds or recreates it.
+ creation identity cannot produce a second connection. A failed post-commit projection reports
+ publicationPending with the committed identity; the UI reloads instead of replaying mutation.
+ Unsaved drafts and cancelled presentation callbacks are separate from admitted backend completion.
++Dedicated System One identifiers, including Laya's `auto`, never borrow chat catalog capacity or
++media flags from a same-name model. Their protocol/curated/provider/corrected facts retain their
++existing owners; an unknown checkpoint limit remains unknown. Compatible chat/gateway models keep
++their declared dual-operation support. Source save performs no inference probe.
+ 
+ Native account/catalog replacement fences the exact connection at the Personal transaction, not
+ an unrelated setting's file revision. The facade still fences builtin and selected account-source
+diff --git a/packages/provider/src/config/schema.ts b/packages/provider/src/config/schema.ts
+index 2ef1978..0f5486b 100644
+--- a/packages/provider/src/config/schema.ts
++++ b/packages/provider/src/config/schema.ts
+@@ -91,7 +91,9 @@ export function parseZCodeBuiltinModelConfigRules(input: unknown): ModelConfigRu
+     type: "model" as const,
+     modelMatch: ".*",
+     config: ModelConfig.empty(),
+-    knowledge: (identity: { providerId: string; templateId?: string | null; modelId: string; baseUrl?: string | null }) => {
++    knowledge: (identity: { providerId: string; templateId?: string | null; modelId: string; baseUrl?: string | null; apiType?: string | null }) => {
++      // System One 的 auto 等路由名与聊天目录可能重名，不能借用其窗口或媒体能力。
++      if (identity.apiType === "typesafe-system-one") return undefined;
+       const known = modelKnowledgeConfig({
+         providerId: identity.providerId,
+         templateId: identity.templateId ?? undefined,
+diff --git a/packages/services/test/decision-source-save.test.ts b/packages/services/test/decision-source-save.test.ts
+index 1aeb783..bb550ad 100644
+--- a/packages/services/test/decision-source-save.test.ts
++++ b/packages/services/test/decision-source-save.test.ts
+@@ -399,3 +399,23 @@ test("adding a dormant corrected model retains its exact correction when restori
+     await f.close();
+   }
+ });
++
++test("Laya auto keeps its classifier protocol and does not borrow a same-name chat model's catalog facts", async () => {
++  const f = await fixture();
++  try {
++    const result = await f.facade().saveDecisionSource(await f.input());
++    const model = result
++      .view!.providers.find((provider) => provider.providerId === result.providerId)!
++      .models.find((entry) => entry.modelId === "auto")!;
++    assert.equal(model.evidenceConfig?.properties?.contextWindow, undefined);
++    assert.notEqual(model.evidenceConfig?.properties?.inputFormat?.supportsImage, true);
++    assert.notEqual(model.evidenceConfig?.properties?.outputFormat?.supportsText, true);
++    assert.equal(model.effectiveConfig.properties?.inputFormat?.supportsImage, false);
++    assert.equal(model.effectiveConfig.properties?.outputFormat?.supportsText, false);
++    assert.equal(model.effectiveConfig.properties?.outputFormat?.supportsClassification, true);
++    assert.notEqual(model.effectiveConfig.properties?.outputFormat?.supportsImage, true);
++    assert.equal(model.executable, false);
++  } finally {
++    await f.close();
++  }
++});

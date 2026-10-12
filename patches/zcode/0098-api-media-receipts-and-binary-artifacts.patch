@@ -1,0 +1,3251 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/index.ts b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+index 61a297162727b2ec9256e40e65530f21b25c3959..e9547f141c6ac48fae5c440e1491a64aa47cb799 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+@@ -1,7 +1,17 @@
+ // Storage adapters - EventStore, ArtifactStore, MemoryStore implementations
+ 
+ import { createHash, randomUUID } from "node:crypto";
+-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
++import {
++  mkdir,
++  open,
++  readdir,
++  readFile,
++  rename,
++  stat,
++  unlink,
++  writeFile,
++  link,
++} from "node:fs/promises";
+ import { dirname, join } from "node:path";
+ 
+ import type {
+@@ -22,7 +32,10 @@ import type {
+ import { maybeThrowStorageFsFault } from "./fs-fault-injection.js";
+ 
+ export * from "./session-store.js";
+-export { createUsagePriceCatalogReader, type UsagePriceCatalogReader } from "./usage-price-catalog.js";
++export {
++  createUsagePriceCatalogReader,
++  type UsagePriceCatalogReader,
++} from "./usage-price-catalog.js";
+ 
+ // 内存 event store 实现已下沉到 @zcode/contracts，
+ // 这里保持 `@zcode/adapters/storage` 的导出路径不变，避免调用方改 import。
+@@ -40,6 +53,98 @@ export interface NodeToolArtifactStoreOptions {
+ }
+ 
+ export class NodeToolArtifactStore implements ToolArtifactStorePort {
++  async findToolResultArtifactOnce(request: {
++    sessionId: import("@zcode/contracts").SessionId;
++    idempotencyKey: string;
++  }) {
++    const id = `tool-result-media-${createHash("sha256")
++      .update(JSON.stringify([request.sessionId, request.idempotencyKey]))
++      .digest("hex")}`;
++    const path = join(this.rootDir, sanitizePathSegment(request.sessionId), `${id}.json`);
++    try {
++      const info = await stat(path);
++      return {
++        id,
++        uri: `zcode-artifact://${encodeURIComponent(request.sessionId)}/${id}`,
++        path,
++        bytes: info.size,
++        contentType: "application/json",
++        createdAt: info.birthtime,
++      };
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
++      throw error;
++    }
++  }
++  async writeToolResultArtifactOnce(
++    request: ToolArtifactWriteRequest & { idempotencyKey: string },
++  ) {
++    const id = `tool-result-media-${createHash("sha256")
++      .update(JSON.stringify([request.sessionId, request.idempotencyKey]))
++      .digest("hex")}`;
++    const sessionDir = join(this.rootDir, sanitizePathSegment(request.sessionId));
++    const path = join(sessionDir, `${id}.json`);
++    await mkdir(sessionDir, { recursive: true });
++    let created = true;
++    try {
++      const file = await open(path, "wx", 0o600);
++      try {
++        await file.writeFile(request.content, "utf8");
++        await file.sync();
++      } finally {
++        await file.close();
++      }
++      if (process.platform !== "win32") {
++        const directory = await open(sessionDir, "r");
++        try {
++          await directory.sync();
++        } finally {
++          await directory.close();
++        }
++      }
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
++      created = false;
++    }
++    const info = await stat(path);
++    return {
++      id,
++      uri: `zcode-artifact://${encodeURIComponent(request.sessionId)}/${id}`,
++      path,
++      bytes: info.size,
++      contentType: "application/json",
++      createdAt: info.birthtime,
++      created,
++    };
++  }
++
++  async listMediaJobArtifacts({ sessionId }: { sessionId: import("@zcode/contracts").SessionId }) {
++    const sessionDir = join(this.rootDir, sanitizePathSegment(sessionId));
++    let names: string[];
++    try {
++      names = await readdir(sessionDir);
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
++      throw error;
++    }
++    const matches = names.filter((name) => /^tool-result-media-[a-f0-9]{64}\.json$/.test(name));
++    const files = await Promise.all(
++      matches.map(async (name) => {
++        const path = join(sessionDir, name);
++        const info = await stat(path);
++        const id = name.slice(0, -5);
++        return {
++          id,
++          uri: `zcode-artifact://${encodeURIComponent(sessionId)}/${id}`,
++          path,
++          bytes: info.size,
++          contentType: "application/json",
++          createdAt: info.birthtime,
++        };
++      }),
++    );
++    return files.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 1000);
++  }
+   private readonly imageCacheRootDir: string;
+   private readonly pdfCacheRootDir: string;
+   private readonly rootDir: string;
+@@ -98,19 +203,57 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+         : new Error("Tool binary artifact write cancelled");
+     }
+ 
+-    const artifactId = `tool-result-${crypto.randomUUID()}`;
++    const artifactId = request.idempotencyKey
++      ? `tool-result-${createHash("sha256")
++          .update(JSON.stringify([request.sessionId, request.idempotencyKey]))
++          .digest("hex")}`
++      : `tool-result-${crypto.randomUUID()}`;
+     const extension = normalizeArtifactExtension(
+       request.extension ?? extensionForBinaryContentType(request.contentType),
+     );
+     const sessionDir = join(this.rootDir, sanitizePathSegment(request.sessionId));
+-    const fileName = `${sanitizePathSegment(String(request.toolCallId))}-${artifactId}${extension}`;
++    const fileName = request.idempotencyKey
++      ? `${artifactId}${extension}`
++      : `${sanitizePathSegment(String(request.toolCallId))}-${artifactId}${extension}`;
+     const path = join(sessionDir, fileName);
+     const content = Buffer.from(request.content);
+ 
+     maybeThrowStorageFsFault({ operation: "mkdir", path: sessionDir });
+     await mkdir(sessionDir, { recursive: true });
+     maybeThrowStorageFsFault({ operation: "writeFile", path });
+-    await writeFile(path, content);
++    if (request.idempotencyKey) {
++      // Publish only complete bytes. An interrupted download can restore the same URI;
++      // an existing output must match, and is never overwritten by a competing result.
++      const stagingDir = join(sessionDir, ".staging");
++      await mkdir(stagingDir, { recursive: true });
++      const stagingPath = join(stagingDir, randomUUID());
++      const file = await open(stagingPath, "wx", 0o600);
++      try {
++        try {
++          await file.writeFile(content);
++          await file.sync();
++        } finally {
++          await file.close();
++        }
++        try {
++          await link(stagingPath, path);
++        } catch (error) {
++          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
++          if (!content.equals(await readFile(path)))
++            throw new Error("The saved media result differs; the original artifact was preserved");
++        }
++        if (process.platform !== "win32") {
++          const dir = await open(sessionDir, "r");
++          try {
++            await dir.sync();
++          } finally {
++            await dir.close();
++          }
++        }
++      } finally {
++        await unlink(stagingPath).catch(() => undefined);
++      }
++    } else await writeFile(path, content);
+ 
+     return {
+       id: artifactId,
+@@ -230,12 +373,19 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
+       if (!requestedPath) return { status: "unsupported" };
+       if (await isRegularFile(requestedPath)) return { status: "ready", path: requestedPath };
+ 
+-      const artifact = await this.readToolResultArtifact({ uri: request.uri });
+-      const decoded = decodeMediaDataUrlArtifact(
+-        artifact.content,
+-        request.uri,
+-        mediaKindForContentType(request.mediaType)!,
+-      );
++      const artifact = await this.readToolResultBinaryArtifact({ uri: request.uri });
++      const actualKind = mediaKindForContentType(artifact.contentType);
++      if (actualKind && actualKind !== mediaKindForContentType(request.mediaType)) {
++        throw new Error(`Media attachment kind differs from the saved artifact: ${request.uri}`);
++      }
++      // New generated media is binary; retained attachment data-URL files remain readable.
++      const decoded = actualKind
++        ? { mediaType: artifact.contentType, bytes: Buffer.from(artifact.bytes) }
++        : decodeMediaDataUrlArtifact(
++            Buffer.from(artifact.bytes).toString("utf8"),
++            request.uri,
++            mediaKindForContentType(request.mediaType)!,
++          );
+       if (mediaKindForContentType(decoded.mediaType) === "pdf" && !isPdfBytes(decoded.bytes)) {
+         throw new Error(`Media attachment artifact is not a PDF: ${request.uri}`);
+       }
+@@ -326,6 +476,8 @@ function extensionForContentType(contentType: string): string {
+       return ".webp";
+     case "application/pdf":
+       return ".pdf";
++    case "video/mp4":
++      return ".mp4";
+     default:
+       return ".json";
+   }
+@@ -354,6 +506,7 @@ function contentTypeForFileName(fileName: string): string {
+   if (lower.endsWith(".gif")) return "image/gif";
+   if (lower.endsWith(".webp")) return "image/webp";
+   if (lower.endsWith(".pdf")) return "application/pdf";
++  if (lower.endsWith(".mp4")) return "video/mp4";
+   if (lower.endsWith(".bin")) return "application/octet-stream";
+   // dwf 产物按原扩展名落盘（`extension` 入参），推断表补齐它们。文本类给 text/*
+   // （utf8 读回正确），办公文件与 svg 之外的未知二进制一律 octet-stream——**绝不**再让一个
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index 9b0485928572428ca3a4ec5cb5f94d01be2e2bf5..2157d1f63ad5af513536c0846353c2b3cfa66ece 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -89,7 +89,7 @@ export function accountingSnapshot(input: ModelUsageRecord, catalog?: PriceCatal
+   }
+   const reportedMediaUsd = identity.reportedMediaUsd;
+   if (
+-    input.querySource === "media_image" &&
++    (input.querySource === "media_image" || input.querySource === "media_video") &&
+     typeof reportedMediaUsd === "number" &&
+     Number.isFinite(reportedMediaUsd) &&
+     reportedMediaUsd >= 0
+@@ -97,10 +97,13 @@ export function accountingSnapshot(input: ModelUsageRecord, catalog?: PriceCatal
+     return {
+       ...facts,
+       estimatedUsd: reportedMediaUsd,
+-      priceVersion: "provider-reported:xai-media:v1",
+-      sourceUrl: "https://docs.x.ai/developers/cost-tracking",
++      priceVersion: `provider-reported:${String(identity.billingProvider ?? "unknown")}-media:v1`,
++      ...(identity.billingProvider === "xai" ? { sourceUrl: "https://docs.x.ai/developers/cost-tracking" } : {}),
+     };
+   }
++  if (input.querySource === "media_image" || input.querySource === "media_video") {
++    return { ...facts, priceVersion: "unpriced", reason: "media-cost-unavailable" };
++  }
+   return {
+     ...facts,
+     ...priceFacts(facts, String(input.providerId), String(input.modelId), input.startedAt, catalog),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..64e42779d6078b26c4cacb75f4aa4136123de10c
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+@@ -0,0 +1,624 @@
++import { getEnabledApiKeys, isOfficialOpenaiImageModel } from "@zcode/provider";
++import type { HttpClientPort, MediaGenerationModel, MediaGenerationPort } from "@zcode/contracts";
++import { createHash } from "node:crypto";
++
++interface MediaRegistrySource {
++  getSnapshot(): {
++    sourceRevisions: { config: string };
++    resolution: {
++      resolvedProviders: readonly {
++        providerId: string;
++        providerName?: string | null;
++        enabled: boolean;
++        providerIssues: readonly unknown[];
++        config: {
++          api?: { baseUrl?: string | null } | null;
++          access?: {
++            type: string;
++            apiKey?: string | null;
++            additionalApiKeys?: readonly string[] | null;
++            apiKeyEnabledFlags?: readonly boolean[] | null;
++          } | null;
++        };
++        models: readonly {
++          modelId: string;
++          enabled: boolean;
++          issues: readonly unknown[];
++          config: {
++            properties?: {
++              outputFormat?: {
++                supportsText?: boolean | null;
++                supportsImage?: boolean | null;
++                supportsVideo?: boolean | null;
++              } | null;
++            } | null;
++          };
++        }[];
++      }[];
++    };
++  } | null;
++}
++
++const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
++const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
++const MAX_REFERENCE_BYTES = 24 * 1024 * 1024;
++const MAX_RETAINED_REFERENCE_BYTES = 64 * 1024 * 1024;
++
++export function createApiMediaGenerationPort(input: {
++  registry: MediaRegistrySource;
++  http: Pick<HttpClientPort, "request">;
++}): MediaGenerationPort {
++  const imageBindings = new Map<
++    string,
++    {
++      key: string;
++      vendor: "xai" | "openai";
++      origin: string;
++      images?: readonly { mediaType: string; bytes: Uint8Array }[];
++    }
++  >();
++  const videoBindings = new Map<
++    string,
++    { key: string; body: Record<string, unknown>; reference: string; referenceBytes: number }
++  >();
++  const credential = (providerId: string, reference?: string) => {
++    const provider = input.registry
++      .getSnapshot()
++      ?.resolution.resolvedProviders.find((provider) => provider.providerId === providerId);
++    const access = provider?.config.access;
++    if (
++      !provider?.enabled ||
++      provider.providerIssues.length ||
++      !isGlobalXaiApi(provider.config.api?.baseUrl) ||
++      access?.type !== "api-key"
++    )
++      throw new Error("The original video connection is unavailable");
++    const keys = getEnabledApiKeys(access);
++    const key = reference
++      ? keys.find(
++          (key) =>
++            createHash("sha256")
++              .update(JSON.stringify([providerId, key]))
++              .digest("hex") === reference,
++        )
++      : keys[0];
++    if (!key)
++      throw new Error("The original video credential is unavailable; no new request was made");
++    return {
++      key,
++      reference: createHash("sha256")
++        .update(JSON.stringify([providerId, key]))
++        .digest("hex"),
++    };
++  };
++  const jsonRequest = async (
++    path: string,
++    key: string,
++    body?: Record<string, unknown>,
++    signal?: AbortSignal,
++  ) => {
++    const response = await input.http.request(
++      {
++        url: `https://api.x.ai/v1/${path}`,
++        method: body ? "POST" : "GET",
++        headers: {
++          Authorization: `Bearer ${key}`,
++          Accept: "application/json",
++          ...(body ? { "Content-Type": "application/json" } : {}),
++        },
++        ...(body ? { body: Buffer.from(JSON.stringify(body)) } : {}),
++        maxResponseBytes: 1024 * 1024,
++        timeoutMs: 30_000,
++        redirect: "manual",
++      },
++      { signal: signal ?? AbortSignal.timeout(30_000) },
++    );
++    if (response.status < 200 || response.status >= 300)
++      throw new Error(`Media request failed (HTTP ${response.status})`);
++    return JSON.parse(Buffer.from(response.body).toString("utf8")) as {
++      id?: unknown;
++      aliases?: unknown;
++      output_modalities?: unknown;
++      request_id?: unknown;
++      status?: unknown;
++      model?: unknown;
++      video?: { url?: string; duration?: unknown };
++      usage?: { cost_in_usd_ticks?: unknown };
++    };
++  };
++  const available = () =>
++    input.registry.getSnapshot()?.resolution.resolvedProviders.flatMap((provider) => {
++      if (
++        !provider.enabled ||
++        provider.providerIssues.length ||
++        !mediaApiOrigin(provider.config.api?.baseUrl)
++      ) {
++        return [];
++      }
++      const access = provider.config.access;
++      if (access?.type !== "api-key" || getEnabledApiKeys(access).length === 0) return [];
++      return provider.models.flatMap((model): MediaGenerationModel[] => {
++        if (!model.enabled || model.issues.length) return [];
++        const output = model.config.properties?.outputFormat;
++        return [
++          ...(output?.supportsImage === true &&
++          (isGlobalXaiApi(provider.config.api?.baseUrl) ||
++            isOfficialOpenaiImageModel(provider.config.api?.baseUrl, model.modelId))
++            ? [
++                {
++                  providerId: provider.providerId,
++                  providerLabel: provider.providerName?.trim() || provider.providerId,
++                  modelId: model.modelId,
++                  kind: "image" as const,
++                  status: "requires-check" as const,
++                  billingProvider: mediaApiOrigin(provider.config.api?.baseUrl)!.vendor,
++                },
++              ]
++            : []),
++          ...(output?.supportsVideo === true && isGlobalXaiApi(provider.config.api?.baseUrl)
++            ? [
++                {
++                  providerId: provider.providerId,
++                  providerLabel: provider.providerName?.trim() || provider.providerId,
++                  modelId: model.modelId,
++                  kind: "video" as const,
++                  status: "requires-check" as const,
++                  billingProvider: "xai",
++                },
++              ]
++            : []),
++        ];
++      });
++    }) ?? [];
++  const imageBinding = (providerId: string, modelId: string, prompt: string) => {
++    const snapshot = input.registry.getSnapshot();
++    const provider = snapshot?.resolution.resolvedProviders.find(
++      (candidate) => candidate.providerId === providerId,
++    );
++    const model = provider?.models.find((candidate) => candidate.modelId === modelId);
++    const access = provider?.config.access;
++    const key = access?.type === "api-key" ? getEnabledApiKeys(access)[0] : undefined;
++    if (
++      !snapshot ||
++      !provider?.enabled ||
++      provider.providerIssues.length ||
++      !mediaApiOrigin(provider.config.api?.baseUrl) ||
++      !model?.enabled ||
++      model.issues.length ||
++      model.config.properties?.outputFormat?.supportsImage !== true ||
++      !key
++    )
++      return null;
++    return {
++      key,
++      ...mediaApiOrigin(provider!.config.api?.baseUrl)!,
++      binding: createHash("sha256")
++        .update(JSON.stringify([snapshot.sourceRevisions.config, providerId, modelId, prompt, key]))
++        .digest("hex"),
++    };
++  };
++  return {
++    listModels: available,
++    async prepareVideo(request) {
++      if (
++        request.image &&
++        (!["image/png", "image/jpeg", "image/webp"].includes(request.image.mediaType) ||
++          request.image.bytes.length === 0 ||
++          request.image.bytes.length > MAX_IMAGE_BYTES)
++      )
++        throw new Error("Unsupported video image reference");
++      if (
++        request.duration !== undefined &&
++        (!Number.isInteger(request.duration) || request.duration < 1 || request.duration > 15)
++      )
++        throw new Error("Video duration must be between 1 and 15 seconds");
++      if (
++        !available().some(
++          (model) =>
++            model.kind === "video" &&
++            model.providerId === request.providerId &&
++            model.modelId === request.modelId,
++        )
++      )
++        throw new Error("Video model is unavailable");
++      const selected = credential(request.providerId);
++      const detail = await jsonRequest(
++        `video-generation-models/${encodeURIComponent(request.modelId)}`,
++        selected.key,
++      );
++      if (
++        (detail.id !== request.modelId &&
++          !(Array.isArray(detail.aliases) && detail.aliases.includes(request.modelId))) ||
++        (Array.isArray(detail.output_modalities) && !detail.output_modalities.includes("video"))
++      )
++        throw new Error("Provider did not confirm this video model");
++      const body = {
++        model: request.modelId,
++        prompt: request.prompt,
++        duration: request.duration ?? 6,
++        ...(request.image
++          ? {
++              image: {
++                url: `data:${request.image.mediaType};base64,${Buffer.from(request.image.bytes).toString("base64")}`,
++              },
++            }
++          : {}),
++      };
++      const binding = createHash("sha256")
++        .update(
++          JSON.stringify([
++            input.registry.getSnapshot()?.sourceRevisions.config,
++            request.providerId,
++            body,
++            selected.key,
++          ]),
++        )
++        .digest("hex");
++      const referenceBytes = request.image
++        ? Math.ceil(request.image.bytes.byteLength / 3) * 4 + 40
++        : 0;
++      const retainedBytes = () =>
++        [...videoBindings.values()].reduce((sum, value) => sum + value.referenceBytes, 0);
++      while (
++        videoBindings.size >= 64 ||
++        retainedBytes() + referenceBytes > MAX_RETAINED_REFERENCE_BYTES
++      )
++        videoBindings.delete(videoBindings.keys().next().value!);
++      videoBindings.set(binding, { ...selected, body, referenceBytes });
++      return { binding, credentialReference: selected.reference };
++    },
++    async submitVideo(request) {
++      const prepared = videoBindings.get(request.binding);
++      if (
++        !prepared ||
++        !available().some(
++          (model) =>
++            model.kind === "video" &&
++            model.providerId === request.providerId &&
++            model.modelId === request.modelId,
++        )
++      )
++        throw new Error("Video binding is no longer available");
++      const current = credential(request.providerId, prepared.reference);
++      const expected = createHash("sha256")
++        .update(
++          JSON.stringify([
++            input.registry.getSnapshot()?.sourceRevisions.config,
++            request.providerId,
++            prepared.body,
++            current.key,
++          ]),
++        )
++        .digest("hex");
++      if (
++        expected !== request.binding ||
++        prepared.body.model !== request.modelId ||
++        prepared.body.prompt !== request.prompt ||
++        prepared.body.duration !== (request.duration ?? 6)
++      )
++        throw new Error("Video request changed after confirmation");
++      request.signal.throwIfAborted();
++      videoBindings.delete(request.binding);
++      const payload = await jsonRequest(
++        "videos/generations",
++        current.key,
++        prepared.body,
++        request.signal,
++      );
++      if (
++        typeof payload.request_id !== "string" ||
++        !payload.request_id ||
++        payload.request_id.length > 200
++      )
++        throw new Error("Video submission was not confirmed; do not submit again automatically");
++      return { requestId: payload.request_id };
++    },
++    async readVideo(request) {
++      const selected = credential(request.providerId, request.credentialReference);
++      const payload = await jsonRequest(
++        `videos/${encodeURIComponent(request.requestId)}`,
++        selected.key,
++        undefined,
++        request.signal,
++      );
++      if (payload.status === "pending" || payload.status === "processing")
++        return { status: "pending" };
++      if (payload.status === "failed" || payload.status === "expired")
++        return { status: payload.status };
++      if (payload.status !== "done")
++        throw new Error("Unknown video status; the original request was retained");
++      if (typeof payload.video?.url !== "string")
++        throw new Error("Video result has no download URL; the original request was retained");
++      const url = new URL(payload.video.url);
++      if (
++        url.protocol !== "https:" ||
++        url.hostname !== "vidgen.x.ai" ||
++        url.username ||
++        url.password ||
++        (url.port && url.port !== "443")
++      )
++        throw new Error("Untrusted video download URL");
++      const download = await input.http.request(
++        {
++          url: url.toString(),
++          method: "GET",
++          headers: {},
++          redirect: "manual",
++          timeoutMs: 60_000,
++          maxResponseBytes: 128 * 1024 * 1024,
++        },
++        { signal: request.signal },
++      );
++      const bytes = Buffer.from(download.body);
++      if (download.status !== 200 || bytes.length < 12 || bytes.toString("ascii", 4, 8) !== "ftyp")
++        throw new Error(
++          "Provider did not return a valid MP4; keep the original request for retrieval",
++        );
++      const ticks = payload.usage?.cost_in_usd_ticks;
++      return {
++        status: "done",
++        ...(payload.usage ? { providerUsage: payload.usage } : {}),
++        bytes,
++        mimeType: "video/mp4",
++        ...(typeof payload.model === "string" ? { reportedModelId: payload.model } : {}),
++        ...(typeof payload.video?.duration === "number"
++          ? { duration: payload.video.duration }
++          : {}),
++        ...(typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0
++          ? { reportedCostUsd: ticks / 10_000_000_000 }
++          : {}),
++      };
++    },
++    async prepareImage({ providerId, modelId, prompt, images }) {
++      const selected = imageBinding(providerId, modelId, prompt);
++      if (!selected) throw new Error("Image generation model or connection is unavailable");
++      const response = await input.http.request(
++        {
++          url: `${selected.origin}/v1/${selected.vendor === "xai" ? "image-generation-models" : "models"}/${encodeURIComponent(modelId)}`,
++          method: "GET",
++          headers: { Authorization: `Bearer ${selected.key}`, Accept: "application/json" },
++          maxResponseBytes: 1024 * 1024,
++          timeoutMs: 10_000,
++          redirect: "manual",
++        },
++        { signal: AbortSignal.timeout(10_000) },
++      );
++      if (response.status !== 200) {
++        throw new Error(
++          `Image generation model is unavailable for this API key (HTTP ${response.status})`,
++        );
++      }
++      const detail = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
++        string,
++        unknown
++      >;
++      const matchesId =
++        detail.id === modelId ||
++        (Array.isArray(detail.aliases) && detail.aliases.includes(modelId));
++      if (
++        !matchesId ||
++        (Array.isArray(detail.output_modalities) && !detail.output_modalities.includes("image"))
++      ) {
++        throw new Error("Provider did not confirm image generation for this model");
++      }
++      if (
++        images?.some(
++          (image) =>
++            !["image/png", "image/jpeg", "image/webp"].includes(image.mediaType) ||
++            image.bytes.length > MAX_IMAGE_BYTES,
++        )
++      )
++        throw new Error("Unsupported image reference");
++      if (images && images.length > 5)
++        throw new Error("This image route supports at most five references");
++      const referenceBytes = images?.reduce((sum, image) => sum + image.bytes.byteLength, 0) ?? 0;
++      if (referenceBytes > MAX_REFERENCE_BYTES)
++        throw new Error("Combined image references exceed 24 MiB");
++      const binding = createHash("sha256")
++        .update(
++          JSON.stringify([
++            selected.binding,
++            images?.map((image) => createHash("sha256").update(image.bytes).digest("hex")),
++          ]),
++        )
++        .digest("hex");
++      const retainedBytes = () =>
++        [...imageBindings.values()].reduce(
++          (sum, value) =>
++            sum + (value.images?.reduce((bytes, image) => bytes + image.bytes.byteLength, 0) ?? 0),
++          0,
++        );
++      while (
++        imageBindings.size >= 64 ||
++        retainedBytes() + referenceBytes > MAX_RETAINED_REFERENCE_BYTES
++      )
++        imageBindings.delete(imageBindings.keys().next().value!);
++      imageBindings.set(binding, {
++        ...selected,
++        images: images?.map((image) => ({
++          mediaType: image.mediaType,
++          bytes: new Uint8Array(image.bytes),
++        })),
++      });
++      return binding;
++    },
++    async generateImage(request) {
++      // 每次执行重新读取同一 Provider owner；设置页停用或删掉模型后不能沿用旧目录。
++      if (
++        !available().some(
++          (model) =>
++            model.kind === "image" &&
++            model.status === "requires-check" &&
++            model.providerId === request.providerId &&
++            model.modelId === request.modelId,
++        )
++      ) {
++        throw new Error("Image generation model or connection is unavailable");
++      }
++      const selected = imageBinding(request.providerId, request.modelId, request.prompt);
++      if (!selected) throw new Error("Image generation connection is unavailable");
++      const prepared = imageBindings.get(request.binding);
++      const expectedBinding =
++        prepared &&
++        createHash("sha256")
++          .update(
++            JSON.stringify([
++              selected.binding,
++              prepared.images?.map((image) =>
++                createHash("sha256").update(image.bytes).digest("hex"),
++              ),
++            ]),
++          )
++          .digest("hex");
++      if (!prepared || expectedBinding !== request.binding) {
++        throw new Error("Image generation connection changed after confirmation");
++      }
++      imageBindings.delete(request.binding);
++      let headers: Record<string, string> = {
++        Authorization: `Bearer ${selected.key}`,
++        "Content-Type": "application/json",
++        Accept: "application/json",
++      };
++      let body = Buffer.from(
++        JSON.stringify({
++          model: request.modelId,
++          prompt: request.prompt,
++          ...(selected.vendor === "xai"
++            ? { response_format: "b64_json" }
++            : { n: 1, output_format: "png" }),
++          ...(prepared.images?.length && selected.vendor === "xai"
++            ? {
++                ...(prepared.images.length === 1
++                  ? {
++                      image: {
++                        type: "image_url",
++                        url: `data:${prepared.images[0]!.mediaType};base64,${Buffer.from(prepared.images[0]!.bytes).toString("base64")}`,
++                      },
++                    }
++                  : {
++                      images: prepared.images.map((image) => ({
++                        type: "image_url",
++                        url: `data:${image.mediaType};base64,${Buffer.from(image.bytes).toString("base64")}`,
++                      })),
++                    }),
++              }
++            : {}),
++        }),
++      );
++      if (prepared.images?.length && selected.vendor === "openai") {
++        const form = new FormData();
++        form.set("model", request.modelId);
++        form.set("prompt", request.prompt);
++        form.set("n", "1");
++        for (const [index, image] of prepared.images.entries())
++          form.append(
++            "image[]",
++            new Blob([new Uint8Array(image.bytes)], { type: image.mediaType }),
++            `reference-${index + 1}.${image.mediaType === "image/jpeg" ? "jpg" : image.mediaType === "image/webp" ? "webp" : "png"}`,
++          );
++        const encoded = new Request(`${selected.origin}/v1/images/edits`, {
++          method: "POST",
++          body: form,
++        });
++        headers = { ...headers, "Content-Type": encoded.headers.get("content-type")! };
++        body = Buffer.from(await encoded.arrayBuffer());
++      }
++      const response = await input.http.request(
++        {
++          url: `${selected.origin}/v1/images/${prepared.images?.length ? "edits" : "generations"}`,
++          method: "POST",
++          headers,
++          body,
++          maxResponseBytes: MAX_RESPONSE_BYTES,
++          timeoutMs: 120_000,
++          redirect: "manual",
++        },
++        { signal: request.signal },
++      );
++      if (response.status !== 200) {
++        throw new Error(`Image generation request failed (HTTP ${response.status})`);
++      }
++      const payload = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
++        string,
++        unknown
++      >;
++      const image = Array.isArray(payload.data)
++        ? (payload.data[0] as Record<string, unknown> | undefined)
++        : undefined;
++      const encoded = typeof image?.b64_json === "string" ? image.b64_json : "";
++      if (
++        !encoded ||
++        encoded.length > MAX_IMAGE_BYTES * 2 ||
++        !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)
++      ) {
++        throw new Error("Image generation returned no valid base64 image");
++      }
++      const bytes = Buffer.from(encoded, "base64");
++      if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
++        throw new Error("Image generation returned an invalid image size");
++      }
++      const mimeType = sniffImageMime(bytes);
++      if (!mimeType) throw new Error("Image generation returned an unsupported image format");
++      const ticks = (payload.usage as Record<string, unknown> | undefined)?.cost_in_usd_ticks;
++      return {
++        bytes,
++        mimeType,
++        billingProvider: selected.vendor,
++        authKind: "api-key",
++        ...(payload.usage &&
++        typeof payload.usage === "object" &&
++        !Array.isArray(payload.usage) &&
++        JSON.stringify(payload.usage).length < 16000
++          ? { providerUsage: payload.usage as Record<string, unknown> }
++          : {}),
++        ...(typeof payload.model === "string" ? { reportedModelId: payload.model } : {}),
++        ...(typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0
++          ? { reportedCostUsd: ticks / 10_000_000_000 }
++          : {}),
++      };
++    },
++  };
++}
++
++function mediaApiOrigin(
++  value: string | null | undefined,
++): { origin: string; vendor: "xai" | "openai" } | undefined {
++  if (!value) return;
++  try {
++    const url = new URL(value);
++    if (
++      url.pathname.replace(/\/+$/, "") !== "/v1" ||
++      url.username ||
++      url.password ||
++      url.search ||
++      url.hash
++    )
++      return;
++    if (url.origin === "https://api.x.ai") return { origin: url.origin, vendor: "xai" };
++    if (url.origin === "https://api.openai.com") return { origin: url.origin, vendor: "openai" };
++  } catch {
++    return;
++  }
++}
++
++function isGlobalXaiApi(value: string | null | undefined): boolean {
++  if (!value) return false;
++  try {
++    const url = new URL(value);
++    return mediaApiOrigin(value)?.vendor === "xai";
++  } catch {
++    return false;
++  }
++}
++
++function sniffImageMime(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
++  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
++  if (Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
++    return "image/png";
++  if (
++    Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "RIFF" &&
++    Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WEBP"
++  )
++    return "image/webp";
++  return null;
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index 404a6a2701993ab3bb2dd5e93edf9f1d837e5af2..3c973e70ecb1aaf31a974e4c29d5106f279a4908 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -83,7 +83,7 @@ import {
+ import { getWorkflowConcurrencyGovernor } from "./workflow-concurrency-governor.js";
+ import { createDynamicWorkflowSnippetService } from "./dynamic-workflow-snippet-service.js";
+ import { createModelCatalogPort } from "./model-catalog-port.js";
+-import { createXaiMediaGenerationPort } from "./xai-media-generation-port.js";
++import { createApiMediaGenerationPort } from "./api-media-generation-port.js";
+ import { createDynamicWorkflowRunProgressSink } from "./dynamic-workflow-run-progress-sink.js";
+ import { createScriptWorkflowAgentRuntime } from "./script-workflow-child-runtime.js";
+ import { workflowActorModelPolicy } from "./workflow-actor-model.js";
+@@ -738,7 +738,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       currentSelection: () => getRuntime().getSessionModelSelection(),
+     });
+     const mediaGenerationPort = options.providerRegistry.getSnapshot
+-      ? createXaiMediaGenerationPort({
++      ? createApiMediaGenerationPort({
+           registry: { getSnapshot: () => options.providerRegistry.getSnapshot?.() ?? null },
+           http: httpClientPort,
+         })
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts
+deleted file mode 100644
+index cde460977b4a3c514a2166025822b7e2c89249ca..0000000000000000000000000000000000000000
+--- a/apps/zcode-cli/packages/bootstrap/src/app/xai-media-generation-port.ts
++++ /dev/null
+@@ -1,248 +0,0 @@
+-import { getEnabledApiKeys } from "@zcode/provider";
+-import type { HttpClientPort, MediaGenerationModel, MediaGenerationPort } from "@zcode/contracts";
+-import { createHash } from "node:crypto";
+-
+-interface MediaRegistrySource {
+-  getSnapshot(): {
+-    sourceRevisions: { config: string };
+-    resolution: {
+-      resolvedProviders: readonly {
+-        providerId: string;
+-        providerName?: string | null;
+-        enabled: boolean;
+-        providerIssues: readonly unknown[];
+-        config: {
+-          api?: { baseUrl?: string | null } | null;
+-          access?: {
+-            type: string;
+-            apiKey?: string | null;
+-            additionalApiKeys?: readonly string[] | null;
+-            apiKeyEnabledFlags?: readonly boolean[] | null;
+-          } | null;
+-        };
+-        models: readonly {
+-          modelId: string;
+-          enabled: boolean;
+-          issues: readonly unknown[];
+-          config: {
+-            properties?: {
+-              outputFormat?: {
+-                supportsText?: boolean | null;
+-                supportsImage?: boolean | null;
+-                supportsVideo?: boolean | null;
+-              } | null;
+-            } | null;
+-          };
+-        }[];
+-      }[];
+-    };
+-  } | null;
+-}
+-
+-const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
+-const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+-
+-export function createXaiMediaGenerationPort(input: {
+-  registry: MediaRegistrySource;
+-  http: Pick<HttpClientPort, "request">;
+-}): MediaGenerationPort {
+-  const available = () =>
+-    input.registry.getSnapshot()?.resolution.resolvedProviders.flatMap((provider) => {
+-      if (
+-        !provider.enabled ||
+-        provider.providerIssues.length ||
+-        !isGlobalXaiApi(provider.config.api?.baseUrl)
+-      ) {
+-        return [];
+-      }
+-      const access = provider.config.access;
+-      if (access?.type !== "api-key" || getEnabledApiKeys(access).length === 0) return [];
+-      return provider.models.flatMap((model): MediaGenerationModel[] => {
+-        if (!model.enabled || model.issues.length) return [];
+-        const output = model.config.properties?.outputFormat;
+-        return [
+-          ...(output?.supportsImage === true
+-            ? [
+-                {
+-                  providerId: provider.providerId,
+-                  providerLabel: provider.providerName?.trim() || provider.providerId,
+-                  modelId: model.modelId,
+-                  kind: "image" as const,
+-                  status: "requires-check" as const,
+-                },
+-              ]
+-            : []),
+-          ...(output?.supportsVideo === true
+-            ? [
+-                {
+-                  providerId: provider.providerId,
+-                  providerLabel: provider.providerName?.trim() || provider.providerId,
+-                  modelId: model.modelId,
+-                  kind: "video" as const,
+-                  status: "catalog-only" as const,
+-                },
+-              ]
+-            : []),
+-        ];
+-      });
+-    }) ?? [];
+-  const imageBinding = (providerId: string, modelId: string, prompt: string) => {
+-    const snapshot = input.registry.getSnapshot();
+-    const provider = snapshot?.resolution.resolvedProviders.find(
+-      (candidate) => candidate.providerId === providerId,
+-    );
+-    const model = provider?.models.find((candidate) => candidate.modelId === modelId);
+-    const access = provider?.config.access;
+-    const key = access?.type === "api-key" ? getEnabledApiKeys(access)[0] : undefined;
+-    if (
+-      !snapshot ||
+-      !provider?.enabled ||
+-      provider.providerIssues.length ||
+-      !isGlobalXaiApi(provider.config.api?.baseUrl) ||
+-      !model?.enabled ||
+-      model.issues.length ||
+-      model.config.properties?.outputFormat?.supportsImage !== true ||
+-      !key
+-    )
+-      return null;
+-    return {
+-      key,
+-      binding: createHash("sha256")
+-        .update(JSON.stringify([snapshot.sourceRevisions.config, providerId, modelId, prompt, key]))
+-        .digest("hex"),
+-    };
+-  };
+-  return {
+-    listModels: available,
+-    async prepareImage({ providerId, modelId, prompt }) {
+-      const selected = imageBinding(providerId, modelId, prompt);
+-      if (!selected) throw new Error("Image generation model or connection is unavailable");
+-      const response = await input.http.request(
+-        {
+-          url: `https://api.x.ai/v1/image-generation-models/${encodeURIComponent(modelId)}`,
+-          method: "GET",
+-          headers: { Authorization: `Bearer ${selected.key}`, Accept: "application/json" },
+-          maxResponseBytes: 1024 * 1024,
+-          timeoutMs: 10_000,
+-          redirect: "manual",
+-        },
+-        { signal: AbortSignal.timeout(10_000) },
+-      );
+-      if (response.status !== 200) {
+-        throw new Error(
+-          `Image generation model is unavailable for this API key (HTTP ${response.status})`,
+-        );
+-      }
+-      const detail = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
+-        string,
+-        unknown
+-      >;
+-      const matchesId =
+-        detail.id === modelId ||
+-        (Array.isArray(detail.aliases) && detail.aliases.includes(modelId));
+-      if (
+-        !matchesId ||
+-        (Array.isArray(detail.output_modalities) && !detail.output_modalities.includes("image"))
+-      ) {
+-        throw new Error("Provider did not confirm image generation for this model");
+-      }
+-      return selected.binding;
+-    },
+-    async generateImage(request) {
+-      // 每次执行重新读取同一 Provider owner；设置页停用或删掉模型后不能沿用旧目录。
+-      if (
+-        !available().some(
+-          (model) =>
+-            model.kind === "image" &&
+-            model.status === "requires-check" &&
+-            model.providerId === request.providerId &&
+-            model.modelId === request.modelId,
+-        )
+-      ) {
+-        throw new Error("Image generation model or connection is unavailable");
+-      }
+-      const selected = imageBinding(request.providerId, request.modelId, request.prompt);
+-      if (!selected) throw new Error("Image generation connection is unavailable");
+-      if (selected.binding !== request.binding) {
+-        throw new Error("Image generation connection changed after confirmation");
+-      }
+-      const response = await input.http.request(
+-        {
+-          url: "https://api.x.ai/v1/images/generations",
+-          method: "POST",
+-          headers: {
+-            Authorization: `Bearer ${selected.key}`,
+-            "Content-Type": "application/json",
+-            Accept: "application/json",
+-          },
+-          body: Buffer.from(
+-            JSON.stringify({
+-              model: request.modelId,
+-              prompt: request.prompt,
+-              response_format: "b64_json",
+-            }),
+-          ),
+-          maxResponseBytes: MAX_RESPONSE_BYTES,
+-          timeoutMs: 120_000,
+-          redirect: "manual",
+-        },
+-        { signal: request.signal },
+-      );
+-      if (response.status !== 200) {
+-        throw new Error(`Image generation request failed (HTTP ${response.status})`);
+-      }
+-      const payload = JSON.parse(Buffer.from(response.body).toString("utf8")) as Record<
+-        string,
+-        unknown
+-      >;
+-      const image = Array.isArray(payload.data)
+-        ? (payload.data[0] as Record<string, unknown> | undefined)
+-        : undefined;
+-      const encoded = typeof image?.b64_json === "string" ? image.b64_json : "";
+-      if (
+-        !encoded ||
+-        encoded.length > MAX_IMAGE_BYTES * 2 ||
+-        !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)
+-      ) {
+-        throw new Error("Image generation returned no valid base64 image");
+-      }
+-      const bytes = Buffer.from(encoded, "base64");
+-      if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
+-        throw new Error("Image generation returned an invalid image size");
+-      }
+-      const mimeType = sniffImageMime(bytes);
+-      if (!mimeType) throw new Error("Image generation returned an unsupported image format");
+-      const ticks = (payload.usage as Record<string, unknown> | undefined)?.cost_in_usd_ticks;
+-      return {
+-        bytes,
+-        mimeType,
+-        reportedModelId: typeof payload.model === "string" ? payload.model : request.modelId,
+-        ...(typeof ticks === "number" && Number.isFinite(ticks) && ticks >= 0
+-          ? { reportedCostUsd: ticks / 10_000_000_000 }
+-          : {}),
+-      };
+-    },
+-  };
+-}
+-
+-function isGlobalXaiApi(value: string | null | undefined): boolean {
+-  if (!value) return false;
+-  try {
+-    const url = new URL(value);
+-    return url.origin === "https://api.x.ai" && url.pathname.replace(/\/+$/, "") === "/v1";
+-  } catch {
+-    return false;
+-  }
+-}
+-
+-function sniffImageMime(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
+-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+-  if (Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+-    return "image/png";
+-  if (
+-    Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "RIFF" &&
+-    Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WEBP"
+-  )
+-    return "image/webp";
+-  return null;
+-}
+diff --git a/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts b/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5085619fe6652ea878246debf33e34804e44246f
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts
+@@ -0,0 +1,232 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createApiMediaGenerationPort } from "../src/app/api-media-generation-port.js";
++
++const image = Buffer.from(
++  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1cAAAAASUVORK5CYII=",
++  "base64",
++);
++const video = Buffer.from("000000186674797069736f6d0000020069736f6d69736f32", "hex");
++function fixture(vendor: "xai" | "openai" = "xai") {
++  const requests: any[] = [];
++  const modelId = vendor === "xai" ? "grok-imagine-image-2.0" : "gpt-image-2";
++  const provider = {
++    providerId: "connection",
++    enabled: true,
++    providerIssues: [],
++    config: {
++      api: { baseUrl: vendor === "xai" ? "https://api.x.ai/v1" : "https://api.openai.com/v1" },
++      access: {
++        type: "api-key",
++        apiKey: "original-synthetic-key",
++        additionalApiKeys: [] as string[],
++      },
++    },
++    models: [
++      {
++        modelId,
++        enabled: true,
++        issues: [],
++        config: { properties: { outputFormat: { supportsImage: true } } },
++      },
++      {
++        modelId: "grok-imagine-video-1.5",
++        enabled: true,
++        issues: [],
++        config: { properties: { outputFormat: { supportsVideo: true } } },
++      },
++    ],
++  };
++  let downloadUrl = "https://vidgen.x.ai/fixture/video.mp4";
++  let responseBytes = video;
++  const port = createApiMediaGenerationPort({
++    registry: {
++      getSnapshot: () => ({
++        sourceRevisions: { config: "revision" },
++        resolution: { resolvedProviders: [provider] },
++      }),
++    },
++    http: {
++      async request(input) {
++        requests.push(input);
++        let body: Uint8Array;
++        if (input.url.startsWith("https://vidgen.x.ai/")) body = responseBytes;
++        else if (input.url.endsWith("/videos/generations"))
++          body = Buffer.from(JSON.stringify({ request_id: "paid-once" }));
++        else if (input.url.endsWith("/videos/paid-once"))
++          body = Buffer.from(
++            JSON.stringify({
++              status: "done",
++              video: { url: downloadUrl, duration: 6 },
++              model: "grok-imagine-video-1.5",
++              usage: { cost_in_usd_ticks: 2e9 },
++            }),
++          );
++        else if (input.method === "GET")
++          body = Buffer.from(
++            JSON.stringify({
++              id: input.url.endsWith("grok-imagine-video-1.5") ? "grok-imagine-video-1.5" : modelId,
++            }),
++          );
++        else body = Buffer.from(JSON.stringify({ data: [{ b64_json: image.toString("base64") }] }));
++        return {
++          url: input.url,
++          status: 200,
++          statusText: "OK",
++          headers: {},
++          body,
++          bytes: body.length,
++          durationMs: 1,
++        };
++      },
++    },
++  });
++  return {
++    port,
++    provider,
++    requests,
++    modelId,
++    setDownloadUrl: (url: string) => {
++      downloadUrl = url;
++    },
++    setBytes: (bytes: Buffer) => {
++      responseBytes = bytes;
++    },
++  };
++}
++
++test("xAI edits freeze every reference and use JSON, OpenAI edits use multipart without legacy response_format", async () => {
++  for (const vendor of ["xai", "openai"] as const) {
++    const f = fixture(vendor);
++    const original = new Uint8Array(image);
++    const binding = await f.port.prepareImage({
++      providerId: "connection",
++      modelId: f.modelId,
++      prompt: "combine",
++      images: [
++        { mediaType: "image/png", bytes: original },
++        { mediaType: "image/png", bytes: image },
++      ],
++    });
++    original.fill(0); // Caller mutations after approval cannot replace the reference.
++    const result = await f.port.generateImage({
++      providerId: "connection",
++      modelId: f.modelId,
++      prompt: "combine",
++      binding,
++      signal: new AbortController().signal,
++    });
++    const paid = f.requests[1]!;
++    assert.equal(new URL(paid.url).pathname, "/v1/images/edits");
++    assert.equal(paid.headers.Authorization, "Bearer original-synthetic-key");
++    if (vendor === "xai") {
++      assert.equal(paid.headers["Content-Type"], "application/json");
++      const body = JSON.parse(Buffer.from(paid.body).toString());
++      assert.equal(body.images.length, 2);
++      assert.equal(body.images[0].url, `data:image/png;base64,${image.toString("base64")}`);
++    } else {
++      assert.match(paid.headers["Content-Type"], /^multipart\/form-data; boundary=/);
++      const encoded = Buffer.from(paid.body).toString("latin1");
++      assert.equal((encoded.match(/name="image\[\]"/g) ?? []).length, 2);
++      assert.equal(encoded.includes("response_format"), false);
++    }
++    assert.equal(result.reportedModelId, undefined, "the requested model is not a reported model");
++    assert.equal(result.billingProvider, vendor);
++    assert.deepEqual(Buffer.from(result.bytes), image);
++  }
++});
++
++test("video checks membership, submits once, retrieves with the original key and downloads without credentials", async () => {
++  const f = fixture();
++  const input = {
++    providerId: "connection",
++    modelId: "grok-imagine-video-1.5",
++    prompt: "garden",
++    duration: 6,
++  };
++  const prepared = await f.port.prepareVideo!(input);
++  const submitted = await f.port.submitVideo!({
++    ...input,
++    ...prepared,
++    signal: new AbortController().signal,
++  });
++  f.provider.config.access.additionalApiKeys = [f.provider.config.access.apiKey];
++  f.provider.config.access.apiKey = "new-default-key";
++  const result = await f.port.readVideo!({
++    ...input,
++    ...prepared,
++    requestId: submitted.requestId,
++    signal: new AbortController().signal,
++  });
++  assert.equal(result.status, "done");
++  assert.equal(f.requests[2]!.headers.Authorization, "Bearer original-synthetic-key");
++  assert.deepEqual(f.requests[3]!.headers, {});
++  assert.equal(f.requests[3]!.redirect, "manual");
++  assert.equal(f.requests.filter((r) => r.method === "POST").length, 1);
++  f.provider.config.access.additionalApiKeys = [];
++  await assert.rejects(
++    f.port.readVideo!({
++      ...input,
++      ...prepared,
++      requestId: submitted.requestId,
++      signal: new AbortController().signal,
++    }),
++    /original video credential/,
++  );
++  assert.equal(f.requests.length, 4);
++});
++
++test("video rejects foreign output hosts and invalid MP4 without sending bearer headers there", async () => {
++  for (const url of [
++    "https://evil.example/video.mp4",
++    "https://user:pass@vidgen.x.ai/video.mp4",
++    "http://vidgen.x.ai/video.mp4",
++  ]) {
++    const f = fixture();
++    const input = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "garden" };
++    const prepared = await f.port.prepareVideo!(input);
++    f.setDownloadUrl(url);
++    await assert.rejects(
++      f.port.readVideo!({
++        ...input,
++        ...prepared,
++        requestId: "paid-once",
++        signal: new AbortController().signal,
++      }),
++      /Untrusted/,
++    );
++    assert.equal(f.requests.length, 2);
++  }
++  const f = fixture();
++  const input = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "garden" };
++  const prepared = await f.port.prepareVideo!(input);
++  f.setBytes(Buffer.from("not a movie"));
++  await assert.rejects(
++    f.port.readVideo!({
++      ...input,
++      ...prepared,
++      requestId: "paid-once",
++      signal: new AbortController().signal,
++    }),
++    /valid MP4/,
++  );
++});
++
++test("subscription credentials and unsupported OpenAI names never inherit API media admission", () => {
++  const f = fixture("openai");
++  f.provider.models[0]!.modelId = "gpt-image-future";
++  assert.equal(f.port.listModels().length, 0);
++  f.provider.models[0]!.modelId = f.modelId;
++  f.provider.config.access.type = "subscription";
++  assert.equal(f.port.listModels().length, 0);
++});
++
++test("unapproved image/video bindings have a byte budget and evicted requests cannot spend", async () => {
++  const f = fixture(); const tooLarge = new Uint8Array(9 * 1024 * 1024);
++  await assert.rejects(f.port.prepareImage({ providerId: "connection", modelId: f.modelId, prompt: "too large", images: Array.from({ length: 3 }, () => ({ mediaType: "image/png", bytes: tooLarge })) }), /24 MiB/);
++  const input = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "old", image: { mediaType: "image/png", bytes: new Uint8Array(16 * 1024 * 1024) } };
++  const oldest = await f.port.prepareVideo!(input);
++  for (let i = 0; i < 4; i++) await f.port.prepareVideo!({ ...input, prompt: String(i) });
++  await assert.rejects(f.port.submitVideo!({ ...input, ...oldest, signal: new AbortController().signal }), /binding.*available/);
++  assert.equal(f.requests.some((request) => request.method === "POST"), false);
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+index f8a31bfc73fda55ee79de494e2f6b23b137d6553..cd14ea5a2de8b3a8585555f32744fd8ac1b2a788 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts
+@@ -1,6 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { createXaiMediaGenerationPort } from "../src/app/xai-media-generation-port.js";
++import { createApiMediaGenerationPort } from "../src/app/api-media-generation-port.js";
+ 
+ const imageBytes = Buffer.from("/9j/4AAQSkZJRg==", "base64");
+ 
+@@ -87,7 +87,7 @@ function fixture() {
+   return {
+     provider,
+     requests,
+-    port: createXaiMediaGenerationPort({ registry, http }),
++    port: createApiMediaGenerationPort({ registry, http }),
+     setImageDetailStatus(value: number) {
+       imageDetailStatus = value;
+     },
+@@ -100,7 +100,7 @@ test("media model list follows the saved connection and excludes chat-only model
+     port.listModels().map((item) => [item.modelId, item.kind, item.status]),
+     [
+       ["grok-image", "image", "requires-check"],
+-      ["grok-video", "video", "catalog-only"],
++      ["grok-video", "video", "requires-check"],
+     ],
+   );
+ });
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+index b9bc9883fa984daa12a72f290bb27d57806ceb09..20df7367889b37414e045478488759b3f8ab9d62 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+@@ -5,12 +5,18 @@ export interface MediaGenerationModel {
+   modelId: string;
+   kind: "image" | "video";
+   status: "requires-check" | "catalog-only";
++  billingProvider?: string;
+ }
+ 
+ export interface MediaGenerationPort {
+   listModels(): MediaGenerationModel[];
+   /** Opaque connection/model/key revision frozen before tool approval; never contains a credential. */
+-  prepareImage(input: { providerId: string; modelId: string; prompt: string }): Promise<string>;
++  prepareImage(input: {
++    providerId: string;
++    modelId: string;
++    prompt: string;
++    images?: readonly { mediaType: string; bytes: Uint8Array }[];
++  }): Promise<string>;
+   generateImage(input: {
+     providerId: string;
+     modelId: string;
+@@ -20,7 +26,45 @@ export interface MediaGenerationPort {
+   }): Promise<{
+     bytes: Uint8Array;
+     mimeType: "image/jpeg" | "image/png" | "image/webp";
+-    reportedModelId: string;
++    reportedModelId?: string;
+     reportedCostUsd?: number;
++    billingProvider?: string;
++    authKind?: "api-key" | "subscription";
++    accountId?: string;
++    providerUsage?: Record<string, unknown>;
+   }>;
++  prepareVideo?(input: {
++    providerId: string;
++    modelId: string;
++    prompt: string;
++    duration?: number;
++    image?: { mediaType: string; bytes: Uint8Array };
++  }): Promise<{ binding: string; credentialReference: string }>;
++  submitVideo?(input: {
++    providerId: string;
++    modelId: string;
++    prompt: string;
++    duration?: number;
++    binding: string;
++    signal: AbortSignal;
++  }): Promise<{ requestId: string }>;
++  readVideo?(input: {
++    providerId: string;
++    modelId: string;
++    requestId: string;
++    credentialReference: string;
++    signal: AbortSignal;
++  }): Promise<
++    | { status: "pending" }
++    | { status: "failed" | "expired" }
++    | {
++        status: "done";
++        bytes: Uint8Array;
++        mimeType: "video/mp4";
++        reportedModelId?: string;
++        reportedCostUsd?: number;
++        providerUsage?: Record<string, unknown>;
++        duration?: number;
++      }
++  >;
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
+index 95dd54d1bbc6114269592d1cca37deeb1b4b57c8..9ca43267b0621757f642d74188c4230a907d4f3d 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/tool-artifact-store.port.ts
+@@ -28,6 +28,8 @@ export interface ToolBinaryArtifactWriteRequest {
+   extension?: string;
+   retention?: ToolArtifactRetention;
+   trace?: TraceContext;
++  /** Stable producer receipt identity; repeated downloads restore the same native artifact. */
++  idempotencyKey?: string;
+ }
+ 
+ export interface ToolArtifactWriteResult {
+@@ -104,6 +106,16 @@ export type MediaAttachmentPathResult =
+   | { status: "unsupported" };
+ 
+ export interface ToolArtifactStorePort {
++  /** Atomic, immutable effect intent. An existing key never authorizes another paid submission. */
++  writeToolResultArtifactOnce?(
++    request: ToolArtifactWriteRequest & { idempotencyKey: string },
++  ): Promise<ToolArtifactWriteResult & { created: boolean }>;
++  /** Current Session's immutable media receipts, not a second Job database. */
++  listMediaJobArtifacts?(request: { sessionId: SessionId }): Promise<ToolArtifactWriteResult[]>;
++  findToolResultArtifactOnce?(request: {
++    sessionId: SessionId;
++    idempotencyKey: string;
++  }): Promise<ToolArtifactWriteResult | undefined>;
+   writeToolResultArtifact(
+     request: ToolArtifactWriteRequest,
+     options?: { signal?: AbortSignal },
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+index 26a8502f43ea51f9bf7f34b68e19eb29275f2520..701dac369840dc687a5b46af4b9ffade4d355ef2 100644
+--- a/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
++++ b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+@@ -3,10 +3,13 @@ import { toToolJsonSchema } from "./json-schema.js";
+ 
+ export const LIST_MEDIA_MODELS_TOOL_NAME = "ListMediaModels";
+ export const GENERATE_IMAGE_TOOL_NAME = "GenerateImage";
++export const GENERATE_VIDEO_TOOL_NAME = "GenerateVideo";
++export const RESUME_MEDIA_JOB_TOOL_NAME = "ResumeMediaJob";
+ 
+ export const ListMediaModelsInputSchema = z
+   .object({
+     kind: z.enum(["image", "video"]).optional(),
++    includeJobs: z.boolean().optional(),
+   })
+   .strict();
+ export const ListMediaModelsInputJsonSchema = toToolJsonSchema(ListMediaModelsInputSchema);
+@@ -21,9 +24,23 @@ export const ListMediaModelsOutputSchema = z
+           modelId: z.string(),
+           kind: z.enum(["image", "video"]),
+           status: z.enum(["requires-check", "catalog-only"]),
++          billingProvider: z.string().optional(),
+         })
+         .strict(),
+     ),
++    jobs: z
++      .array(
++        z
++          .object({
++            jobId: z.string(),
++            receiptUri: z.string(),
++            status: z.string(),
++            providerId: z.string(),
++            modelId: z.string(),
++          })
++          .strict(),
++      )
++      .optional(),
+   })
+   .strict();
+ export const ListMediaModelsOutputJsonSchema = toToolJsonSchema(ListMediaModelsOutputSchema);
+@@ -33,6 +50,7 @@ export const GenerateImageInputSchema = z
+     providerId: z.string().trim().min(1),
+     modelId: z.string().trim().min(1),
+     prompt: z.string().trim().min(1).max(32_000),
++    imageArtifactUris: z.array(z.string().startsWith("zcode-artifact://")).max(5).optional(),
+   })
+   .strict();
+ export const GenerateImageInputJsonSchema = toToolJsonSchema(GenerateImageInputSchema);
+@@ -45,10 +63,47 @@ export const GenerateImageOutputSchema = z
+     artifactUri: z.string().startsWith("zcode-artifact://"),
+     providerId: z.string(),
+     requestedModelId: z.string(),
+-    reportedModelId: z.string(),
++    reportedModelId: z.string().optional(),
+     mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+     reportedCostUsd: z.number().nonnegative().optional(),
+     usageRecorded: z.boolean(),
+   })
+   .strict();
+ export const GenerateImageOutputJsonSchema = toToolJsonSchema(GenerateImageOutputSchema);
++
++export const GenerateVideoInputSchema = z
++  .object({
++    providerId: z.string().trim().min(1),
++    modelId: z.string().trim().min(1),
++    prompt: z.string().trim().min(1).max(32000),
++    duration: z.number().int().min(1).max(15).optional(),
++    imageArtifactUri: z.string().startsWith("zcode-artifact://").optional(),
++  })
++  .strict();
++export const GenerateVideoExecutionInputSchema = GenerateVideoInputSchema.extend({
++  binding: z.string().min(1),
++  credentialReference: z.string().min(1),
++}).strict();
++export const ResumeMediaJobInputSchema = z
++  .object({
++    receiptUri: z.string().startsWith("zcode-artifact://"),
++    waitSeconds: z.number().int().min(0).max(600).optional(),
++  })
++  .strict();
++export const MediaJobOutputSchema = z
++  .object({
++    jobId: z.string(),
++    receiptUri: z.string().startsWith("zcode-artifact://"),
++    status: z.enum(["pending", "unknown", "failed", "expired", "completed"]),
++    providerId: z.string(),
++    requestedModelId: z.string(),
++    artifactUri: z.string().startsWith("zcode-artifact://").optional(),
++    mimeType: z.string().optional(),
++    reportedModelId: z.string().optional(),
++    reportedCostUsd: z.number().nonnegative().optional(),
++    usageRecorded: z.boolean().optional(),
++  })
++  .strict();
++export const GenerateVideoInputJsonSchema = toToolJsonSchema(GenerateVideoInputSchema);
++export const ResumeMediaJobInputJsonSchema = toToolJsonSchema(ResumeMediaJobInputSchema);
++export const MediaJobOutputJsonSchema = toToolJsonSchema(MediaJobOutputSchema);
+diff --git a/apps/zcode-cli/packages/core/src/agent/file-part-hydration.ts b/apps/zcode-cli/packages/core/src/agent/file-part-hydration.ts
+index c57aa0c9e04f02d387d01d9e8c0ad22a36975f2c..06fc061b052ed0198dfd5e8c6905ed2590bfe275 100644
+--- a/apps/zcode-cli/packages/core/src/agent/file-part-hydration.ts
++++ b/apps/zcode-cli/packages/core/src/agent/file-part-hydration.ts
+@@ -115,7 +115,15 @@ async function filePartDataUrl(
+   if (!artifactStore || !artifactUri) return undefined;
+   try {
+     const artifact = await artifactStore.readToolResultArtifact({ uri: artifactUri });
+-    return isUsableDataUrl(artifact.content) ? artifact.content : undefined;
++    if (isUsableDataUrl(artifact.content)) return artifact.content;
++    if (
++      /^(?:image\/(?:png|jpeg|webp|gif)|video\/mp4|application\/pdf)$/.test(artifact.contentType) &&
++      (part.mime === artifact.contentType ||
++        (part.mime === "image/*" && artifact.contentType.startsWith("image/")))
++    ) {
++      return `data:${artifact.contentType};base64,${artifact.content}`;
++    }
++    return undefined;
+   } catch {
+     return undefined;
+   }
+diff --git a/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts b/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
+index 9fb711a3cb82673ea58bccbd97f45ac2d94c216f..c4ef20d7bf70ec486f337423f39185eacd1f6c38 100644
+--- a/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
++++ b/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
+@@ -41,10 +41,7 @@ import {
+ import { compactActiveSessionMessages, isActiveCompactionBoundaryPart } from "./compact-session.js";
+ import { filePartToContentBlock, projectPersistedToolMediaContent } from "./file-part-hydration.js";
+ import { selectToolPartsForHistory } from "./tool-part-order.js";
+-import {
+-  hydratedVisionBridgeImageText,
+-  readVisionBridgeEvidence,
+-} from "./vision-bridge.js";
++import { hydratedVisionBridgeImageText, readVisionBridgeEvidence } from "./vision-bridge.js";
+ 
+ const INTERRUPTED_TOOL_RESULT = "[Tool execution was interrupted before resume]";
+ 
+@@ -107,13 +104,17 @@ export async function hydrateMessageHistoryFromSession(input: {
+       const bridgeSelection = visionBridgeSelectionFromMetadata(messageMetadata);
+       const bridgeRequested =
+         bridgeSelection !== null || messageMetadata?.visionBridge !== undefined;
+-      const entries = await userEntriesFromParts(parts, input.artifactStore, bridgeRequested
+-        ? {
+-            evidence: readVisionBridgeEvidence(messageMetadata?.visionBridge),
+-            providerId: bridgeSelection?.providerId ?? "unknown",
+-            modelId: bridgeSelection?.modelId ?? "unknown",
+-          }
+-        : null);
++      const entries = await userEntriesFromParts(
++        parts,
++        input.artifactStore,
++        bridgeRequested
++          ? {
++              evidence: readVisionBridgeEvidence(messageMetadata?.visionBridge),
++              providerId: bridgeSelection?.providerId ?? "unknown",
++              modelId: bridgeSelection?.modelId ?? "unknown",
++            }
++          : null,
++      );
+       if (entries.length === 0) continue;
+       const presentation = runtimeInputMetadata(
+         (message.info.metadata as Record<string, unknown> | undefined)?.inputPresentation,
+@@ -165,22 +166,29 @@ export async function hydrateMessageHistoryFromSession(input: {
+       if (part.state.status === "completed") {
+         // live tool result 使用结构化媒体，但旧恢复只读取 output 摘要，
+         // 导致模型切换或冷恢复后丢失 Read/MCP 产生的真实媒体。
+-        const attachmentBlocks = part.state.attachments
+-          ? await Promise.all(
+-              part.state.attachments.map((attachment) =>
+-                filePartToContentBlock(attachment, input.artifactStore),
+-              ),
+-            )
+-          : [];
++        // Reference-only results need no artifact reads or binary allocation on reopen.
++        const textProjection = projectPersistedToolMediaContent(
++          part.state.metadata?.modelContentLayout,
++          [],
++        );
++        const attachmentBlocks =
++          !textProjection && part.state.attachments
++            ? await Promise.all(
++                part.state.attachments.map((attachment) =>
++                  filePartToContentBlock(attachment, input.artifactStore),
++                ),
++              )
++            : [];
+         // 旧 completed part 也可能有 attachments；只有完整有效的 layout 才能证明
+         // 它们属于新的 provider-visible 媒体内容，缺失或损坏时必须保留 legacy output。
+         const projectedMediaContent =
+-          attachmentBlocks.length > 0
++          textProjection ??
++          (attachmentBlocks.length > 0
+             ? projectPersistedToolMediaContent(
+                 part.state.metadata?.modelContentLayout,
+                 attachmentBlocks,
+               )
+-            : undefined;
++            : undefined);
+         const content = projectedMediaContent ?? part.state.output;
+         input.history.addToolResult(part.callID, providerToolName, content, true);
+         continue;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/attachment-artifacts.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/attachment-artifacts.ts
+index e76530a8af0a717b5bc15f695e2adf798de1d800..444930f94863bb87a309dbe74c8f39b5ebef236f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/attachment-artifacts.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/attachment-artifacts.ts
+@@ -95,9 +95,15 @@ export async function readInlineAttachmentContent(
+       trace: options.traceContext,
+       uri: attachment.content,
+     });
+-    return artifact.content.startsWith("data:")
+-      ? { artifactUri: attachment.content, dataUrl: artifact.content }
+-      : undefined;
++    if (artifact.content.startsWith("data:"))
++      return { artifactUri: attachment.content, dataUrl: artifact.content };
++    if (/^(?:image\/(?:png|jpeg|webp)|video\/mp4|application\/pdf)$/.test(artifact.contentType)) {
++      return {
++        artifactUri: attachment.content,
++        dataUrl: `data:${artifact.contentType};base64,${artifact.content}`,
++      };
++    }
++    return undefined;
+   } catch {
+     return undefined;
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/tool-result-media-persistence.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/tool-result-media-persistence.ts
+index e4fc856f0fcde5a7c164151bb9d027b0397d3585..36cd47131ca4c3df6cf881c4dc355285113f6db2 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/tool-result-media-persistence.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/tool-result-media-persistence.ts
+@@ -13,7 +13,7 @@ import type {
+ 
+ type DataBackedToolMediaBlock =
+   | Extract<ModelMessageContentBlock, { type: "image" | "video" }>
+-  | (Extract<ModelMessageContentBlock, { type: "file" }> & { dataUrl: string });
++  | Extract<ModelMessageContentBlock, { type: "file" }>;
+ 
+ type PersistedToolMediaLayoutEntry =
+   | { type: "attachment"; attachmentIndex: number }
+@@ -49,12 +49,18 @@ export async function persistToolResultMediaAttachments(input: {
+     const existingArtifactUri = block.source?.uri?.startsWith("zcode-artifact://")
+       ? block.source.uri
+       : undefined;
++    if (
++      existingArtifactUri &&
++      !existingArtifactUri.startsWith(`zcode-artifact://${encodeURIComponent(input.sessionId)}/`)
++    ) {
++      throw new Error("Tool media artifact belongs to another conversation");
++    }
+     const artifactUri =
+       existingArtifactUri ??
+       (
+         await input.artifactStore.writeToolResultArtifact(
+           {
+-            content: block.dataUrl,
++            content: block.dataUrl!,
+             contentType: "text/plain",
+             retention: "session",
+             sessionId: input.sessionId,
+@@ -115,6 +121,18 @@ function persistedToolMediaProjection(content: ModelMessageContent):
+       mediaBlocks.push(block as DataBackedToolMediaBlock);
+       continue;
+     }
++    // User-visible video/file output remains a lightweight reference in model history.
++    // Reopening the conversation must not inject a whole generated movie into context.
++    if (
++      block.type === "file" &&
++      block.source?.uri?.startsWith("zcode-artifact://") &&
++      block.uri === block.source.uri &&
++      typeof block.text === "string"
++    ) {
++      mediaBlocks.push(block);
++      modelContentLayout.push({ type: "text", text: block.text });
++      continue;
++    }
+     return undefined;
+   }
+   return mediaBlocks.length > 0 ? { mediaBlocks, modelContentLayout } : undefined;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+index 4cc7ffc398b7318a8a1f12a43409cae69902557f..a12cc574c1c9048dbb2db6e47fa8d82bb782e125 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/config.ts
+@@ -143,6 +143,8 @@ export function getTools(this: AgentRuntimeInternal, model?: Model): ModelToolCo
+     .filter((tool) => tool.name !== "WebSearch" || shouldExposeWebSearch.call(this, model))
+     .filter((tool) => tool.name !== "GenerateImage" || this.mediaGenerationPort?.listModels().some(
+       (candidate) => candidate.kind === "image" && candidate.status === "requires-check"))
++    .filter((tool) => tool.name !== "GenerateVideo" || (this.mediaGenerationPort?.prepareVideo && this.mediaGenerationPort.submitVideo && this.mediaGenerationPort.readVideo && this.mediaGenerationPort.listModels().some(
++      (candidate) => candidate.kind === "video" && candidate.status === "requires-check")))
+     .map((tool) =>
+       projectToolModelContract(tool, this.registry.get(tool.name), {
+         model,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 9a79860f7245af0e1198940aca8f37c318a7235a..f5f31097ab8f38edc4e883376c4225e73ed52aa7 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -97,7 +97,10 @@ async function executeToolCallImpl(
+     createRootTraceContext({ sessionId: deps.sessionId, turnId: deps.turnId });
+   const emptyToolName = isEmptyToolName(toolCall.name);
+   const candidateEntry = emptyToolName ? undefined : deps.registry.get(toolCall.name);
+-  const registeredEntry = candidateEntry && deps.isToolAllowed?.(candidateEntry.metadata.name) !== false ? candidateEntry : undefined;
++  const registeredEntry =
++    candidateEntry && deps.isToolAllowed?.(candidateEntry.metadata.name) !== false
++      ? candidateEntry
++      : undefined;
+   const model = options?.model ?? deps.model;
+   const entry = registeredEntry
+     ? resolveToolEntryModelContract(registeredEntry, {
+@@ -221,6 +224,15 @@ async function executeToolCallImpl(
+         : { dynamicWorkflowRunPort: deps.dynamicWorkflowRunPort }),
+       ...(deps.modelCatalogPort === undefined ? {} : { modelCatalogPort: deps.modelCatalogPort }),
+       sessionId: deps.sessionId,
++      ...(deps.artifactStore === undefined
++        ? {}
++        : {
++            artifactStore: {
++              readToolResultBinaryArtifact: deps.artifactStore.readToolResultBinaryArtifact?.bind(
++                deps.artifactStore,
++              ),
++            },
++          }),
+       ...(deps.hasLoadedSkill === undefined ? {} : { hasLoadedSkill: deps.hasLoadedSkill }),
+     });
+     if (isToolHandlerFailure(resolution)) {
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0f414a4f659bf410992dfea92a807b73a21f537
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+@@ -0,0 +1,272 @@
++import {
++  GENERATE_VIDEO_TOOL_NAME,
++  RESUME_MEDIA_JOB_TOOL_NAME,
++  GenerateVideoInputSchema,
++  GenerateVideoExecutionInputSchema,
++  GenerateVideoInputJsonSchema,
++  ResumeMediaJobInputSchema,
++  ResumeMediaJobInputJsonSchema,
++  MediaJobOutputSchema,
++  MediaJobOutputJsonSchema,
++  type MediaGenerationPort,
++  type ModelMessageContent,
++  type UsageStorePort,
++} from "@zcode/contracts";
++import type { ToolEntry } from "../types.js";
++import { toolUsageId } from "../../runtime/usage-identity.js";
++import {
++  mediaJobOutput,
++  readMediaReceipt,
++  readSessionImage,
++  waitForMediaJob,
++  writeMediaReceipt,
++  type MediaJobReceipt,
++} from "./media-jobs.js";
++
++const formatOutput = (output: unknown): ModelMessageContent => {
++  const result = MediaJobOutputSchema.parse(output);
++  const text = `Media request ${result.status}. Receipt: ${result.receiptUri}. ${result.status === "unknown" ? "Never resubmit this paid request automatically." : result.status === "pending" ? "ResumeMediaJob retrieves this existing request without another generation." : ""}${result.usageRecorded === false ? " Usage ledger is unavailable; saved media remains available but statistics may undercount." : ""}`;
++  return result.artifactUri && result.mimeType
++    ? [
++        { type: "text", text },
++        {
++          type: "file",
++          mediaType: result.mimeType,
++          name: result.mimeType === "video/mp4" ? "generated-video.mp4" : "Generated image",
++          uri: result.artifactUri,
++          text: `Generated media saved as ${result.artifactUri}. Use an explicit read if analysis is needed.`,
++          source: {
++            id: result.artifactUri,
++            kind: "inline",
++            uri: result.artifactUri,
++            placeholder: "Generated media",
++          },
++        },
++      ]
++    : text;
++};
++
++export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry[] {
++  const common = {
++    readOnly: false,
++    destructive: false,
++    concurrentSafe: false,
++    maxOutputBytes: 16000,
++    sideEffectScope: "network" as const,
++    riskLevel: "high" as const,
++    needsApproval: true,
++  };
++  return [
++    {
++      capability:
++        "Generate a video using an admitted media model; retain the external request through stop/restart",
++      metadata: {
++        ...common,
++        name: GENERATE_VIDEO_TOOL_NAME,
++        description:
++          "Generate one video through a model returned by ListMediaModels. This is a paid request. Saves a durable receipt before submitting; returns a saved video or a receipt to ResumeMediaJob. imageArtifactUri may reuse a generated image in this conversation.",
++        timeoutMs: 150000,
++      },
++      inputSchema: GenerateVideoInputJsonSchema,
++      runtimeInputSchema: GenerateVideoExecutionInputSchema,
++      outputSchema: MediaJobOutputJsonSchema,
++      runtimeOutputSchema: MediaJobOutputSchema,
++      async resolveInput(input, context) {
++        try {
++          const request = GenerateVideoInputSchema.parse(input);
++          if (!port.prepareVideo || !port.submitVideo || !port.readVideo)
++            throw new Error("Video generation is unavailable");
++          let image: { mediaType: string; bytes: Uint8Array } | undefined;
++          if (request.imageArtifactUri) {
++            image = await readSessionImage(context, request.imageArtifactUri);
++          }
++          return {
++            result: true,
++            input: { ...request, ...(await port.prepareVideo({ ...request, image })) },
++          };
++        } catch (error) {
++          return {
++            result: false,
++            errorCode: 4102,
++            message: error instanceof Error ? error.message : "Video model check failed",
++          };
++        }
++      },
++      async handler(input, context) {
++        const request = GenerateVideoExecutionInputSchema.parse(input);
++        const store = context.sessionStore as Partial<UsageStorePort> | undefined;
++        if (
++          !context.artifactStore?.writeToolResultArtifactOnce ||
++          !context.artifactStore.writeToolResultBinaryArtifact ||
++          !store?.recordModelUsage ||
++          !port.submitVideo
++        )
++          throw new Error("Media recovery/storage is unavailable; no paid request was made");
++        const identity = context.traceContext?.attributes?.assistantMessageId;
++        const jobId = `media-video:${toolUsageId(context.sessionId, context.toolCallId, context.turnId, typeof identity === "string" ? identity : context.parentSpanId)}`;
++        const now = Date.now();
++        let receipt: MediaJobReceipt = {
++          version: 1,
++          jobId,
++          kind: "video",
++          providerId: request.providerId,
++          modelId: request.modelId,
++          startedAt: now,
++          updatedAt: now,
++          status: "unknown",
++          credentialReference: request.credentialReference,
++        };
++        const claim = await writeMediaReceipt(context, receipt, "intent");
++        if (!claim.created)
++          return waitForMediaJob(
++            port,
++            context,
++            await readMediaReceipt(context, claim.uri),
++            claim.uri,
++            0,
++          );
++        let submitted: { requestId: string };
++        try {
++          submitted = await port.submitVideo({ ...request, signal: context.abortSignal });
++        } catch {
++          await store.recordModelUsage({
++            id: jobId,
++            logicalRequestId: jobId,
++            sessionID: context.sessionId,
++            querySource: "media_video",
++            providerId: request.providerId,
++            modelId: request.modelId,
++            status: "error",
++            startedAt: now,
++            completedAt: Date.now(),
++            errorMessage:
++              "Video submission outcome is unknown; use its saved receipt, never resubmit automatically",
++            providerMetadata: {
++              fleetAccounting: {
++                billingProvider: "xai",
++                authKind: "api-key",
++                workspacePath: context.workspaceRoot,
++                mediaReceiptUri: claim.uri,
++                mediaSubmission: "unknown",
++              },
++            },
++          });
++          return mediaJobOutput(receipt, claim.uri);
++        } // An uncertain POST is never repeated.
++        receipt = {
++          ...receipt,
++          status: "pending",
++          requestId: submitted.requestId,
++          updatedAt: Date.now(),
++        };
++        const saved = await writeMediaReceipt(context, receipt, "accepted");
++        await store.recordModelUsage({
++          id: jobId,
++          logicalRequestId: jobId,
++          sessionID: context.sessionId,
++          querySource: "media_video",
++          providerId: request.providerId,
++          modelId: request.modelId,
++          status: "completed",
++          startedAt: now,
++          providerMetadata: {
++            fleetAccounting: {
++              billingProvider: "xai",
++              authKind: "api-key",
++              workspacePath: context.workspaceRoot,
++              mediaReceiptUri: saved.uri,
++            },
++          },
++        });
++        return waitForMediaJob(port, context, receipt, saved.uri, 90);
++      },
++      formatModelContent: formatOutput,
++      permission: {
++        permission: "media.generate.video",
++        reason:
++          "GenerateVideo submits one paid request and retains its result in this conversation",
++        riskLevel: "high",
++        sideEffectScope: "network",
++        needsApproval: true,
++        patternSources: ["toolName"],
++        alwaysAllowPatternSources: [],
++        denyPriority: "beforeAsk",
++      },
++      timeout: { kind: "timed", defaultMs: 150000, maxMs: 150000, allowCallOverride: false },
++      cancellation: {
++        supported: true,
++        cleanup: "bestEffort",
++        userVisibleMessage:
++          "Stopped waiting; the submitted video may continue. ResumeMediaJob retrieves it without submitting again.",
++      },
++      resultBudget: {
++        maxInlineBytes: 16000,
++        maxModelBytes: 16000,
++        strategy: "truncate",
++        preview: { maxBytes: 16000, direction: "head" },
++      },
++      trace: {
++        required: true,
++        propagateToAdapters: true,
++        recordInput: "summary",
++        recordOutput: "summary",
++      },
++    },
++    {
++      capability:
++        "Retrieve an existing media request or its saved artifact without another paid submission",
++      metadata: {
++        ...common,
++        name: RESUME_MEDIA_JOB_TOOL_NAME,
++        description:
++          "Read or wait for a saved media receipt in this conversation. Never starts generation. Pending videos are polled using their original request ID and credential. Unknown submissions cannot safely be recreated.",
++        timeoutMs: 650000,
++        riskLevel: "medium",
++        needsApproval: false,
++      },
++      inputSchema: ResumeMediaJobInputJsonSchema,
++      runtimeInputSchema: ResumeMediaJobInputSchema,
++      outputSchema: MediaJobOutputJsonSchema,
++      runtimeOutputSchema: MediaJobOutputSchema,
++      handler: async (input, context) => {
++        const request = ResumeMediaJobInputSchema.parse(input);
++        return waitForMediaJob(
++          port,
++          context,
++          await readMediaReceipt(context, request.receiptUri),
++          request.receiptUri,
++          request.waitSeconds ?? 60,
++        );
++      },
++      formatModelContent: formatOutput,
++      permission: {
++        permission: "media.job.retrieve",
++        reason: "Retrieve an existing paid result; no new generation",
++        riskLevel: "medium",
++        sideEffectScope: "network",
++        needsApproval: false,
++        patternSources: ["toolName"],
++        alwaysAllowPatternSources: ["toolName"],
++        denyPriority: "beforeAsk",
++      },
++      timeout: { kind: "timed", defaultMs: 650000, maxMs: 650000, allowCallOverride: false },
++      cancellation: {
++        supported: true,
++        cleanup: "bestEffort",
++        userVisibleMessage: "Stopped waiting; the original media receipt remains available.",
++      },
++      resultBudget: {
++        maxInlineBytes: 16000,
++        maxModelBytes: 16000,
++        strategy: "truncate",
++        preview: { maxBytes: 16000, direction: "head" },
++      },
++      trace: {
++        required: true,
++        propagateToAdapters: true,
++        recordInput: "summary",
++        recordOutput: "summary",
++      },
++    },
++  ];
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index 89606baa8fde01a706609623742f32acfd5a3b0c..fbf2d7f9f34e30d97d51b426acc8d5aeba73b310 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -18,6 +18,15 @@ import {
+ } from "@zcode/contracts";
+ import type { ToolEntry, ToolHandler } from "../types.js";
+ import { toolUsageId } from "../../runtime/usage-identity.js";
++import { createVideoGenerationTools } from "./generate-video.js";
++import {
++  listMediaReceipts,
++  writeMediaReceipt,
++  readMediaReceipt,
++  latestMediaReceipt,
++  readSessionImage,
++  recordMediaReceiptUsage,
++} from "./media-jobs.js";
+ 
+ const imageData = Symbol("generated-image-data");
+ 
+@@ -33,7 +42,7 @@ function imageModelContent(output: unknown): ModelMessageContent {
+   return [
+     {
+       type: "text",
+-      text: `Generated image saved as ${result.artifactUri} with ${result.reportedModelId}. ${result.reportedCostUsd === undefined ? "The provider did not report a cost." : `Provider-reported cost: US$${result.reportedCostUsd.toFixed(4)}.`}${result.usageRecorded ? "" : " Usage ledger write failed; tell the user that the Usage page may undercount this request."}`,
++      text: `Generated image saved as ${result.artifactUri}. Requested model: ${result.requestedModelId}; reported model: ${result.reportedModelId ?? "unknown"}. ${result.reportedCostUsd === undefined ? "The provider did not report a cost." : `Provider-reported cost: US$${result.reportedCostUsd.toFixed(4)}.`}${result.usageRecorded ? "" : " Usage ledger write failed; tell the user that the Usage page may undercount this request."}`,
+     },
+     {
+       type: "image",
+@@ -50,18 +59,27 @@ function imageModelContent(output: unknown): ModelMessageContent {
+   ];
+ }
+ 
+-export function createMediaGenerationToolEntries(
+-  port: MediaGenerationPort,
+-): [ToolEntry, ToolEntry] {
+-  const listHandler: ToolHandler = async (input) => {
+-    const { kind } = ListMediaModelsInputSchema.parse(input);
++export function createMediaGenerationToolEntries(port: MediaGenerationPort): ToolEntry[] {
++  const listHandler: ToolHandler = async (input, context) => {
++    const { kind, includeJobs } = ListMediaModelsInputSchema.parse(input);
+     return ListMediaModelsOutputSchema.parse({
+       models: port.listModels().filter((model) => !kind || model.kind === kind),
++      ...(includeJobs
++        ? {
++            jobs: (await listMediaReceipts(context)).slice(0, 20).map(({ receipt, uri }) => ({
++              jobId: receipt.jobId,
++              receiptUri: uri,
++              status: receipt.status,
++              providerId: receipt.providerId,
++              modelId: receipt.modelId,
++            })),
++          }
++        : {}),
+     });
+   };
+   const generateHandler: ToolHandler = async (input, context) => {
+     const request = GenerateImageExecutionInputSchema.parse(input);
+-    if (!context.artifactStore) {
++    if (!context.artifactStore?.writeToolResultBinaryArtifact) {
+       throw new Error("Generated image storage is unavailable; no provider request was made");
+     }
+     const usageStore = context.sessionStore as Partial<UsageStorePort> | undefined;
+@@ -69,6 +87,14 @@ export function createMediaGenerationToolEntries(
+       throw new Error("Media usage ledger is unavailable; no paid provider request was made");
+     }
+     const startedAt = Date.now();
++    const billingProvider = port
++      .listModels()
++      .find(
++        (model) =>
++          model.kind === "image" &&
++          model.providerId === request.providerId &&
++          model.modelId === request.modelId,
++      )?.billingProvider;
+     const requestIdentity = context.traceContext?.attributes?.assistantMessageId;
+     const usageId = `media-image:${toolUsageId(
+       context.sessionId,
+@@ -88,11 +114,55 @@ export function createMediaGenerationToolEntries(
+       startedAt,
+       providerMetadata: {
+         fleetAccounting: {
+-          billingProvider: "xai",
++          ...(billingProvider ? { billingProvider } : {}),
++          authKind: "api-key",
+           workspacePath: context.workspaceRoot,
+         },
+       },
+     } as const;
++    const claim = await writeMediaReceipt(
++      context,
++      {
++        version: 1,
++        jobId: usageId,
++        kind: "image",
++        providerId: request.providerId,
++        modelId: request.modelId,
++        startedAt,
++        updatedAt: startedAt,
++        status: "unknown",
++        billingProvider,
++        authKind: "api-key",
++      },
++      "intent",
++    );
++    if (!claim.created) {
++      const prior = await latestMediaReceipt(
++        context,
++        await readMediaReceipt(context, claim.uri),
++        claim.uri,
++      );
++      if (prior.receipt.status === "completed" && prior.receipt.artifactUri) {
++        const file = await context.artifactStore.readToolResultBinaryArtifact!({
++          uri: prior.receipt.artifactUri,
++        });
++        const result = GenerateImageOutputSchema.parse({
++          artifactUri: prior.receipt.artifactUri,
++          providerId: request.providerId,
++          requestedModelId: prior.receipt.modelId,
++          reportedModelId: prior.receipt.reportedModelId,
++          mimeType: prior.receipt.mimeType,
++          reportedCostUsd: prior.receipt.reportedCostUsd,
++          usageRecorded: await recordMediaReceiptUsage(context, prior.receipt, prior.uri),
++        });
++        return Object.assign(result, {
++          [imageData]: `data:${file.contentType};base64,${Buffer.from(file.bytes).toString("base64")}`,
++        });
++      }
++      throw new Error(
++        `Image submission may already exist. Receipt ${claim.uri}; never generate it again automatically.`,
++      );
++    }
+     let generated: Awaited<ReturnType<MediaGenerationPort["generateImage"]>>;
+     try {
+       generated = await port.generateImage({
+@@ -116,9 +186,9 @@ export function createMediaGenerationToolEntries(
+     let usageRecorded = true;
+     try {
+       // The paid result already exists. Stopping inference must not discard its local recovery copy.
+-      artifact = await context.artifactStore.writeToolResultArtifact({
+-        content: dataUrl,
+-        contentType: "text/plain",
++      artifact = await context.artifactStore.writeToolResultBinaryArtifact({
++        content: generated.bytes,
++        contentType: generated.mimeType,
+         retention: "session",
+         sessionId: context.sessionId,
+         toolCallId: context.toolCallId,
+@@ -131,13 +201,18 @@ export function createMediaGenerationToolEntries(
+       try {
+         await usageStore.recordModelUsage({
+           ...usageBase,
+-          modelId: generated.reportedModelId,
++          modelId: generated.reportedModelId ?? request.modelId,
+           status: "completed",
+           completedAt,
+           durationMs: completedAt - startedAt,
++          rawUsage: generated.providerUsage,
+           providerMetadata: {
+             fleetAccounting: {
+-              billingProvider: "xai",
++              ...((generated.billingProvider ?? billingProvider)
++                ? { billingProvider: generated.billingProvider ?? billingProvider }
++                : {}),
++              authKind: generated.authKind ?? "api-key",
++              ...(generated.accountId ? { accountId: generated.accountId } : {}),
+               workspacePath: context.workspaceRoot,
+               requestedModelId: request.modelId,
+               ...(artifact ? { artifactUri: artifact.uri } : {}),
+@@ -162,6 +237,28 @@ export function createMediaGenerationToolEntries(
+         : { reportedCostUsd: generated.reportedCostUsd }),
+       usageRecorded,
+     });
++    await writeMediaReceipt(
++      context,
++      {
++        version: 1,
++        jobId: usageId,
++        kind: "image",
++        providerId: request.providerId,
++        modelId: request.modelId,
++        reportedModelId: generated.reportedModelId,
++        startedAt,
++        updatedAt: Date.now(),
++        status: "completed",
++        artifactUri: artifact.uri,
++        mimeType: generated.mimeType,
++        reportedCostUsd: generated.reportedCostUsd,
++        billingProvider: generated.billingProvider ?? billingProvider,
++        authKind: generated.authKind ?? "api-key",
++        accountId: generated.accountId,
++        providerUsage: generated.providerUsage,
++      },
++      "completed",
++    );
+     // 原图只走 modelContent + Session artifact；工具 JSON 不复制一份 base64。
+     return Object.defineProperty(publicOutput, imageData, { value: dataUrl });
+   };
+@@ -171,7 +268,7 @@ export function createMediaGenerationToolEntries(
+       metadata: {
+         name: LIST_MEDIA_MODELS_TOOL_NAME,
+         description:
+-          "List media models reported for this host, separately from conversation models. Image status=requires-check means GenerateImage verifies the current key before payment. Video status=catalog-only means video generation is not yet executable in Fleet.",
++          "List image/video models separately from conversation models. requires-check means the current credential is verified before approval. includeJobs returns this conversation's saved requests; unknown requests must never be submitted again automatically.",
+         readOnly: true,
+         destructive: false,
+         concurrentSafe: true,
+@@ -232,7 +329,7 @@ export function createMediaGenerationToolEntries(
+         needsApproval: true,
+       },
+       handler: generateHandler,
+-      async resolveInput(input) {
++      async resolveInput(input, context) {
+         const parsed = GenerateImageInputSchema.safeParse(input);
+         if (!parsed.success) {
+           return { result: false, errorCode: 4101, message: "Invalid image generation request" };
+@@ -246,6 +343,13 @@ export function createMediaGenerationToolEntries(
+                 providerId: parsed.data.providerId,
+                 modelId: parsed.data.modelId,
+                 prompt: parsed.data.prompt,
++                ...(parsed.data.imageArtifactUris?.length
++                  ? {
++                      images: await Promise.all(
++                        parsed.data.imageArtifactUris.map((uri) => readSessionImage(context, uri)),
++                      ),
++                    }
++                  : {}),
+               }),
+             },
+           };
+@@ -294,5 +398,6 @@ export function createMediaGenerationToolEntries(
+         recordOutput: "summary",
+       },
+     },
++    ...createVideoGenerationTools(port),
+   ];
+ }
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..60af1465b6d9087269110a3d5e5a44cd06e16d73
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+@@ -0,0 +1,273 @@
++import { z } from "zod";
++import type { ToolExecutionContext, ToolInputResolutionContext } from "../types.js";
++import {
++  createRootTraceContext,
++  type MediaGenerationPort,
++  type UsageStorePort,
++} from "@zcode/contracts";
++
++export async function readSessionImage(context: ToolInputResolutionContext, uri: string) {
++  if (
++    !context.sessionId ||
++    !uri.startsWith(`zcode-artifact://${encodeURIComponent(context.sessionId)}/`) ||
++    !context.artifactStore?.readToolResultBinaryArtifact
++  )
++    throw new Error("Image reference is not owned by this conversation");
++  const image = await context.artifactStore.readToolResultBinaryArtifact({ uri });
++  if (
++    !["image/png", "image/jpeg", "image/webp"].includes(image.contentType) ||
++    image.bytes.length === 0 ||
++    image.bytes.length > 16 * 1024 * 1024
++  )
++    throw new Error("Image reference is not a supported image");
++  return { mediaType: image.contentType, bytes: image.bytes };
++}
++
++const receiptSchema = z
++  .object({
++    version: z.literal(1),
++    jobId: z.string(),
++    kind: z.enum(["image", "video"]),
++    providerId: z.string(),
++    modelId: z.string(),
++    startedAt: z.number(),
++    updatedAt: z.number(),
++    status: z.enum(["pending", "unknown", "failed", "expired", "completed"]),
++    requestId: z.string().optional(),
++    credentialReference: z.string().optional(),
++    artifactUri: z.string().startsWith("zcode-artifact://").optional(),
++    mimeType: z.string().optional(),
++    reportedModelId: z.string().optional(),
++    reportedCostUsd: z.number().nonnegative().optional(),
++    billingProvider: z.string().optional(),
++    authKind: z.enum(["api-key", "subscription"]).optional(),
++    accountId: z.string().optional(),
++    providerUsage: z.record(z.string(), z.unknown()).optional(),
++  })
++  .strict();
++export type MediaJobReceipt = z.infer<typeof receiptSchema>;
++
++export async function writeMediaReceipt(
++  context: ToolExecutionContext,
++  receipt: MediaJobReceipt,
++  phase: string,
++) {
++  if (!context.artifactStore?.writeToolResultArtifactOnce)
++    throw new Error("Durable media receipt storage is unavailable; no paid request was made");
++  return context.artifactStore.writeToolResultArtifactOnce({
++    sessionId: context.sessionId,
++    toolCallId: context.toolCallId,
++    toolName: "MediaJobReceipt",
++    idempotencyKey: `${receipt.jobId}:${phase}`,
++    content: JSON.stringify(receiptSchema.parse(receipt)),
++    contentType: "application/json",
++    retention: "session",
++    trace: context.traceContext,
++  });
++}
++
++export async function readMediaReceipt(
++  context: ToolExecutionContext,
++  uri: string,
++): Promise<MediaJobReceipt> {
++  if (!uri.startsWith(`zcode-artifact://${encodeURIComponent(context.sessionId)}/`))
++    throw new Error("Media receipt belongs to another conversation");
++  if (!context.artifactStore) throw new Error("Media receipt storage is unavailable");
++  const record = await context.artifactStore.readToolResultArtifact({
++    uri,
++    trace: context.traceContext,
++  });
++  if (record.bytes > 64000) throw new Error("Invalid media receipt size");
++  return receiptSchema.parse(JSON.parse(record.content));
++}
++
++export async function listMediaReceipts(context: ToolExecutionContext) {
++  const files =
++    (await context.artifactStore?.listMediaJobArtifacts?.({ sessionId: context.sessionId })) ?? [];
++  const latest = new Map<string, { receipt: MediaJobReceipt; uri: string }>();
++  for (const file of files) {
++    if (file.bytes > 64000) continue;
++    try {
++      const receipt = await readMediaReceipt(context, file.uri);
++      const previous = latest.get(receipt.jobId);
++      if (!previous || newerReceipt(receipt, previous.receipt))
++        latest.set(receipt.jobId, { receipt, uri: file.uri });
++    } catch {
++      /* Other or damaged artifacts never authorize a submission. */
++    }
++  }
++  return [...latest.values()].sort((a, b) => b.receipt.updatedAt - a.receipt.updatedAt);
++}
++
++function newerReceipt(a: MediaJobReceipt, b: MediaJobReceipt): boolean {
++  const rank = { unknown: 0, pending: 1, failed: 2, expired: 2, completed: 3 };
++  return (
++    a.updatedAt > b.updatedAt || (a.updatedAt === b.updatedAt && rank[a.status] >= rank[b.status])
++  );
++}
++
++export async function latestMediaReceipt(
++  context: ToolExecutionContext,
++  original: MediaJobReceipt,
++  uri: string,
++) {
++  for (const phase of ["completed", "failed", "expired", "accepted"] as const) {
++    const file = await context.artifactStore?.findToolResultArtifactOnce?.({
++      sessionId: context.sessionId,
++      idempotencyKey: `${original.jobId}:${phase}`,
++    });
++    if (file) {
++      const receipt = await readMediaReceipt(context, file.uri);
++      if (newerReceipt(receipt, original)) return { receipt, uri: file.uri };
++    }
++  }
++  return { receipt: original, uri };
++}
++
++export function mediaJobOutput(receipt: MediaJobReceipt, uri: string) {
++  return {
++    jobId: receipt.jobId,
++    receiptUri: uri,
++    status: receipt.status,
++    providerId: receipt.providerId,
++    requestedModelId: receipt.modelId,
++    ...(receipt.artifactUri ? { artifactUri: receipt.artifactUri } : {}),
++    ...(receipt.mimeType ? { mimeType: receipt.mimeType } : {}),
++    ...(receipt.reportedModelId ? { reportedModelId: receipt.reportedModelId } : {}),
++    ...(receipt.reportedCostUsd === undefined ? {} : { reportedCostUsd: receipt.reportedCostUsd }),
++  };
++}
++
++/** Reconcile one physical request into the existing ledger after restart or a failed ledger write. */
++export async function recordMediaReceiptUsage(
++  context: ToolExecutionContext,
++  receipt: MediaJobReceipt,
++  uri: string,
++): Promise<boolean> {
++  const store = context.sessionStore as Partial<UsageStorePort> | undefined;
++  if (!store?.recordModelUsage) return false;
++  try {
++    await store.recordModelUsage({
++      id: receipt.jobId,
++      logicalRequestId: receipt.jobId,
++      sessionID: context.sessionId,
++      querySource: receipt.kind === "video" ? "media_video" : "media_image",
++      providerId: receipt.providerId,
++      modelId: receipt.reportedModelId ?? receipt.modelId,
++      startedAt: receipt.startedAt,
++      completedAt: receipt.updatedAt,
++      rawUsage: receipt.providerUsage,
++      status: receipt.status === "completed" ? "completed" : "error",
++      ...(receipt.status !== "completed" ? { errorMessage: `Media ${receipt.status}` } : {}),
++      providerMetadata: {
++        fleetAccounting: {
++          billingProvider:
++            receipt.billingProvider ?? (receipt.kind === "video" ? "xai" : undefined),
++          authKind: receipt.authKind ?? "api-key",
++          accountId: receipt.accountId,
++          workspacePath: context.workspaceRoot,
++          mediaReceiptUri: uri,
++          mediaStatus: receipt.status,
++          artifactUri: receipt.artifactUri,
++          requestedModelId: receipt.modelId,
++          ...(receipt.reportedCostUsd === undefined
++            ? {}
++            : { reportedMediaUsd: receipt.reportedCostUsd }),
++        },
++      },
++    });
++    return true;
++  } catch {
++    return false;
++  } // Saved provider results survive an unavailable statistics writer.
++}
++
++export async function waitForMediaJob(
++  port: MediaGenerationPort,
++  context: ToolExecutionContext,
++  original: MediaJobReceipt,
++  uri: string,
++  waitSeconds: number,
++) {
++  const found = await latestMediaReceipt(context, original, uri);
++  let receipt = found.receipt;
++  uri = found.uri;
++  if (receipt.status === "completed" && receipt.artifactUri && receipt.kind === "video") {
++    try {
++      await context.artifactStore?.statToolResultArtifact?.({ uri: receipt.artifactUri });
++    } catch {
++      receipt = { ...receipt, status: "pending" };
++    } // Retrieve the original result; never POST.
++  }
++  if (receipt.status !== "pending" || !receipt.requestId || !receipt.credentialReference)
++    return {
++      ...mediaJobOutput(receipt, uri),
++      ...(receipt.status !== "pending"
++        ? { usageRecorded: await recordMediaReceiptUsage(context, receipt, uri) }
++        : {}),
++    };
++  if (!port.readVideo || !context.artifactStore?.writeToolResultBinaryArtifact)
++    throw new Error("This host cannot retrieve the saved video request");
++  const until = Date.now() + waitSeconds * 1000;
++  do {
++    if (context.abortSignal.aborted) break; // Waiting stopped; provider work may still finish.
++    const result = await port.readVideo({
++      providerId: receipt.providerId,
++      modelId: receipt.modelId,
++      requestId: receipt.requestId,
++      credentialReference: receipt.credentialReference,
++      signal: context.abortSignal,
++    });
++    if (result.status === "done") {
++      // Once downloaded, commit bytes even if the user stops the surrounding conversation.
++      const artifact = await context.artifactStore.writeToolResultBinaryArtifact({
++        content: result.bytes,
++        contentType: result.mimeType,
++        sessionId: context.sessionId,
++        toolCallId: receipt.jobId,
++        toolName: "GenerateVideo",
++        retention: "session",
++        idempotencyKey: receipt.jobId,
++        trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
++      });
++      receipt = {
++        ...receipt,
++        status: "completed",
++        updatedAt: Date.now(),
++        artifactUri: artifact.uri,
++        mimeType: result.mimeType,
++        ...(result.reportedModelId ? { reportedModelId: result.reportedModelId } : {}),
++        ...(result.reportedCostUsd === undefined
++          ? {}
++          : { reportedCostUsd: result.reportedCostUsd }),
++        providerUsage: result.providerUsage,
++      };
++      const saved = await writeMediaReceipt(context, receipt, "completed");
++      receipt = await readMediaReceipt(context, saved.uri);
++      uri = saved.uri;
++      return {
++        ...mediaJobOutput(receipt, uri),
++        usageRecorded: await recordMediaReceiptUsage(context, receipt, uri),
++      };
++    }
++    if (result.status === "failed" || result.status === "expired") {
++      receipt = { ...receipt, status: result.status, updatedAt: Date.now() };
++      const saved = await writeMediaReceipt(context, receipt, result.status);
++      return {
++        ...mediaJobOutput(receipt, saved.uri),
++        usageRecorded: await recordMediaReceiptUsage(context, receipt, saved.uri),
++      };
++    }
++    if (Date.now() >= until) break;
++    await new Promise<void>((resolve) => {
++      const done = () => {
++        clearTimeout(timer);
++        context.abortSignal.removeEventListener("abort", done);
++        resolve();
++      };
++      const timer = setTimeout(done, Math.min(5000, Math.max(0, until - Date.now())));
++      context.abortSignal.addEventListener("abort", done, { once: true });
++    });
++  } while (Date.now() <= until);
++  return mediaJobOutput(receipt, uri);
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/types.ts b/apps/zcode-cli/packages/core/src/tool/types.ts
+index e8e29531a96e974ff77cbaa302ea3c9cdfc49be9..55d5f241236990bd7e6333c4e11e1917e9a097a0 100644
+--- a/apps/zcode-cli/packages/core/src/tool/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/types.ts
+@@ -260,6 +260,8 @@ export interface ToolInputResolutionContext {
+    */
+   modelCatalogPort?: ModelCatalogPort;
+   sessionId?: string;
++  /** Read-only, Session-scoped media resolution before approval; never exposes a writer. */
++  artifactStore?: Pick<ToolArtifactStorePort, "readToolResultBinaryArtifact">;
+   /**
+    * 「这个会话此刻加载着某个技能吗」的探针（handlers/workflow-skill-gate.ts）。由 runtime 用
+    * provider 可见历史回答（agent/loaded-skills.ts），所以 compaction 之后答案随历史一起变回
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index 106716beada344e369fa3e9a9c298b80144a5aa1..aec159a15c7c0130528e58f00800c6ff339703fa 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -102,10 +102,7 @@ test("repeated upstream image call IDs retain every charged request and artifact
+     await checkLedger();
+     assert.equal(new Set(uris).size, 3);
+     for (const uri of uris)
+-      assert.match(
+-        (await artifacts.readToolResultArtifact({ uri })).content,
+-        /^data:image\/jpeg;base64,/,
+-      );
++      assert.deepEqual((await artifacts.readToolResultBinaryArtifact({ uri })).bytes, new Uint8Array([0xff, 0xd8, 0xff]));
+   } finally {
+     store.close();
+     await rm(root, { recursive: true, force: true });
+@@ -135,7 +132,7 @@ test("image generation uses the Session artifact store and asks approval before
+       };
+     },
+   };
+-  const writes: Array<{ content: string; toolCallId: string }> = [];
++  const writes: Array<{ content: Uint8Array; toolCallId: string }> = [];
+   const usage: Array<{ querySource: string; modelId: string; providerMetadata?: unknown }> = [];
+   const context = {
+     abortSignal: new AbortController().signal,
+@@ -148,7 +145,8 @@ test("image generation uses the Session artifact store and asks approval before
+       },
+     },
+     artifactStore: {
+-      async writeToolResultArtifact(input: { content: string; toolCallId: string }) {
++      async writeToolResultArtifactOnce() { return { uri: "zcode-artifact://session-1/receipt", created: true }; },
++      async writeToolResultBinaryArtifact(input: { content: Uint8Array; toolCallId: string }) {
+         writes.push(input);
+         return { uri: "zcode-artifact://session-1/generated-image" };
+       },
+@@ -173,7 +171,7 @@ test("image generation uses the Session artifact store and asks approval before
+   assert.equal(usage[0]?.querySource, "media_image");
+   assert.equal(usage[0]?.modelId, "grok-image");
+   assert.match(JSON.stringify(usage[0]?.providerMetadata), /reportedMediaUsd/);
+-  assert.match(writes[0]!.content, /^data:image\/jpeg;base64,/);
++  assert.deepEqual([...writes[0]!.content], [0xff, 0xd8, 0xff, 0xe0]);
+   assert.equal(JSON.stringify(result).includes("/9j/"), false);
+   const content = generate.formatModelContent?.(result);
+   assert.equal(Array.isArray(content), true);
+@@ -268,10 +266,10 @@ test("a charged image returned after cancellation is saved and referenced by its
+     assert.equal(usage.length, 1);
+     const artifactUri = usage[0]?.providerMetadata?.fleetAccounting?.artifactUri;
+     assert.ok(artifactUri);
+-    const saved = await new NodeToolArtifactStore(paths).readToolResultArtifact({
++    const saved = await new NodeToolArtifactStore(paths).readToolResultBinaryArtifact({
+       uri: artifactUri,
+     });
+-    assert.equal(saved.content, "data:image/jpeg;base64,/9j/4A==");
++    assert.deepEqual(saved.bytes, new Uint8Array([0xff, 0xd8, 0xff, 0xe0]));
+   } finally {
+     await rm(root, { recursive: true, force: true });
+   }
+@@ -302,7 +300,8 @@ test("a failed local image save preserves the charge and never retries generatio
+         toolCallId: "image-call",
+         workspaceRoot: "/project",
+         artifactStore: {
+-          writeToolResultArtifact: async () => {
++          writeToolResultArtifactOnce: async () => ({ uri: "zcode-artifact://session/receipt", created: true }),
++          writeToolResultBinaryArtifact: async () => {
+             throw new Error("disk full");
+           },
+         },
+@@ -344,3 +343,36 @@ test("a denied media entitlement reaches the Agent with the actual status before
+   assert.equal(result?.result, false);
+   assert.match((result as { message: string }).message, /HTTP 403/);
+ });
++
++test("generated binary images remain visible to a vision model through actual Host cold hydration", async () => {
++  const { reply } = await import("./helpers/pi-runtime-fixture.js");
++  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64");
++  let calls = 0;
++  const f = await fixture(undefined, false, { config: { toolAllowlist: ["GenerateImage"] }, deps: { mediaGenerationPort: {
++    listModels: () => [{ providerId: "xai", providerLabel: "xAI", modelId: "image", kind: "image", status: "requires-check" }],
++    prepareImage: async () => "fixture", generateImage: async () => { calls++; return { bytes, mimeType: "image/png", reportedModelId: "image", reportedCostUsd: 0.04 }; },
++  } } });
++  const check = (request: any) => {
++    const blocks = request.messages.filter((message: any) => message.role === "tool").flatMap((message: any) => Array.isArray(message.content) ? message.content : []);
++    assert.ok(blocks.some((block: any) => block.type === "image" && block.dataUrl === `data:image/png;base64,${bytes.toString("base64")}`));
++    return reply("seen");
++  };
++  try {
++    f.steps.push(() => reply("generate", [{ id: "image", name: "GenerateImage", input: { providerId: "xai", modelId: "image", prompt: "fixture" } }]), check);
++    await f.runtime.executeTurn("Generate fixture"); await f.reopen(); f.steps.push(check); await f.runtime.executeTurn("Inspect saved image");
++    assert.equal(calls, 1);
++  } finally { await f.close(); }
++});
++
++test("a video catalog without a complete submit/retrieve adapter never advertises generation", async () => {
++  const port: MediaGenerationPort = { listModels: () => [{ providerId: "xai", providerLabel: "xAI", modelId: "video", kind: "video", status: "requires-check" }], prepareImage: async () => "unused", generateImage: async () => { throw new Error("unused"); } };
++  const f = await fixture(undefined, false, { config: { toolAllowlist: ["GenerateVideo"] }, deps: { mediaGenerationPort: port } });
++  try {
++    const visible = () => f.runtime.getTools().some((tool) => tool.name === "GenerateVideo");
++    assert.equal(visible(), false);
++    port.submitVideo = async () => ({ requestId: "fixture" }); assert.equal(visible(), false);
++    port.prepareVideo = async () => ({ binding: "fixture", credentialReference: "fixture" }); assert.equal(visible(), false);
++    port.readVideo = async () => ({ status: "pending" }); assert.equal(visible(), true);
++    port.readVideo = undefined; assert.equal(visible(), false); assert.equal(f.requests.length, 0);
++  } finally { await f.close(); }
++});
+diff --git a/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2a973e163948cec6cf1610211821409efdc68b36
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+@@ -0,0 +1,333 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
++import { createMediaGenerationToolEntries } from "../src/tool/handlers/media-generation.js";
++import { persistToolResultMediaAttachments } from "../src/runtime/helpers/tool-result-media-persistence.js";
++import type { MediaGenerationPort } from "@zcode/contracts";
++const mp4 = Buffer.from("000000186674797069736f6d0000020069736f6d69736f32", "hex");
++
++async function setup() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-video-recovery-"));
++  const db = join(root, "session.sqlite");
++  let store = new SqliteSessionStore({ dbPath: db });
++  await store.createSession({
++    id: "session" as never,
++    projectID: "project" as never,
++    slug: "fixture",
++    directory: root,
++    title: "fixture",
++    version: "fixture",
++  });
++  const paths = {
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  };
++  const context = (signal = new AbortController().signal) =>
++    ({
++      artifactStore: new NodeToolArtifactStore(paths),
++      sessionStore: store,
++      abortSignal: signal,
++      sessionId: "session",
++      toolCallId: "one",
++      turnId: "turn",
++      workspaceRoot: root,
++      traceContext: { traceId: "trace", attributes: { assistantMessageId: "assistant" } },
++    }) as any;
++  return {
++    root,
++    context,
++    get store() {
++      return store;
++    },
++    async reopen() {
++      store.close();
++      store = new SqliteSessionStore({ dbPath: db });
++    },
++    async close() {
++      store.close();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++const request = {
++  providerId: "xai",
++  modelId: "video",
++  prompt: "a garden",
++  duration: 6,
++  binding: "bound",
++  credentialReference: "original-key",
++};
++
++test("stop and reopen retrieve the original video exactly once with native bytes and a light model reference", async () => {
++  const f = await setup();
++  const controller = new AbortController();
++  let submissions = 0;
++  let polls = 0;
++  const port: MediaGenerationPort = {
++    listModels: () => [
++      {
++        providerId: "xai",
++        providerLabel: "xAI",
++        modelId: "video",
++        kind: "video",
++        status: "requires-check",
++      },
++    ],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++    prepareVideo: async () => ({ binding: "bound", credentialReference: "original-key" }),
++    submitVideo: async () => {
++      submissions++;
++      controller.abort();
++      return { requestId: "provider-request" };
++    },
++    readVideo: async (input) => {
++      polls++;
++      assert.equal(input.requestId, "provider-request");
++      assert.equal(input.credentialReference, "original-key");
++      return { status: "done", bytes: mp4, mimeType: "video/mp4", reportedCostUsd: 0.2 };
++    },
++  };
++  const tools = createMediaGenerationToolEntries(port);
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateVideo")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  try {
++    const pending = (await generate.handler(request, f.context(controller.signal))) as any;
++    assert.equal(pending.status, "pending");
++    assert.equal(polls, 0);
++    await f.reopen();
++    const result = (await resume.handler(
++      { receiptUri: pending.receiptUri, waitSeconds: 0 },
++      f.context(),
++    )) as any;
++    assert.equal(result.status, "completed");
++    assert.equal(submissions, 1);
++    assert.equal(polls, 1);
++    const bytes = await f
++      .context()
++      .artifactStore.readToolResultBinaryArtifact({ uri: result.artifactUri });
++    assert.deepEqual(Buffer.from(bytes.bytes), mp4);
++    assert.equal(bytes.contentType, "video/mp4");
++    const content = resume.formatModelContent!(result);
++    assert.equal(JSON.stringify(content).includes(mp4.toString("base64")), false);
++    const persisted = await persistToolResultMediaAttachments({
++      ...f.context(),
++      assistantMessageId: "assistant",
++      content,
++      signal: undefined,
++      toolName: "ResumeMediaJob",
++    } as never);
++    assert.equal(persisted?.attachments[0]?.mime, "video/mp4");
++    assert.ok(persisted?.modelContentLayout.every((entry) => entry.type === "text"));
++    const again = (await resume.handler(
++      { receiptUri: pending.receiptUri, waitSeconds: 0 },
++      f.context(),
++    )) as any;
++    assert.equal(again.artifactUri, result.artifactUri);
++    assert.equal(polls, 1);
++    assert.equal(submissions, 1);
++    const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    assert.equal(ledger.accounting?.[0]?.requestCount, 1);
++    assert.equal(ledger.accounting?.[0]?.estimatedUsd, 0.2);
++  } finally {
++    await f.close();
++  }
++});
++
++test("an unconfirmed submission survives reopen and cannot be paid for again by tool replay", async () => {
++  const f = await setup();
++  let submissions = 0;
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++    submitVideo: async () => {
++      submissions++;
++      throw new Error("connection closed before receipt");
++    },
++    readVideo: async () => {
++      throw new Error("No request ID to query");
++    },
++  };
++  const generate = createMediaGenerationToolEntries(port).find(
++    (tool) => tool.metadata.name === "GenerateVideo",
++  )!;
++  try {
++    const unknown = (await generate.handler(request, f.context())) as any;
++    assert.equal(unknown.status, "unknown");
++    await f.reopen();
++    const replay = (await generate.handler(request, f.context())) as any;
++    assert.equal(replay.status, "unknown");
++    assert.equal(submissions, 1);
++    const rows = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    assert.equal(rows.accounting?.[0]?.requestCount, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("receipt lookup and image references cannot cross conversation scope", async () => {
++  const f = await setup();
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++  };
++  try {
++    const resume = createMediaGenerationToolEntries(port).find(
++      (tool) => tool.metadata.name === "ResumeMediaJob",
++    )!;
++    await assert.rejects(
++      resume.handler(
++        { receiptUri: "zcode-artifact://other/tool-result-media-secret" },
++        f.context(),
++      ) as Promise<any>,
++      /another conversation/,
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("a missing local video is downloaded again into the same artifact without another paid submission", async () => {
++  const f = await setup();
++  let submissions = 0;
++  let polls = 0;
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++    submitVideo: async () => {
++      submissions++;
++      return { requestId: "provider-request" };
++    },
++    readVideo: async () => {
++      polls++;
++      return { status: "done", bytes: mp4, mimeType: "video/mp4", reportedCostUsd: 0.2 };
++    },
++  };
++  const tools = createMediaGenerationToolEntries(port);
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateVideo")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  try {
++    const result = (await generate.handler(request, f.context())) as any;
++    const file = await f
++      .context()
++      .artifactStore.readToolResultBinaryArtifact({ uri: result.artifactUri });
++    await rm(file.path);
++    await f.reopen();
++    const recovered = (await resume.handler(
++      { receiptUri: result.receiptUri, waitSeconds: 0 },
++      f.context(),
++    )) as any;
++    assert.equal(recovered.artifactUri, result.artifactUri);
++    assert.equal(polls, 2);
++    assert.equal(submissions, 1);
++    assert.deepEqual(
++      Buffer.from(
++        (await f.context().artifactStore.readToolResultBinaryArtifact({ uri: result.artifactUri }))
++          .bytes,
++      ),
++      mp4,
++    );
++    const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    assert.equal(ledger.accounting?.[0]?.requestCount, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("receipt recovery repairs a failed usage write while preserving the saved video", async () => {
++  const f = await setup();
++  const port: MediaGenerationPort = {
++    listModels: () => [],
++    prepareImage: async () => "unused",
++    generateImage: async () => {
++      throw new Error("unused");
++    },
++    submitVideo: async () => ({ requestId: "provider-request" }),
++    readVideo: async () => ({
++      status: "done",
++      bytes: mp4,
++      mimeType: "video/mp4",
++      reportedCostUsd: 0.2,
++    }),
++  };
++  const tools = createMediaGenerationToolEntries(port);
++  const generate = tools.find((tool) => tool.metadata.name === "GenerateVideo")!;
++  const resume = tools.find((tool) => tool.metadata.name === "ResumeMediaJob")!;
++  const record = f.store.recordModelUsage.bind(f.store);
++  let writes = 0;
++  f.store.recordModelUsage = async (input) => {
++    if (++writes === 2) throw new Error("ledger disk failure");
++    return record(input);
++  };
++  try {
++    const result = (await generate.handler(request, f.context())) as any;
++    assert.equal(result.status, "completed");
++    assert.equal(result.usageRecorded, false);
++    await f.reopen();
++    const recovered = (await resume.handler(
++      { receiptUri: result.receiptUri, waitSeconds: 0 },
++      f.context(),
++    )) as any;
++    assert.equal(recovered.usageRecorded, true);
++    assert.equal(recovered.artifactUri, result.artifactUri);
++    const ledger = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    assert.equal(ledger.accounting?.[0]?.estimatedUsd, 0.2);
++  } finally {
++    await f.close();
++  }
++});
++
++test("generated binary images and videos use the original materialization path after reopen", async () => {
++  const f = await setup();
++  try {
++    for (const [mime, bytes] of [["video/mp4", mp4], ["image/png", Buffer.from("89504e470d0a1a0a", "hex")]] as const) {
++      const artifact = await f.context().artifactStore.writeToolResultBinaryArtifact({ sessionId: "session", toolCallId: mime, toolName: "media", contentType: mime, content: bytes });
++      await f.reopen(); const derived = await f.context().artifactStore.ensureMediaAttachmentPath({ uri: artifact.uri, mediaType: mime });
++      assert.equal(derived.status, "ready"); const { readFile } = await import("node:fs/promises"); assert.deepEqual(await readFile(derived.path), bytes);
++    }
++  } finally { await f.close(); }
++});
++
++test("the actual Host/Pi permission and durable tool path preserves video previews without model video payloads", async () => {
++  const { fixture, reply } = await import("./helpers/pi-runtime-fixture.js");
++  let submits = 0;
++  const port: MediaGenerationPort = { listModels: () => [{ providerId: "xai", providerLabel: "xAI", modelId: "video", kind: "video", status: "requires-check" }],
++    prepareImage: async () => "unused", generateImage: async () => { throw new Error("unused"); },
++    prepareVideo: async () => ({ binding: "binding", credentialReference: "original" }),
++    submitVideo: async () => { submits++; return { requestId: "paid-once" }; },
++    readVideo: async () => ({ status: "done", bytes: mp4, mimeType: "video/mp4", reportedCostUsd: 0.2 }) };
++  for (const deny of [true, false]) {
++    const f = await fixture(undefined, false, { config: { toolAllowlist: ["GenerateVideo", "ResumeMediaJob", "ListMediaModels"] }, deps: { mediaGenerationPort: port } });
++    try {
++      if (deny) f.deny();
++      const before = submits;
++      f.steps.push(() => reply("generate", [{ id: "video", name: "GenerateVideo", input: { providerId: "xai", modelId: "video", prompt: "fixture garden" } }]),
++        (request) => { assert.equal(JSON.stringify(request.messages).includes(mp4.toString("base64")), false); return reply("finished"); });
++      await f.runtime.executeTurn("Generate a fixture video");
++      assert.equal(f.permissionCalls, 1); assert.equal(submits - before, deny ? 0 : 1);
++      const facts = f.toolFacts() as any[]; assert.equal(facts[0]?.approval_status, deny ? "denied" : "allowed");
++      if (!deny) {
++        await f.reopen(); f.steps.push((request) => { assert.equal(JSON.stringify(request.messages).includes(mp4.toString("base64")), false); return reply("reopened"); });
++        await f.runtime.executeTurn("Describe the saved receipt");
++        const rows = (await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 })).accounting!;
++        assert.equal(rows.find((row) => row.querySource === "media_video")?.requestCount, 1);
++      }
++    } finally { await f.close(); }
++  }
++});
+diff --git a/package.json b/package.json
+index aad382c4c1d69eceac9bffb0a214f04ccf23a28e..709a11c057a63d388a928d9955437ee8b15e7e8a 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index 2cb2fdfd91c40fb2971b4c1e3d534a9b63028fd4..8cc784507a137ba0408af0f43bfe865a44eeb44a 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -8,6 +8,7 @@ export * from "./config/index.js";
+ export * from "./facades.js";
+ export * from "./effective-model-selection.js";
+ export * from "./model-selection-config.js";
++export * from "./media-models.js";
+ export * from "./owned-order.js";
+ export * from "./protocol-policy.js";
+ export * from "./resolver.js";
+diff --git a/packages/provider/src/media-models.ts b/packages/provider/src/media-models.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..976a3b967254b40c236c3f0254bf12438d290bae
+--- /dev/null
++++ b/packages/provider/src/media-models.ts
+@@ -0,0 +1,36 @@
++/** Exact published Images API models; this is capability evidence, never account entitlement.
++ * Source: https://developers.openai.com/api/reference/resources/images/methods/generate
++ * Retired DALL-E models and future name variants are deliberately absent.
++ */
++const openaiImageModels = new Set([
++  "gpt-image-1",
++  "gpt-image-1-mini",
++  "gpt-image-1.5",
++  "gpt-image-2",
++  "gpt-image-2-2026-04-21",
++  "gpt-image-2.5-sunburst",
++  "gpt-image-2.5-sunburst-2026-09-08",
++  "gpt-image-2.5-flare",
++  "gpt-image-2.5-flare-2026-09-08",
++  "chatgpt-image-latest",
++]);
++
++export function isOfficialOpenaiImageModel(
++  baseUrl: string | null | undefined,
++  modelId: string,
++): boolean {
++  if (!baseUrl || !openaiImageModels.has(modelId)) return false;
++  try {
++    const url = new URL(baseUrl);
++    return (
++      url.origin === "https://api.openai.com" &&
++      url.pathname.replace(/\/+$/, "") === "/v1" &&
++      !url.username &&
++      !url.password &&
++      !url.search &&
++      !url.hash
++    );
++  } catch {
++    return false;
++  }
++}
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index 7fd881da14eda312998d4d6c32e601bf6022d5f4..4038beca52002eb6440bfbe3b9144324de4e3d96 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -5,6 +5,7 @@ import {
+   type ModelConfigObject,
+   type ProviderSettingsTemplateView,
+   matchEndpointTemplate,
++  isOfficialOpenaiImageModel,
+ } from "@zcode/provider";
+ import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
+ import type { SubscriptionConnectionOwner } from "./subscriptionConnections.js";
+@@ -129,7 +130,11 @@ export async function discoverConnectionModels(
+             ? item.display_name
+             : item.id;
+       // An ID proves membership only; retain separately reported capability fields as evidence.
+-      models.set(item.id, { id: item.id, name, config: readDiscoveredModelMetadata(item) });
++      let config = readDiscoveredModelMetadata(item);
++      if (isOfficialOpenaiImageModel(provider.effectiveConfig.api?.baseUrl, item.id) && !config.properties?.outputFormat) {
++        config = { ...config, properties: { ...config.properties, outputFormat: { supportsText: false, supportsImage: true, supportsVideo: false } } };
++      }
++      models.set(item.id, { id: item.id, name, config });
+       if (models.size > MAX_MODEL_LIST_ENTRIES)
+         throw new Error("The model list exceeds the supported entry limit");
+     }
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index ffc2b8bf868126c52b87773d2631d34cb12c5f29..8508b5d5c13385cdaff692772754ded03e8ea544 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -860,3 +860,18 @@ test("OpenCode Go discovery only merges models declared for the saved wire proto
+     await f.dispose();
+   }
+ });
++
++test("official OpenAI image membership uses exact published models, survives restart and stays out of chat", async () => {
++  const f = await fixture();
++  try {
++    const provider = (await f.service.getView()).providers.find((row) => row.providerId === f.providerId)!;
++    await f.service.savePersonalProviderOverlay(f.providerId, { ...provider.personalConfig, api: { type: "openai-responses", baseUrl: "https://api.openai.com/v1" }, access: { type: "api-key", apiKey: "synthetic" } });
++    f.setFetch(async () => Response.json({ data: [{ id: "gpt-image-2" }, { id: "gpt-image-future" }, { id: "gpt-4.1" }] }));
++    await f.service.discoverModels(f.providerId); await f.restart();
++    const models = await f.models();
++    const image = models.find((model) => model.modelId === "gpt-image-2")!;
++    assert.equal(image.effectiveConfig.properties?.outputFormat?.supportsImage, true); assert.equal(image.selectable, false);
++    assert.equal(models.find((model) => model.modelId === "gpt-image-future")!.effectiveConfig.properties?.outputFormat?.supportsImage, undefined);
++    assert.equal(models.find((model) => model.modelId === "gpt-4.1")!.effectiveConfig.properties?.outputFormat?.supportsImage, undefined);
++  } finally { await f.dispose(); }
++});
+diff --git a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+index 9e0474b1d574e8cf8dfa98f3767a8db69c09d7fa..67d72d95b492e5e9ba064f881947f34e57f8fa08 100644
+--- a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
++++ b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+@@ -32,6 +32,7 @@ export function usageCostSource(querySource: string | undefined): UsageCostSourc
+       "read_session_context",
+       "vision_bridge",
+       "media_image",
++      "media_video",
+     ].includes(querySource ?? "")
+   )
+     return "tool";
+diff --git a/packages/ui/test/usageCostSourceViewModel.test.ts b/packages/ui/test/usageCostSourceViewModel.test.ts
+index 1abb4e7646e7d04590de065c7dd84e693cac97a5..01567404cdd27f1a86042158697cebeef44d374c 100644
+--- a/packages/ui/test/usageCostSourceViewModel.test.ts
++++ b/packages/ui/test/usageCostSourceViewModel.test.ts
+@@ -48,6 +48,7 @@ test("cost composition uses recorded model request sources rather than tool-call
+   assert.equal(usageCostSource("web_fetch_processing"), "tool");
+   assert.equal(usageCostSource("vision_bridge"), "tool");
+   assert.equal(usageCostSource("media_image"), "tool");
++  assert.equal(usageCostSource("media_video"), "tool");
+   assert.equal(usageCostSource("unrecognized"), "other");
+ });
+ 

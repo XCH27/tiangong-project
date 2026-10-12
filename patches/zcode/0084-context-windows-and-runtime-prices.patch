@@ -1,0 +1,2629 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts b/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
+index 6d32b35..8c267f7 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
+@@ -111,7 +111,13 @@ export function classifyModelFailure(
+     };
+   }
+ 
+-  if (code === ModelErrorCode.InvalidModelRequest) {
++  // Host option guards cross the existing header RPC as stable text. They require a new
++  // selection, not a retry or an authentication repair, and must never start inference.
++  const declinedSubscriptionOption = unwrapped instanceof Error && [
++    "Context window is unavailable for this account and model",
++    "Fast mode is unavailable for this account and model",
++  ].includes(unwrapped.message);
++  if (code === ModelErrorCode.InvalidModelRequest || declinedSubscriptionOption) {
+     return {
+       code: ModelErrorCode.InvalidModelRequest,
+       message:
+diff --git a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+index ef9cedd..45ddca1 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+@@ -111,7 +111,8 @@ export function createPiSubscriptionModel(
+       const result = await invocation?.refreshRuntimeHeadersBeforeAttempt?.({
+         providerId: options.providerId,
+         modelId: options.modelId,
+-        subscriptionAccess: { provider: subscriptionKind, speedMode:request.options.speedMode },
++        subscriptionAccess: { provider: subscriptionKind, speedMode:request.options.speedMode,
++          ...(config.properties.contextWindows?.length ? { contextWindow: config.properties.contextWindow } : {}) },
+         attempt: 0,
+         abortSignal: linked.signal,
+         reason: "model-request",
+@@ -173,6 +174,7 @@ export function createPiSubscriptionModel(
+               subscriptionAccess: {
+                 provider: subscriptionKind,
+                 speedMode: request.options.speedMode,
++                ...(config.properties.contextWindows?.length ? { contextWindow: config.properties.contextWindow } : {}),
+                 recovery: {
+                   revision: auth.credentialSelection.revision,
+                   attemptedAccountIds: [...attemptedAccountIds],
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/index.ts b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+index 58b2e7b..61a2971 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/index.ts
+@@ -22,6 +22,7 @@ import type {
+ import { maybeThrowStorageFsFault } from "./fs-fault-injection.js";
+ 
+ export * from "./session-store.js";
++export { createUsagePriceCatalogReader, type UsagePriceCatalogReader } from "./usage-price-catalog.js";
+ 
+ // 内存 event store 实现已下沉到 @zcode/contracts，
+ // 这里保持 `@zcode/adapters/storage` 的导出路径不变，避免调用方改 import。
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/options.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/options.ts
+index d1ff920..081c57c 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/options.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/options.ts
+@@ -9,6 +9,7 @@ export type ForkCommitFaultStage =
+ 
+ export interface SqliteSessionStoreOptions {
+   dbPath?: string;
++  priceCatalog?: UsagePriceCatalogReader;
+   /** 仅供事务原子性测试；生产调用不得设置。 */
+   forkCommitFaultAt?: ForkCommitFaultStage;
+   /** 仅供启动锁等待边界测试；生产调用使用默认值。 */
+@@ -30,3 +31,4 @@ export interface SessionStoreDebugCounts {
+   toolUsage: number;
+   turnUsage: number;
+ }
++import type { UsagePriceCatalogReader } from "../usage-price-catalog.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index dfbcdf1..b42684b 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import type { ModelUsageRecord } from "@zcode/contracts";
+-import type { UsageAccountingRow, UsagePriceEstimate } from "@zcode/shared";
++import type { UsageAccountingRow, UsagePriceEstimate, PriceCatalog } from "@zcode/shared";
+ import { estimateUsagePrice, BUILTIN_MODEL_PROVIDER_IDS } from "@zcode/shared";
+ 
+ const object = (value: unknown): Record<string, unknown> =>
+@@ -24,6 +24,7 @@ function priceFacts(
+   providerId: string,
+   modelId: string,
+   startedAt: number,
++  catalog?: PriceCatalog,
+ ): UsagePriceEstimate {
+   const billingProvider =
+     typeof facts.billingProvider === "string"
+@@ -55,10 +56,10 @@ function priceFacts(
+       typeof facts.hasTieredMediaInput === "boolean" ? facts.hasTieredMediaInput : undefined,
+     speedMode: speed === "fast" || speed === "standard" ? speed : undefined,
+     subscription: facts.authKind === "subscription",
+-  });
++  }, catalog);
+ }
+ 
+-export function accountingSnapshot(input: ModelUsageRecord) {
++export function accountingSnapshot(input: ModelUsageRecord, catalog?: PriceCatalog, previous?: { providerId: string; modelId: string; startedAt: number; querySource: string; facts: string }) {
+   const usage = object(input.rawUsage);
+   const metadata = object(input.providerMetadata);
+   const identity = object(metadata.fleetAccounting);
+@@ -72,6 +73,20 @@ export function accountingSnapshot(input: ModelUsageRecord) {
+     cacheWrite1hTokens: count(object(anthropicUsage.cache_creation).ephemeral_1h_input_tokens),
+     reasoningTokens: count(usage.reasoningTokens),
+   };
++  // Duplicate observations of the same physical request keep its frozen price.
++  // A final observation with different counters/identity must still be evaluated anew.
++  if (previous?.providerId === String(input.providerId) && previous.modelId === String(input.modelId) &&
++    previous.startedAt === input.startedAt && previous.querySource === input.querySource) {
++    let prior: Record<string, unknown> = {};
++    try { prior = object(JSON.parse(previous.facts)); } catch { /* Legacy malformed facts are not proof. */ }
++    const basis = ["billingProvider", "authKind", "accountId", "requestedSpeedMode", "servedSpeedMode",
++      "hasTieredMediaInput", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens",
++      "cacheWrite1hTokens", "reasoningTokens", "reportedMediaUsd"];
++    if (typeof prior.estimatedUsd === "number" && Number.isFinite(prior.estimatedUsd) &&
++      basis.every((key) => prior[key] === (facts as Record<string, unknown>)[key]))
++      return { ...facts, ...Object.fromEntries(["estimatedUsd", "estimatedCredits", "priceVersion", "sourceUrl", "reason"]
++        .filter((key) => Object.hasOwn(prior, key)).map((key) => [key, prior[key]])) };
++  }
+   const reportedMediaUsd = identity.reportedMediaUsd;
+   if (
+     input.querySource === "media_image" &&
+@@ -88,7 +103,7 @@ export function accountingSnapshot(input: ModelUsageRecord) {
+   }
+   return {
+     ...facts,
+-    ...priceFacts(facts, String(input.providerId), String(input.modelId), input.startedAt),
++    ...priceFacts(facts, String(input.providerId), String(input.modelId), input.startedAt, catalog),
+   };
+ }
+ 
+@@ -97,6 +112,7 @@ export function queryAccounting(
+   db: DatabaseSync,
+   since: number,
+   until: number,
++  catalog?: PriceCatalog,
+ ): UsageAccountingRow[] {
+   // 价格目录更新后，只重算有完整历史事实但尚未计价的记录；查询不写回数据库，也不改已冻结价格。
+   db.function("fleet_usage_price", { deterministic: true }, (raw, provider, model, started) => {
+@@ -108,7 +124,7 @@ export function queryAccounting(
+     }
+     if (typeof facts.estimatedUsd === "number" && Number.isFinite(facts.estimatedUsd))
+       return JSON.stringify(facts);
+-    const price = priceFacts(facts, String(provider), String(model), Number(started));
++    const price = priceFacts(facts, String(provider), String(model), Number(started), catalog);
+     return JSON.stringify({
+       ...facts,
+       ...price,
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index 788db05..4514e7d 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -16,9 +16,13 @@ import type {
+   TurnUsageRecord,
+ } from "@zcode/contracts";
+ import { encodeJson } from "../json.js";
++import type { PriceCatalog } from "@zcode/shared";
++import { usagePriceCatalogInfo } from "@zcode/shared";
+ 
+ 
+-export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord): Promise<void> {
++export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord, catalog?: PriceCatalog): Promise<void> {
++  const previous = db.prepare("select provider_id as providerId, model_id as modelId, started_at as startedAt, query_source as querySource, accounting_json as facts from model_usage where id = ?")
++    .get(input.id) as { providerId: string; modelId: string; startedAt: number; querySource: string; facts: string } | undefined;
+   const computedTotalTokens =
+     input.computedTotalTokens ??
+     inputSideTokensFromNormalizedUsage(
+@@ -161,7 +165,7 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
+     input.errorMessage ?? null,
+     encodeJson(input.rawUsage),
+     encodeJson(input.providerMetadata),
+-    JSON.stringify(accountingSnapshot(input)),
++    JSON.stringify(accountingSnapshot(input, catalog, previous)),
+   );
+   await pruneUsage(db);
+ }
+@@ -393,6 +397,7 @@ function toolUsageValues(input: ToolUsageRecord): SQLInputValue[] {
+ export async function queryAppUsage(
+   db: DatabaseSync,
+   input: AppUsageQueryInput,
++  catalog?: PriceCatalog,
+ ): Promise<AppUsageQueryResult> {
+   const { since, until, tzOffsetMs } = input;
+   const DAY_MS = 86_400_000;
+@@ -604,7 +609,8 @@ export async function queryAppUsage(
+       toolCallCount: Number(toolTotals.toolCallCount ?? 0),
+       toolErrorCount: Number(toolTotals.toolErrorCount ?? 0),
+     },
+-    accounting: queryAccounting(db,since,until),
++    ...(catalog ? { priceCatalog: usagePriceCatalogInfo(catalog) } : {}),
++    accounting: queryAccounting(db,since,until,catalog),
+     modelActivities: queryModelActivity(db, since, until),
+     models: models.map((m) => ({
+       modelId: m.modelId ?? null,
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
+index 1f413ad..be67cb4 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/sqlite-session-store.ts
+@@ -233,11 +233,13 @@ export class SqliteSessionStore
+   private readonly db: DatabaseSync;
+   private readonly dbPath: string;
+   private readonly forkCommitFaultAt?: ForkCommitFaultStage;
++  private readonly priceCatalog?: SqliteSessionStoreOptions["priceCatalog"];
+   private dwfJournalStore?: JournalStorePort;
+ 
+   constructor(options: SqliteSessionStoreOptions = {}, startupToken?: symbol) {
+     this.dbPath = options.dbPath ?? getDefaultSessionDbPath();
+     this.forkCommitFaultAt = options.forkCommitFaultAt;
++    this.priceCatalog = options.priceCatalog;
+     const startupLockTimeoutMs =
+       options.startupLockTimeoutMs ?? DEFAULT_SQLITE_STARTUP_LOCK_TIMEOUT_MS;
+     try {
+@@ -836,7 +838,7 @@ export class SqliteSessionStore
+   }
+ 
+   async recordModelUsage(input: ModelUsageRecord): Promise<void> {
+-    return usageRepository.recordModelUsage(this.db, input);
++    return usageRepository.recordModelUsage(this.db, input, this.priceCatalog?.peek());
+   }
+ 
+   async upsertTurnUsage(input: TurnUsageRecord): Promise<void> {
+@@ -852,7 +854,8 @@ export class SqliteSessionStore
+   }
+ 
+   async queryAppUsage(input: AppUsageQueryInput): Promise<AppUsageQueryResult> {
+-    return usageRepository.queryAppUsage(this.db, input);
++    const catalog = await this.priceCatalog?.read();
++    return usageRepository.queryAppUsage(this.db, input, catalog);
+   }
+ 
+   async queryTaskUsage(input: TaskUsageQueryInput): Promise<TaskUsageQueryResult> {
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/usage-price-catalog.ts b/apps/zcode-cli/packages/adapters/src/storage/usage-price-catalog.ts
+new file mode 100644
+index 0000000..1fb054b
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/storage/usage-price-catalog.ts
+@@ -0,0 +1,85 @@
++import { createHash, randomUUID } from "node:crypto";
++import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
++import { dirname } from "node:path";
++import type { HttpClientPort } from "@zcode/contracts";
++import { BUNDLED_USAGE_PRICE_CATALOG, normalizeCatalog, USAGE_PRICE_SOURCE_URL, type PriceCatalog } from "@zcode/shared";
++
++const REFRESH_MS = 6 * 60 * 60 * 1000;
++const RETRY_MS = 15 * 60 * 1000;
++const MAX_BYTES = 12 * 1024 * 1024;
++
++export interface UsagePriceCatalogReader {
++  /** Captured synchronously for a receipt; never delays or changes an admitted model request. */
++  peek(): PriceCatalog;
++  read(): Promise<PriceCatalog>;
++}
++
++/** Public price data only. No credentials, prompts, account IDs or usage leave the Host. */
++export function createUsagePriceCatalogReader(options: {
++  http: Pick<HttpClientPort, "request">;
++  cachePath?: string;
++  now?: () => number;
++}): UsagePriceCatalogReader {
++  const now = options.now ?? Date.now;
++  let current = BUNDLED_USAGE_PRICE_CATALOG;
++  let nextAttempt = 0;
++  let loaded = false;
++  let pending: Promise<PriceCatalog> | undefined;
++  const parse = (bytes: Uint8Array): PriceCatalog => {
++    const value = JSON.parse(Buffer.from(bytes).toString("utf8"));
++    if (!value || typeof value !== "object" || typeof value.sourceJson !== "string" ||
++      Buffer.byteLength(value.sourceJson) > MAX_BYTES || typeof value.fetchedAt !== "string")
++      throw new Error("Invalid price cache");
++    const timestamp = Date.parse(value.fetchedAt);
++    if (!Number.isFinite(timestamp) || timestamp > now() + 60_000)
++      throw new Error("Invalid price cache date");
++    const hash = createHash("sha256").update(value.sourceJson).digest("hex");
++    if (hash !== value.sourceHash) throw new Error("Invalid price cache hash");
++    return normalizeCatalog(JSON.parse(value.sourceJson), value.fetchedAt, hash);
++  };
++  async function refresh(): Promise<PriceCatalog> {
++    if (!loaded) {
++      loaded = true;
++      if (options.cachePath) try {
++        if ((await stat(options.cachePath)).size > MAX_BYTES * 2 + 1024)
++          throw new Error("Price cache is too large");
++        const cached = parse(await readFile(options.cachePath));
++        if (Date.parse(cached.fetchedAt) >= Date.parse(current.fetchedAt)) current = cached;
++      } catch { /* An optional corrupt/missing cache cannot break the usage ledger. */ }
++    }
++    if (now() < nextAttempt || now() - Date.parse(current.fetchedAt) < REFRESH_MS) return current;
++    // Failure backoff starts before IO, so reopen/range changes cannot hammer the public directory.
++    nextAttempt = now() + RETRY_MS;
++    try {
++      const response = await options.http.request({
++        url: USAGE_PRICE_SOURCE_URL, method: "GET", headers: { Accept: "application/json" },
++        redirect: "manual", timeoutMs: 5_000, maxResponseBytes: MAX_BYTES,
++      });
++      if (response.status !== 200 || response.body.byteLength > MAX_BYTES)
++        throw new Error("Price directory is unavailable");
++      const sourceJson = Buffer.from(response.body).toString("utf8");
++      const sourceHash = createHash("sha256").update(sourceJson).digest("hex");
++      const fetchedAt = new Date(now()).toISOString();
++      const catalog = normalizeCatalog(JSON.parse(sourceJson), fetchedAt, sourceHash);
++      current = catalog;
++      nextAttempt = now() + REFRESH_MS;
++      if (options.cachePath) {
++        const temporary = `${options.cachePath}.${randomUUID()}.tmp`;
++        try {
++          await mkdir(dirname(options.cachePath), { recursive: true });
++          await writeFile(temporary, JSON.stringify({ sourceJson, sourceHash, fetchedAt }), { flag: "wx", mode: 0o600 });
++          await rename(temporary, options.cachePath);
++        } catch { /* A full/read-only disk must not discard a valid download. */ }
++        finally { await rm(temporary, { force: true }).catch(() => {}); }
++      }
++    } catch { /* Preserve the dated last good catalog, or the offline bundle. */ }
++    return current;
++  }
++  return {
++    peek: () => current,
++    read() {
++      pending ??= refresh().finally(() => { pending = undefined; });
++      return pending;
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+index 31681c6..ae91783 100644
+--- a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+@@ -10,6 +10,14 @@ const input = () => new Request(`${baseUrl}/responses`, { method: "POST", header
+ const quota = (seconds?: number) => Response.json({ error: { code: "usage_limit_reached", ...(seconds ? { resets_in_seconds: seconds } : {}) } }, { status: 429 });
+ const stopped = { code: CREDENTIAL_POOL_STOPPED };
+ 
++test("an account's unsupported context or Fast selection is terminal rather than repeated authentication or inference", () => {
++  for (const message of ["Context window is unavailable for this account and model", "Fast mode is unavailable for this account and model"]) {
++    const failure = classifyModelFailure(new Error(message));
++    assert.equal(failure.reason, "invalid_request");
++    assert.equal(failure.retryable, false);
++  }
++});
++
+ test("disabled slots and disabled duplicate identities never enter the recovery pool", async () => {
+   const seen: string[] = [];
+   const transport = createApiKeyFailoverFetch({
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts b/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts
+new file mode 100644
+index 0000000..688003a
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts
+@@ -0,0 +1,125 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { createUsagePriceCatalogReader } from "../src/storage/usage-price-catalog.js";
++import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
++import { BUNDLED_USAGE_PRICE_CATALOG, estimateUsagePrice } from "@zcode/shared";
++import type { HttpClientRequest, ModelUsageRecord, SessionId, ProjectId } from "@zcode/contracts";
++
++const payload = (input = 1) => ({ fresh: { name: "Fresh", models: { "fresh-model": {
++  modalities: { output: ["text"] }, cost: { input, output: 2, cache_read: 0.1 },
++} } } });
++const response = (body: unknown, status = 200) => ({ status, statusText: "", headers: {},
++  url: "https://models.dev/api.json", body: Buffer.from(JSON.stringify(body)), bytes: 0, durationMs: 0 });
++const time = Date.UTC(2026, 9, 1);
++const facts = { billingProvider: "fresh", modelId: "fresh-model", startedAt: time,
++  inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, speedMode: "standard" as const };
++
++test("public fetch coalesces concurrent readers, stays anonymous, and refreshes only after six hours", async () => {
++  let at = time;
++  const requests: HttpClientRequest[] = [];
++  let release!: () => void;
++  const gate = new Promise<void>((resolve) => { release = resolve; });
++  const reader = createUsagePriceCatalogReader({ now: () => at, http: { async request(request) {
++    requests.push(request); await gate; return response(payload());
++  } } });
++  assert.equal(reader.peek(), BUNDLED_USAGE_PRICE_CATALOG);
++  const a = reader.read(), b = reader.read();
++  release();
++  assert.equal(await a, await b);
++  assert.equal(requests.length, 1);
++  assert.deepEqual(requests[0], { url: "https://models.dev/api.json", method: "GET",
++    headers: { Accept: "application/json" }, redirect: "manual", timeoutMs: 5000, maxResponseBytes: 12 * 1024 * 1024 });
++  assert.equal(estimateUsagePrice(facts, reader.peek()).estimatedUsd, 0.0012);
++  await reader.read();
++  at += 6 * 60 * 60 * 1000 - 1;
++  await reader.read(); assert.equal(requests.length, 1);
++  at++;
++  await reader.read(); assert.equal(requests.length, 2);
++});
++
++test("restart reuses the hash-checked cache; transient failures retain its dated price and back off", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-price-reader-"));
++  const cachePath = join(dir, "prices.json");
++  let at = time;
++  let calls = 0;
++  try {
++    const reader = createUsagePriceCatalogReader({ cachePath, now: () => at,
++      http: { async request() { return response(payload()); } } });
++    const first = await reader.read();
++    const saved = await readFile(cachePath, "utf8");
++    const restarted = createUsagePriceCatalogReader({ cachePath, now: () => at,
++      http: { async request() { calls++; throw new Error("offline"); } } });
++    assert.equal((await restarted.read()).version, first.version);
++    assert.equal(calls, 0);
++    at += 6 * 60 * 60 * 1000;
++    assert.equal((await restarted.read()).fetchedAt, first.fetchedAt);
++    assert.equal(calls, 1);
++    await restarted.read(); assert.equal(calls, 1);
++    assert.equal(await readFile(cachePath, "utf8"), saved);
++    at += 15 * 60 * 1000;
++    await restarted.read(); assert.equal(calls, 2);
++  } finally { await rm(dir, { recursive: true, force: true }); }
++});
++
++test("bad download or cache cannot publish partial prices, and a cache write failure retains the download", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-price-validation-"));
++  const cachePath = join(dir, "prices.json");
++  try {
++    for (const bad of ["{", JSON.stringify({}), JSON.stringify({ sourceJson: JSON.stringify(payload(1000)),
++      sourceHash: "a".repeat(64), fetchedAt: new Date(time).toISOString() })]) {
++      await writeFile(cachePath, bad);
++      const reader = createUsagePriceCatalogReader({ cachePath, now: () => time,
++        http: { async request() { return response({}, 503); } } });
++      assert.equal(await reader.read(), BUNDLED_USAGE_PRICE_CATALOG);
++    }
++    for (const invalid of [{}, { fresh: null }, { fresh: { name: "Fresh", models: {} } }]) {
++      const reader = createUsagePriceCatalogReader({ now: () => time, http: { async request() { return response(invalid); } } });
++      assert.equal(await reader.read(), BUNDLED_USAGE_PRICE_CATALOG);
++    }
++    // The cache target is a directory: publication fails, but valid prices remain usable in memory.
++    const reader = createUsagePriceCatalogReader({ cachePath: dir, now: () => time,
++      http: { async request() { return response(payload()); } } });
++    assert.equal((await reader.read()).providers.fresh!.models["fresh-model"]!.input, 1);
++  } finally { await rm(dir, { recursive: true, force: true }); }
++});
++
++test("live prices fill unpriced facts without ledger writes; duplicate receipts preserve frozen amounts after refresh/reopen", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-price-ledger-"));
++  const dbPath = join(dir, "session.sqlite"), cachePath = join(dir, "prices.json");
++  let at = time, rate = 1;
++  const reader = createUsagePriceCatalogReader({ cachePath, now: () => at,
++    http: { async request() { return response(payload(rate)); } } });
++  let store = new SqliteSessionStore({ dbPath, priceCatalog: reader });
++  const record: ModelUsageRecord = { id: "request", logicalRequestId: "request", sessionID: "s" as SessionId,
++    querySource: "main_turn", providerId: "connection", modelId: facts.modelId, status: "completed", startedAt: time,
++    inputTokens: 1000, outputTokens: 100, rawUsage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0 },
++    providerMetadata: { fleetAccounting: { billingProvider: "fresh", requestedSpeedMode: "standard" } } };
++  const query = () => store.queryAppUsage({ since: time, until: time + 1, tzOffsetMs: 0 });
++  try {
++    await store.createSession({ id: "s" as SessionId, projectID: "p" as ProjectId, slug: "test", directory: dir, title: "test", version: "test" });
++    await store.recordModelUsage(record); // New model is absent in the offline bundle.
++    const first = await query();
++    assert.equal(first.accounting![0]!.pricedCount, 1);
++    assert.equal(first.accounting![0]!.estimatedUsd, 0.0012);
++    assert.equal(first.priceCatalog!.version, reader.peek().version);
++    // Freeze one priced physical request using the current catalog; then fetch a different price.
++    await store.recordModelUsage({ ...record, id: "frozen", logicalRequestId: "frozen" });
++    at += 6 * 60 * 60 * 1000; rate = 10;
++    const changed = await query();
++    assert.equal(changed.accounting![0]!.requestCount, 2);
++    assert.ok(Math.abs(changed.accounting![0]!.estimatedUsd - 0.0114) < 1e-12);
++    await store.recordModelUsage({ ...record, id: "frozen", logicalRequestId: "frozen" });
++    assert.equal((await query()).accounting![0]!.estimatedUsd, changed.accounting![0]!.estimatedUsd);
++    store.close();
++    store = new SqliteSessionStore({ dbPath, priceCatalog: createUsagePriceCatalogReader({ cachePath, now: () => at,
++      http: { async request() { throw new Error("offline"); } } }) });
++    assert.equal((await query()).accounting![0]!.estimatedUsd, changed.accounting![0]!.estimatedUsd);
++    // Final measured counters legitimately replace an earlier observation, rather than freezing a stale count.
++    await store.recordModelUsage({ ...record, id: "frozen", logicalRequestId: "frozen",
++      inputTokens: 2000, rawUsage: { inputTokens: 2000, outputTokens: 100, cacheReadTokens: 0 } });
++    assert.ok(Math.abs((await query()).accounting![0]!.estimatedUsd - 0.0304) < 1e-12);
++  } finally { store.close(); await rm(dir, { recursive: true, force: true }); }
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+index c059634..458d4db 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+@@ -3,6 +3,7 @@ import type { AiSdkModelAdapter } from "@zcode/adapters/model";
+ import type { Model } from "@zcode/contracts";
+ import type { AgentRuntimeDeps } from "@zcode/core";
+ import {
++  createRegistryModelConfig, ModelConfig, ModelPropertiesConfig,
+   type ModelSelection,
+   type ModelSelectionValidation,
+   type Provider,
+@@ -71,7 +72,13 @@ export class ApiProviderModelRuntime {
+     registryModel: ProviderModel,
+     target: Parameters<RuntimeModelFactory>[0],
+   ): Model {
+-    const config = registryModel.config;
++    const selectedContext = target.selection.options?.contextWindow;
++    // The exact catalog choice changes Host/Pi admission and compaction budgets, not a guessed wire parameter.
++    const selectedConfig = selectedContext === undefined ? undefined : createRegistryModelConfig(
++      registryModel.config.overlay(new ModelConfig({ properties: new ModelPropertiesConfig({ contextWindow: selectedContext }) })),
++    );
++    if (selectedConfig && !selectedConfig.ok) throw new Error("Invalid context-window model configuration");
++    const config = selectedConfig?.ok ? selectedConfig.config : registryModel.config;
+     // 输出预算属于单次请求，由 Agent 执行链显式决定，不能在 ModelFactory 中静默绑定。
+     // Selection 已在上面的 Registry 边界完成校验，Factory 不再承担任何缺省修复。
+     const normalReasoningLevel = target.selection.options!.reasoningLevel!;
+@@ -83,7 +90,7 @@ export class ApiProviderModelRuntime {
+       providerId: provider.providerId,
+       modelId: registryModel.modelId,
+       ...(registryModel.evidenceConfig
+-        ? { contextWindowEvidence: registryModel.evidenceConfig.properties?.contextWindow ?? null }
++        ? { contextWindowEvidence: selectedContext ?? registryModel.evidenceConfig.properties?.contextWindow ?? null }
+         : {}),
+       omitUnsourcedOutputLimit:
+         registryModel.evidenceConfig !== undefined &&
+@@ -103,6 +110,7 @@ export class ApiProviderModelRuntime {
+         : {}),
+       options: {
+         reasoningLevel: normalReasoningLevel,
++        speedMode: target.selection.options?.speedMode ?? "standard",
+       },
+     });
+   }
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
+index dd6d735..4024ba3 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-selection.ts
+@@ -134,6 +134,8 @@ export function createRegistrySelectionProtocolError(
+       );
+     case "speed-mode-not-supported":
+       return new ModelProtocolError(ModelErrorCode.InvalidModelRequest, `Fast mode is not supported by ${validation.providerId}/${validation.modelId}`);
++    case "context-window-not-supported":
++      return new ModelProtocolError(ModelErrorCode.InvalidModelRequest, `Context window is not supported by ${validation.providerId}/${validation.modelId}`);
+     case "reasoning-level-missing":
+       return new ModelProtocolError(
+         ModelErrorCode.InvalidModelRequest,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/session-store.ts b/apps/zcode-cli/packages/bootstrap/src/app/session-store.ts
+index c98cf52..040c41b 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/session-store.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/session-store.ts
+@@ -1,5 +1,6 @@
+ import { isAbsolute, resolve } from "node:path";
+-import { SqliteSessionStore } from "@zcode/adapters/storage";
++import { SqliteSessionStore, createUsagePriceCatalogReader } from "@zcode/adapters/storage";
++import { createNodeHttpClientAdapter } from "@zcode/adapters/http";
+ import { resolvePath, type ConfigResult } from "@zcode/adapters/config";
+ import {
+   SESSION_ENTRY_MODEL_SELECTION,
+@@ -71,6 +72,18 @@ export function closeSessionStore(store: SqliteSessionStore): void {
+   store.close();
+ }
+ 
++export function createStorePriceCatalog(configResult: ConfigResult, env = process.env) {
++  return createUsagePriceCatalogReader({
++    cachePath: `${getSessionDbPath(configResult)}.prices.json`,
++    http: createNodeHttpClientAdapter({
++      env,
++      proxyUrl: configResult.config.network.httpProxy,
++      noProxy: configResult.config.network.noProxy,
++      caCertFile: configResult.config.network.caCertFile,
++    }),
++  });
++}
++
+ export async function openStartupSessionStore(
+   configResult: ConfigResult,
+   startupTimer: StartupTimer,
+@@ -82,7 +95,7 @@ export async function openStartupSessionStore(
+     stage: "migrate_session_db",
+   });
+   const store = await SqliteSessionStore.openStartup(
+-    { dbPath },
++    { dbPath, priceCatalog: createStorePriceCatalog(configResult) },
+     {
+       onProgress: async (progress) => {
+         startupTimer.mark("SQLite startup state", {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-entrypoint.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-entrypoint.ts
+index 55572f3..d6f5ebc 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-entrypoint.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-entrypoint.ts
+@@ -26,7 +26,7 @@ import {
+   openProtocolStartupStorage,
+   prepareProtocolStartupStorage,
+ } from "./zcode-protocol/storage-startup.js";
+-import { closeSessionStore, getSessionDbPath } from "./app/session-store.js";
++import { closeSessionStore, getSessionDbPath, createStorePriceCatalog } from "./app/session-store.js";
+ import { startProcessProviderRegistryRuntime } from "./app/process-provider-registry-runtime.js";
+ import { scheduleStartupLogRetentionCleanup } from "./log-retention.js";
+ import { StartupTimer, startupNow } from "./startup-logging.js";
+@@ -143,6 +143,7 @@ export async function runZCodeProtocolAgent(
+       create: () =>
+         openProtocolStartupStorage({
+           dbPath: getSessionDbPath(configResult),
++          priceCatalog: createStorePriceCatalog(configResult, options.env ?? process.env),
+           output,
+           onProgress: (progress) =>
+             logger.info("SQLite startup state", {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/storage-startup.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/storage-startup.ts
+index 131aed2..e82c15e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/storage-startup.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/storage-startup.ts
+@@ -1,5 +1,5 @@
+ import { createHash, randomUUID } from "node:crypto";
+-import { SqliteSessionStore, type SqliteMigrationProgress } from "@zcode/adapters/storage";
++import { SqliteSessionStore, type SqliteMigrationProgress, type UsagePriceCatalogReader } from "@zcode/adapters/storage";
+ import {
+   classifyDatabaseStartupError,
+   databaseStartupErrorDetails,
+@@ -12,6 +12,7 @@ export async function openProtocolStartupStorage(options: {
+   dbPath: string;
+   output: NodeJS.WritableStream;
+   onProgress?: (progress: ZCodeStorageStartupState) => void;
++  priceCatalog?: UsagePriceCatalogReader;
+ }): Promise<SqliteSessionStore> {
+   const attemptId = randomUUID();
+   const databaseId = createHash("sha256").update(options.dbPath).digest("hex");
+@@ -38,7 +39,7 @@ export async function openProtocolStartupStorage(options: {
+   };
+   try {
+     await report({ phase: "checking", elapsedMs: 0 });
+-    return await SqliteSessionStore.openStartup({ dbPath: options.dbPath }, { onProgress: report });
++    return await SqliteSessionStore.openStartup({ dbPath: options.dbPath, priceCatalog: options.priceCatalog }, { onProgress: report });
+   } catch (error) {
+     if (!failedReported) {
+       try {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+index c433a16..975c585 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+@@ -222,6 +222,7 @@ export function buildAppUsageSnapshot(
+     timeZone: opts.timeZone,
+     source: "agent-db",
+     accounting: result.accounting,
++    priceCatalog: result.priceCatalog,
+     modelActivities: result.modelActivities?.map((activity) => ({
+       ...activity,
+       tools: activity.tools.map((tool) => ({
+diff --git a/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+index c99a427..ab0bd8c 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+@@ -14,6 +14,8 @@ import {
+ import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+ import { applySubmissionExecutionState } from "../../core/src/runtime/methods/turn-model.js";
+ import { createSessionFacade } from "../src/app/session-facade.js";
++import { ApiProviderModelRuntime } from "../src/app/provider-registry-model-runtime.js";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
+ 
+ const original = { providerId: "fixture", modelId: "first", options: { reasoningLevel: "medium" } };
+ const requested = { providerId: "fixture", modelId: "second", options: { reasoningLevel: "high" } };
+@@ -53,6 +55,7 @@ async function fixture(draft = false) {
+       enabled: true,
+       properties: {
+         contextWindow: 4096,
++        contextWindows: [4096, 8192],
+         requiresMfjsToolSchema: false,
+         inputFormat: {
+           supportsText: true,
+@@ -68,6 +71,7 @@ async function fixture(draft = false) {
+         supportsMidConversationSystem: false,
+       },
+       optionSpecs: {
++        speedMode: "openai-priority",
+         maxOutputTokens: { max: 512, map: "{}" },
+         reasoningLevel: { values: ["medium", "high"], map: "{}" },
+       },
+@@ -124,6 +128,7 @@ async function fixture(draft = false) {
+   } as never);
+   return {
+     runtime,
++    registry,
+     facade,
+     trace,
+     events,
+@@ -199,6 +204,45 @@ test("failed submission selection leaves memory and cold recovery unchanged, the
+   }
+ });
+ 
++test("a context-only change commits before publication, survives restart, and remains independent of effort", async () => {
++  const f = await fixture();
++  const selection = { ...original, options: { ...original.options, contextWindow: 8192 } };
++  try {
++    f.fail(true);
++    await assert.rejects(f.facade.setModel(selection), /disk write failed/);
++    assert.deepEqual(f.current, original);
++    f.fail(false);
++    await f.facade.setModel(selection);
++    assert.deepEqual(f.current, selection);
++    assert.deepEqual(await f.persisted(), selection);
++    await f.facade.setThoughtLevel("high");
++    assert.deepEqual(await f.persisted(), { ...selection, options: { ...selection.options, reasoningLevel: "high" } });
++    await assert.rejects(f.facade.setModel({ ...selection, options: { ...selection.options, contextWindow: 1000000 } }), /Context window is not supported/);
++    assert.deepEqual(await f.persisted(), { ...selection, options: { ...selection.options, reasoningLevel: "high" } });
++  } finally { await f.close(); }
++});
++
++test("factory applies the admitted context and Fast to the actual executable model without changing catalog defaults", async () => {
++  const f = await fixture();
++  const source = {
++    getView: () => f.registry.getView(), getProvider: (id: string) => f.registry.getProvider(id),
++    getModel: (provider: string, model: string) => f.registry.getModel(provider, model),
++    validateSelection: (selection: Parameters<typeof f.registry.validateSelection>[0]) => f.registry.validateSelection(selection),
++    onDidChange: () => () => {},
++  };
++  const runtime = new ApiProviderModelRuntime({ registry: source, modelAdapter: new AiSdkModelAdapter({}) });
++  runtime.start();
++  try {
++    const selected = { ...original, options: { reasoningLevel: "high", speedMode: "fast" as const, contextWindow: 8192 } };
++    const model = runtime.modelFactory({ selection: selected });
++    assert.equal(model.properties.contextWindow, 8192);
++    assert.equal(model.options.speedMode, "fast");
++    assert.equal(model.options.reasoningLevel, "high");
++    assert.equal(f.registry.getModel("fixture", "first")!.config.properties.contextWindow, 4096);
++    await assert.rejects(async () => runtime.modelFactory({ selection: { ...selected, options: { ...selected.options, contextWindow: 1 } } }), /Context window is not supported/);
++  } finally { runtime.dispose(); await f.close(); }
++});
++
+ test("execution-scoped models do not overwrite the conversation selection", async () => {
+   const f = await fixture();
+   try {
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index dfefe6d..8d15a98 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -1067,6 +1067,7 @@ export interface AppUsageDayModelRow {
+ }
+ 
+ export interface AppUsageQueryResult {
++  priceCatalog?: import("@zcode/shared").UsagePriceCatalogInfo;
+   modelActivities?: AppUsageModelActivityRow[];
+   skills?: {
+     skillId: string;
+diff --git a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+index 7cdfcc4..25f6d1b 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+@@ -35,6 +35,7 @@ export interface ModelInvocationContext {
+       provider: "openai-codex" | "github-copilot" | "xai";
+       accountId?: string;
+       speedMode?: "standard" | "fast";
++      contextWindow?: number;
+       recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+     };
+     attempt: number;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/subagent-selection.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/subagent-selection.ts
+index 9ec3b30..4586d57 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/subagent-selection.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/subagent-selection.ts
+@@ -8,6 +8,7 @@ const SUBAGENT_SELECTION_MESSAGES = {
+   "provider-not-found": "Provider unavailable / 供应商不存在或不可用",
+   "model-not-found": "Model unavailable / 模型不存在或不可用",
+   "speed-mode-not-supported": "Fast mode unsupported / 当前模型不支持快速模式",
++  "context-window-not-supported": "Context window unsupported / 不支持所选上下文窗口",
+   "reasoning-level-missing": "No reasoning level selected / 未选择思考档位",
+   "reasoning-level-not-supported": "Reasoning level unsupported / 不支持所选思考档位",
+ } satisfies Record<NonNullable<EffectiveModelSelectionResult["selectionIssue"]>, string>;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+index de490d9..33654ab 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+@@ -43,6 +43,7 @@ export function createRefreshRuntimeHeadersBeforeModelAttempt(
+       subscriptionAccess?: {
+         provider: "openai-codex" | "github-copilot" | "xai";
+         speedMode?: "standard" | "fast";
++        contextWindow?: number;
+         recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+       };
+       attempt: number;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+index b186a44..9096d82 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+@@ -86,7 +86,8 @@ export function sameModelSelection(
+     left?.providerId === right.providerId &&
+     left.modelId === right.modelId &&
+     left.options?.reasoningLevel === right.options?.reasoningLevel &&
+-    (left.options?.speedMode ?? "standard") === (right.options?.speedMode ?? "standard")
++    (left.options?.speedMode ?? "standard") === (right.options?.speedMode ?? "standard") &&
++    left.options?.contextWindow === right.options?.contextWindow
+   );
+ }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 757f719..fe193ae 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -407,6 +407,7 @@ export interface ProviderRuntimeHeadersPort {
+       provider: "openai-codex" | "github-copilot" | "xai";
+       accountId?: string;
+       speedMode?: "standard" | "fast";
++      contextWindow?: number;
+       recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+     };
+     abortSignal?: AbortSignal;
+diff --git a/package.json b/package.json
+index 782bb05..9931d12 100644
+--- a/package.json
++++ b/package.json
+@@ -52,7 +52,7 @@
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index c862446..98b8131 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -189,6 +189,7 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+ export class ModelPropertiesConfig extends ConfigOverlay<ModelPropertiesConfig> {
+   readonly requiresMfjsToolSchema?: ModelPropertiesConfigInput["requiresMfjsToolSchema"];
+   readonly contextWindow?: ModelPropertiesConfigInput["contextWindow"];
++  readonly contextWindows?: ModelPropertiesConfigInput["contextWindows"];
+   readonly inputFormat?: ModelInputFormatConfig | null;
+   readonly outputFormat?: ModelOutputFormatConfig | null;
+   readonly supportsToolCall?: ModelPropertiesConfigInput["supportsToolCall"];
+@@ -200,6 +201,10 @@ export class ModelPropertiesConfig extends ConfigOverlay<ModelPropertiesConfig>
+     super();
+     Object.assign(this, {
+       ...input,
++      contextWindows:
++        input.contextWindows == null
++          ? input.contextWindows
++          : Object.freeze([...input.contextWindows]),
+       inputFormat:
+         input.inputFormat instanceof ModelInputFormatConfig || input.inputFormat == null
+           ? input.inputFormat
+@@ -219,6 +224,7 @@ export class ModelPropertiesConfig extends ConfigOverlay<ModelPropertiesConfig>
+         next.requiresMfjsToolSchema,
+       ),
+       contextWindow: this.overlayValue(this.contextWindow, next.contextWindow),
++      contextWindows: this.overlayValue(this.contextWindows, next.contextWindows),
+       inputFormat: this.overlayConfig(this.inputFormat, next.inputFormat),
+       outputFormat: this.overlayConfig(this.outputFormat, next.outputFormat),
+       supportsToolCall: this.overlayValue(this.supportsToolCall, next.supportsToolCall),
+@@ -245,6 +251,7 @@ export class ModelPropertiesConfig extends ConfigOverlay<ModelPropertiesConfig>
+     return objectWithoutUndefined({
+       requiresMfjsToolSchema: this.requiresMfjsToolSchema,
+       contextWindow: this.contextWindow,
++      contextWindows: this.contextWindows,
+       inputFormat: this.inputFormat?.toJSON() ?? this.inputFormat,
+       outputFormat: this.outputFormat?.toJSON() ?? this.outputFormat,
+       supportsToolCall: this.supportsToolCall,
+diff --git a/packages/provider/src/effective-model-selection.ts b/packages/provider/src/effective-model-selection.ts
+index 16f087d..85d493a 100644
+--- a/packages/provider/src/effective-model-selection.ts
++++ b/packages/provider/src/effective-model-selection.ts
+@@ -76,6 +76,7 @@ export function resolveEffectiveModelSelection(input: {
+     effectiveSelection: selection,
+     ...(!validation.ok &&
+     (validation.code === "speed-mode-not-supported" ||
++      validation.code === "context-window-not-supported" ||
+       validation.code === "reasoning-level-missing" ||
+       validation.code === "reasoning-level-not-supported")
+       ? { selectionIssue: validation.code }
+diff --git a/packages/provider/src/registry.ts b/packages/provider/src/registry.ts
+index 86029a5..d9efd88 100644
+--- a/packages/provider/src/registry.ts
++++ b/packages/provider/src/registry.ts
+@@ -10,7 +10,7 @@ export type ModelSelectionValidation =
+   | { readonly ok: true }
+   | {
+       readonly ok: false;
+-      readonly code: "speed-mode-not-supported";
++      readonly code: "speed-mode-not-supported" | "context-window-not-supported";
+       readonly providerId: ProviderId;
+       readonly modelId: ModelId;
+     }
+@@ -136,6 +136,7 @@ export function validateModelSelectionOptions(
+   // 只依赖发布给 Renderer 的 Option 事实，避免 UI 另写一份档位校验或构造领域类。
+   model: {
+     readonly config: {
++      readonly properties?: { readonly contextWindows?: readonly number[] | null };
+       readonly optionSpecs: {
+         readonly reasoningLevel: { readonly values: readonly string[] };
+         readonly speedMode?: string | null;
+@@ -144,6 +145,16 @@ export function validateModelSelectionOptions(
+   },
+   selection: ModelSelection,
+ ): ModelSelectionValidation {
++  if (
++    selection.options?.contextWindow !== undefined &&
++    !model.config.properties?.contextWindows?.includes(selection.options.contextWindow)
++  )
++    return {
++      ok: false,
++      code: "context-window-not-supported",
++      providerId: selection.providerId,
++      modelId: selection.modelId,
++    };
+   if (selection.options?.speedMode === "fast" && !model.config.optionSpecs.speedMode) {
+     return {
+       ok: false,
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index f94af76..10a4a02 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -50,41 +50,52 @@ export function serializeRegistryProviderConfig(
+     ...(config.logo === undefined ? {} : { logo: config.logo }),
+     access:
+       config.access.type === "native-cli"
+-        ? { type: config.access.type, provider: config.access.provider, connected: true, accountId: config.access.accountId, ...(config.access.executable ? { executable: config.access.executable } : {}), ...(config.access.configDir ? { configDir: config.access.configDir } : {}) }
+-        : config.access.type === "subscription"
+         ? {
+-            type: "subscription",
++            type: config.access.type,
+             provider: config.access.provider,
+-            connected: config.access.connected,
++            connected: true,
++            accountId: config.access.accountId,
++            ...(config.access.executable ? { executable: config.access.executable } : {}),
++            ...(config.access.configDir ? { configDir: config.access.configDir } : {}),
+           }
+-        : config.access.type !== "zhipu-account"
++        : config.access.type === "subscription"
+           ? {
+-              type: config.access.type,
+-              apiKey: config.access.apiKey,
+-              ...(config.access.additionalApiKeys == null
+-                ? {}
+-                : { additionalApiKeys: [...config.access.additionalApiKeys] }),
+-              ...(config.access.apiKeyEnabledFlags == null
+-                ? {}
+-                : { apiKeyEnabledFlags: [...config.access.apiKeyEnabledFlags] }),
+-              ...(config.access.autoSwitchCredentials == null
+-                ? {}
+-                : { autoSwitchCredentials: config.access.autoSwitchCredentials }),
+-              ...(config.access.apiKeyManagementUrl === undefined
+-                ? {}
+-                : { apiKeyManagementUrl: config.access.apiKeyManagementUrl }),
++              type: "subscription",
++              provider: config.access.provider,
++              connected: config.access.connected,
+             }
+-          : {
+-              type: config.access.type,
+-              accountType: config.access.accountType,
+-              mode: config.access.mode,
+-              entitled: config.access.entitled,
+-            },
+-    ...(config.api ? { api: {
+-      type: config.api.type,
+-      baseUrl: config.api.baseUrl,
+-      ...(config.api.headers == null ? {} : { headers: config.api.headers }),
+-    } } : {}),
++          : config.access.type !== "zhipu-account"
++            ? {
++                type: config.access.type,
++                apiKey: config.access.apiKey,
++                ...(config.access.additionalApiKeys == null
++                  ? {}
++                  : { additionalApiKeys: [...config.access.additionalApiKeys] }),
++                ...(config.access.apiKeyEnabledFlags == null
++                  ? {}
++                  : { apiKeyEnabledFlags: [...config.access.apiKeyEnabledFlags] }),
++                ...(config.access.autoSwitchCredentials == null
++                  ? {}
++                  : { autoSwitchCredentials: config.access.autoSwitchCredentials }),
++                ...(config.access.apiKeyManagementUrl === undefined
++                  ? {}
++                  : { apiKeyManagementUrl: config.access.apiKeyManagementUrl }),
++              }
++            : {
++                type: config.access.type,
++                accountType: config.access.accountType,
++                mode: config.access.mode,
++                entitled: config.access.entitled,
++              },
++    ...(config.api
++      ? {
++          api: {
++            type: config.api.type,
++            baseUrl: config.api.baseUrl,
++            ...(config.api.headers == null ? {} : { headers: config.api.headers }),
++          },
++        }
++      : {}),
+     ...(config.builtinModelIds == null ? {} : { builtinModelIds: [...config.builtinModelIds] }),
+     ...(config.personalModelIds == null ? {} : { personalModelIds: [...config.personalModelIds] }),
+     ...(config.modelOrder == null ? {} : { modelOrder: [...config.modelOrder] }),
+@@ -104,6 +115,9 @@ export function serializeRegistryModelConfig(
+     properties: {
+       requiresMfjsToolSchema: config.properties.requiresMfjsToolSchema,
+       contextWindow: config.properties.contextWindow,
++      ...(config.properties.contextWindows
++        ? { contextWindows: config.properties.contextWindows }
++        : {}),
+       inputFormat: {
+         supportsText: config.properties.inputFormat.supportsText,
+         supportsImage: config.properties.inputFormat.supportsImage,
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+index 3579f60..3b2a89a 100644
+--- a/packages/services/src/model-provider/subscriptionCatalog.ts
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -1,7 +1,11 @@
+ import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+-import { CHATGPT_API_URL, isChatGPTPlanCredential, subscriptionCredentialUsable } from "./chatgptAuthorization.js";
++import {
++  CHATGPT_API_URL,
++  isChatGPTPlanCredential,
++  subscriptionCredentialUsable,
++} from "./chatgptAuthorization.js";
+ import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
+ import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+ import type { SubscriptionKind, SubscriptionRequestAuth } from "./subscriptionConnectionTypes.js";
+@@ -27,9 +31,14 @@ export function createSubscriptionProviders(
+ }
+ 
+ /** Existing records retain their original protocol until their owner reconnects. No legacy login. */
+-export function subscriptionCredentialOAuth(kind: SubscriptionKind, credential: OAuthCredential, provider: Provider) {
++export function subscriptionCredentialOAuth(
++  kind: SubscriptionKind,
++  credential: OAuthCredential,
++  provider: Provider,
++) {
+   return kind === "openai-codex" && !isChatGPTPlanCredential(credential) && provider.id === "openai"
+-    ? openaiCodexProvider().auth.oauth! : provider.auth.oauth!;
++    ? openaiCodexProvider().auth.oauth!
++    : provider.auth.oauth!;
+ }
+ 
+ export const GROK_SUBSCRIPTION_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
+@@ -142,13 +151,16 @@ export async function readNativeSubscriptionCatalog(
+   fetcher: typeof fetch,
+ ): Promise<ModelDiscoveryResult> {
+   const chatgptPlan = kind === "openai-codex" && isChatGPTPlanCredential(credential);
+-  if (!subscriptionCredentialUsable(credential)) throw new Error("ChatGPT plan permission requires reauthorization (chatgpt.tokens.use.direct)");
++  if (!subscriptionCredentialUsable(credential))
++    throw new Error("ChatGPT plan permission requires reauthorization (chatgpt.tokens.use.direct)");
+   if (!chatgptPlan && typeof credential.accountId !== "string")
+     throw new Error("Sign in to this subscription again");
+   const payload = await readSubscriptionJson(
+     kind === "xai"
+       ? `${GROK_SUBSCRIPTION_BASE_URL}/models`
+-      : chatgptPlan ? `${CHATGPT_API_URL}/models` : "https://chatgpt.com/backend-api/codex/models?client_version=0.155.0",
++      : chatgptPlan
++        ? `${CHATGPT_API_URL}/models`
++        : "https://chatgpt.com/backend-api/codex/models?client_version=0.155.0",
+     kind === "xai"
+       ? grokSubscriptionHeaders(credential)
+       : {
+@@ -190,7 +202,22 @@ export function parseNativeSubscriptionCatalog(
+     if (models.has(id)) {
+       throw new Error("Subscription model catalog contains duplicate model IDs");
+     }
+-    const context = positive(item.context_window ?? item.contextWindow ?? meta.totalContextTokens);
++    const scalarContext = positive(
++      item.context_window ?? item.contextWindow ?? meta.contextWindow ?? meta.totalContextTokens,
++    );
++    const rawWindows =
++      kind === "xai"
++        ? (item.context_windows ?? item.contextWindows ?? meta.contextWindows)
++        : undefined;
++    const listedWindows =
++      Array.isArray(rawWindows) &&
++      rawWindows.length <= 16 &&
++      rawWindows.every((window) => positive(window))
++        ? [...new Set(rawWindows as number[])]
++        : [];
++    const context = scalarContext ?? listedWindows[0];
++    // Grok Build retains a scalar default and prepends it when missing from the explicit menu.
++    const contextWindows = listedWindows.length ? [...new Set([context!, ...listedWindows])] : [];
+     const output = positive(
+       item.max_output_tokens ?? item.max_completion_tokens ?? item.maxCompletionTokens,
+     );
+@@ -225,6 +252,9 @@ export function parseNativeSubscriptionCatalog(
+         ? {
+             properties: {
+               ...(context ? { contextWindow: context } : {}),
++              ...(contextWindows.length > 1 && contextWindows.length <= 16
++                ? { contextWindows }
++                : {}),
+               ...(modalities
+                 ? {
+                     inputFormat: {
+diff --git a/packages/services/src/model-provider/subscriptionConnectionTypes.ts b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+index 2da2e23..efcf69d 100644
+--- a/packages/services/src/model-provider/subscriptionConnectionTypes.ts
++++ b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+@@ -24,8 +24,13 @@ export interface SubscriptionRequestAuth {
+ }
+ export type SubscriptionKind = "openai-codex" | "github-copilot" | "xai";
+ export interface SubscriptionAccountsView {
+-  accounts: { id: string; label?: string; active: boolean; publicPlan?: boolean;
+-    authorizationState?: "granted" | "plan-disabled" | "reauth-required" }[];
++  accounts: {
++    id: string;
++    label?: string;
++    active: boolean;
++    publicPlan?: boolean;
++    authorizationState?: "granted" | "plan-disabled" | "reauth-required";
++  }[];
+   autoSwitch: boolean;
+   revision: string;
+ }
+@@ -47,7 +52,11 @@ export interface SubscriptionConnectionOwner {
+     change: { select?: string; remove?: string; autoSwitch?: boolean },
+   ): Promise<SubscriptionAccountsView>;
+   models(providerId: string): Promise<ModelDiscoveryResult>;
+-  begin(providerId: string, method?: SubscriptionLoginMethod, accountId?: string): Promise<SubscriptionLogin>;
++  begin(
++    providerId: string,
++    method?: SubscriptionLoginMethod,
++    accountId?: string,
++  ): Promise<SubscriptionLogin>;
+   submit(providerId: string, flowId: string, callbackUrl: string): Promise<void>;
+   finish(providerId: string, flowId: string): Promise<SubscriptionLoginReceipt>;
+   disconnect(providerId: string): Promise<void>;
+@@ -57,7 +66,7 @@ export interface SubscriptionConnectionOwner {
+     expectedKind?: SubscriptionKind,
+     modelId?: string,
+     recovery?: SubscriptionRecovery,
+-    preference?: { accountId?: string; speedMode?: "standard" | "fast" },
++    preference?: { accountId?: string; speedMode?: "standard" | "fast"; contextWindow?: number },
+   ): Promise<SubscriptionRequestAuth>;
+ }
+ export interface SubscriptionLoginReceipt {
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index 7c56839..1cae8a6 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -379,6 +379,10 @@ export function createSubscriptionConnections(options: {
+           if (!native) throw new Error("No eligible subscription account for this model");
+           if (preference?.speedMode === "fast" && !native.config.optionSpecs?.speedMode)
+             throw new Error("Fast mode is unavailable for this account and model");
++          if (preference?.contextWindow !== undefined &&
++            native.config.properties?.contextWindow !== preference.contextWindow &&
++            !native.config.properties?.contextWindows?.includes(preference.contextWindow))
++            throw new Error("Context window is unavailable for this account and model");
+         }
+         const oauth = subscriptionCredentialOAuth(kind, credential, providers[kind]);
+         const auth = await withOAuthFetch(options.fetch ?? globalThis.fetch, () =>
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index d47b7cb..7792923 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -1,6 +1,11 @@
+ import { requestPluginReferenceCatalog } from "#src/zcode-agent/pluginReferenceCatalogRequest.js";
+-import { modelSettingsAssistantRequestSchema, modelSettingsAssistantViewSchema,
+-  type ModelSettingsAssistantTarget, type ModelSettingsAssistantOperation, type ModelSettingsAssistantView } from "@zcode/shared";
++import {
++  modelSettingsAssistantRequestSchema,
++  modelSettingsAssistantViewSchema,
++  type ModelSettingsAssistantTarget,
++  type ModelSettingsAssistantOperation,
++  type ModelSettingsAssistantView,
++} from "@zcode/shared";
+ import {
+   localTtftFactsSchema,
+   sessionDebugSnapshotSchema,
+@@ -865,7 +870,10 @@ interface CreateZCodeAgentServiceOptions extends Omit<
+   ZCodeAgentProcessManagerOptions,
+   "idleTimeoutMs"
+ > {
+-  modelSettingsAssistantOperation?: (target: ModelSettingsAssistantTarget, command: ModelSettingsAssistantOperation) => Promise<ModelSettingsAssistantView>;
++  modelSettingsAssistantOperation?: (
++    target: ModelSettingsAssistantTarget,
++    command: ModelSettingsAssistantOperation,
++  ) => Promise<ModelSettingsAssistantView>;
+   /** 仅供 MCP 状态探测进程使用，不能把空闲回收传给 chat。 */
+   mcpStatusIdleTimeoutMs?: number;
+   accountProviderConfigSource?: ProviderSource<AccountProviderConfigSnapshot>;
+@@ -875,7 +883,7 @@ interface CreateZCodeAgentServiceOptions extends Omit<
+     kind: "openai-codex" | "github-copilot" | "xai",
+     modelId: string,
+     recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery,
+-    preference?: { accountId?: string; speedMode?: "standard" | "fast" },
++    preference?: { accountId?: string; speedMode?: "standard" | "fast"; contextWindow?: number },
+   ) => Promise<AccountRequestAuthMaterial>;
+   /** Host-only read of the active subscription identity at user command admission. */
+   captureSubscriptionAccountId?: (providerId: string) => Promise<string | undefined>;
+@@ -1282,6 +1290,7 @@ export function createZCodeAgentService(
+         {
+           accountId: request.subscriptionAccess.accountId,
+           speedMode: request.subscriptionAccess.speedMode,
++          contextWindow: request.subscriptionAccess.contextWindow,
+         },
+       );
+     }
+@@ -2142,16 +2151,30 @@ export function createZCodeAgentService(
+           void (async () => {
+             let result;
+             try {
+-              if (!parsed.success || workspace.workspaceIdentity || workspace.remoteSessionId || !options?.modelSettingsAssistantOperation)
++              if (
++                !parsed.success ||
++                workspace.workspaceIdentity ||
++                workspace.remoteSessionId ||
++                !options?.modelSettingsAssistantOperation
++              )
+                 throw new Error("Model settings assistant is unavailable for this Host or request");
+-              result = modelSettingsAssistantViewSchema.parse(await options.modelSettingsAssistantOperation(parsed.data.target, parsed.data.command));
++              result = modelSettingsAssistantViewSchema.parse(
++                await options.modelSettingsAssistantOperation(
++                  parsed.data.target,
++                  parsed.data.command,
++                ),
++              );
+             } catch (error) {
+-              await client.respondError(request.id, { code: -32603,
+-                message: error instanceof Error ? error.message : "Model settings operation failed" });
++              await client.respondError(request.id, {
++                code: -32603,
++                message: error instanceof Error ? error.message : "Model settings operation failed",
++              });
+               return;
+             }
+             await client.respond(request.id, result);
+-          })().catch(() => logger.debug(undefined, "Model settings assistant response transport closed"));
++          })().catch(() =>
++            logger.debug(undefined, "Model settings assistant response transport closed"),
++          );
+           return;
+         }
+         if (request.method === zcodeProtocolMethods.sessionRequestRuntimePreferences) {
+diff --git a/packages/services/test/subscription-catalog.test.ts b/packages/services/test/subscription-catalog.test.ts
+index c2dfaea..9f00a74 100644
+--- a/packages/services/test/subscription-catalog.test.ts
++++ b/packages/services/test/subscription-catalog.test.ts
+@@ -10,9 +10,18 @@ import {
+ } from "../src/model-provider/subscriptionCatalog.js";
+ 
+ test("Grok catalog and inference share the current compatible client identity", () => {
+-  const credential = { type: "oauth", access: "synthetic-token", refresh: "synthetic-refresh", expires: 0, accountId: "fixture" } as never;
++  const credential = {
++    type: "oauth",
++    access: "synthetic-token",
++    refresh: "synthetic-refresh",
++    expires: 0,
++    accountId: "fixture",
++  } as never;
+   const headers = grokSubscriptionHeaders(credential);
+-  const inference = bindNativeSubscriptionAuth("xai", credential, { apiKey: "synthetic-token", headers: {} });
++  const inference = bindNativeSubscriptionAuth("xai", credential, {
++    apiKey: "synthetic-token",
++    headers: {},
++  });
+   assert.equal(headers["x-grok-client-version"], GROK_SUBSCRIPTION_CLIENT_VERSION);
+   assert.equal(inference.headers["x-grok-client-version"], GROK_SUBSCRIPTION_CLIENT_VERSION);
+   assert.equal(GROK_SUBSCRIPTION_CLIENT_VERSION, "1.0.44");
+@@ -140,3 +149,40 @@ test("fast support comes from the account catalog, not the model name", () => {
+   assert.equal(models[1]?.config.optionSpecs?.speedMode, null);
+   assert.equal(models[2]?.config.optionSpecs?.speedMode, undefined);
+ });
++
++test("Grok's explicit context menu preserves its default; fixed or malformed catalogs do not invent choices", () => {
++  const models = parseNativeSubscriptionCatalog("xai", {
++    data: [
++      {
++        model: "menu",
++        apiBackend: "responses",
++        contextWindow: 200000,
++        contextWindows: [256000, 500000, 256000],
++      },
++      {
++        model: "metadata",
++        apiBackend: "responses",
++        _meta: { contextWindow: 256000, contextWindows: [256000, 500000] },
++      },
++      { model: "list-only", apiBackend: "responses", context_windows: [500000, 256000] },
++      { model: "fixed", apiBackend: "responses", contextWindow: 256000 },
++      { model: "single", apiBackend: "responses", contextWindows: [256000] },
++      {
++        model: "malformed",
++        apiBackend: "responses",
++        contextWindow: 256000,
++        contextWindows: [256000, "500000"],
++      },
++    ],
++  }).models;
++  assert.deepEqual(models[0]!.config.properties?.contextWindows, [200000, 256000, 500000]);
++  assert.deepEqual(models[1]!.config.properties?.contextWindows, [256000, 500000]);
++  assert.equal(models[2]!.config.properties?.contextWindow, 500000);
++  assert.deepEqual(models[2]!.config.properties?.contextWindows, [500000, 256000]);
++  for (const model of models.slice(3))
++    assert.equal(model.config.properties?.contextWindows, undefined);
++  const ordinary = parseNativeSubscriptionCatalog("openai-codex", {
++    models: [{ slug: "fixed", context_window: 256000, context_windows: [256000, 500000] }],
++  }).models[0]!;
++  assert.equal(ordinary.config.properties?.contextWindows, undefined);
++});
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index fad5daf..3a61313 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -1353,6 +1353,46 @@ test("an account switch discards an in-flight subscription catalog", async () =>
+   await assert.rejects(result, /account changed/);
+ });
+ 
++test("context selection is checked on every account before obtaining auth, including a failover backup", async () => {
++  const f = fixture(undefined, async (_url, init) => {
++    const account = new Headers(init?.headers).get("x-userid");
++    return Response.json({
++      data: [
++        {
++          id: "model-one",
++          api_backend: "responses",
++          context_window: 256000,
++          context_windows: account === "alice" ? [256000, 500000] : [256000],
++        },
++      ],
++    });
++  });
++  seedCatalogAccounts(f, "xai");
++  await f.owner.updateAccounts("one", { autoSwitch: true });
++  const first = await f.owner.resolve("one", "xai", "model-one", undefined, {
++    contextWindow: 500000,
++  });
++  await assert.rejects(
++    f.owner.resolve(
++      "one",
++      "xai",
++      "model-one",
++      {
++        revision: first.credentialSelection!.revision,
++        attemptedAccountIds: [first.credentialSelection!.accountId],
++        status: 429,
++        rejection: { reason: "quota", scope: "credential" },
++      },
++      { contextWindow: 500000 },
++    ),
++    /Context window is unavailable/,
++  );
++  assert.equal(
++    (await f.owner.resolve("one", "xai", "model-one", undefined, { contextWindow: 256000 })).apiKey,
++    "bob",
++  );
++});
++
+ test("failed subscription accounts persist across requests and owner restarts", async () => {
+   const fetcher: typeof fetch = async () => Response.json({ models: [{ slug: "model-one" }] });
+   const f = fixture(undefined, fetcher);
+diff --git a/packages/services/test/usage-price.test.ts b/packages/services/test/usage-price.test.ts
+index b4a85fb..fdd10b5 100644
+--- a/packages/services/test/usage-price.test.ts
++++ b/packages/services/test/usage-price.test.ts
+@@ -62,6 +62,33 @@ test("Fast impact separates subscription credits from each vendor's API rates",
+   assert.equal(impact("deepseek", "deepseek-flash", false), undefined);
+ });
+ 
++test("GPT-6.1 Sol keeps its lower cache-read rate, long tier and independently sourced subscription credits", () => {
++  const selected = { ...request, modelId: "gpt-6.1-sol", subscription: true };
++  const normal = estimateUsagePrice(selected);
++  close(normal.estimatedUsd, 0.0196);
++  close(normal.estimatedCredits, 0.465);
++  assert.equal(normal.priceVersion, "official-gpt-6.1-sol-2026-10-01");
++  close(estimateUsagePrice({ ...selected, speedMode: "fast" }).estimatedCredits, 0.93);
++  close(estimateUsagePrice({ ...selected, inputTokens: 272000 }).estimatedUsd, 0.5436);
++  close(estimateUsagePrice({ ...selected, inputTokens: 272001 }).estimatedUsd, 1.082204);
++  close(
++    estimateUsagePrice({ ...selected, inputTokens: 272001, speedMode: "fast" }).estimatedUsd,
++    2.164408,
++  );
++  assert.equal(
++    lookupFastModePriceImpact({
++      billingProvider: "openai",
++      modelId: selected.modelId,
++      subscription: true,
++    })?.multiplier,
++    2.5,
++  );
++  assert.equal(
++    estimateUsagePrice({ ...selected, billingProvider: "unrelated-proxy" }).estimatedUsd,
++    undefined,
++  );
++});
++
+ test("OpenAI long tier starts strictly above 272K inclusive input, affecting the full request", () => {
+   const short = { ...request, inputTokens: 272_000 };
+   close(estimateUsagePrice(short).estimatedUsd, 2.721);
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 5027cda..c378bda 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -313,4 +313,7 @@ export * from "./usage-accounting.js";
+ export * from "./usage-price.js";
+ export * from "./usage-cost-report.js";
+ export { resolveUsageBillingProvider, USAGE_PRICE_CATALOG_INFO } from "./usage-price-catalog.js";
++export { BUNDLED_USAGE_PRICE_CATALOG, usagePriceCatalogInfo } from "./usage-price-catalog.js";
++export type { PriceCatalog, UsagePriceCatalogInfo } from "./usage-price-catalog.js";
++export { normalizeCatalog, USAGE_PRICE_SOURCE_URL } from "./usage-price-catalog-normalize.js";
+ export * from "./model-settings-assistant.js";
+diff --git a/packages/shared/src/model-config.ts b/packages/shared/src/model-config.ts
+index caa0d4f..d6d5f41 100644
+--- a/packages/shared/src/model-config.ts
++++ b/packages/shared/src/model-config.ts
+@@ -76,6 +76,14 @@ export const completeModelPropertiesDataSchema = z
+   .object({
+     requiresMfjsToolSchema: z.boolean(),
+     contextWindow: z.number().int().positive(),
++    /** Provider-declared selectable Host windows; a fixed limit alone is not a choice list. */
++    contextWindows: z
++      .array(z.number().int().positive())
++      .min(2)
++      .max(16)
++      .refine((values) => new Set(values).size === values.length)
++      .readonly()
++      .optional(),
+     inputFormat: completeModelInputFormatDataSchema,
+     outputFormat: completeModelOutputFormatDataSchema,
+     supportsToolCall: z.boolean(),
+diff --git a/packages/shared/src/model-selection.ts b/packages/shared/src/model-selection.ts
+index 2953c78..7a7d535 100644
+--- a/packages/shared/src/model-selection.ts
++++ b/packages/shared/src/model-selection.ts
+@@ -10,6 +10,7 @@ export const modelSelectionSchema = z
+       .object({
+         reasoningLevel: z.string().trim().min(1).optional(),
+         speedMode: z.enum(MODEL_SPEED_MODES).optional(),
++        contextWindow: z.number().int().positive().optional(),
+       })
+       .strict()
+       .optional(),
+@@ -27,6 +28,7 @@ export interface EffectiveModelSelectionResult {
+     | "provider-not-found"
+     | "model-not-found"
+     | "speed-mode-not-supported"
++    | "context-window-not-supported"
+     | "reasoning-level-missing"
+     | "reasoning-level-not-supported";
+ }
+diff --git a/packages/shared/src/usage-price-catalog-normalize.ts b/packages/shared/src/usage-price-catalog-normalize.ts
+new file mode 100644
+index 0000000..078ba1b
+--- /dev/null
++++ b/packages/shared/src/usage-price-catalog-normalize.ts
+@@ -0,0 +1,160 @@
++import type {
++  CatalogTokenRates,
++  CatalogPrice,
++  CatalogProvider,
++  PriceCatalog,
++} from "./usage-price-catalog.js";
++
++export const USAGE_PRICE_SOURCE_URL = "https://models.dev/api.json";
++const RATE_NAMES = {
++  input: "input",
++  output: "output",
++  cache_read: "cacheRead",
++  cache_write: "cacheWrite",
++  reasoning: "reasoning",
++  input_audio: "inputAudio",
++  output_audio: "outputAudio",
++} as const;
++const RATE_FIELDS = Object.keys(RATE_NAMES);
++const COST_FIELDS = new Set([...RATE_FIELDS, "tiers", "context_over_200k"]);
++const isRecord = (value: unknown): value is Record<string, unknown> =>
++  value !== null && typeof value === "object" && !Array.isArray(value);
++const isRate = (value: unknown): value is number =>
++  typeof value === "number" &&
++  Number.isFinite(value) &&
++  value >= 0 &&
++  value <= Number.MAX_SAFE_INTEGER;
++
++function safeUrl(value: unknown) {
++  if (typeof value !== "string") return undefined;
++  try {
++    const url = new URL(value);
++    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash
++      ? url.href
++      : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
++function rates(value: unknown, base?: CatalogTokenRates): CatalogTokenRates | undefined {
++  if (!isRecord(value)) return undefined;
++  for (const field of RATE_FIELDS) {
++    if (Object.hasOwn(value, field) && !isRate(value[field])) return undefined;
++  }
++  const input = value.input ?? base?.input;
++  const output = value.output ?? base?.output;
++  if (!isRate(input) || !isRate(output)) return undefined;
++  const result: CatalogTokenRates = { input, output };
++  for (const [source, destination] of Object.entries(RATE_NAMES)) {
++    const rate = value[source] ?? base?.[destination];
++    if (isRate(rate)) result[destination] = rate;
++  }
++  return result;
++}
++
++function normalizeCost(cost: unknown): CatalogPrice | undefined {
++  if (!isRecord(cost) || Object.keys(cost).some((key) => !COST_FIELDS.has(key))) return undefined;
++  const base = rates(cost);
++  if (!base) return undefined;
++  let tiers: NonNullable<CatalogPrice["tiers"]> | undefined;
++  // models.dev 的显式阈值可能是 256K/272K，不能被旧的 context_over_200k 字段覆盖。
++  if (Object.hasOwn(cost, "tiers")) {
++    if (!Array.isArray(cost.tiers) || cost.tiers.length === 0) return undefined;
++    tiers = [];
++    for (const entry of cost.tiers) {
++      if (
++        !isRecord(entry) ||
++        Object.keys(entry).some((key) => key !== "tier" && !RATE_FIELDS.includes(key)) ||
++        !isRecord(entry.tier) ||
++        Object.keys(entry.tier).some((key) => key !== "type" && key !== "size") ||
++        entry.tier.type !== "context" ||
++        typeof entry.tier.size !== "number" ||
++        !Number.isSafeInteger(entry.tier.size) ||
++        entry.tier.size <= 0 ||
++        !RATE_FIELDS.some((field) => Object.hasOwn(entry, field))
++      )
++        return undefined;
++      const tierRates = rates(entry, base);
++      const above = entry.tier.size;
++      if (!tierRates || tiers.some((tier) => tier.above === above)) return undefined;
++      tiers.push({ above, ...tierRates });
++    }
++    tiers.sort((a, b) => a.above - b.above);
++  } else if (Object.hasOwn(cost, "context_over_200k")) {
++    const legacy = cost.context_over_200k;
++    if (
++      !isRecord(legacy) ||
++      Object.keys(legacy).some((key) => !RATE_FIELDS.includes(key)) ||
++      !RATE_FIELDS.some((field) => Object.hasOwn(legacy, field))
++    )
++      return undefined;
++    const tierRates = rates(legacy, base);
++    if (!tierRates) return undefined;
++    tiers = [{ above: 200_000, ...tierRates }];
++  }
++  return { ...base, ...(tiers ? { tiers } : {}) };
++}
++
++/** Reduce models.dev's USD-per-million text token prices without inventing missing rates. */
++export function normalizeCatalog(
++  payload: unknown,
++  fetchedAt: string,
++  sourceHash: string,
++): PriceCatalog {
++  if (!isRecord(payload) || Object.keys(payload).length === 0)
++    throw new Error("Empty or malformed catalog");
++  if (typeof fetchedAt !== "string" || !Number.isFinite(Date.parse(fetchedAt)))
++    throw new Error("Invalid fetchedAt");
++  if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash))
++    throw new Error("Invalid sourceHash");
++  const timestamp = new Date(fetchedAt).toISOString();
++  const providers: Array<[string, CatalogProvider]> = [];
++  for (const providerId of Object.keys(payload).sort()) {
++    const provider = payload[providerId];
++    if (
++      !providerId ||
++      !isRecord(provider) ||
++      typeof provider.name !== "string" ||
++      !provider.name.trim() ||
++      !isRecord(provider.models)
++    ) {
++      throw new Error(`Malformed provider: ${providerId}`);
++    }
++    const models: Array<[string, CatalogPrice]> = [];
++    for (const modelId of Object.keys(provider.models).sort()) {
++      const model = provider.models[modelId];
++      const modalities = isRecord(model) && isRecord(model.modalities) ? model.modalities : {};
++      if (
++        !modelId ||
++        !isRecord(model) ||
++        !Array.isArray(modalities.output) ||
++        modalities.output.length !== 1 ||
++        modalities.output[0] !== "text"
++      )
++        continue;
++      const cost = normalizeCost(model.cost);
++      if (cost) models.push([modelId, cost]);
++    }
++    if (!models.length) continue;
++    const api = safeUrl(provider.api);
++    const doc = safeUrl(provider.doc);
++    providers.push([
++      providerId,
++      {
++        name: provider.name,
++        ...(api ? { api } : {}),
++        ...(doc ? { doc } : {}),
++        models: Object.fromEntries(models),
++      },
++    ]);
++  }
++  if (!providers.length) throw new Error("Catalog contains no supported text prices");
++  return {
++    version: `models.dev-${timestamp.slice(0, 10)}-${sourceHash.slice(0, 12)}`,
++    fetchedAt: timestamp,
++    sourceUrl: USAGE_PRICE_SOURCE_URL,
++    sourceHash,
++    providers: Object.fromEntries(providers),
++  };
++}
+diff --git a/packages/shared/src/usage-price-catalog.ts b/packages/shared/src/usage-price-catalog.ts
+index 115de3f..9863900 100644
+--- a/packages/shared/src/usage-price-catalog.ts
++++ b/packages/shared/src/usage-price-catalog.ts
+@@ -12,33 +12,44 @@ export interface CatalogTokenRates {
+ export interface CatalogPrice extends CatalogTokenRates {
+   tiers?: Array<CatalogTokenRates & { above: number }>;
+ }
+-interface CatalogProvider {
++export interface CatalogProvider {
+   name: string;
+   api?: string;
+   doc?: string;
+   models: Record<string, CatalogPrice>;
+ }
+-interface PriceCatalog {
++export interface PriceCatalog {
+   version: string;
+   fetchedAt: string;
+-  sourceUrl: string;
++  sourceUrl: "https://models.dev/api.json";
++  sourceHash: string;
+   providers: Record<string, CatalogProvider>;
+ }
+-const catalog = snapshot as unknown as PriceCatalog;
+-export const USAGE_PRICE_CATALOG_INFO = {
+-  version: catalog.version,
+-  fetchedAt: catalog.fetchedAt,
+-  sourceUrl: catalog.sourceUrl,
+-  providers: Object.keys(catalog.providers).length,
+-  models: Object.values(catalog.providers).reduce(
+-    (total, provider) => total + Object.keys(provider.models).length,
+-    0,
+-  ),
+-};
++export const BUNDLED_USAGE_PRICE_CATALOG = snapshot as unknown as PriceCatalog;
++const catalog = BUNDLED_USAGE_PRICE_CATALOG;
++export function usagePriceCatalogInfo(directory: PriceCatalog) {
++  return {
++    version: directory.version,
++    fetchedAt: directory.fetchedAt,
++    sourceUrl: directory.sourceUrl,
++    providers: Object.keys(directory.providers).length,
++    models: Object.values(directory.providers).reduce(
++      (total, provider) => total + Object.keys(provider.models).length,
++      0,
++    ),
++  };
++}
++export type UsagePriceCatalogInfo = ReturnType<typeof usagePriceCatalogInfo>;
++export const USAGE_PRICE_CATALOG_INFO = usagePriceCatalogInfo(catalog);
+ 
+-export function lookupCatalogPrice(providerId: string, modelId: string, inputTokens: number) {
+-  if (!Object.hasOwn(catalog.providers, providerId)) return undefined;
+-  const provider = catalog.providers[providerId]!;
++export function lookupCatalogPrice(
++  providerId: string,
++  modelId: string,
++  inputTokens: number,
++  directory: PriceCatalog = catalog,
++) {
++  if (!Object.hasOwn(directory.providers, providerId)) return undefined;
++  const provider = directory.providers[providerId]!;
+   // 营销名称常保留大写；只接受同供应商内唯一的大小写匹配，不删除模型版本/后缀。
+   const matches = Object.hasOwn(provider.models, modelId)
+     ? [modelId]
+@@ -50,9 +61,9 @@ export function lookupCatalogPrice(providerId: string, modelId: string, inputTok
+   return {
+     modelId: id,
+     rates: tier ?? model,
+-    sourceUrl: catalog.sourceUrl,
++    sourceUrl: directory.sourceUrl,
+     providerUrl: provider.doc,
+-    version: catalog.version,
++    version: directory.version,
+   };
+ }
+ 
+diff --git a/packages/shared/src/usage-price-directory.ts b/packages/shared/src/usage-price-directory.ts
+index b090954..5112948 100644
+--- a/packages/shared/src/usage-price-directory.ts
++++ b/packages/shared/src/usage-price-directory.ts
+@@ -1,11 +1,20 @@
+ import { lookupCatalogPrice } from "./usage-price-catalog.js";
++import type { PriceCatalog } from "./usage-price-catalog.js";
+ import { lookupOfficialPrice } from "./usage-price-official.js";
+ import type { UsagePriceEstimate, UsagePriceInput } from "./usage-price.js";
+ 
+ /** Current token-rate estimate; raw counters and provider identity are already validated by the owner. */
+-export function estimateDirectoryUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
++export function estimateDirectoryUsagePrice(
++  input: UsagePriceInput,
++  catalog?: PriceCatalog,
++): UsagePriceEstimate {
+   const official = lookupOfficialPrice(input.billingProvider!, input.modelId);
+-  const entry = lookupCatalogPrice(input.billingProvider!, input.modelId, input.inputTokens!);
++  const entry = lookupCatalogPrice(
++    input.billingProvider!,
++    input.modelId,
++    input.inputTokens!,
++    catalog,
++  );
+   const xaiPriority = input.billingProvider === "xai" && input.speedMode === "fast";
+   const version = xaiPriority
+     ? `${entry?.version ?? "unpriced"}+xai-priority-2026-09-28`
+diff --git a/packages/shared/src/usage-price.ts b/packages/shared/src/usage-price.ts
+index c3d8be7..e38c72a 100644
+--- a/packages/shared/src/usage-price.ts
++++ b/packages/shared/src/usage-price.ts
+@@ -1,5 +1,6 @@
+ import { estimateDirectoryUsagePrice } from "./usage-price-directory.js";
+ import { lookupOfficialPrice } from "./usage-price-official.js";
++import type { PriceCatalog } from "./usage-price-catalog.js";
+ 
+ /**
+  * Pure current-rate estimates over a single normalized request, never a provider bill.
+@@ -46,6 +47,7 @@ const LONG_INPUT_THRESHOLD = 272_000;
+ 
+ type Rates = readonly [input: number, cacheRead: number, cacheWrite: number, output: number];
+ interface OpenAIPrice {
++  version?: string;
+   short: Rates;
+   long: Rates;
+   separateCacheWrite: boolean;
+@@ -59,6 +61,18 @@ interface OpenAIPrice {
+ // Fast API values come from the API table; included allowance = 2.5x and purchased credits = 2x are
+ // documented at https://learn.chatgpt.com/docs/agent-configuration/speed.
+ const OPENAI_PRICES = new Map<string, OpenAIPrice>([
++  [
++    "gpt-6.1-sol",
++    {
++      version: "official-gpt-6.1-sol-2026-10-01",
++      short: [2, 0.1, 2.5, 10],
++      long: [4, 0.2, 5, 15],
++      separateCacheWrite: true,
++      apiFastMultiplier: 2,
++      longFast: true,
++      credits: [50, 2.5, 250],
++    },
++  ],
+   [
+     "gpt-6-astra",
+     {
+@@ -221,7 +235,10 @@ function validCounter(value: number | undefined): boolean {
+  * can leave USD unknown while credits remain known: native credits explicitly do
+  * not separately bill writes. The listed credit rate has no API context multiplier.
+  */
+-export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
++export function estimateUsagePrice(
++  input: UsagePriceInput,
++  catalog?: PriceCatalog,
++): UsagePriceEstimate {
+   if (input.billingProvider === "openai" && OPENAI_PRICES.has(input.modelId.toLowerCase()))
+     input = { ...input, modelId: input.modelId.toLowerCase() };
+   const { billingProvider, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = input;
+@@ -251,7 +268,7 @@ export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
+     billingProvider !== "deepseek" &&
+     (billingProvider !== "openai" || !OPENAI_PRICES.has(input.modelId))
+   )
+-    return estimateDirectoryUsagePrice(input);
++    return estimateDirectoryUsagePrice(input, catalog);
+   if (input.speedMode === undefined) return unknown("speed-mode-missing", sourceUrl);
+   if (input.speedMode !== "standard" && input.speedMode !== "fast")
+     return unknown("speed-mode-unavailable", sourceUrl);
+@@ -278,7 +295,7 @@ export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
+ 
+   const price = OPENAI_PRICES.get(input.modelId);
+   if (!price) return unknown("model-price-unavailable", sourceUrl);
+-  const result: UsagePriceEstimate = { priceVersion: PRICE_VERSION, sourceUrl };
++  const result: UsagePriceEstimate = { priceVersion: price.version ?? PRICE_VERSION, sourceUrl };
+   if (input.subscription === true) {
+     const [ordinaryInput, read, output] = price.credits;
+     result.estimatedCredits =
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index 3e2947c..7cb96c9 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -264,6 +264,15 @@ export const appUsageModelActivitySchema = z.object({
+ });
+ 
+ export const appUsageSnapshotSchema = z.object({
++  priceCatalog: z
++    .object({
++      version: z.string().min(1),
++      fetchedAt: z.string().datetime(),
++      sourceUrl: z.literal("https://models.dev/api.json"),
++      providers: z.number().int().nonnegative(),
++      models: z.number().int().nonnegative(),
++    })
++    .optional(),
+   projectPaths: z.array(z.string().min(1)).optional(),
+   modelActivities: z.array(appUsageModelActivitySchema).optional(),
+   skills: z
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index dbb7541..b719135 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -2412,6 +2412,7 @@ export const zcodeProviderRuntimeHeadersRequestParamsSchema = z
+         provider: z.enum(["openai-codex", "github-copilot", "xai"]),
+         accountId: nonEmptyString.optional(),
+         speedMode: z.enum(["standard", "fast"]).optional(),
++        contextWindow: z.number().int().positive().optional(),
+         recovery: zcodeSubscriptionRecoverySchema.optional(),
+       })
+       .strict()
+diff --git a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+index adc4663..410bb7b 100644
+--- a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+@@ -15,6 +15,7 @@ import {
+ import { Switch } from "@/components/ui/switch.js";
+ import { getThoughtLevelLabel } from "./thoughtLevelOptions.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
+ 
+ /** One host model picker; effort/Fast remain independent, composer-owned request fields. */
+ export function ComposerModelControl({
+@@ -23,12 +24,14 @@ export function ComposerModelControl({
+   provider,
+   onThoughtChange,
+   speed,
++  context,
+ }: {
+   model: ComponentProps<typeof ModelConfigSelect>;
+   thought?: ZCodeConfigOption | null;
+   provider?: ZCodeProvider;
+   onThoughtChange(value: string): void;
+   speed?: { value: "standard" | "fast"; note: string; onChange(value: "standard" | "fast"): void };
++  context?: { value: number; choices: readonly number[]; onChange(value: number): void };
+ }) {
+   const { intl } = useZCodeIntl();
+   const entries = thought?.type === "select" ? (thought.options ?? []) : [];
+@@ -79,6 +82,37 @@ export function ComposerModelControl({
+           </DropdownMenuCheckboxItem>
+         </ControlHintTooltip>
+       ) : null}
++      {context && context.choices.length > 1 ? (
++        <DropdownMenuSub>
++          <DropdownMenuSubTrigger
++            disabled={model.disabled}
++            className="min-h-9 gap-3"
++            data-composer-context-submenu="true"
++          >
++            <span className="flex-1">
++              {intl.formatMessage({ id: "chat.toolbar.modelOptions.context" })}
++            </span>
++            <span className="text-foreground-subtle">
++              {formatModelContextWindowLabel(context.value)}
++            </span>
++          </DropdownMenuSubTrigger>
++          <DropdownMenuSubContent className="min-w-32">
++            <DropdownMenuRadioGroup
++              value={String(context.value)}
++              onValueChange={(value) => {
++                const selected = Number(value);
++                if (context.choices.includes(selected)) context.onChange(selected);
++              }}
++            >
++              {context.choices.map((value) => (
++                <DropdownMenuRadioItem key={value} value={String(value)} disabled={model.disabled}>
++                  {formatModelContextWindowLabel(value)}
++                </DropdownMenuRadioItem>
++              ))}
++            </DropdownMenuRadioGroup>
++          </DropdownMenuSubContent>
++        </DropdownMenuSub>
++      ) : null}
+       {entries.length ? (
+         <DropdownMenuSub>
+           <DropdownMenuSubTrigger
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 9d6e650..9bd61c6 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -6163,7 +6163,8 @@ const enUS: Record<string, string> = {
+   "chat.error.collapseDetails": "Hide details",
+   "chat.error.feedback": "Report issue",
+   "chat.error.feedbackOpened": "Feedback opened with the error context attached",
+-  "chat.error.nativeAdmissionUnsupported": "This CLI connection cannot enforce this task’s model-request admission policy. The task was not executed.",
++  "chat.error.nativeAdmissionUnsupported":
++    "This CLI connection cannot enforce this task’s model-request admission policy. The task was not executed.",
+   "chat.error.noAvailableModel": "No model available. Connect a provider and choose a model.",
+   "chat.error.sendFailed": "Failed to send. Try again later.",
+   "chat.error.modelSettings": "Model settings",
+@@ -7262,7 +7263,8 @@ const enUS: Record<string, string> = {
+     "The account last used in this conversation is unavailable; its allowance cannot be shown",
+   "chat.allowance.autoSwitch": "Auto switch",
+   "settings.modelProvider.nativeCli.title": "Claude CLI account",
+-  "settings.modelProvider.nativeCli.flow": "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
++  "settings.modelProvider.nativeCli.flow":
++    "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+   "settings.modelProvider.nativeCli.connected":
+     "Connected to the official CLI. Model access is checked when a request runs.",
+@@ -7282,19 +7284,28 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.subscription.reauth-required": "Reauthorization needed",
+   "settings.modelProvider.subscription.enablePlan": "Enable plan usage",
+   "settings.modelProvider.subscription.officialUsage": "View allowance in ChatGPT",
+-  "settings.modelProvider.subscription.error.planPermission": "ChatGPT plan usage was not authorized. Sign in again and allow this permission.",
+-  "settings.modelProvider.subscription.error.identity": "Authorization does not match the selected account. Your saved binding was preserved; reauthorize it.",
+-  "settings.modelProvider.subscription.error.legacyRegistration": "This account uses legacy authorization. Add a ChatGPT account to use the new flow; your existing records will be preserved.",
++  "settings.modelProvider.subscription.error.planPermission":
++    "ChatGPT plan usage was not authorized. Sign in again and allow this permission.",
++  "settings.modelProvider.subscription.error.identity":
++    "Authorization does not match the selected account. Your saved binding was preserved; reauthorize it.",
++  "settings.modelProvider.subscription.error.legacyRegistration":
++    "This account uses legacy authorization. Add a ChatGPT account to use the new flow; your existing records will be preserved.",
+   "settings.modelProvider.assistant.open": "Ask Agent",
+-  "settings.modelProvider.assistant.failed": "Could not open the settings assistant. Your settings are unchanged. Close and try again.",
++  "settings.modelProvider.assistant.failed":
++    "Could not open the settings assistant. Your settings are unchanged. Close and try again.",
+   "settings.modelProvider.assistant.changeModel": "Change model availability",
+   "settings.modelProvider.assistant.readModels": "Read model settings",
+   "settings.modelProvider.assistant.enableModel": "Enable {model}",
+   "settings.modelProvider.assistant.disableModel": "Disable {model}",
+-  "settings.modelProvider.assistant.confirmChange": "Change availability for future model selections? Active conversations keep their current model.",
+-  "settings.modelProvider.assistant.conflict": "The settings changed after this request. Review the current page before asking for another change.",
+-  "settings.modelProvider.assistant.targetLost": "The selected provider or model is no longer available. No replacement target was chosen.",
+-  "settings.modelProvider.assistant.operationFailed": "This operation did not complete. Check the current page before retrying.",
++  "settings.modelProvider.assistant.confirmChange":
++    "Change availability for future model selections? Active conversations keep their current model.",
++  "settings.modelProvider.assistant.conflict":
++    "The settings changed after this request. Review the current page before asking for another change.",
++  "settings.modelProvider.assistant.targetLost":
++    "The selected provider or model is no longer available. No replacement target was chosen.",
++  "settings.modelProvider.assistant.operationFailed":
++    "This operation did not complete. Check the current page before retrying.",
++  "chat.toolbar.modelOptions.context": "Context",
+   "chat.toolbar.modelOptions.model": "Model",
+ };
+ 
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 73e138e..2c08a64 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -5854,7 +5854,8 @@ const zhCN: Record<string, string> = {
+   "chat.error.collapseDetails": "收起详情",
+   "chat.error.feedback": "反馈问题",
+   "chat.error.feedbackOpened": "已打开反馈，并自动带上报错现场",
+-  "chat.error.nativeAdmissionUnsupported": "当前 CLI 接入不支持此任务的模型请求准入规则，任务未执行。",
++  "chat.error.nativeAdmissionUnsupported":
++    "当前 CLI 接入不支持此任务的模型请求准入规则，任务未执行。",
+   "chat.error.noAvailableModel": "当前没有可用模型。请连接供应商并选择模型。",
+   "chat.error.sendFailed": "发送失败，请稍后重试。",
+   "chat.error.modelSettings": "模型设置",
+@@ -6879,13 +6880,15 @@ const zhCN: Record<string, string> = {
+   "chat.allowance.lastAccountUnavailable": "本对话最近使用的账号已不可用，无法显示其额度",
+   "chat.allowance.autoSwitch": "自动切换",
+   "settings.modelProvider.nativeCli.title": "Claude CLI 账号",
+-  "settings.modelProvider.nativeCli.flow": "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
++  "settings.modelProvider.nativeCli.flow":
++    "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+   "settings.modelProvider.nativeCli.connected": "已连接官方 CLI；模型权限将在实际请求时验证。",
+   "settings.modelProvider.nativeCli.connect": "连接当前账号",
+   "settings.modelProvider.nativeCli.reconnect": "重新连接当前账号",
+   "settings.modelProvider.nativeCli.guide": "CLI 安装与登录",
+-  "settings.modelProvider.nativeCli.missing": "内置 Claude 执行器不可用，请修复应用安装，或指定已安装的官方 CLI。",
++  "settings.modelProvider.nativeCli.missing":
++    "内置 Claude 执行器不可用，请修复应用安装，或指定已安装的官方 CLI。",
+   "settings.modelProvider.nativeCli.login": "请先在官方 Claude CLI 中登录 Claude 账号。",
+   "settings.modelProvider.nativeCli.changed": "CLI 账号已切换，请重新连接当前账号。",
+   "settings.modelProvider.nativeCli.failed":
+@@ -6895,19 +6898,26 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.subscription.reauth-required": "需重新授权",
+   "settings.modelProvider.subscription.enablePlan": "启用订阅额度",
+   "settings.modelProvider.subscription.officialUsage": "在 ChatGPT 查看额度",
+-  "settings.modelProvider.subscription.error.planPermission": "尚未授权使用 ChatGPT 订阅额度，请重新登录并允许此权限。",
+-  "settings.modelProvider.subscription.error.identity": "授权账号与所选账号不一致，原有绑定已保留，请重新授权。",
+-  "settings.modelProvider.subscription.error.legacyRegistration": "此账号使用旧授权。请通过“添加订阅账号”连接新授权，原有记录会保留。",
++  "settings.modelProvider.subscription.error.planPermission":
++    "尚未授权使用 ChatGPT 订阅额度，请重新登录并允许此权限。",
++  "settings.modelProvider.subscription.error.identity":
++    "授权账号与所选账号不一致，原有绑定已保留，请重新授权。",
++  "settings.modelProvider.subscription.error.legacyRegistration":
++    "此账号使用旧授权。请通过“添加订阅账号”连接新授权，原有记录会保留。",
+   "settings.modelProvider.assistant.open": "让 Agent 帮忙",
+   "settings.modelProvider.assistant.failed": "暂时无法打开设置助手，配置未改变。请关闭后重试。",
+   "settings.modelProvider.assistant.changeModel": "修改模型可选状态",
+   "settings.modelProvider.assistant.readModels": "查看模型设置",
+   "settings.modelProvider.assistant.enableModel": "启用 {model}",
+   "settings.modelProvider.assistant.disableModel": "停用 {model}",
+-  "settings.modelProvider.assistant.confirmChange": "是否修改这个模型的可选状态？正在进行的对话仍使用原模型。",
+-  "settings.modelProvider.assistant.conflict": "配置在请求之后发生了变化。请先查看当前页面，再提出修改要求。",
++  "settings.modelProvider.assistant.confirmChange":
++    "是否修改这个模型的可选状态？正在进行的对话仍使用原模型。",
++  "settings.modelProvider.assistant.conflict":
++    "配置在请求之后发生了变化。请先查看当前页面，再提出修改要求。",
+   "settings.modelProvider.assistant.targetLost": "选中的供应商或模型已不可用，没有切换到其他目标。",
+-  "settings.modelProvider.assistant.operationFailed": "本次操作未完成，请先查看当前页面，再决定是否重试。",
++  "settings.modelProvider.assistant.operationFailed":
++    "本次操作未完成，请先查看当前页面，再决定是否重试。",
++  "chat.toolbar.modelOptions.context": "上下文",
+   "chat.toolbar.modelOptions.model": "模型",
+ };
+ 
+diff --git a/packages/ui/src/lib/contextUsageModelScope.ts b/packages/ui/src/lib/contextUsageModelScope.ts
+index 4d89763..fcd41ec 100644
+--- a/packages/ui/src/lib/contextUsageModelScope.ts
++++ b/packages/ui/src/lib/contextUsageModelScope.ts
+@@ -6,13 +6,16 @@ export function contextWindowForSelectedModel(
+   providerId: string | undefined,
+   modelId: string | undefined,
+   lastRequest?: SessionUsageState["lastRequest"],
++  selectedCapacity?: number,
+ ): SessionUsageState["contextWindow"] {
+   if (!providerId || !modelId) return null;
+   const measurement = contextWindow?.measurement;
+   const hasMeasuredIdentity = Boolean(measurement?.providerId || measurement?.modelId);
+   const observedProvider = hasMeasuredIdentity ? measurement?.providerId : lastRequest?.providerId;
+   const observedModel = hasMeasuredIdentity ? measurement?.modelId : lastRequest?.modelId;
+-  return observedProvider === providerId && observedModel === modelId
++  return observedProvider === providerId &&
++    observedModel === modelId &&
++    (selectedCapacity === undefined || contextWindow?.maxTokens === selectedCapacity)
+     ? (contextWindow ?? null)
+     : null;
+ }
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+index a351d8d..ac47be3 100644
+--- a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+@@ -3,14 +3,16 @@ import { Button } from "@/components/ui/button.js";
+ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { USAGE_PRICE_CATALOG_INFO } from "@zcode/shared";
++import { USAGE_PRICE_CATALOG_INFO, type UsagePriceCatalogInfo } from "@zcode/shared";
+ 
+ export function UsageAccountingHelp({
+   metric,
+   sources,
++  catalog = USAGE_PRICE_CATALOG_INFO,
+ }: {
+   metric: "cache" | "cost";
+   sources?: readonly { modelId: string; urls: readonly string[] }[];
++  catalog?: UsagePriceCatalogInfo;
+ }) {
+   const { intl } = useZCodeIntl();
+   const platform = usePlatform();
+@@ -38,9 +40,9 @@ export function UsageAccountingHelp({
+               {intl.formatMessage(
+                 { id: "settings.usage.accounting.catalogCoverage" },
+                 {
+-                  providers: USAGE_PRICE_CATALOG_INFO.providers,
+-                  models: USAGE_PRICE_CATALOG_INFO.models,
+-                  date: USAGE_PRICE_CATALOG_INFO.fetchedAt.slice(0, 10),
++                  providers: catalog.providers,
++                  models: catalog.models,
++                  date: catalog.fetchedAt.slice(0, 10),
+                 },
+               )}
+             </p>
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 29ba60c..4beee36 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -1,8 +1,5 @@
+ import { useMemo, useState } from "react";
+-import {
+-  buildUsageCostReport,
+-  type AppUsageSnapshot,
+-} from "@zcode/shared";
++import { buildUsageCostReport, type AppUsageSnapshot } from "@zcode/shared";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ import { AppUsageActivity } from "./AppUsageActivity.js";
+@@ -59,6 +56,7 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+             <h3 className="text-ui-base font-medium">{t("title")}</h3>
+             <UsageAccountingHelp
+               metric="cost"
++              catalog={snapshot.priceCatalog}
+               sources={report.models
+                 .filter((item) => item.priceSources.length)
+                 .map((item) => ({
+diff --git a/packages/ui/src/v4/ConversationComposer.tsx b/packages/ui/src/v4/ConversationComposer.tsx
+index 3ee0cda..94da837 100644
+--- a/packages/ui/src/v4/ConversationComposer.tsx
++++ b/packages/ui/src/v4/ConversationComposer.tsx
+@@ -427,6 +427,7 @@ interface ConversationComposerProps {
+   /** 选中思考深度；同时带上用户操作时看到的模型，避免异步回流后把 thought 归到另一模型。 */
+   onSelectThought: (thought: string, modelContext: { provider: string; model: string }) => void;
+   onSelectSpeed: (speedMode: "standard" | "fast") => void;
++  onSelectContext?: (value: number, target: { provider: string; model: string }) => void;
+   onSwitchMode: (mode: string) => void;
+   /** 打开当前 session 的 Status panel，并直达 Running 明细。 */
+   onOpenRunningBackgroundWorks?: () => void;
+@@ -517,6 +518,7 @@ function ConversationComposerImpl({
+   onSelectModel,
+   onSelectThought,
+   onSelectSpeed,
++  onSelectContext,
+   onSwitchMode,
+   onOpenRunningBackgroundWorks,
+   backgroundWorkOpenTarget = "panel",
+@@ -2057,6 +2059,7 @@ function ConversationComposerImpl({
+             onSelectModel={handleSelectModelTrace}
+             onSelectThought={onSelectThought}
+             onSelectSpeed={onSelectSpeed}
++            onSelectContext={onSelectContext}
+             onSwitchMode={onSwitchMode}
+             onRecoverCustomModelSelection={onRecoverCustomModelSelection}
+             onSendCompressionCommand={onSendCompressionCommand}
+@@ -2117,6 +2120,7 @@ function ConversationComposerImpl({
+       modelSelectionView,
+       onSelectThought,
+       onSelectSpeed,
++      onSelectContext,
+       onRecoverCustomModelSelection,
+       onSendCompressionCommand,
+       onSwitchMode,
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+index dd5c8d1..dd1f091 100644
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -1242,6 +1242,7 @@ export function SessionPane({
+     handleDraftSelectModel,
+     handleDraftSelectThought,
+     handleDraftSelectSpeed,
++    handleDraftSelectContext,
+     handleDraftSwitchMode,
+     promoteComposerDraft,
+     captureAcceptedModelSelection,
+@@ -3688,12 +3689,15 @@ export function SessionPane({
+   });
+   // retry 的产品裁决属于行级权威投影。这里仅提供命令能力，入口是否展示
+   // 完全读取 row.actions.canRetry，禁止再用 pane phase 形成第二套 guard。
+-  const retryActionsEnabled = !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
++  const retryActionsEnabled =
++    !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
+   // fork 可用性完全由 row.actions.canFork（CLI stable resolver 投影）裁决；pane 只提供命令回调。
+-  const forkActionsEnabled = !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
++  const forkActionsEnabled =
++    !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
+   // editUserQuery 已由 command 层防御 latest real user query，并在 running
+   // 提交时先 stop barrier 再 rewind/rerun；UI 不应再用 completed gate 把入口整轮隐藏。
+-  const editActionsEnabled = !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
++  const editActionsEnabled =
++    !readOnly && !selectionSideChat && !compactAssistant && Boolean(sessionId);
+   const isDraft = sessionId === null;
+   // 滚动恢复必须使用与 sessionId 匹配的 lease projection。切换 session 的 render 与
+   // passive effect 不在同一时刻，旧 lease 的 rows 若提前交给 timeline，会让新记忆按旧
+@@ -4381,6 +4385,7 @@ export function SessionPane({
+       onSelectModel={handleSelectModel}
+       onSelectThought={handleSelectThought}
+       onSelectSpeed={handleDraftSelectSpeed}
++      onSelectContext={handleDraftSelectContext}
+       onSwitchMode={handleSwitchMode}
+       onOpenRunningBackgroundWorks={
+         sessionId && runningBackgroundWorkCount > 0 ? handleOpenRunningBackgroundWorks : undefined
+@@ -4573,13 +4578,15 @@ export function SessionPane({
+           </div>
+         </div>
+       ) : null}
+-      {!compactAssistant && <ConversationHeader
+-        title={snapshot?.meta.title ?? ""}
+-        onSplitRight={onSplitRight}
+-        onSplitDown={onSplitDown}
+-        onClosePane={onClosePane}
+-        workspaceBadge={workspaceBadge}
+-      />}
++      {!compactAssistant && (
++        <ConversationHeader
++          title={snapshot?.meta.title ?? ""}
++          onSplitRight={onSplitRight}
++          onSplitDown={onSplitDown}
++          onClosePane={onClosePane}
++          workspaceBadge={workspaceBadge}
++        />
++      )}
+ 
+       <div
+         ref={conversationLayoutContainerRef}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 300aec9..273a4cb 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -346,6 +346,7 @@ export interface V4ComposerToolbarProps {
+   /** 选中思考深度；modelContext 固定本次用户操作的目标模型。 */
+   onSelectThought: (thought: string, modelContext: { provider: string; model: string }) => void;
+   onSelectSpeed: (speedMode: "standard" | "fast") => void;
++  onSelectContext?: (value: number, target: { provider: string; model: string }) => void;
+   onSwitchMode: (mode: string) => void;
+   /** prepare/configOptions 失败时，custom provider 选择走 workspace recovery 链。 */
+   onRecoverCustomModelSelection?: (
+@@ -373,6 +374,7 @@ function V4ComposerModelControlsImpl({
+   onSelectModel,
+   onSelectThought,
+   onSelectSpeed,
++  onSelectContext,
+   onSendCompressionCommand,
+   onRecoverCustomModelSelection,
+ }: V4ComposerToolbarProps) {
+@@ -890,6 +892,7 @@ function V4ComposerModelControlsImpl({
+     effectiveConfig?.provider,
+     effectiveConfig?.model,
+     usage?.lastRequest,
++    draftConfig?.modelSelection?.options?.contextWindow,
+   );
+   const taskUsage = useMemo(() => {
+     const contextWindow = selectedContextWindow;
+@@ -905,6 +908,13 @@ function V4ComposerModelControlsImpl({
+   const selectedSubscriptionProvider = modelSelectionView?.providers.find(
+     (provider) => provider.providerId === effectiveConfig?.provider,
+   );
++  const selectedModel = selectedSubscriptionProvider?.models.find(
++    (model) => model.modelId === effectiveConfig?.model,
++  );
++  const contextChoices = selectedModel?.evidenceConfig?.properties?.contextWindows;
++  const selectedCapacity =
++    draftConfig?.modelSelection?.options?.contextWindow ??
++    selectedModel?.evidenceConfig?.properties?.contextWindow;
+   const selectedSubscription = selectedSubscriptionProvider?.config.access;
+   const supportsFast = modelSupportsFast(
+     modelSelectionView,
+@@ -1023,11 +1033,7 @@ function V4ComposerModelControlsImpl({
+         className="hidden"
+       />
+       <ChatContextUsage
+-        modelContextCapacity={
+-          selectedSubscriptionProvider?.models.find(
+-            (model) => model.modelId === effectiveConfig?.model,
+-          )?.evidenceConfig?.properties?.contextWindow ?? undefined
+-        }
++        modelContextCapacity={selectedCapacity ?? undefined}
+         codingPlanUsageRemaining={codingPlanUsageRemaining}
+         taskUsage={taskUsage}
+         subscription={subscriptionConnection}
+@@ -1061,6 +1067,23 @@ function V4ComposerModelControlsImpl({
+         <ComposerModelControl
+           thought={thoughtOption}
+           provider={displayProvider}
++          context={
++            contextChoices &&
++            contextChoices.length > 1 &&
++            selectedCapacity &&
++            onSelectContext &&
++            effectiveConfig
++              ? {
++                  value: selectedCapacity,
++                  choices: contextChoices,
++                  onChange: (value) =>
++                    onSelectContext(value, {
++                      provider: effectiveConfig.provider,
++                      model: effectiveConfig.model,
++                    }),
++                }
++              : undefined
++          }
+           onThoughtChange={handleThoughtValueChange}
+           speed={
+             supportsFast || fastEnabled
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index bcd067d..6e72d5c 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -97,6 +97,7 @@ interface DraftConfigControl {
+   handleDraftSelectModel: (modelProvider: string, model: string) => void;
+   handleDraftSelectThought: (thought: string) => void;
+   handleDraftSelectSpeed: (speedMode: "standard" | "fast") => void;
++  handleDraftSelectContext: (value: number, target: { provider: string; model: string }) => void;
+   handleDraftSwitchMode: (mode: string) => void;
+ }
+ 
+@@ -482,6 +483,25 @@ export function useDraftConfigControl(params: {
+     [updateDraftConfig],
+   );
+ 
++  const handleDraftSelectContext = useCallback(
++    (value: number, target: { provider: string; model: string }) => {
++      const choices = modelSelectionView?.providers
++        .find((provider) => provider.providerId === target.provider)
++        ?.models.find((model) => model.modelId === target.model)?.config.properties.contextWindows;
++      if (!choices?.includes(value)) return;
++      updateDraftConfig((current) => {
++        const selection = current.modelSelection;
++        if (selection?.providerId !== target.provider || selection.modelId !== target.model)
++          return current;
++        return {
++          ...current,
++          modelSelection: { ...selection, options: { ...selection.options, contextWindow: value } },
++        };
++      });
++    },
++    [modelSelectionView, updateDraftConfig],
++  );
++
+   const handleDraftSwitchMode = useCallback(
+     (mode: string) => {
+       if (mode === "plan" || mode === "plan-off") {
+@@ -518,6 +538,7 @@ export function useDraftConfigControl(params: {
+     handleDraftSelectModel,
+     handleDraftSelectThought,
+     handleDraftSelectSpeed,
++    handleDraftSelectContext,
+     handleDraftSwitchMode,
+   };
+ }
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index bf4a2f9..3742b55 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -12,9 +12,18 @@ const check = (value: unknown, message: string) => {
+ const results: { name: string; error?: string }[] = [];
+ let writes: string[] = [];
+ 
+-function Fixture({ width, unknown = false }: { width: number; unknown?: boolean }) {
++function Fixture({
++  width,
++  unknown = false,
++  selectable = false,
++}: {
++  width: number;
++  unknown?: boolean;
++  selectable?: boolean;
++}) {
+   const ref = useComposerToolbarFit();
+   const [thought, setThought] = useState(unknown ? "unobserved" : "medium");
++  const [context, setContext] = useState(256000);
+   const [model, setModel] = useState("a");
+   const [speed, setSpeed] = useState<"standard" | "fast">("standard");
+   return (
+@@ -40,6 +49,18 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+               writes.push(`thought:${next}`);
+               setThought(next);
+             }}
++            context={
++              selectable
++                ? {
++                    value: context,
++                    choices: [256000, 500000],
++                    onChange: (value) => {
++                      writes.push(`context:${value}`);
++                      setContext(value);
++                    },
++                  }
++                : undefined
++            }
+             speed={{
+               value: speed,
+               note: "Synthetic provider-specific allowance note",
+@@ -217,5 +238,57 @@ function Fixture({ width, unknown = false }: { width: number; unknown?: boolean
+           node.remove();
+         }
+       }
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true]) {
++      const name = `${locale}, ${dark ? "dark" : "light"}, 320px: exact executable context choices`;
++      const node = document.createElement("div");
++      document.body.append(node);
++      document.documentElement.classList.toggle("dark", dark);
++      const root = createRoot(node);
++      writes = [];
++      try {
++        await act(async () =>
++          root.render(
++            <ZCodeIntlProvider initialLocale={locale}>
++              <TooltipProvider>
++                <Fixture width={320} selectable />
++              </TooltipProvider>
++            </ZCodeIntlProvider>,
++          ),
++        );
++        const trigger = node.querySelector<HTMLButtonElement>(".composer-model-trigger")!;
++        await act(async () => {
++          trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
++        });
++        const entry = document.querySelector<HTMLElement>("[data-composer-context-submenu]")!;
++        check(entry?.textContent?.includes("256K"), "Context entry lost its saved default");
++        check(writes.length === 0, "Opening changed context/model/effort");
++        await act(async () => {
++          entry.focus();
++          entry.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
++        });
++        const choices = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
++        check(
++          choices.length === 2 &&
++            choices.every((item) => ["256K", "500K"].includes(item.textContent?.trim() ?? "")),
++          "Guessed context choices entered the submenu",
++        );
++        await act(async () => choices.find((item) => item.textContent?.trim() === "500K")!.click());
++        check(
++          writes.length === 1 && writes[0] === "context:500000",
++          "Context selection changed other options or lost numeric identity",
++        );
++        check(
++          !document.querySelector('[data-model-footer-action="manage-models"]'),
++          "Context introduced a Settings shortcut",
++        );
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
+   return results;
+ })();
+diff --git a/packages/ui/test/contextUsageModelScope.test.ts b/packages/ui/test/contextUsageModelScope.test.ts
+index e3ac052..4a272fd 100644
+--- a/packages/ui/test/contextUsageModelScope.test.ts
++++ b/packages/ui/test/contextUsageModelScope.test.ts
+@@ -42,3 +42,14 @@ test("legacy unowned occupancy cannot be presented as the newly selected model",
+   );
+   assert.equal(contextWindowForSelectedModel(null, "chatgpt", "gpt-6-sol"), null);
+ });
++
++test("changing a selectable context budget hides the previous denominator instead of inventing new occupancy", () => {
++  assert.equal(
++    contextWindowForSelectedModel(sample, "chatgpt", "gpt-6-sol", undefined, 272000),
++    sample,
++  );
++  assert.equal(
++    contextWindowForSelectedModel(sample, "chatgpt", "gpt-6-sol", undefined, 500000),
++    null,
++  );
++});
+diff --git a/scripts/sync-usage-price-catalog.mjs b/scripts/sync-usage-price-catalog.mjs
+index 3f8a666..6f9c726 100644
+--- a/scripts/sync-usage-price-catalog.mjs
++++ b/scripts/sync-usage-price-catalog.mjs
+@@ -3,152 +3,12 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+ import { dirname, resolve } from "node:path";
+ import { fileURLToPath, pathToFileURL } from "node:url";
+ 
+-const SOURCE_URL = "https://models.dev/api.json";
++import {
++  normalizeCatalog,
++  USAGE_PRICE_SOURCE_URL as SOURCE_URL,
++} from "../packages/shared/src/usage-price-catalog-normalize.ts";
++export { normalizeCatalog };
+ const MAX_BYTES = 12 * 1024 * 1024;
+-const RATE_NAMES = {
+-  input: "input",
+-  output: "output",
+-  cache_read: "cacheRead",
+-  cache_write: "cacheWrite",
+-  reasoning: "reasoning",
+-  input_audio: "inputAudio",
+-  output_audio: "outputAudio",
+-};
+-const RATE_FIELDS = Object.keys(RATE_NAMES);
+-const COST_FIELDS = new Set([...RATE_FIELDS, "tiers", "context_over_200k"]);
+-const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+-const isRate = (value) =>
+-  typeof value === "number" &&
+-  Number.isFinite(value) &&
+-  value >= 0 &&
+-  value <= Number.MAX_SAFE_INTEGER;
+-
+-function safeUrl(value) {
+-  if (typeof value !== "string") return undefined;
+-  try {
+-    const url = new URL(value);
+-    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash
+-      ? url.href
+-      : undefined;
+-  } catch {
+-    return undefined;
+-  }
+-}
+-
+-function rates(value, base) {
+-  if (!isRecord(value)) return undefined;
+-  for (const field of RATE_FIELDS) {
+-    if (Object.hasOwn(value, field) && !isRate(value[field])) return undefined;
+-  }
+-  const input = value.input ?? base?.input;
+-  const output = value.output ?? base?.output;
+-  if (!isRate(input) || !isRate(output)) return undefined;
+-  const result = { input, output };
+-  for (const [source, destination] of Object.entries(RATE_NAMES)) {
+-    const rate = value[source] ?? base?.[destination];
+-    if (rate !== undefined) result[destination] = rate;
+-  }
+-  return result;
+-}
+-
+-function normalizeCost(cost) {
+-  if (!isRecord(cost) || Object.keys(cost).some((key) => !COST_FIELDS.has(key))) return undefined;
+-  const base = rates(cost);
+-  if (!base) return undefined;
+-  let tiers;
+-  // models.dev 的显式阈值可能是 256K/272K，不能被旧的 context_over_200k 字段覆盖。
+-  if (Object.hasOwn(cost, "tiers")) {
+-    if (!Array.isArray(cost.tiers) || cost.tiers.length === 0) return undefined;
+-    tiers = [];
+-    for (const entry of cost.tiers) {
+-      if (
+-        !isRecord(entry) ||
+-        Object.keys(entry).some((key) => key !== "tier" && !RATE_FIELDS.includes(key)) ||
+-        !isRecord(entry.tier) ||
+-        Object.keys(entry.tier).some((key) => key !== "type" && key !== "size") ||
+-        entry.tier.type !== "context" ||
+-        !Number.isSafeInteger(entry.tier.size) ||
+-        entry.tier.size <= 0 ||
+-        !RATE_FIELDS.some((field) => Object.hasOwn(entry, field))
+-      )
+-        return undefined;
+-      const tierRates = rates(entry, base);
+-      if (!tierRates || tiers.some((tier) => tier.above === entry.tier.size)) return undefined;
+-      tiers.push({ above: entry.tier.size, ...tierRates });
+-    }
+-    tiers.sort((a, b) => a.above - b.above);
+-  } else if (Object.hasOwn(cost, "context_over_200k")) {
+-    const legacy = cost.context_over_200k;
+-    if (
+-      !isRecord(legacy) ||
+-      Object.keys(legacy).some((key) => !RATE_FIELDS.includes(key)) ||
+-      !RATE_FIELDS.some((field) => Object.hasOwn(legacy, field))
+-    )
+-      return undefined;
+-    const tierRates = rates(legacy, base);
+-    if (!tierRates) return undefined;
+-    tiers = [{ above: 200_000, ...tierRates }];
+-  }
+-  return { ...base, ...(tiers ? { tiers } : {}) };
+-}
+-
+-/** Reduce models.dev's USD-per-million text token prices without inventing missing rates. */
+-export function normalizeCatalog(payload, fetchedAt, sourceHash) {
+-  if (!isRecord(payload) || Object.keys(payload).length === 0)
+-    throw new Error("Empty or malformed catalog");
+-  if (typeof fetchedAt !== "string" || !Number.isFinite(Date.parse(fetchedAt)))
+-    throw new Error("Invalid fetchedAt");
+-  if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash))
+-    throw new Error("Invalid sourceHash");
+-  const timestamp = new Date(fetchedAt).toISOString();
+-  const providers = [];
+-  for (const providerId of Object.keys(payload).sort()) {
+-    const provider = payload[providerId];
+-    if (
+-      !providerId ||
+-      !isRecord(provider) ||
+-      typeof provider.name !== "string" ||
+-      !provider.name.trim() ||
+-      !isRecord(provider.models)
+-    ) {
+-      throw new Error(`Malformed provider: ${providerId}`);
+-    }
+-    const models = [];
+-    for (const modelId of Object.keys(provider.models).sort()) {
+-      const model = provider.models[modelId];
+-      if (
+-        !modelId ||
+-        !isRecord(model) ||
+-        !Array.isArray(model.modalities?.output) ||
+-        model.modalities.output.length !== 1 ||
+-        model.modalities.output[0] !== "text"
+-      )
+-        continue;
+-      const cost = normalizeCost(model.cost);
+-      if (cost) models.push([modelId, cost]);
+-    }
+-    if (!models.length) continue;
+-    const api = safeUrl(provider.api);
+-    const doc = safeUrl(provider.doc);
+-    providers.push([
+-      providerId,
+-      {
+-        name: provider.name,
+-        ...(api ? { api } : {}),
+-        ...(doc ? { doc } : {}),
+-        models: Object.fromEntries(models),
+-      },
+-    ]);
+-  }
+-  if (!providers.length) throw new Error("Catalog contains no supported text prices");
+-  return {
+-    version: `models.dev-${timestamp.slice(0, 10)}-${sourceHash.slice(0, 12)}`,
+-    fetchedAt: timestamp,
+-    sourceUrl: SOURCE_URL,
+-    sourceHash,
+-    providers: Object.fromEntries(providers),
+-  };
+-}
+ 
+ async function fetchCatalog() {
+   const response = await fetch(SOURCE_URL, {
+diff --git a/scripts/test-pi-bundle.mjs b/scripts/test-pi-bundle.mjs
+index c3db0b2..3e43a40 100644
+--- a/scripts/test-pi-bundle.mjs
++++ b/scripts/test-pi-bundle.mjs
+@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, copyFile } from "node:fs/promi
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createInterface } from "node:readline";
++import { DatabaseSync } from "node:sqlite";
+ 
+ const root = resolve(import.meta.dirname, "..");
+ const profile = await mkdtemp(join(tmpdir(), "fleet-pi-bundle-"));
+@@ -29,6 +30,8 @@ const server = createServer(async (req, res) => {
+     const body = JSON.parse(Buffer.concat(chunks).toString());
+     assert.equal(body.model, "fixture-model");
+     assert.equal(body.stream, true);
++    assert.equal(body.service_tier, "priority", "Admitted Fast did not reach the physical request");
++    assert.equal(body.context_window, undefined, "Host context budget became an unsupported wire field");
+     requests.push(body);
+     const prompt = JSON.stringify(body.messages);
+     if (requests.length < 6) assert.ok(!prompt.includes("MANUAL_ONLY_CONTENT"));
+@@ -219,6 +222,7 @@ try {
+   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+   const properties = {
+     contextWindow: 1000000,
++    contextWindows: [1000000, 500000],
+     requiresMfjsToolSchema: false,
+     inputFormat: {
+       supportsText: true,
+@@ -236,7 +240,7 @@ try {
+   const model = {
+     providerId: "fixture",
+     modelId: "fixture-model",
+-    options: { reasoningLevel: "off" },
++    options: { reasoningLevel: "off", speedMode: "fast", contextWindow: 500000 },
+   };
+   const builtin = join(profile, "builtin.json"),
+     personal = join(profile, "personal.json");
+@@ -272,6 +276,7 @@ try {
+                 enabled: true,
+                 properties,
+                 optionSpecs: {
++                  speedMode: "openai-priority",
+                   maxOutputTokens: { max: 4096, map: "{}" },
+                   reasoningLevel: { values: ["off"], map: "{}" },
+                 },
+@@ -358,8 +363,14 @@ try {
+     6,
+   );
+   assert.equal(stats.summary.toolCallCount, 4);
++  await stop();
++  const db = new DatabaseSync(env.ZCODE_SESSION_DB, { readOnly: true });
++  try {
++    const entry = db.prepare("select data from session_entry where id = ?").get(`${sessionId}:runtime-model-selection`);
++    assert.deepEqual(JSON.parse(entry.data).modelSelection, model, "Admitted Fast/context were lost from durable selection");
++  } finally { db.close(); }
+   console.log(
+-    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 6 model receipts, 2 separate Read receipts for a reused upstream tool ID, manual-only Skill refusal and preserved explicit selection",
++    "PASS staged Pi CLI: physical Fast, durable context selection, streaming, real Read, renderer events, restart hydration, 6 model receipts, 2 separate Read receipts for a reused upstream tool ID, manual-only Skill refusal and preserved explicit selection",
+   );
+ } catch (error) {
+   console.error(error);

@@ -1,0 +1,1856 @@
+diff --git a/apps/zcode-cli/docs/file-write-integrity.md b/apps/zcode-cli/docs/file-write-integrity.md
+index 6a0316f..e7dfcae 100644
+--- a/apps/zcode-cli/docs/file-write-integrity.md
++++ b/apps/zcode-cli/docs/file-write-integrity.md
+@@ -30,9 +30,32 @@ failure before rename → remove only this writer's temp → original unchanged
+ - This is coordination among participating Fleet writers, not an OS compare-and-swap against
+   arbitrary external editors. A crashed writer's existing PID-lock reclamation remains authoritative.
+   No power-loss, network-filesystem, cross-user or unverified OS guarantee is implied.
+-- Once a native rename has been entered, Stop cannot promise absence of a file effect. The generic
+-  executor's immediate cancellation/late-result reconciliation remains a separate kernel gap;
+-  this correction does not claim a committed late file result is already journaled after Stop.
++- Once a native rename has been entered, Stop cannot promise absence of a file effect. Mutating
++  tools have a 1.5-second settlement grace; unfinished work is recorded as unknown. A later known
++  success or failure belongs to the original Session, assistant message, ToolPart and usage ID.
++  It must not resume the stopped turn, start inference, replay the operation, run post-tool hooks
++  or modify a newer turn even when the provider reuses its tool-call ID.
++- The Host journals a known late receipt in the existing Session entries before updating the
++  original ToolPart, usage and event. Recovery consumes that receipt idempotently without dispatch.
++  ToolPart publication failure retains the journal instruction; a fully unwritable store retains
++  the previous unknown record and reports persistence failure, never a fabricated durable result.
++  Artifact and media outputs use the existing Session-scoped artifact owner. Output validation or
++  output/attachment persistence failure retains a durable error receipt explicitly stating that
++  execution completed but its output could not be recorded; it cannot masquerade as effect absence,
++  a complete successful output or a pure unknown. The Host's optional late-settlement event marker
++  binds the saved receipt and original ToolPart; V4 corrects only that cancelled original row,
++  without changing Session control, the active turn, plans or current browser observations.
++  Transient receipt-write coordination serializes concurrent producer/recovery publication.
++  The receipt path strictly writes the original usage before publication; its marked terminal
++  event must not rebuild accounting from a replacement tool's current registration.
++  No table, permission,
++  credential or storage-authority migration is introduced.
++
++```text
++Stop → 1.5 s grace → unknown ToolPart saved → stopped turn closes
++  late handler result → existing Session receipt → same ToolPart + same usage ID → old-turn event
++  restart → receipt reconciliation → same ToolPart/usage, zero tool or model dispatch
++```
+ 
+ Acceptance: real disposable files preserve original bytes on temporary-write/flush/rename failures;
+ bounded transient rename succeeds once; Stop before rename publishes nothing; permission/encoding
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index 4514e7d..fbb80ea 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -333,9 +333,12 @@ export async function upsertToolUsage(db: DatabaseSync, input: ToolUsageRecord):
+         retry_count = excluded.retry_count,
+         retryable = excluded.retryable,
+         cancelled_by_user = excluded.cancelled_by_user,
+-        error_type = coalesce(excluded.error_type, tool_usage.error_type),
+-        error_code = coalesce(excluded.error_code, tool_usage.error_code),
+-        error_message = coalesce(excluded.error_message, tool_usage.error_message)
++        error_type = case when excluded.status = 'completed' then null
++          else coalesce(excluded.error_type, tool_usage.error_type) end,
++        error_code = case when excluded.status = 'completed' then null
++          else coalesce(excluded.error_code, tool_usage.error_code) end,
++        error_message = case when excluded.status = 'completed' then null
++          else coalesce(excluded.error_message, tool_usage.error_message) end
+       `,
+   ).run(...toolUsageValues(input));
+   await pruneUsage(db);
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection-late-tool.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection-late-tool.ts
+new file mode 100644
+index 0000000..d53a51d
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection-late-tool.ts
+@@ -0,0 +1,21 @@
++import type { SessionEvent, ToolCallErrorPayload, ToolCallResultPayload } from "@zcode/contracts";
++import type { ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
++
++/** Only the Host's saved receipt may correct a stopped row; it cannot change Session control. */
++export function isLateToolReceiptForRow(
++  event: SessionEvent,
++  row: ToolCallRow,
++  productTurnId: string,
++): boolean {
++  const payload = event.payload as ToolCallErrorPayload | ToolCallResultPayload;
++  const receipt = payload.lateSettlement;
++  return Boolean(
++    receipt?.partId &&
++    receipt.receiptId === `${event.sessionId}:late-tool:${receipt.partId}` &&
++    row.status === "cancelled" &&
++    event.turnId &&
++    row.turnId === productTurnId &&
++    payload.assistantMessageId &&
++    row.assistantResponseId === payload.assistantMessageId,
++  );
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index 6a8885e..6269ed3 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -1,3 +1,4 @@
++import { isLateToolReceiptForRow } from "./product-projection-late-tool.js";
+ import { PERMISSION_FULL_ACCESS_OPTION_ID } from "@zcode/shared/zcode-protocol-v4";
+ // ProductProjection —— CLI 权威投影第二 reducer。
+ // 输入：CLI 事件日志（SessionEvent，权威事实源）；输出：ConversationDelta[]。
+@@ -3014,13 +3015,15 @@ export class ProductProjection {
+   }
+ 
+   private onToolCallResult(event: SessionEvent): ConversationDelta[] {
+-    if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
++    if (this.isMirroredSubagentToolEvent(event)) return [];
+     const payload = event.payload as ToolCallResultPayload;
+     const toolCallId = String(payload.toolCallId);
+     const row = this.findToolRow(toolCallId, event);
+     if (!row) return [];
++    const lateReceipt = isLateToolReceiptForRow(event, row, this.turnIdOf(event));
++    if (payload.lateSettlement ? !lateReceipt : !this.isRunning()) return [];
+     const success = payload.result.success;
+-    if (success && readOfficialCuaAction(row.toolName) === "list_apps") {
++    if (!lateReceipt && success && readOfficialCuaAction(row.toolName) === "list_apps") {
+       // 摘要身份必须来自 Agent 已观察到的成功事实；失败结果不能清空旧快照。
+       const snapshot = parseListAppsSnapshot(payload.result.content, payload.result.display);
+       if (snapshot) this.latestListAppsSnapshot = snapshot;
+@@ -3029,6 +3032,7 @@ export class ProductProjection {
+     const next: ToolCallRow = {
+       ...row,
+       status: success ? "success" : "error",
++      ...(success ? { error: undefined } : {}),
+       output: buildToolOutput(payload.result, toolCallId, String(event.sessionId)),
+       ...(display ? { display } : {}),
+       endedAt: this.ms(event),
+@@ -3039,16 +3043,17 @@ export class ProductProjection {
+         message: payload.result.error?.message ?? "Tool execution failed.",
+       };
+     }
+-    const planDeltas = success
+-      ? this.todoPlanDeltas(
+-          event,
+-          extractPlanStepsFromToolOutput({
+-            title: row.toolName,
+-            kind: row.toolName,
+-            output: payload.result.content,
+-          }),
+-        )
+-      : [];
++    const planDeltas =
++      success && !lateReceipt
++        ? this.todoPlanDeltas(
++            event,
++            extractPlanStepsFromToolOutput({
++              title: row.toolName,
++              kind: row.toolName,
++              output: payload.result.content,
++            }),
++          )
++        : [];
+     return [{ op: "row.upserted", row: next }, ...planDeltas];
+   }
+ 
+@@ -3098,10 +3103,12 @@ export class ProductProjection {
+   }
+ 
+   private onToolCallError(event: SessionEvent): ConversationDelta[] {
+-    if (this.isMirroredSubagentToolEvent(event) || !this.isRunning()) return [];
++    if (this.isMirroredSubagentToolEvent(event)) return [];
+     const payload = event.payload as ToolCallErrorPayload;
+     const row = this.findToolRow(String(payload.toolCallId), event);
+     if (!row) return [];
++    const lateReceipt = isLateToolReceiptForRow(event, row, this.turnIdOf(event));
++    if (payload.lateSettlement ? !lateReceipt : !this.isRunning()) return [];
+     const cancelled =
+       payload.error.type === CoreErrorType.ToolCancelled || payload.error.code === "TOOL_CANCELLED";
+     return [
+diff --git a/apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts b/apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts
+new file mode 100644
+index 0000000..d0f3ae9
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts
+@@ -0,0 +1,190 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { SessionEventType, type SessionEvent } from "@zcode/contracts";
++import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
++
++function fixture() {
++  const projection = new ProductProjection("late-session", "late-epoch");
++  let sequence = 0;
++  const events: SessionEvent[] = [];
++  const send = (type: SessionEvent["type"], turnId: string, payload: unknown, id?: string) => {
++    const event = {
++      id: id ?? `event-${++sequence}`,
++      sessionId: "late-session",
++      turnId,
++      traceId: "late-trace",
++      sequenceNumber: sequence,
++      timestamp: new Date(1000 + sequence),
++      type,
++      payload,
++    } as SessionEvent;
++    events.push(event);
++    projection.applyEventAtomically(event, () => true);
++    return event;
++  };
++  send(SessionEventType.TurnStarted, "old-turn", { input: "old write" });
++  send(SessionEventType.ToolCallScheduled, "old-turn", {
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    toolName: "Write",
++    input: {},
++  });
++  send(SessionEventType.ToolCallStarted, "old-turn", {
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    startedAt: new Date(),
++  });
++  send(SessionEventType.ToolCallError, "old-turn", {
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    error: { type: "tool_cancelled", message: "operation outcome unknown" },
++  });
++  send(SessionEventType.TurnError, "old-turn", {
++    error: { type: "turn_cancelled", message: "Turn was cancelled." },
++  });
++  const row = (assistant: string) =>
++    projection
++      .getSnapshot()
++      .rows.window.find(
++        (row) => row.kind === "toolCall" && row.assistantResponseId === assistant,
++      ) as any;
++  return { projection, send, row, events };
++}
++const marker = { receiptId: "late-session:late-tool:original-part", partId: "original-part" };
++
++test("a journaled late success corrects only the stopped original row and leaves the Session stopped", () => {
++  const f = fixture();
++  const control = structuredClone(f.projection.getSnapshot().control);
++  f.send(SessionEventType.ToolCallResult, "old-turn", {
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    lateSettlement: marker,
++    duration: 2,
++    result: { success: true, content: "actual saved result" },
++  });
++  assert.equal(f.row("old-assistant").status, "success");
++  assert.equal(f.row("old-assistant").output.text, "actual saved result");
++  assert.deepEqual(f.projection.getSnapshot().control, control);
++});
++
++test("late success/failure is fenced by original turn and assistant while a newer tool reuses its ID", () => {
++  for (const failed of [false, true]) {
++    const f = fixture();
++    f.send(SessionEventType.TurnStarted, "new-turn", { input: "new independent work" });
++    f.send(SessionEventType.ToolCallScheduled, "new-turn", {
++      toolCallId: "shared-call",
++      assistantMessageId: "new-assistant",
++      toolName: "Probe",
++      input: {},
++    });
++    f.send(SessionEventType.ToolCallStarted, "new-turn", {
++      toolCallId: "shared-call",
++      assistantMessageId: "new-assistant",
++      startedAt: new Date(),
++    });
++    const control = structuredClone(f.projection.getSnapshot().control);
++    const before = structuredClone(f.row("new-assistant"));
++    const event = f.send(
++      failed ? SessionEventType.ToolCallError : SessionEventType.ToolCallResult,
++      "old-turn",
++      failed
++        ? {
++            toolCallId: "shared-call",
++            assistantMessageId: "old-assistant",
++            lateSettlement: marker,
++            error: { type: "Error", message: "actual late failure" },
++          }
++        : {
++            toolCallId: "shared-call",
++            assistantMessageId: "old-assistant",
++            lateSettlement: marker,
++            duration: 2,
++            result: { success: true, content: "actual late success" },
++          },
++    );
++    assert.equal(f.row("old-assistant").status, failed ? "error" : "success");
++    assert.deepEqual(f.row("new-assistant"), before);
++    assert.deepEqual(f.projection.getSnapshot().control, control);
++    const rows = structuredClone(f.projection.getSnapshot().rows);
++    f.projection.applyEventAtomically(event, () => true);
++    assert.deepEqual(f.projection.getSnapshot().rows, rows);
++    const cold = new ProductProjection("late-session", "replay-epoch");
++    for (const item of f.events) cold.applyEventAtomically(item, () => true);
++    assert.deepEqual(
++      cold.getSnapshot().rows.window.map((row: any) => [row.rowId, row.status]),
++      f.projection.getSnapshot().rows.window.map((row: any) => [row.rowId, row.status]),
++    );
++  }
++});
++
++test("an unmarked stale result cannot revive a stopped row", () => {
++  const f = fixture();
++  const before = structuredClone(f.row("old-assistant"));
++  f.send(SessionEventType.ToolCallResult, "old-turn", {
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    duration: 2,
++    result: { success: true, content: "unconfirmed stale" },
++  });
++  assert.deepEqual(f.row("old-assistant"), before);
++});
++
++test("real Host late receipt reaches the stopped V4 row after durable publication", async () => {
++  const { lateReceiptFixture } =
++    await import("../../core/test/helpers/late-tool-receipt-fixture.js");
++  const f = await lateReceiptFixture();
++  try {
++    const projection = new ProductProjection("session", "host-receipt-epoch");
++    for (const event of f.events) projection.applyEventAtomically(event, () => true);
++    const before = structuredClone(projection.getSnapshot().control);
++    f.runtime.subscribeEvents({
++      onSessionEvent(event) {
++        projection.applyEventAtomically(event, () => true);
++      },
++    });
++    await f.settled();
++    const rows = projection
++      .getSnapshot()
++      .rows.window.filter((row) => row.kind === "toolCall") as any[];
++    assert.equal(rows.length, 1);
++    assert.equal(rows[0].status, "success");
++    assert.match(rows[0].output.text, /saved/);
++    assert.deepEqual(projection.getSnapshot().control, before);
++    const event = f.events.find((event) => event.type === SessionEventType.ToolCallResult);
++    assert.equal(event.payload.lateSettlement.partId, f.initial.id);
++    const stored = (await f.parts())[0] as any;
++    assert.equal(stored.state.status, "completed");
++    assert.equal(event.payload.assistantMessageId, stored.messageID);
++  } finally {
++    await f.close();
++  }
++});
++
++test("the existing strict transport schema retains the original assistant and optional late receipt", async () => {
++  const { zcodeToolUpdatedEventPayloadSchema } =
++    await import("../../../../../packages/shared/src/zcode-protocol/index.js");
++  const result = {
++    kind: "result",
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    lateSettlement: marker,
++    duration: 2,
++    result: { success: true, content: "saved" },
++  };
++  assert.deepEqual(zcodeToolUpdatedEventPayloadSchema.parse(result), result);
++  const error = {
++    kind: "error",
++    toolCallId: "shared-call",
++    assistantMessageId: "old-assistant",
++    lateSettlement: marker,
++    error: { type: "Error", message: "known failure" },
++  };
++  assert.deepEqual(zcodeToolUpdatedEventPayloadSchema.parse(error), error);
++  assert.equal(
++    zcodeToolUpdatedEventPayloadSchema.safeParse({
++      ...result,
++      lateSettlement: { partId: "original-part" },
++    }).success,
++    false,
++  );
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts b/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
+index 0f4506a..ae33a0f 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
+@@ -463,6 +463,8 @@ export class EventReducer {
+     },
+ 
+     [EventTypes.ToolCallResult]: (p, e) => {
++      // 迟到回执属于旧轮；provider 复用 call ID 不能结算当前轮的工具。
++      if (e.turnId && p.currentTurnId && e.turnId !== p.currentTurnId) return p;
+       const payload = e.payload as ToolCallResultPayload;
+       return {
+         ...p,
+@@ -476,6 +478,7 @@ export class EventReducer {
+     },
+ 
+     [EventTypes.ToolCallError]: (p, e) => {
++      if (e.turnId && p.currentTurnId && e.turnId !== p.currentTurnId) return p;
+       const payload = e.payload as ToolCallErrorPayload;
+       return {
+         ...p,
+diff --git a/apps/zcode-cli/packages/contracts/src/events/session.events.ts b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+index cbd797f..5c077ae 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/session.events.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+@@ -868,7 +868,14 @@ export interface ToolCallProgressPayload {
+   stderrTail?: string;
+ }
+ 
++/** Host-persisted receipt for an admitted effect settling after its turn stopped. */
++export interface LateToolSettlementReceipt {
++  receiptId: string;
++  partId: string;
++}
++
+ export interface ToolCallResultPayload {
++  lateSettlement?: LateToolSettlementReceipt;
+   toolCallId: ToolCallId;
+   assistantMessageId?: MessageId;
+   result: ToolResultPayload;
+@@ -878,6 +885,7 @@ export interface ToolCallResultPayload {
+ }
+ 
+ export interface ToolCallErrorPayload {
++  lateSettlement?: LateToolSettlementReceipt;
+   toolCallId: ToolCallId;
+   assistantMessageId?: MessageId;
+   error: ErrorPayload;
+diff --git a/apps/zcode-cli/packages/core/src/agent/message-history.ts b/apps/zcode-cli/packages/core/src/agent/message-history.ts
+index 3f270cf..89f4f57 100644
+--- a/apps/zcode-cli/packages/core/src/agent/message-history.ts
++++ b/apps/zcode-cli/packages/core/src/agent/message-history.ts
+@@ -54,6 +54,8 @@ export interface RuntimeMessageMessageEntry {
+   tokens?: TokenUsageInfo;
+   /** 仅在当前 query 内生效；不得进入 canonical history 或 Session persistence。 */
+   queryScope?: "output_token_continuation";
++  /** Host-only provenance for an unknown tool receipt; never sent to a provider. */
++  toolResultPartId?: string;
+ }
+ 
+ export interface RuntimeAttachmentEntry {
+@@ -420,6 +422,7 @@ export function cloneRuntimeMessageEntry(entry: RuntimeMessageEntry): RuntimeMes
+     metadata: cloneRuntimeMessageMetadata(entry.metadata),
+     ...(entry.tokens ? { tokens: cloneTokenUsageInfo(entry.tokens) } : {}),
+     ...(entry.queryScope ? { queryScope: entry.queryScope } : {}),
++    ...(entry.toolResultPartId ? { toolResultPartId: entry.toolResultPartId } : {}),
+   };
+ }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/late-tool-settlement.ts b/apps/zcode-cli/packages/core/src/runtime/methods/late-tool-settlement.ts
+new file mode 100644
+index 0000000..9686e2c
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/late-tool-settlement.ts
+@@ -0,0 +1,286 @@
++import {
++  SessionEventType,
++  type SessionEntryInfo,
++  type TraceContext,
++  type ToolExecutionResult,
++} from "../deps.js";
++import { createErrorResult } from "../../tool/executor/errors.js";
++import type { ToolPart } from "@zcode/contracts";
++import { createRuntimeToolResultEntry } from "../../agent/message-history.js";
++import type { AgentRuntimeInternal } from "../internal.js";
++import { modelContentForToolResult, stringifyToolResultOutput } from "../helpers/tool-result.js";
++import { persistToolResultMediaAttachments } from "../helpers/tool-result-media-persistence.js";
++import { completedToolPartMetadata } from "./tool-part-metadata.js";
++import { recordToolUsageFromResult } from "./turn-tool-usage.js";
++import { createToolCallResultEvent } from "../../tool/executor/events.js";
++
++const LATE_TOOL_RECEIPT = "runtime/late_tool_settlement";
++interface Receipt {
++  part: ToolPart;
++  traceContext: TraceContext;
++  result: Omit<ToolExecutionResult, "startedAt" | "completedAt" | "output"> & {
++    startedAt: number;
++    completedAt: number;
++  };
++}
++const receiptId = (part: ToolPart) => `${part.sessionID}:late-tool:${part.id}`;
++
++/** Initial unknown publication precedes this handoff; late work never owns an active turn. */
++export function trackLateToolSettlement(
++  runtime: AgentRuntimeInternal,
++  initialPart: ToolPart,
++  result: ToolExecutionResult,
++  traceContext: TraceContext,
++): void {
++  if (!result.lateSettlement) return;
++  const work = result.lateSettlement.then(async (late) => {
++    let media: Awaited<ReturnType<typeof persistToolResultMediaAttachments>>;
++    try {
++      media =
++        late.success && traceContext.turnId
++          ? await persistToolResultMediaAttachments({
++              artifactStore: runtime.artifactStore,
++              assistantMessageId: initialPart.messageID,
++              content: modelContentForToolResult(late),
++              sessionId: initialPart.sessionID,
++              sessionStore: runtime.sessionStore,
++              toolCallId: late.toolCallId,
++              toolName: late.toolName,
++              traceContext,
++              turnId: traceContext.turnId,
++            })
++          : undefined;
++    } catch (outputError) {
++      // 媒体保存失败是输出回执失败，已完成的真实效果不能重新记成 unknown 或静默成功。
++      const failure = createErrorResult(
++        { id: late.toolCallId, name: late.toolName, input: initialPart.state.input },
++        new Error(
++          `Tool completed after Stop, but media output persistence failed: ${outputError instanceof Error ? outputError.message : String(outputError)}`,
++        ),
++        late.durationMs,
++      );
++      late = { ...failure, startedAt: late.startedAt, completedAt: late.completedAt };
++    }
++    const content = stringifyToolResultOutput(late);
++    const part: ToolPart = {
++      ...initialPart,
++      state: late.success
++        ? {
++            status: "completed",
++            input: initialPart.state.input,
++            output: content,
++            title: late.toolName,
++            metadata: {
++              ...completedToolPartMetadata(late),
++              lateSettlement: "completed",
++              ...(media ? { modelContentLayout: media.modelContentLayout } : {}),
++            },
++            time: { start: late.startedAt.getTime(), end: late.completedAt.getTime() },
++            ...(media ? { attachments: media.attachments } : {}),
++          }
++        : {
++            status: "error",
++            input: initialPart.state.input,
++            error: late.error?.message ?? content,
++            metadata: { lateSettlement: "failed", modelContent: content },
++            time: { start: late.startedAt.getTime(), end: late.completedAt.getTime() },
++          },
++    };
++    const receipt: Receipt = {
++      part,
++      traceContext,
++      result: {
++        toolCallId: late.toolCallId,
++        toolName: late.toolName,
++        success: late.success,
++        error: late.error,
++        display: late.display,
++        durationMs: late.durationMs,
++        serialization: late.serialization
++          ? { ...late.serialization, modelContent: content }
++          : undefined,
++        modelContent: content,
++        startedAt: late.startedAt.getTime(),
++        completedAt: late.completedAt.getTime(),
++      },
++    };
++    const store = runtime.sessionStore;
++    if (!store?.saveSessionEntry)
++      throw new Error("Cannot retain late tool receipt in this Session");
++    const now = Date.now();
++    const entry: SessionEntryInfo = {
++      id: receiptId(part),
++      sessionID: part.sessionID,
++      type: LATE_TOOL_RECEIPT,
++      touchSession: false,
++      time: { created: now, updated: now },
++      data: { receipt, pending: true },
++    };
++    // 先用已有 Session journal 留下已知结局；part/usage 写失败或 acknowledgement 丢失可冷恢复。
++    await store.saveSessionEntry(entry);
++    await applyReceipt(runtime, entry, receipt);
++    replaceCanonicalToolReceipt(runtime, initialPart.id, late);
++  });
++  void runtime.trackResidencyBlockingWork(work).catch((error) => reportFailure(runtime, error));
++}
++
++/** Read/reconcile only. No tool, model, permission or post-tool hook can run from a receipt. */
++export async function recoverLateToolSettlements(runtime: AgentRuntimeInternal): Promise<void> {
++  const store = runtime.sessionStore;
++  if (!store?.sessionEntries || !store.saveSessionEntry) return;
++  for (const entry of await store.sessionEntries({
++    sessionID: runtime.sessionId,
++    type: LATE_TOOL_RECEIPT,
++  })) {
++    const data = entry.data as { receipt?: Receipt; pending?: boolean };
++    if (!data?.pending || !data.receipt) continue;
++    const receipt = data.receipt;
++    if (
++      receipt.part?.type !== "tool" ||
++      receipt.part.sessionID !== runtime.sessionId ||
++      entry.id !== receiptId(receipt.part) ||
++      receipt.result.toolCallId !== receipt.part.callID ||
++      receipt.traceContext.sessionId !== runtime.sessionId ||
++      !Number.isFinite(receipt.result.startedAt) ||
++      !Number.isFinite(receipt.result.completedAt)
++    )
++      throw new Error("Invalid late tool receipt in this Session");
++    try {
++      await applyReceipt(runtime, entry, receipt);
++      replaceCanonicalToolReceipt(runtime, receipt.part.id, receiptResult(receipt));
++    } catch (error) {
++      reportFailure(runtime, error);
++    }
++  }
++}
++
++const receiptWrites = new WeakMap<AgentRuntimeInternal, Map<string, Promise<void>>>();
++
++function applyReceipt(
++  runtime: AgentRuntimeInternal,
++  entry: SessionEntryInfo,
++  receipt: Receipt,
++): Promise<void> {
++  let writes = receiptWrites.get(runtime);
++  if (!writes) receiptWrites.set(runtime, (writes = new Map()));
++  const pending = writes.get(entry.id);
++  if (pending) return pending;
++  // producer 与下一输入的恢复共享原 receipt 的提交；瞬态 gate 不保存第二份结果状态。
++  const work = applyReceiptOnce(runtime, entry, receipt).finally(() => writes!.delete(entry.id));
++  writes.set(entry.id, work);
++  return work;
++}
++
++async function applyReceiptOnce(
++  runtime: AgentRuntimeInternal,
++  entry: SessionEntryInfo,
++  receipt: Receipt,
++): Promise<void> {
++  const store = runtime.sessionStore!;
++  const messages = await store.messages({ sessionID: runtime.sessionId });
++  const original = messages
++    .find((message) => message.info.id === receipt.part.messageID)
++    ?.parts.find((part) => part.id === receipt.part.id);
++  // 不重建被 rewind/delete 移除的消息；不能把回执写到复用 call ID 的另一消息。
++  if (!original || original.type !== "tool" || original.callID !== receipt.part.callID) return;
++  const result = receiptResult(receipt);
++  await store.savePart(receipt.part);
++  await recordToolUsageFromResult(runtime, result, receipt.traceContext, {
++    propagateFailure: true,
++    preserveAdmittedMetadata: true,
++  });
++  const events = await runtime.eventStore.getEvents(runtime.sessionId);
++  const eventId = `${entry.id}:settled`;
++  if (!events.some((event) => event.id === eventId)) {
++    if (result.success && result.serialization) {
++      const event = createToolCallResultEvent(
++        runtime.sessionId,
++        { id: result.toolCallId, name: result.toolName, input: original.state.input },
++        receipt.traceContext,
++        receipt.traceContext.turnId,
++        result.serialization,
++        result.durationMs,
++        result.display,
++        result.performance,
++        undefined,
++      );
++      event.id = eventId as never;
++      event.payload.lateSettlement = { receiptId: entry.id, partId: receipt.part.id };
++      event.timestamp = result.completedAt;
++      if (receipt.part.state.status === "completed" && receipt.part.state.attachments) {
++        event.payload.result.attachments = receipt.part.state.attachments.map(
++          (part, attachmentIndex) => ({
++            attachmentIndex,
++            ref: part.url,
++            fileName: part.filename ?? "",
++            mime: part.mime,
++          }),
++        );
++      }
++      await runtime.appendEvent(event, receipt.traceContext);
++    } else {
++      const event = runtime.createEvent(
++        SessionEventType.ToolCallError,
++        {
++          toolCallId: result.toolCallId,
++          assistantMessageId: receipt.part.messageID,
++          lateSettlement: { receiptId: entry.id, partId: receipt.part.id },
++          error: result.error,
++        },
++        receipt.traceContext,
++      );
++      event.id = eventId as never;
++      event.timestamp = result.completedAt;
++      await runtime.appendEvent(event, receipt.traceContext);
++    }
++  }
++  await store.saveSessionEntry!({
++    ...entry,
++    touchSession: false,
++    time: { ...entry.time, updated: Date.now() },
++    data: { receipt, pending: false },
++  });
++}
++
++function receiptResult(receipt: Receipt): ToolExecutionResult {
++  return {
++    ...receipt.result,
++    output: receipt.result.modelContent,
++    startedAt: new Date(receipt.result.startedAt),
++    completedAt: new Date(receipt.result.completedAt),
++  };
++}
++
++function replaceCanonicalToolReceipt(
++  runtime: AgentRuntimeInternal,
++  partId: string,
++  result: ToolExecutionResult,
++): void {
++  const entries = runtime.messageHistory.borrowReadOnlyRuntimeEntries();
++  if (!entries.some((entry) => entry.kind !== "attachment" && entry.toolResultPartId === partId))
++    return;
++  runtime.messageHistory.replaceMessages(
++    entries.map((entry) =>
++      entry.kind !== "attachment" && entry.toolResultPartId === partId
++        ? {
++            ...createRuntimeToolResultEntry(
++              result.toolCallId,
++              result.toolName,
++              modelContentForToolResult(result),
++              !result.success,
++            ),
++            toolResultPartId: partId,
++          }
++        : entry,
++    ),
++  );
++}
++
++function reportFailure(runtime: AgentRuntimeInternal, error: unknown): void {
++  runtime.logger?.warn("Late tool receipt persistence failed; check the original operation", {
++    event: "tool.call.late_receipt.persist_failed",
++    module: "core.runtime",
++    status: "failed",
++    errorMessage: error instanceof Error ? error.message : String(error),
++  });
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts b/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
+index 7f055b0..49f3f2c 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/resume.ts
+@@ -40,6 +40,7 @@ import {
+   restoreWorkspaceFileRewindEntries,
+ } from "./workspace-checkpoint-persistence.js";
+ import { mainTurnCacheHitAggregateFromMessages } from "./turn-model-step-usage.js";
++import { recoverLateToolSettlements } from "./late-tool-settlement.js";
+ import { recoverPendingModelUsage } from "./usage-recovery.js";
+ 
+ export function toScheduleState(
+@@ -78,6 +79,7 @@ export async function resumeFromStore(
+     });
+   }
+   await recoverPendingModelUsage(this);
++  await recoverLateToolSettlements(this);
+   const session = await repairPersistedRemoteSessionPaths(this.sessionStore, persistedSession, {
+     onPersistenceFailure: (error) => {
+       this.logger?.warn("Session path repair persistence failed; using in-memory repair", {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
+index cc81f97..9e8a31b 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
+@@ -7,11 +7,14 @@ export async function recordToolUsageFromResult(
+   runtime: AgentRuntimeInternal,
+   result: ToolExecutionResult,
+   traceContext: TraceContext,
++  options?: { propagateFailure?: boolean; preserveAdmittedMetadata?: boolean },
+ ): Promise<void> {
+   const usageStore = usageStoreFor(runtime);
+   if (!usageStore) return;
+ 
+-  const metadata = runtime.registry.get(result.toolName)?.metadata;
++  const metadata = options?.preserveAdmittedMetadata
++    ? undefined
++    : runtime.registry.get(result.toolName)?.metadata;
+   const outputBytes = outputSizeBytes(result);
+   const errorType = result.error?.type;
+ 
+@@ -54,6 +57,7 @@ export async function recordToolUsageFromResult(
+       errorMessage: result.error?.message,
+     });
+   } catch (error) {
++    if (options?.propagateFailure) throw error;
+     // 结果路径的 SQLite Usage 写入没有旁路保护，磁盘/锁异常会阻断后续
+     // Tool Result 持久化与模型续跑；观测失败绝不能改变 Agent 业务语义。
+     runtime.logger?.warn("Usage tool fact write failed", {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+index c47fe27..ffdc88c 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+@@ -40,6 +40,7 @@ import { recordToolUsageFromResult } from "./turn-tool-usage.js";
+ import { recordBrowserTurnToolResult } from "../../repl/browser-turn-state.js";
+ import { createRuntimeToolResultEntry } from "../../agent/message-history.js";
+ import { commitTurnRequestEntries } from "./turn-output-token-continuation.js";
++import { trackLateToolSettlement } from "./late-tool-settlement.js";
+ import { acceptToolDiscovery } from "./deferred-tools.js";
+ export async function executeToolCallsForModelStep(
+   this: AgentRuntimeInternal,
+@@ -287,6 +288,7 @@ export async function executeToolCallsForModelStep(
+     const isError = isErrorForToolResult(result);
+     const projectedResultToolName = projectToolNameForNonEmptyBoundary(result.toolName);
+     const persisted = toolParts.get(result.toolCallId);
++    let storedToolPart: import("@zcode/contracts").ToolPart | undefined;
+     if (persisted) {
+       const mediaPersistence = result.success
+         ? await persistToolResultMediaAttachments({
+@@ -302,56 +304,59 @@ export async function executeToolCallsForModelStep(
+             turnId: state.turnId,
+           })
+         : undefined;
+-      await this.persistPart(
+-        {
+-          id: persisted.partID,
+-          sessionID: this.sessionId,
+-          messageID: options.assistantMessageId,
+-          type: "tool",
+-          callID: result.toolCallId,
+-          declarationIndex: persisted.declarationIndex,
+-          tool: projectedResultToolName.toolName,
+-          metadata: projectedResultToolName.metadata,
+-          state: result.success
+-            ? {
+-                status: "completed",
+-                input: persisted.input,
+-                output: content,
+-                title: projectedResultToolName.toolName,
+-                metadata: {
+-                  ...completedToolPartMetadata(result),
+-                  ...(mediaPersistence
+-                    ? { modelContentLayout: mediaPersistence.modelContentLayout }
+-                    : {}),
+-                },
+-                time: {
+-                  start: result.startedAt.getTime(),
+-                  end: result.completedAt.getTime(),
+-                },
+-                ...(mediaPersistence ? { attachments: mediaPersistence.attachments } : {}),
+-              }
+-            : {
+-                status: "error",
+-                input: persisted.input,
+-                error: result.error?.message ?? content,
+-                // state.error 面向 UI / 日志，可能比模型实际收到的
+-                // modelContent 更笼统；仅附加保存 string 内容供冷恢复精确重放。
+-                metadata: {
+-                  ...mcpToolPartMetadata(
+-                    this.registry.getMetadata(result.toolName)?.mcpPresentation,
+-                  ),
+-                  ...(typeof result.modelContent === "string"
+-                    ? { modelContent: result.modelContent }
+-                    : {}),
+-                },
+-                time: {
+-                  start: result.startedAt.getTime(),
+-                  end: result.completedAt.getTime(),
+-                },
++      storedToolPart = {
++        id: persisted.partID,
++        sessionID: this.sessionId,
++        messageID: options.assistantMessageId,
++        type: "tool",
++        callID: result.toolCallId,
++        declarationIndex: persisted.declarationIndex,
++        tool: projectedResultToolName.toolName,
++        metadata: projectedResultToolName.metadata,
++        state: result.success
++          ? {
++              status: "completed",
++              input: persisted.input,
++              output: content,
++              title: projectedResultToolName.toolName,
++              metadata: {
++                ...completedToolPartMetadata(result),
++                ...(mediaPersistence
++                  ? { modelContentLayout: mediaPersistence.modelContentLayout }
++                  : {}),
+               },
+-        },
+-        options.modelTraceContext,
+-      );
++              time: {
++                start: result.startedAt.getTime(),
++                end: result.completedAt.getTime(),
++              },
++              ...(mediaPersistence ? { attachments: mediaPersistence.attachments } : {}),
++            }
++          : {
++              status: "error",
++              input: persisted.input,
++              error: result.error?.message ?? content,
++              // state.error 面向 UI / 日志，可能比模型实际收到的
++              // modelContent 更笼统；仅附加保存 string 内容供冷恢复精确重放。
++              metadata: {
++                ...mcpToolPartMetadata(this.registry.getMetadata(result.toolName)?.mcpPresentation),
++                ...(result.lateSettlement ? { lateSettlement: "pending" } : {}),
++                ...(typeof result.modelContent === "string"
++                  ? { modelContent: result.modelContent }
++                  : {}),
++              },
++              time: {
++                start: result.startedAt.getTime(),
++                end: result.completedAt.getTime(),
++              },
++            },
++      };
++      try {
++        await this.persistPart(storedToolPart, options.modelTraceContext);
++      } catch (error) {
++        // unknown 回执写失败也不能丢掉仍在执行的真实结局；既有 journal 后续修复原 part。
++        trackLateToolSettlement(this, storedToolPart, result, options.modelTraceContext);
++        throw error;
++      }
+       if (result.completionEventAfterPersist) {
+         const completionEvent = result.completionEventAfterPersist;
+         await this.appendEvent(completionEvent, options.modelTraceContext);
+@@ -366,13 +371,19 @@ export async function executeToolCallsForModelStep(
+       contentLength: content.length,
+     });
+     commitTurnRequestEntries(this, state.turnRequestState, [
+-      createRuntimeToolResultEntry(
+-        result.toolCallId,
+-        result.toolName,
+-        modelContentForToolResult(result),
+-        isError,
+-      ),
++      {
++        ...createRuntimeToolResultEntry(
++          result.toolCallId,
++          result.toolName,
++          modelContentForToolResult(result),
++          isError,
++        ),
++        ...(result.lateSettlement && persisted ? { toolResultPartId: persisted.partID } : {}),
++      },
+     ]);
++    if (storedToolPart && result.lateSettlement) {
++      trackLateToolSettlement(this, storedToolPart, result, options.modelTraceContext);
++    }
+     try {
+       // checkpoint 是 tool result 闭合后的附加操作。Stop 若在这里
+       // 触发，必须先继续提交所有 sibling tool results，不能提前进入 reminder flush。
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+index e78dd10..1ae1c7a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+@@ -1,3 +1,4 @@
++import { recoverLateToolSettlements } from "./late-tool-settlement.js";
+ import { beginLocalTurnPreparation, type LocalTtftDetail } from "@zcode/contracts";
+ import { runtimeInputMetadata } from "../../agent/runtime-input-presentation.js";
+ import {
+@@ -197,6 +198,9 @@ export async function executeTurnCommand(
+       const executionStartedAt = performance.timeOrigin + performance.now();
+       beginLocalTurnPreparation(turnTraceContext, "execution")();
+       throwIfTurnAborted(turnAbortSignal);
++      // 上次已知回执若保存中断，在新的串行输入边界补齐；不改已组装/发出的 request。
++      await recoverLateToolSettlements(this);
++      throwIfTurnAborted(turnAbortSignal);
+       let admittedModel;
+       try {
+         admittedModel =
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index 0b3c5dd..914e7fe 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -277,6 +277,18 @@ export async function recordToolUsageFromEvent(
+   if (!usageStore) return;
+ 
+   const payload = event.payload as Record<string, unknown>;
++  const late = payload.lateSettlement as { receiptId?: unknown; partId?: unknown } | undefined;
++  if (
++    (event.type === SessionEventType.ToolCallResult ||
++      event.type === SessionEventType.ToolCallError) &&
++    typeof late?.partId === "string" &&
++    late.partId.length > 0 &&
++    late.receiptId === `${event.sessionId}:late-tool:${late.partId}` &&
++    event.id === `${late.receiptId}:settled`
++  ) {
++    // Host 已在发布该原回执前严格写过 usage；事件旁路再查当前 registry 会覆盖已接纳能力与性能事实。
++    return;
++  }
+   const toolCallId = stringValue(payload.toolCallId);
+   if (!toolCallId) return;
+ 
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 274067b..a503d26 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -3,6 +3,7 @@ import {
+   CoreErrorType,
+   createChildTraceContext,
+   createCoreError,
++  isCoreError,
+   createRootTraceContext,
+   getCurrentTraceContext,
+   traceContextToLogContext,
+@@ -66,6 +67,7 @@ import type { ToolExecuteOptions, ToolExecutorDeps } from "./types.js";
+ import { validateInitialModelToolInput, validateInput, validateOutput } from "./validation.js";
+ import type { ExecutableToolCall } from "../types.js";
+ import { resolveEmbeddedSearchBranchCapability } from "../../embedded-search/capability.js";
++import { createLateToolResult } from "./late-settlement.js";
+ import { resolveToolEntryModelContract } from "../model-contract.js";
+ 
+ export async function executeToolCall(
+@@ -399,6 +401,7 @@ async function executeToolCallImpl(
+   let readFileStateMetadata: ToolExecutionResult["readFileStateMetadata"];
+   let failureStage: "handler" | "serialize" | "post_hook" = "handler";
+   let skillTelemetryMetadata: SkillTelemetryMetadata | undefined;
++  const lateReceipt = Promise.withResolvers<ToolExecutionResult>();
+ 
+   try {
+     const model = options?.model ?? deps.model;
+@@ -535,6 +538,16 @@ async function executeToolCallImpl(
+       executionAbortController,
+       entry,
+       (late) => {
++        createLateToolResult({
++          deps,
++          entry,
++          toolCall: canonicalToolCall,
++          traceContext,
++          late,
++          startTime,
++        }).then(lateReceipt.resolve, lateReceipt.reject);
++        // Promise rejection is consumed even if persistence of the initial unknown part fails.
++        void lateReceipt.promise.catch(() => {});
+         // 停止时结果未知的变更工具最终结算了：记录真实结局，不回滚、不重放。
+         deps.logger?.warn("Tool settled after its stop was reported", {
+           ...traceContextToLogContext(traceContext),
+@@ -543,7 +556,9 @@ async function executeToolCallImpl(
+           status: late.status,
+           toolCallId: canonicalToolCall.id,
+           toolName: canonicalToolCall.name,
+-          ...(late.error instanceof Error ? { error: late.error.message } : {}),
++          ...(late.status === "failed" && late.error instanceof Error
++            ? { error: late.error.message }
++            : {}),
+         });
+       },
+     );
+@@ -701,6 +716,10 @@ async function executeToolCallImpl(
+         formatHookAdditionalContexts(preToolHookResult.additionalContexts),
+       ].join("\n\n");
+     }
++    if (isCoreError(error) && error.context?.outcome === "unknown") {
++      result.lateSettlement = lateReceipt.promise;
++      result.startedAt = new Date(startTime);
++    }
+     result = withAutomationCreateLimitTurnStop(result, {
+       error,
+       toolName: canonicalToolCall.name,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/late-settlement.ts b/apps/zcode-cli/packages/core/src/tool/executor/late-settlement.ts
+new file mode 100644
+index 0000000..37e35d9
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/tool/executor/late-settlement.ts
+@@ -0,0 +1,71 @@
++import type { TraceContext } from "@zcode/contracts";
++import type { ExecutableToolCall, ToolEntry, ToolExecutionResult } from "../types.js";
++import type { ToolExecutorDeps } from "./types.js";
++import type { LateToolSettlement } from "./timeout.js";
++import {
++  createErrorResult,
++  createToolHandlerFailureError,
++  isToolHandlerFailure,
++} from "./errors.js";
++import { serializeOutput } from "./result-serialization.js";
++import { createToolResultDisplay } from "./result-display.js";
++import { validateOutput } from "./validation.js";
++
++/** Stop cannot undo an admitted effect. Normalize its receipt without another lifecycle. */
++export async function createLateToolResult(input: {
++  deps: ToolExecutorDeps;
++  entry: ToolEntry;
++  toolCall: ExecutableToolCall;
++  traceContext: TraceContext;
++  late: LateToolSettlement;
++  startTime: number;
++}): Promise<ToolExecutionResult> {
++  const completedAt = new Date();
++  const durationMs = completedAt.getTime() - input.startTime;
++  let error = input.late.status === "failed" ? input.late.error : undefined;
++  if (input.late.status === "completed") {
++    if (isToolHandlerFailure(input.late.output)) {
++      error = createToolHandlerFailureError(input.toolCall, input.late.output);
++    } else {
++      try {
++        validateOutput(input.late.output, input.entry);
++        // 原 turn 已停止，但保存已发生的结果不是重启效果，不能借用已 abort 的执行 signal。
++        const serialization = await serializeOutput(
++          input.deps,
++          input.late.output,
++          input.entry,
++          input.traceContext,
++          input.toolCall.id,
++          new AbortController().signal,
++          { strictArtifactPersistence: true },
++        );
++        return {
++          toolCallId: input.toolCall.id,
++          toolName: input.toolCall.name,
++          success: true,
++          output: input.late.output,
++          modelContent: serialization.modelContent ?? serialization.content,
++          serialization,
++          display: createToolResultDisplay(input.toolCall.name, input.late.output, {
++            mcp: input.entry.metadata.mcpPresentation,
++          }),
++          durationMs,
++          startedAt: new Date(input.startTime),
++          completedAt,
++        };
++      } catch (processingError) {
++        // 已知 handler 结局不能因结果校验/序列化失败重新变成 unknown；保留完成事实和失败阶段。
++        error = new Error(
++          `Tool completed after Stop, but result processing failed: ${processingError instanceof Error ? processingError.message : String(processingError)}`,
++          { cause: processingError },
++        );
++      }
++    }
++  }
++  const result = createErrorResult(
++    input.toolCall,
++    error instanceof Error ? error : new Error(String(error)),
++    durationMs,
++  );
++  return { ...result, startedAt: new Date(input.startTime), completedAt };
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/result-serialization.ts b/apps/zcode-cli/packages/core/src/tool/executor/result-serialization.ts
+index e570dfa..47a7df2 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/result-serialization.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/result-serialization.ts
+@@ -50,6 +50,7 @@ export async function serializeOutput(
+   traceContext: TraceContext,
+   toolCallId: string,
+   signal: AbortSignal,
++  options?: { strictArtifactPersistence?: boolean },
+ ): Promise<ToolResultSerialization> {
+   const effectiveBudget: ToolResultBudget = entry.resultBudget ?? DEFAULT_RESULT_BUDGET;
+   const modelContent = stringifyOutputForModel(output, entry);
+@@ -94,6 +95,7 @@ export async function serializeOutput(
+         traceContext,
+         toolCallId,
+         signal,
++        options?.strictArtifactPersistence,
+       )
+     : undefined;
+   const resolvedArtifactPath = artifact?.path ?? artifact?.uri ?? artifactPath;
+@@ -300,8 +302,11 @@ async function tryWriteToolArtifact(
+   traceContext: TraceContext,
+   toolCallId: string,
+   signal: AbortSignal,
++  strictArtifactPersistence = false,
+ ): Promise<{ path?: string; uri: string } | undefined> {
+   if (!deps.artifactStore) {
++    if (strictArtifactPersistence)
++      throw new Error("Artifact store is unavailable for the known late result");
+     return undefined;
+   }
+ 
+@@ -319,7 +324,8 @@ async function tryWriteToolArtifact(
+       },
+       { signal },
+     );
+-  } catch {
++  } catch (error) {
++    if (strictArtifactPersistence) throw error;
+     // 与主模型交互时，artifact 写入失败不应让一次成功的工具调用变成失败。
+     // 这里回退到统一的 resultBudget 截断路径，保持工具结果可见并避免原始大输出进模型。
+     return undefined;
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts b/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
+index 805dd6d..5bbccbb 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/timeout.ts
+@@ -97,10 +97,9 @@ export function observeToolAdmissionClock(
+  */
+ export const STOP_SETTLE_GRACE_MS = 1500;
+ 
+-export interface LateToolSettlement {
+-  status: "completed" | "failed";
+-  error?: unknown;
+-}
++export type LateToolSettlement<T = unknown> =
++  | { status: "completed"; output: T }
++  | { status: "failed"; error: unknown };
+ 
+ export async function executeWithTimeout<TInput, TOutput>(
+   handler: (input: TInput, context: ToolExecutionContext) => Promise<TOutput>,
+@@ -109,7 +108,7 @@ export async function executeWithTimeout<TInput, TOutput>(
+   deadline: ToolDeadline,
+   abortController: AbortController,
+   entry: ToolEntry,
+-  onLateSettlement?: (settlement: LateToolSettlement) => void,
++  onLateSettlement?: (settlement: LateToolSettlement<TOutput>) => void,
+ ): Promise<TOutput> {
+   return new Promise((resolve, reject) => {
+     if (context.abortSignal.aborted) {
+@@ -206,7 +205,7 @@ export async function executeWithTimeout<TInput, TOutput>(
+ 
+     handler(input, context)
+       .then((result) => {
+-        if (outcomeUnknown) onLateSettlement?.({ status: "completed" });
++        if (outcomeUnknown) onLateSettlement?.({ status: "completed", output: result });
+         resolveOnce(result);
+       })
+       .catch((error) => {
+diff --git a/apps/zcode-cli/packages/core/src/tool/types.ts b/apps/zcode-cli/packages/core/src/tool/types.ts
+index 68b1830..b24a050 100644
+--- a/apps/zcode-cli/packages/core/src/tool/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/types.ts
+@@ -434,6 +434,8 @@ export interface ToolExecutionResult {
+   serialization?: ToolResultSerialization;
+   /** Internal handoff only; publish once after the original completed ToolPart is committed. */
+   completionEventAfterPersist?: SessionEvent;
++  /** Internal Host handoff; the stopped result remains unknown until this receipt is saved. */
++  lateSettlement?: Promise<ToolExecutionResult>;
+   /** Executor 汇总后的内部性能事实；不进入模型可见 Tool Output。 */
+   performance?: ToolExecutionTelemetry;
+   error?: {
+diff --git a/apps/zcode-cli/packages/core/test/helpers/late-tool-receipt-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/late-tool-receipt-fixture.ts
+new file mode 100644
+index 0000000..c369ef3
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/helpers/late-tool-receipt-fixture.ts
+@@ -0,0 +1,122 @@
++import assert from "node:assert/strict";
++import { mkdtemp, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { DatabaseSync } from "node:sqlite";
++import type { AgentRuntimeDeps } from "../../src/runtime/types.js";
++import { fixture, reply } from "./pi-runtime-fixture.js";
++export async function lateReceiptFixture(
++  streaming = false,
++  output: unknown = { saved: "late" },
++  entryOverride: Record<string, unknown> = {},
++  depsOverride: Partial<AgentRuntimeDeps> = {},
++) {
++  const profile = await mkdtemp(join(tmpdir(), "fleet-late-profile-"));
++  const previous = process.env.ZCODE_HOME;
++  process.env.ZCODE_HOME = profile;
++  const failures: string[] = [];
++  const logger = {
++    info() {},
++    debug() {},
++    error() {},
++    warn(_message: string, data: any) {
++      if (data?.event === "tool.call.late_receipt.persist_failed") failures.push(data.errorMessage);
++    },
++    child() {
++      return logger;
++    },
++  };
++  const f = await fixture(undefined, streaming, {
++    deps: { logger: logger as never, ...depsOverride },
++  });
++  const entered = Promise.withResolvers<void>();
++  const finish = Promise.withResolvers<void>();
++  let effects = 0;
++  const registered = f.runtime.getToolRegistry().get("Probe")!;
++  f.runtime.getToolRegistry().register({
++    ...registered,
++    resultBudget: {
++      maxInlineBytes: 64,
++      maxModelBytes: 64,
++      strategy: "artifact",
++      artifact: { enabled: true, retention: "session" },
++    },
++    ...entryOverride,
++    async handler() {
++      effects++;
++      await writeFile(join(f.dir, "late-effect.txt"), "committed exactly once");
++      entered.resolve();
++      await finish.promise;
++      if (output instanceof Error) throw output;
++      return output;
++    },
++  } as never);
++  f.runtime.invalidateToolCache();
++  const events: any[] = [];
++  f.runtime.subscribeEvents({
++    onSessionEvent(event) {
++      events.push(event);
++    },
++  });
++  f.steps.push(() => reply("late", [{ id: "same-id", name: "Probe", input: { value: "late" } }]));
++  const turn = f.runtime
++    .executeTurn("save disposable fixture")
++    .catch((error: Error) => error.message);
++  await entered.promise;
++  f.runtime.stopActiveForegroundExecution();
++  assert.equal(await turn, "Turn was cancelled.");
++  const parts = async () =>
++    (await f.store.messages({ sessionID: "session" as never }))
++      .flatMap((m) => m.parts)
++      .filter((p) => p.type === "tool");
++  const initial = (await parts())[0] as any;
++  assert.equal(initial.state.status, "error");
++  assert.equal(initial.state.metadata.lateSettlement, "pending");
++  assert.match(initial.state.error, /may still complete/);
++  return {
++    ...f,
++    get runtime() {
++      return f.runtime;
++    },
++    get store() {
++      return f.store;
++    },
++    events,
++    failures,
++    initial,
++    parts,
++    finish,
++    get effects() {
++      return effects;
++    },
++    facts() {
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        return db
++          .prepare(
++            "select id, status, error_type, error_message, cancelled_by_user from tool_usage order by started_at",
++          )
++          .all() as any[];
++      } finally {
++        db.close();
++      }
++    },
++    async settled() {
++      finish.resolve();
++      for (let i = 0; i < 200 && f.runtime.hasResidencyBlockingWork(); i++)
++        await new Promise((resolve) => setTimeout(resolve, 10));
++      assert.equal(
++        f.runtime.hasResidencyBlockingWork(),
++        false,
++        "receipt work finishes in bounded test time",
++      );
++    },
++    async close() {
++      finish.resolve();
++      await f.close();
++      if (previous === undefined) delete process.env.ZCODE_HOME;
++      else process.env.ZCODE_HOME = previous;
++      await rm(profile, { recursive: true, force: true });
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts b/apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts
+new file mode 100644
+index 0000000..19f11dc
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts
+@@ -0,0 +1,51 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { lateReceiptFixture as setup } from "./helpers/late-tool-receipt-fixture.js";
++
++test("late receipt accounting keeps admitted capability after registration replacement and writes once", async () => {
++  const f = await setup();
++  const upsert = f.store.upsertToolUsage.bind(f.store);
++  const completed: any[] = [];
++  try {
++    f.store.upsertToolUsage = async (record) => {
++      if (record.status === "completed") completed.push(record);
++      return upsert(record);
++    };
++    const entry = f.runtime.getToolRegistry().get("Probe")!;
++    f.runtime.getToolRegistry().register({
++      ...entry,
++      metadata: { ...entry.metadata, readOnly: true, sideEffectScope: "network" },
++      async handler() {
++        throw new Error("replacement must not execute for the admitted call");
++      },
++    } as never);
++    f.runtime.invalidateToolCache();
++    await f.settled();
++    assert.equal(
++      completed.length,
++      1,
++      "the Host receipt owns accounting; its published event must not upsert again",
++    );
++    const { DatabaseSync } = await import("node:sqlite");
++    const { join } = await import("node:path");
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    try {
++      const fact = db
++        .prepare("select status, read_only, side_effect_scope from tool_usage")
++        .get() as any;
++      assert.equal(fact.status, "completed");
++      assert.equal(fact.read_only, 0);
++      assert.equal(fact.side_effect_scope, "workspace");
++    } finally {
++      db.close();
++    }
++    await f.reopen();
++    assert.equal(f.facts().length, 1);
++    assert.equal(f.facts()[0].status, "completed");
++    assert.equal(f.effects, 1);
++    assert.equal(f.requests.length, 1);
++  } finally {
++    f.store.upsertToolUsage = upsert;
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts b/apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts
+new file mode 100644
+index 0000000..72d4841
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts
+@@ -0,0 +1,355 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { SessionEventType } from "@zcode/contracts";
++import { reply } from "./helpers/pi-runtime-fixture.js";
++import { lateReceiptFixture as setup } from "./helpers/late-tool-receipt-fixture.js";
++import { recoverLateToolSettlements } from "../src/runtime/methods/late-tool-settlement.js";
++
++for (const streaming of [false, true]) {
++  test(`late known success is durable, idempotent and refreshes future live context (${streaming})`, async () => {
++    const f = await setup(streaming);
++    try {
++      assert.equal(f.requests.length, 1);
++      await f.settled();
++      const part = (await f.parts())[0] as any;
++      assert.equal(part.id, f.initial.id);
++      assert.equal(part.state.status, "completed");
++      assert.match(part.state.output, /late/);
++      assert.equal(f.facts().length, 1);
++      assert.equal(f.facts()[0].status, "completed");
++      assert.equal(f.facts()[0].error_type, null);
++      assert.equal(f.facts()[0].error_message, null);
++      assert.equal(f.facts()[0].cancelled_by_user, 0);
++      const lateEvents = f.events.filter((e) => e.type === SessionEventType.ToolCallResult);
++      assert.equal(lateEvents.length, 1);
++      assert.equal(lateEvents[0].payload.assistantMessageId, part.messageID);
++      await recoverLateToolSettlements(f.runtime as never);
++      assert.equal(f.facts().length, 1);
++      assert.equal(f.events.filter((e) => e.type === SessionEventType.ToolCallResult).length, 1);
++      f.steps.push((request: any) => {
++        const tools = request.messages.filter((m: any) => m.role === "tool");
++        assert.match(JSON.stringify(tools), /saved/);
++        assert.doesNotMatch(JSON.stringify(tools), /may still complete/);
++        return reply("read known receipt");
++      });
++      await f.runtime.executeTurn("inspect saved result");
++      assert.equal(f.requests.length, 2);
++      await f.reopen();
++      assert.equal((await f.parts())[0].state.status, "completed");
++      assert.equal(f.effects, 1, "cold read never dispatches the effect");
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("late rejected and returned failures preserve their actual reason after restart", async () => {
++  for (const outcome of [
++    new Error("late fixture failure"),
++    { result: false, errorCode: 77, message: "late fixture business failure" },
++  ]) {
++    const f = await setup(false, outcome);
++    try {
++      await f.settled();
++      assert.equal((await f.parts())[0].state.status, "error");
++      assert.match(((await f.parts())[0] as any).state.error, /late fixture/);
++      assert.doesNotMatch(((await f.parts())[0] as any).state.error, /may still complete/);
++      assert.equal(f.facts()[0].status, "error");
++      assert.match(f.facts()[0].error_message, /late fixture/);
++      await f.reopen();
++      assert.match(((await f.parts())[0] as any).state.error, /late fixture/);
++      assert.equal(f.requests.length, 1);
++      assert.equal(f.effects, 1);
++    } finally {
++      await f.close();
++    }
++  }
++});
++
++test("late receipt cannot finish a newer turn's tool with the same provider call ID", async () => {
++  const f = await setup();
++  const entered = Promise.withResolvers<void>();
++  const finishNew = Promise.withResolvers<void>();
++  let newTurn: Promise<unknown> | undefined;
++  try {
++    const entry = f.runtime.getToolRegistry().get("Probe")!;
++    f.runtime.getToolRegistry().register({
++      ...entry,
++      async handler() {
++        entered.resolve();
++        await finishNew.promise;
++        return { saved: "new" };
++      },
++    } as never);
++    f.runtime.invalidateToolCache();
++    f.steps.push(
++      () => reply("new", [{ id: "same-id", name: "Probe", input: { value: "new" } }]),
++      () => reply("new done"),
++    );
++    newTurn = f.runtime.executeTurn("new independent work");
++    await entered.promise;
++    f.finish.resolve();
++    for (let i = 0; i < 200 && (await f.parts())[0].state.status !== "completed"; i++)
++      await new Promise((resolve) => setTimeout(resolve, 10));
++    const projection = await f.runtime.getProjection();
++    assert.equal(
++      projection.activeToolCalls.find((call) => call.toolCallId === "same-id")?.status,
++      "running",
++    );
++    assert.equal((await f.parts())[1].state.status, "running");
++    finishNew.resolve();
++    await newTurn;
++    const parts = await f.parts();
++    assert.match((parts[0] as any).state.output, /late/);
++    assert.match((parts[1] as any).state.output, /new/);
++    assert.equal(f.facts().length, 2);
++    assert.equal(f.requests.length, 3);
++    assert.match(
++      JSON.stringify(f.requests[1].messages),
++      /may still complete/,
++      "already sent request retains its snapshot",
++    );
++  } finally {
++    finishNew.resolve();
++    await newTurn?.catch(() => {});
++    await f.close();
++  }
++});
++
++test("part publication or usage failure retains an existing journal receipt for cold reconciliation", async () => {
++  for (const failedOwner of ["part", "usage"] as const) {
++    const f = await setup();
++    const savePart = f.store.savePart.bind(f.store);
++    const usage = f.store.upsertToolUsage.bind(f.store);
++    try {
++      if (failedOwner === "part")
++        f.store.savePart = async (part) => {
++          if (part.type === "tool" && part.state.status === "completed")
++            throw new Error("disposable part disk failure");
++          return savePart(part);
++        };
++      else
++        f.store.upsertToolUsage = async (record) => {
++          if (record.status === "completed") throw new Error("disposable usage disk failure");
++          return usage(record);
++        };
++      await f.settled();
++      assert.equal(f.failures.length, 1);
++      assert.equal(f.events.filter((e) => e.type === SessionEventType.ToolCallResult).length, 0);
++      const receipts = await f.store.sessionEntries!({
++        sessionID: "session" as never,
++        type: "runtime/late_tool_settlement",
++      });
++      assert.equal((receipts[0].data as any).pending, true);
++      f.store.savePart = savePart;
++      f.store.upsertToolUsage = usage;
++      f.steps.push((request: any) => {
++        assert.doesNotMatch(JSON.stringify(request.messages), /may still complete/);
++        return reply("reconciled before next input");
++      });
++      await f.runtime.executeTurn("inspect known saved receipt");
++      assert.equal((await f.parts())[0].state.status, "completed");
++      await f.reopen();
++      assert.equal((await f.parts())[0].state.status, "completed");
++      assert.equal(f.facts().length, 1);
++      assert.equal(f.facts()[0].status, "completed");
++      assert.equal(f.effects, 1);
++      assert.equal(f.requests.length, 2);
++    } finally {
++      f.store.savePart = savePart;
++      f.store.upsertToolUsage = usage;
++      await f.close();
++    }
++  }
++});
++
++test("fully unwritable receipt owners preserve unknown across restart without a false known event", async () => {
++  const f = await setup();
++  const saveEntry = f.store.saveSessionEntry.bind(f.store);
++  try {
++    f.store.saveSessionEntry = async (entry) => {
++      if (entry.type === "runtime/late_tool_settlement")
++        throw new Error("disposable journal disk failure");
++      return saveEntry(entry);
++    };
++    await f.settled();
++    assert.equal(f.failures.length, 1);
++    assert.equal((await f.parts())[0].state.status, "error");
++    assert.match(((await f.parts())[0] as any).state.error, /may still complete/);
++    assert.equal(f.events.filter((e) => e.type === SessionEventType.ToolCallResult).length, 0);
++    await f.reopen();
++    assert.match(((await f.parts())[0] as any).state.error, /may still complete/);
++    assert.equal(f.effects, 1);
++    assert.equal(f.requests.length, 1);
++  } finally {
++    f.store.saveSessionEntry = saveEntry;
++    await f.close();
++  }
++});
++
++test("late large result uses the existing durable artifact path", async () => {
++  const f = await setup(false, { saved: "bounded late output ".repeat(100) });
++  try {
++    await f.settled();
++    const part = (await f.parts())[0] as any;
++    assert.equal(part.state.status, "completed");
++    assert.equal(part.state.metadata.serialization.budgetStrategy, "artifact");
++    assert.ok(part.state.metadata.serialization.artifactPath);
++    await f.reopen();
++    assert.equal((await f.parts())[0].state.status, "completed");
++    assert.equal(f.effects, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("known handler completion retains a durable result-processing failure instead of unknown", async () => {
++  const f = await setup(
++    false,
++    { saved: "late" },
++    {
++      outputSchema: {
++        type: "object",
++        properties: { saved: { type: "number" } },
++        required: ["saved"],
++      },
++    },
++  );
++  try {
++    await f.settled();
++    const part = (await f.parts())[0] as any;
++    assert.equal(part.state.status, "error");
++    assert.match(part.state.error, /completed after Stop, but result processing failed/);
++    assert.doesNotMatch(part.state.error, /may still complete/);
++    assert.equal(f.facts()[0].status, "error");
++    await f.reopen();
++    assert.equal((await f.parts())[0].state.status, "error");
++    assert.match(((await f.parts())[0] as any).state.error, /result processing failed/);
++    assert.equal(f.effects, 1);
++    assert.equal(f.requests.length, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("artifact and media output failures retain a truthful durable receipt of completed execution", async () => {
++  const brokenArtifact = {
++    async writeToolResultArtifact() {
++      throw new Error("disposable output artifact failure");
++    },
++  } as never;
++  for (const media of [false, true]) {
++    const f = await setup(
++      false,
++      media ? { saved: "media" } : { saved: "large".repeat(100) },
++      media
++        ? {
++            resultBudget: { maxInlineBytes: 10000, maxModelBytes: 10000, strategy: "truncate" },
++            formatModelContent: () => [
++              { type: "text", text: "saved media" },
++              { type: "image", dataUrl: "data:image/png;base64,aQ==", mediaType: "image/png" },
++            ],
++          }
++        : {},
++      { artifactStore: brokenArtifact },
++    );
++    try {
++      await f.settled();
++      const part = (await f.parts())[0] as any;
++      assert.equal(part.state.status, "error");
++      assert.match(part.state.error, /completed after Stop/);
++      assert.match(part.state.error, /output.*failure|result processing failed/);
++      assert.doesNotMatch(part.state.error, /may still complete/);
++      assert.equal(f.facts()[0].status, "error");
++      const receipts = await f.store.sessionEntries!({
++        sessionID: "session" as never,
++        type: "runtime/late_tool_settlement",
++      });
++      assert.equal(receipts.length, 1);
++      assert.equal((receipts[0].data as any).pending, false);
++      await f.reopen();
++      assert.match(((await f.parts())[0] as any).state.error, /completed after Stop/);
++      assert.equal(f.effects, 1);
++      assert.equal(f.requests.length, 1);
++    } finally {
++      await f.close();
++    }
++  }
++});
++
++test("producer and concurrent live recovery share one receipt commit and one terminal event", async () => {
++  const f = await setup();
++  const savePart = f.store.savePart.bind(f.store);
++  const entered = Promise.withResolvers<void>();
++  const publish = Promise.withResolvers<void>();
++  let publications = 0;
++  try {
++    f.store.savePart = async (part) => {
++      if (part.type === "tool" && part.state.status === "completed") {
++        publications++;
++        entered.resolve();
++        await publish.promise;
++      }
++      return savePart(part);
++    };
++    f.finish.resolve();
++    await entered.promise;
++    const recovery = recoverLateToolSettlements(f.runtime as never);
++    await new Promise((resolve) => setTimeout(resolve, 10));
++    publish.resolve();
++    await recovery;
++    await f.settled();
++    assert.equal(publications, 1);
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.ToolCallResult).length,
++      1,
++    );
++    assert.equal(f.facts().length, 1);
++  } finally {
++    publish.resolve();
++    f.store.savePart = savePart;
++    await f.close();
++  }
++});
++
++test("terminal event append failure retains a receipt for retry without repeating the effect", async () => {
++  const f = await setup();
++  const eventStore = f.runtime.getSessionEventStore();
++  const append = eventStore.append.bind(eventStore);
++  try {
++    eventStore.append = async (event) => {
++      if (event.type === SessionEventType.ToolCallResult && (event.payload as any).lateSettlement)
++        throw new Error("disposable event append failure");
++      return append(event);
++    };
++    await f.settled();
++    assert.equal(f.failures.length, 1);
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.ToolCallResult).length,
++      0,
++    );
++    const receipts = await f.store.sessionEntries!({
++      sessionID: "session" as never,
++      type: "runtime/late_tool_settlement",
++    });
++    assert.equal((receipts[0].data as any).pending, true);
++    eventStore.append = append;
++    await recoverLateToolSettlements(f.runtime as never);
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.ToolCallResult).length,
++      1,
++    );
++    await recoverLateToolSettlements(f.runtime as never);
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.ToolCallResult).length,
++      1,
++    );
++    await f.reopen();
++    assert.equal((await f.parts())[0].state.status, "completed");
++    assert.equal(f.effects, 1);
++    assert.equal(f.requests.length, 1);
++  } finally {
++    eventStore.append = append;
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts b/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts
+index 09faba3..c6ed7a4 100644
+--- a/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts
++++ b/apps/zcode-cli/packages/core/test/stop-late-effect.test.ts
+@@ -12,6 +12,9 @@ import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
+ // RECOVERY-01: Stop arrives while Write is inside its atomic rename. The file may still change, so
+ // the record must report what happened, never "cancelled before the file operation completed".
+ async function stopDuringRename(holdMs: number, streaming: boolean) {
++  const profile = await fs.mkdtemp(join((await import("node:os")).tmpdir(), "fleet-stop-profile-"));
++  const priorProfile = process.env.ZCODE_HOME;
++  process.env.ZCODE_HOME = profile;
+   const late: Array<Record<string, unknown>> = [];
+   const logger = {
+     info() {},
+@@ -46,7 +49,10 @@ async function stopDuringRename(holdMs: number, streaming: boolean) {
+   try {
+     f.steps.push(
+       () => reply("Read", [{ id: "read", name: "Read", input: { file_path: path } }]),
+-      () => reply("Write", [{ id: "write", name: "Write", input: { file_path: path, content: "replacement" } }]),
++      () =>
++        reply("Write", [
++          { id: "write", name: "Write", input: { file_path: path, content: "replacement" } },
++        ]),
+       () => reply("unexpected-after-stop"),
+     );
+     const turn = f.runtime.executeTurn("replace disposable document").then(
+@@ -59,12 +65,29 @@ async function stopDuringRename(holdMs: number, streaming: boolean) {
+     await committed.promise;
+     await new Promise((resolve) => setTimeout(resolve, 25));
+     const messages = await f.store.messages({ sessionID: "session" as never });
+-    const write = messages.flatMap((m: any) => m.parts).find((p: any) => p.type === "tool" && p.callID === "write");
+-    return { settled, file: await fs.readFile(path, "utf8"), write, late, requests: f.requests.length };
++    const write = messages
++      .flatMap((m: any) => m.parts)
++      .find((p: any) => p.type === "tool" && p.callID === "write");
++    await f.reopen();
++    const recovered = (await f.store.messages({ sessionID: "session" as never }))
++      .flatMap((m: any) => m.parts)
++      .find((p: any) => p.type === "tool" && p.callID === "write");
++    return {
++      settled,
++      file: await fs.readFile(path, "utf8"),
++      write,
++      recovered,
++      facts: f.toolFacts(),
++      late,
++      requests: f.requests.length,
++    };
+   } finally {
+     fs.rename = rename;
+     syncBuiltinESMExports();
+     await f.close();
++    if (priorProfile === undefined) delete process.env.ZCODE_HOME;
++    else process.env.ZCODE_HOME = priorProfile;
++    await fs.rm(profile, { recursive: true, force: true });
+   }
+ }
+ 
+@@ -79,12 +102,12 @@ for (const streaming of [false, true]) {
+   });
+ }
+ 
+-test("a write still running past the grace is recorded as unknown, and its late outcome is logged", async () => {
++test("a write past the grace persists its known late outcome across restart", async () => {
+   const r = await stopDuringRename(STOP_SETTLE_GRACE_MS + 400, false);
+   assert.equal(r.settled, "Turn was cancelled.");
+-  assert.equal(r.write.state.status, "error");
+-  assert.match(r.write.state.error, /may still complete/);
+-  assert.doesNotMatch(r.write.state.error, /before the file operation completed/);
++  assert.equal(r.write.state.status, "completed");
++  assert.equal(r.recovered.state.status, "completed");
++  assert.equal(r.facts.filter((fact: any) => fact.status === "completed").length, 2);
+   assert.equal(r.file, "replacement");
+   assert.equal(r.requests, 2);
+   assert.deepEqual(
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 16d633b..1976506 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -1309,6 +1309,7 @@ export const zcodeMessagePartRemovedEventPayloadSchema = z
+ const zcodeToolCallBasePayloadSchema = z
+   .object({
+     toolCallId: nonEmptyString,
++    assistantMessageId: nonEmptyString.optional(),
+     toolName: z.string().optional(),
+     parentToolCallId: nonEmptyString.optional(),
+     source: z.enum(["subagent"]).optional(),
+@@ -1361,6 +1362,10 @@ export const zcodeToolUpdatedEventPayloadSchema = z.discriminatedUnion("kind", [
+   zcodeToolCallBasePayloadSchema
+     .extend({
+       kind: z.literal("result"),
++      lateSettlement: z
++        .object({ receiptId: nonEmptyString, partId: nonEmptyString })
++        .strict()
++        .optional(),
+       result: zcodeToolResultObjectSchema,
+       duration: z.number().nonnegative(),
+     })
+@@ -1368,6 +1373,10 @@ export const zcodeToolUpdatedEventPayloadSchema = z.discriminatedUnion("kind", [
+   zcodeToolCallBasePayloadSchema
+     .extend({
+       kind: z.literal("error"),
++      lateSettlement: z
++        .object({ receiptId: nonEmptyString, partId: nonEmptyString })
++        .strict()
++        .optional(),
+       error: zcodeProtocolErrorDetailSchema,
+     })
+     .strict(),

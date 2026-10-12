@@ -1,0 +1,17 @@
+diff --git a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+index 77519af..c6eec54 100644
+--- a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+@@ -205,6 +205,12 @@ test("failed Host request preparation does not release a committed native tool r
+     assert.equal(await n.f.read(), "native-approved");
+     const saved = (await n.f.store.sessionEntries({ sessionID: "session" as never, type: "runtime/native_continuation" }))[0]!.data as any;
+     assert.equal(saved.phase, "inflight");
++    await n.f.reopen();
++    assert.equal((await n.f.runtime.executeTurn("Continue after failed local preparation")).response,"native-complete");
++    assert.equal(n.continuationReasons.at(-1),"interrupted");
++    assert.equal(n.requests(),2);
++    assert.equal(n.f.effects,1,"Cold recovery replayed the committed Host tool effect");
++    assert.ok(JSON.stringify(n.nativeInputs.at(-1)).includes("native-approved"));
+   } finally { await n.close(); }
+ });
+ 

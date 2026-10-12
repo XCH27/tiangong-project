@@ -1,0 +1,338 @@
+diff --git a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+index ce81626..31fa172 100644
+--- a/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/ConversationSubscriptionUsage.tsx
+@@ -1,13 +1,6 @@
+ import { useEffect, useState, type ComponentProps } from "react";
+ import type { IProviderSettingsService } from "@zcode/services";
+ import { Button } from "@/components/ui/button.js";
+-import {
+-  Select,
+-  SelectContent,
+-  SelectItem,
+-  SelectTrigger,
+-  SelectValue,
+-} from "@/components/ui/select.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+@@ -24,47 +17,32 @@ export interface ConversationSubscriptionConnection {
+   kind: ComponentProps<typeof SubscriptionUsageSection>["kind"];
+   revision: number;
+   lastAccountId?: string;
+-  lastObservedAt?: number;
+ }
+ type Accounts = Awaited<ReturnType<IProviderSettingsService["getSubscriptionAccounts"]>>;
+ 
+-/** Read-only account inspection: selecting this filter never changes the inference account. */
++/** The allowance follows the last actual model request, never an independent inspection choice. */
+ export function ConversationSubscriptionUsage({
+   connection,
+   open,
+-  onPickerOpenChange,
+ }: {
+   connection: ConversationSubscriptionConnection;
+   open: boolean;
+-  onPickerOpenChange(open: boolean): void;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+   const scope = `${connection.providerId}:${connection.revision}`;
+-  const requestKey = `${connection.lastAccountId ?? ""}:${connection.lastObservedAt ?? ""}`;
+   const [state, setState] = useState<{
+     service: IProviderSettingsService;
+     scope: string;
+     accounts?: Accounts;
+     failed?: boolean;
+   }>();
+-  const [choice, setChoice] = useState<{
+-    scope: string;
+-    accountId: string;
+-    service: IProviderSettingsService;
+-    requestKey: string;
+-  }>();
+   const [retry, setRetry] = useState(0);
+   const scoped =
+     state?.service === providerSettingsService && state.scope === scope ? state : undefined;
+   const accounts = scoped?.accounts;
+   const selected = resolveQuotaInspectionAccount(
+     accounts?.accounts ?? [],
+-    choice?.service === providerSettingsService &&
+-      choice.scope === scope &&
+-      choice.requestKey === requestKey
+-      ? choice.accountId
+-      : undefined,
+     connection.lastAccountId,
+   );
+ 
+@@ -101,11 +79,7 @@ export function ConversationSubscriptionUsage({
+       window.removeEventListener("online", onVisible);
+     };
+   }, [open, connection.providerId, providerSettingsService, scope, retry]);
+-  const accountLabel = (
+-    account: Accounts["accounts"][number],
+-    index: number,
+-    withStatus = true,
+-  ) => {
++  const accountLabel = (account: Accounts["accounts"][number], index: number) => {
+     const label = subscriptionAccountDisplayLabel(
+       accounts?.accounts ?? [],
+       account,
+@@ -114,12 +88,9 @@ export function ConversationSubscriptionUsage({
+         { number: index + 1 },
+       ),
+     );
+-    if (!withStatus) return label;
+     return account.id === connection.lastAccountId
+       ? `${label} · ${intl.formatMessage({ id: "chat.allowance.lastUsed" })}`
+-      : account.active
+-        ? `${label} · ${intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}`
+-        : label;
++      : `${label} · ${intl.formatMessage({ id: "chat.allowance.preferredPending" })}`;
+   };
+ 
+   return (
+@@ -139,49 +110,12 @@ export function ConversationSubscriptionUsage({
+             condensed
+             accountControl={
+               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+-                {accounts.accounts.length > 1 ? (
+-                  <Select
+-                    value={selected.id}
+-                    onValueChange={(accountId) =>
+-                      setChoice({ scope, accountId, service: providerSettingsService, requestKey })
+-                    }
+-                    onOpenChange={onPickerOpenChange}
+-                  >
+-                    <SelectTrigger
+-                      className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-ui-sm text-foreground-subtle shadow-none"
+-                      aria-label={intl.formatMessage({ id: "chat.allowance.viewAccount" })}
+-                    >
+-                      <span>{intl.formatMessage({ id: "chat.allowance.inspect" })}</span>
+-                      <SelectValue>
+-                        {accountLabel(
+-                          selected,
+-                          accounts.accounts.findIndex((account) => account.id === selected.id),
+-                          false,
+-                        )}
+-                      </SelectValue>
+-                      {selected.id === connection.lastAccountId ? (
+-                        <span className="shrink-0">
+-                          {intl.formatMessage({ id: "chat.allowance.lastUsed" })}
+-                        </span>
+-                      ) : selected.active ? (
+-                        <span className="shrink-0">
+-                          {intl.formatMessage({ id: "settings.modelProvider.credentials.default" })}
+-                        </span>
+-                      ) : null}
+-                    </SelectTrigger>
+-                    <SelectContent>
+-                      {accounts.accounts.map((account, index) => (
+-                        <SelectItem key={account.id} value={account.id}>
+-                          {accountLabel(account, index)}
+-                        </SelectItem>
+-                      ))}
+-                    </SelectContent>
+-                  </Select>
+-                ) : (
+-                  <div className="text-ui-sm text-foreground-subtle">
+-                    {accountLabel(selected, 0)}
+-                  </div>
+-                )}
++                <span className="min-w-0 break-all text-ui-sm text-foreground-subtle">
++                  {accountLabel(
++                    selected,
++                    accounts.accounts.findIndex((account) => account.id === selected.id),
++                  )}
++                </span>
+                 {accounts.autoSwitch ? (
+                   <Badge variant="secondary">
+                     {intl.formatMessage({ id: "chat.allowance.autoSwitch" })}
+@@ -198,9 +132,11 @@ export function ConversationSubscriptionUsage({
+           {intl.formatMessage({
+             id: scoped?.failed
+               ? "settings.modelProvider.allowance.unavailable"
+-              : accounts
+-                ? "chat.allowance.noAccount"
+-                : "settings.modelProvider.allowance.loading",
++              : accounts && connection.lastAccountId
++                ? "chat.allowance.lastAccountUnavailable"
++                : accounts
++                  ? "chat.allowance.noAccount"
++                  : "settings.modelProvider.allowance.loading",
+           })}
+           {scoped?.failed ? (
+             <Button variant="ghost" size="sm" onClick={() => setRetry((value) => value + 1)}>
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 8c0236c..01e8c3c 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -249,12 +249,10 @@ export function ChatContextUsage({
+   const [contextOpen, setContextOpen] = useState(false);
+   const pinnedRef = useRef(false);
+   const restoringTriggerFocus = useRef(false);
+-  const accountPickerOpenRef = useRef(false);
+   const contextContentRef = useRef<HTMLDivElement>(null);
+   const [contextAccessRefreshing, setContextAccessRefreshing] = useState(false);
+   const closeContext = useCallback((restoreFocus = false) => {
+     pinnedRef.current = false;
+-    accountPickerOpenRef.current = false;
+     setContextOpen(false);
+     if (restoreFocus) {
+       // Radix 的 focus 会重新打开 HoverCard；恢复焦点这一次必须阻止其默认打开。
+@@ -272,10 +270,7 @@ export function ChatContextUsage({
+     (open: boolean) => {
+       // Dialog 打开后会把焦点移出 HoverCard，Radix 随即请求关闭 HoverCard；
+       // 若此时卸载内容，Portal 中的重置弹框也会一起消失，因此弹框存活期间必须拒绝关闭。
+-      if (
+-        !open &&
+-        (quotaResetDialogOpenRef.current || pinnedRef.current || accountPickerOpenRef.current)
+-      ) {
++      if (!open && (quotaResetDialogOpenRef.current || pinnedRef.current)) {
+         return;
+       }
+       setContextOpen(open);
+@@ -310,13 +305,11 @@ export function ChatContextUsage({
+   const renderableTaskUsage = getRenderableTaskUsage(taskUsage);
+   useEffect(() => {
+     pinnedRef.current = false;
+-    accountPickerOpenRef.current = false;
+     setContextOpen(false);
+   }, [subscription?.providerId, subscription?.revision]);
+   useEffect(() => {
+     if (isWorkspaceVisible !== false) return;
+     pinnedRef.current = false;
+-    accountPickerOpenRef.current = false;
+     // 原重置 Dialog 自己拥有事务生命周期；普通详情不能跨页悬浮或继续查额度。
+     if (!quotaResetDialogOpenRef.current) setContextOpen(false);
+   }, [isWorkspaceVisible]);
+@@ -324,7 +317,6 @@ export function ChatContextUsage({
+     if (!contextOpen) return;
+     const dismiss = (event: PointerEvent | KeyboardEvent) => {
+       if (quotaResetDialogOpenRef.current || event.defaultPrevented) return;
+-      if (event instanceof KeyboardEvent && accountPickerOpenRef.current) return;
+       if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+       if (
+         event instanceof PointerEvent &&
+@@ -938,7 +930,7 @@ export function ChatContextUsage({
+       <ContextContent
+         ref={contextContentRef}
+         onEscapeKeyDown={(event) => {
+-          if (quotaResetDialogOpenRef.current || accountPickerOpenRef.current) return;
++          if (quotaResetDialogOpenRef.current) return;
+           event.preventDefault();
+           closeContext(true);
+         }}
+@@ -1052,10 +1044,6 @@ export function ChatContextUsage({
+               <ConversationSubscriptionUsage
+                 connection={subscription}
+                 open={contextOpen && isWorkspaceVisible !== false}
+-                onPickerOpenChange={(open) => {
+-                  accountPickerOpenRef.current = open;
+-                  if (open) setContextOpen(true);
+-                }}
+               />
+             </div>
+           ) : null}
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index ccdc391..997e7b7 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -125,7 +125,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.reset.no_credit": "This reset is no longer available.",
+   "settings.modelProvider.reset.already_redeemed":
+     "This reset was already used. Updating allowance…",
+-  "chat.allowance.viewAccount": "View account allowance",
+   "chat.allowance.manage": "Manage accounts",
+   "chat.allowance.noAccount": "No subscription account connected.",
+   "chat.allowance.trigger": "Usage and subscription allowance",
+@@ -7225,8 +7224,10 @@ const enUS: Record<string, string> = {
+   "settings.usage.apiEstimate.empty": "No recorded model calls",
+   "settings.usage.apiEstimate.noPositiveCost": "No positive cost to show in this range",
+   "settings.usage.lastFetched": "Last fetched: {time}",
+-  "chat.allowance.lastUsed": "Last used",
+-  "chat.allowance.inspect": "View:",
++  "chat.allowance.lastUsed": "Last used in this conversation",
++  "chat.allowance.preferredPending": "Preferred account; no request for this model yet",
++  "chat.allowance.lastAccountUnavailable":
++    "The account last used in this conversation is unavailable; its allowance cannot be shown",
+   "chat.allowance.autoSwitch": "Auto switch",
+ };
+ 
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6d80efb..51c59cc 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -105,7 +105,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.reset.nothing_to_reset": "当前无需重置，重置卡仍可使用。",
+   "settings.modelProvider.reset.no_credit": "这张重置卡已不可用。",
+   "settings.modelProvider.reset.already_redeemed": "这张重置卡已经使用，正在更新额度…",
+-  "chat.allowance.viewAccount": "查看账号额度",
+   "chat.allowance.manage": "管理账号",
+   "chat.allowance.noAccount": "尚未连接订阅账号。",
+   "chat.allowance.trigger": "用量与订阅额度",
+@@ -6851,8 +6850,9 @@ const zhCN: Record<string, string> = {
+   "settings.usage.apiEstimate.empty": "暂无模型调用记录",
+   "settings.usage.apiEstimate.noPositiveCost": "此时段没有可显示的费用",
+   "settings.usage.lastFetched": "上次获取：{time}",
+-  "chat.allowance.lastUsed": "上次使用",
+-  "chat.allowance.inspect": "查看：",
++  "chat.allowance.lastUsed": "本对话最近使用",
++  "chat.allowance.preferredPending": "默认账号，尚无本模型请求",
++  "chat.allowance.lastAccountUnavailable": "本对话最近使用的账号已不可用，无法显示其额度",
+   "chat.allowance.autoSwitch": "自动切换",
+ };
+ 
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts b/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
+index c1b8c82..93ff3ce 100644
+--- a/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
++++ b/packages/ui/src/settings/model-provider-section/subscriptionAccountLifecycle.ts
+@@ -102,16 +102,11 @@ export function subscriptionAccountDisplayLabel(
+     : account.label;
+ }
+ 
+-/** Quota inspection is read-only; execution receipts take precedence over a configured default. */
++/** A served account may disappear, but its quota must never be replaced by another account's. */
+ export function resolveQuotaInspectionAccount<T extends { id: string; active: boolean }>(
+   accounts: readonly T[],
+-  inspectedId?: string,
+   servedId?: string,
+ ): T | undefined {
+-  return (
+-    accounts.find((account) => account.id === inspectedId) ??
+-    accounts.find((account) => account.id === servedId) ??
+-    accounts.find((account) => account.active) ??
+-    accounts[0]
+-  );
++  if (servedId) return accounts.find((account) => account.id === servedId);
++  return accounts.find((account) => account.active) ?? accounts[0];
+ }
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 9bde4e4..ea69230 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -996,7 +996,6 @@ function V4ComposerModelControlsImpl({
+           kind: selectedSubscription.provider,
+           revision: modelSelectionView!.revision,
+           lastAccountId: matchingLastRequest?.accountId,
+-          lastObservedAt: matchingLastRequest?.observedAt,
+         }
+       : undefined;
+   // 工具条热键已转正为命令表命令：tooltip 快捷键文案读生效表，
+diff --git a/packages/ui/test/subscriptionAccountLifecycle.test.ts b/packages/ui/test/subscriptionAccountLifecycle.test.ts
+index 2ec1c19..bf851ae 100644
+--- a/packages/ui/test/subscriptionAccountLifecycle.test.ts
++++ b/packages/ui/test/subscriptionAccountLifecycle.test.ts
+@@ -14,9 +14,9 @@ const second = { id: "b", label: "same@example.test", active: false };
+ test("quota inspection prefers the actual serving account without changing the configured default", () => {
+   const accounts = [{ ...first }, { ...second }];
+   const before = structuredClone(accounts);
+-  assert.equal(resolveQuotaInspectionAccount(accounts, undefined, "b")?.id, "b");
+-  assert.equal(resolveQuotaInspectionAccount(accounts, "a", "b")?.id, "a");
+-  assert.equal(resolveQuotaInspectionAccount(accounts, undefined, "removed")?.id, "a");
++  assert.equal(resolveQuotaInspectionAccount(accounts, "b")?.id, "b");
++  assert.equal(resolveQuotaInspectionAccount(accounts)?.id, "a");
++  assert.equal(resolveQuotaInspectionAccount(accounts, "removed"), undefined);
+   assert.deepEqual(accounts, before);
+ });
+ 

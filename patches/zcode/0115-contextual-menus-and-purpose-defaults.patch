@@ -1,0 +1,2272 @@
+diff --git a/packages/provider-node/src/model-selection-config-repository.ts b/packages/provider-node/src/model-selection-config-repository.ts
+index b9e1923..332d956 100644
+--- a/packages/provider-node/src/model-selection-config-repository.ts
++++ b/packages/provider-node/src/model-selection-config-repository.ts
+@@ -43,6 +43,7 @@ export class NodeModelSelectionConfigRepository {
+     patch: {
+       defaultModelSelection?: ModelSelection | null;
+       pageAssistantDefaultModelSelection?: ModelSelection | null;
++      visionBridgeDefaultModelSelection?: ModelSelection | null;
+       favoriteModelSelections?: readonly ModelSelection[];
+       expectedRevision?: string;
+     },
+@@ -74,6 +75,12 @@ export class NodeModelSelectionConfigRepository {
+               pageAssistantDefaultModelSelection:
+                 submitted.pageAssistantDefaultModelSelection ?? undefined,
+             }),
++        ...(submitted.visionBridgeDefaultModelSelection === undefined
++          ? {}
++          : {
++              visionBridgeDefaultModelSelection:
++                submitted.visionBridgeDefaultModelSelection ?? undefined,
++            }),
+         ...(submitted.favoriteModelSelections === undefined
+           ? {}
+           : { favoriteModelSelections: submitted.favoriteModelSelections }),
+@@ -110,6 +117,7 @@ function preferencesOf(snapshot: ProviderConfigLayerSnapshot) {
+     revision: snapshot.revision,
+     defaultModelSelection: snapshot.defaultModelSelection,
+     pageAssistantDefaultModelSelection: snapshot.pageAssistantDefaultModelSelection,
++    visionBridgeDefaultModelSelection: snapshot.visionBridgeDefaultModelSelection,
+     favoriteModelSelections: snapshot.favoriteModelSelections ?? [],
+   };
+ }
+diff --git a/packages/provider-node/src/personal-provider-config-repository.ts b/packages/provider-node/src/personal-provider-config-repository.ts
+index 043e68b..c645e72 100644
+--- a/packages/provider-node/src/personal-provider-config-repository.ts
++++ b/packages/provider-node/src/personal-provider-config-repository.ts
+@@ -80,6 +80,7 @@ export class NodePersonalProviderConfigRepository implements PersonalProviderCon
+           providerOrder: next.providerOrder,
+           defaultModelSelection: next.defaultModelSelection,
+           pageAssistantDefaultModelSelection: next.pageAssistantDefaultModelSelection,
++          visionBridgeDefaultModelSelection: next.visionBridgeDefaultModelSelection,
+           favoriteModelSelections: next.favoriteModelSelections,
+         });
+         const committed = await this.#writeLocked(update);
+@@ -271,6 +272,7 @@ function snapshotFromUpdate(update: ProviderConfigLayerUpdate): ProviderConfigLa
+     providerOrder: update.providerOrder,
+     defaultModelSelection: update.defaultModelSelection,
+     pageAssistantDefaultModelSelection: update.pageAssistantDefaultModelSelection,
++    visionBridgeDefaultModelSelection: update.visionBridgeDefaultModelSelection,
+     favoriteModelSelections: update.favoriteModelSelections,
+   });
+ }
+diff --git a/packages/provider-node/src/provider-config-file-codec.ts b/packages/provider-node/src/provider-config-file-codec.ts
+index 05a3a88..2243749 100644
+--- a/packages/provider-node/src/provider-config-file-codec.ts
++++ b/packages/provider-node/src/provider-config-file-codec.ts
+@@ -25,6 +25,7 @@ const storedProviderConfigSchema = z
+         modelConfigRules: z.unknown(),
+         defaultModelSelection: modelSelectionSchema.optional(),
+         pageAssistantDefaultModelSelection: modelSelectionSchema.optional(),
++        visionBridgeDefaultModelSelection: modelSelectionSchema.optional(),
+         favoriteModelSelections: z.array(modelSelectionSchema).max(100).optional(),
+       })
+       .strict(),
+@@ -78,6 +79,9 @@ export function decodeProviderConfigFile(input: unknown): ProviderConfigLayerUpd
+     ),
+     providerOrder: parsed.config.providerOrder,
+     favoriteModelSelections: parsed.config.favoriteModelSelections,
++    ...(parsed.config.visionBridgeDefaultModelSelection === undefined
++      ? {}
++      : { visionBridgeDefaultModelSelection: parsed.config.visionBridgeDefaultModelSelection }),
+     ...(parsed.config.pageAssistantDefaultModelSelection === undefined
+       ? {}
+       : { pageAssistantDefaultModelSelection: parsed.config.pageAssistantDefaultModelSelection }),
+@@ -128,6 +132,9 @@ export function encodeProviderConfigFile(update: ProviderConfigLayerUpdate) {
+       ...(update.defaultModelSelection === undefined
+         ? {}
+         : { defaultModelSelection: update.defaultModelSelection }),
++      ...(update.visionBridgeDefaultModelSelection === undefined
++        ? {}
++        : { visionBridgeDefaultModelSelection: update.visionBridgeDefaultModelSelection }),
+       ...(update.pageAssistantDefaultModelSelection === undefined
+         ? {}
+         : { pageAssistantDefaultModelSelection: update.pageAssistantDefaultModelSelection }),
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 204b346..1c876fb 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -34,6 +34,7 @@ export interface ProviderConfigLayerSnapshot {
+   readonly providerOrder?: readonly ProviderId[];
+   readonly defaultModelSelection?: ModelSelection;
+   readonly pageAssistantDefaultModelSelection?: ModelSelection;
++  readonly visionBridgeDefaultModelSelection?: ModelSelection;
+   readonly favoriteModelSelections?: readonly ModelSelection[];
+ }
+ 
+@@ -44,6 +45,7 @@ export interface ProviderConfigLayerUpdate {
+   readonly providerOrder?: readonly ProviderId[];
+   readonly defaultModelSelection?: ModelSelection;
+   readonly pageAssistantDefaultModelSelection?: ModelSelection;
++  readonly visionBridgeDefaultModelSelection?: ModelSelection;
+   readonly favoriteModelSelections?: readonly ModelSelection[];
+ }
+ 
+@@ -679,6 +681,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+       // Provider/Model/排序只修改自己的成员，不能因共用文件清掉默认选择。
+       defaultModelSelection: current.defaultModelSelection,
+       pageAssistantDefaultModelSelection: current.pageAssistantDefaultModelSelection,
++      visionBridgeDefaultModelSelection: current.visionBridgeDefaultModelSelection,
+       favoriteModelSelections: current.favoriteModelSelections,
+       ...transform(current),
+     }));
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 3233649..26abc84 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -230,6 +230,7 @@ export interface ModelSelectionView extends Partial<EffectiveModelSelectionResul
+   /** Configured preferences stay visible even when their route is temporarily unavailable. */
+   readonly configuredDefaultSelection?: ModelSelection;
+   readonly pageAssistantDefaultSelection?: ModelSelection;
++  readonly visionBridgeDefaultSelection?: ModelSelection;
+   readonly preferencesRevision?: string;
+   readonly favoriteModelSelections?: readonly ModelSelection[];
+ }
+diff --git a/packages/services/src/model-provider/modelSelectionService.ts b/packages/services/src/model-provider/modelSelectionService.ts
+index a850a76..3f451ff 100644
+--- a/packages/services/src/model-provider/modelSelectionService.ts
++++ b/packages/services/src/model-provider/modelSelectionService.ts
+@@ -17,11 +17,13 @@ export interface ModelPreferences {
+   readonly revision: string;
+   readonly defaultModelSelection?: ModelSelection;
+   readonly pageAssistantDefaultModelSelection?: ModelSelection;
++  readonly visionBridgeDefaultModelSelection?: ModelSelection;
+   readonly favoriteModelSelections: readonly ModelSelection[];
+ }
+ export interface ModelPreferencesPatch {
+   readonly defaultModelSelection?: ModelSelection | null;
+   readonly pageAssistantDefaultModelSelection?: ModelSelection | null;
++  readonly visionBridgeDefaultModelSelection?: ModelSelection | null;
+   readonly favoriteModelSelections?: readonly ModelSelection[];
+   readonly expectedRevision?: string;
+ }
+@@ -91,6 +93,9 @@ export function createModelSelectionService(
+       ...(snapshot.preferences.pageAssistantDefaultModelSelection
+         ? { pageAssistantDefaultSelection: snapshot.preferences.pageAssistantDefaultModelSelection }
+         : {}),
++      ...(snapshot.preferences.visionBridgeDefaultModelSelection
++        ? { visionBridgeDefaultSelection: snapshot.preferences.visionBridgeDefaultModelSelection }
++        : {}),
+       preferencesRevision: snapshot.preferences.revision || undefined,
+     };
+   };
+@@ -129,6 +134,7 @@ export function createModelSelectionService(
+         .object({
+           defaultModelSelection: modelSelectionSchema.nullable().optional(),
+           pageAssistantDefaultModelSelection: modelSelectionSchema.nullable().optional(),
++          visionBridgeDefaultModelSelection: modelSelectionSchema.nullable().optional(),
+           favoriteModelSelections: z.array(modelSelectionSchema).max(100).optional(),
+           expectedRevision: z.string().max(256).optional(),
+         })
+@@ -165,6 +171,24 @@ export function createModelSelectionService(
+           });
+         return effective;
+       };
++      const validateVision = (selection: ModelSelection): ModelSelection => {
++        const effective = validate(selection);
++        const model = view.providers
++          .find((provider) => provider.providerId === effective.providerId)
++          ?.models.find((candidate) => candidate.modelId === effective.modelId);
++        if (
++          (model?.evidenceConfig ?? model?.config)?.properties?.inputFormat?.supportsImage !== true
++        )
++          throw Object.assign(
++            new Error("The vision bridge requires a confirmed image-input model"),
++            { code: "model_preference_unavailable" },
++          );
++        return effective;
++      };
++      if (patch.visionBridgeDefaultModelSelection)
++        patch.visionBridgeDefaultModelSelection = validateVision(
++          patch.visionBridgeDefaultModelSelection,
++        );
+       if (patch.defaultModelSelection)
+         patch.defaultModelSelection = validate(patch.defaultModelSelection);
+       if (patch.pageAssistantDefaultModelSelection)
+@@ -208,6 +232,8 @@ export function createModelSelectionService(
+             ),
+             { code: "model_preference_conflict" },
+           );
++        if (patch.visionBridgeDefaultModelSelection)
++          validateVision(patch.visionBridgeDefaultModelSelection);
+         if (patch.defaultModelSelection) validate(patch.defaultModelSelection);
+         if (patch.pageAssistantDefaultModelSelection)
+           validate(patch.pageAssistantDefaultModelSelection);
+diff --git a/packages/services/test/model-purpose-defaults.test.ts b/packages/services/test/model-purpose-defaults.test.ts
+index bc8065f..0aacac4 100644
+--- a/packages/services/test/model-purpose-defaults.test.ts
++++ b/packages/services/test/model-purpose-defaults.test.ts
+@@ -45,7 +45,11 @@ async function fixture() {
+       providerId,
+       modelId,
+       parseModelConfig({
+-        properties: { contextWindow: 65_536, contextWindows: [65_536, 131_072] },
++        properties: {
++          contextWindow: 65_536,
++          contextWindows: [65_536, 131_072],
++          inputFormat: { supportsImage: modelId === "helper" },
++        },
+         optionSpecs: {
+           reasoningLevel: { values: ["low", "high"], map: "{}" },
+           maxOutputTokens: { max: 4_096 },
+@@ -417,3 +421,51 @@ test("purpose values are snapshotted before readiness and old unversioned source
+     await f.close();
+   }
+ });
++
++test("vision default uses confirmed input capability, persists across reopen and shares the original preference writer", async () => {
++  const f = await fixture();
++  try {
++    await f.service.savePreferences({
++      defaultModelSelection: f.selection("primary"),
++      pageAssistantDefaultModelSelection: f.selection("helper"),
++      visionBridgeDefaultModelSelection: f.selection("helper"),
++      expectedRevision: (await f.service.getPreferences()).revision,
++    });
++    await f.reopen();
++    assert.deepEqual(
++      (await f.service.getView()).visionBridgeDefaultSelection,
++      f.selection("helper"),
++    );
++    const before = await f.read();
++    await assert.rejects(
++      f.service.savePreferences({
++        visionBridgeDefaultModelSelection: f.selection("primary"),
++        expectedRevision: (await f.service.getPreferences()).revision,
++      }),
++      { code: "model_preference_unavailable" },
++    );
++    assert.equal(await f.read(), before);
++    await f.runtime.configService.savePersonalProviderOverlay(
++      f.providerId,
++      parseProviderConfig({}),
++      undefined,
++      { providerName: "Renamed purpose fixture" },
++    );
++    await f.reopen();
++    assert.deepEqual(
++      (await f.service.getPreferences()).visionBridgeDefaultModelSelection,
++      f.selection("helper"),
++    );
++    await f.service.savePreferences({
++      visionBridgeDefaultModelSelection: null,
++      expectedRevision: (await f.service.getPreferences()).revision,
++    });
++    await f.reopen();
++    const final = await f.service.getPreferences();
++    assert.equal(final.visionBridgeDefaultModelSelection, undefined);
++    assert.deepEqual(final.defaultModelSelection, f.selection("primary"));
++    assert.deepEqual(final.pageAssistantDefaultModelSelection, f.selection("helper"));
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/ui/src/LexicalChatInput.tsx b/packages/ui/src/LexicalChatInput.tsx
+index feba4f3..c71edf6 100644
+--- a/packages/ui/src/LexicalChatInput.tsx
++++ b/packages/ui/src/LexicalChatInput.tsx
+@@ -12,7 +12,7 @@
+  * 独立输入展示壳，不承载会话编排逻辑，仅做三处适配：
+  * 1. useChatViewActiveTaskProvider 来自 @/v4/activeTaskProvider.js（配置面读取）；
+  * 2. ChatComposerPasteEvent 收口为本文件导出的结构类型；
+- * 3. mention 面板用 enableMentionPanel 控制；slash command 始终读取 CLI workspace catalog。
++ * 3. mention/slash panels can be omitted by compact page helpers; ordinary inputs retain the CLI catalog.
+  */
+ import { $getPromptMarkdown } from "@/mentions/promptSerialization.js";
+ import { PromptClipboardPlugin } from "@/mentions/PromptClipboardPlugin.js";
+@@ -1335,6 +1335,7 @@ interface LexicalChatInputProps {
+   appSlashCommands?: readonly AppSlashCommand[];
+   /** mention（@/#）面板开关。v4 数据面未就绪时显式关闭，入口保留。 */
+   enableMentionPanel?: boolean;
++  enableSlashCommands?: boolean;
+ }
+ 
+ const EDITOR_THEME = {
+@@ -1365,6 +1366,7 @@ export function LexicalChatInput({
+   excludedSlashCommandNames,
+   appSlashCommands,
+   enableMentionPanel = true,
++  enableSlashCommands = true,
+ }: LexicalChatInputProps) {
+   const inputMountedAtRef = useRef(Date.now());
+   const lastReadyLogKeyRef = useRef<string | null>(null);
+@@ -1496,19 +1498,21 @@ export function LexicalChatInput({
+           <EditablePlugin editable={!disabled} />
+           <E2ELexicalInputBridgePlugin inputTestId={inputTestId} />
+           <EditorApiPlugin editorApiRef={editorApiRef} />
+-          <LeadingChineseSlashAliasPlugin disabled={disabled} />
++          <LeadingChineseSlashAliasPlugin disabled={disabled || !enableSlashCommands} />
+           <PasteCapturePlugin disabled={disabled} onPaste={onPaste} />
+         </div>
+-        <SlashCommandPlugin
+-          workspacePath={workspacePath}
+-          workspaceIdentity={workspaceIdentity}
+-          sessionId={skillCatalogSessionId ?? taskId}
+-          provider={activeTaskProvider}
+-          container={triggerPanelContainer}
+-          disabled={disabled}
+-          excludedCommandNames={excludedSlashCommandNames}
+-          appCommands={appSlashCommands}
+-        />
++        {enableSlashCommands && (
++          <SlashCommandPlugin
++            workspacePath={workspacePath}
++            workspaceIdentity={workspaceIdentity}
++            sessionId={skillCatalogSessionId ?? taskId}
++            provider={activeTaskProvider}
++            container={triggerPanelContainer}
++            disabled={disabled}
++            excludedCommandNames={excludedSlashCommandNames}
++            appCommands={appSlashCommands}
++          />
++        )}
+         {enableMentionPanel ? (
+           <MentionPlugin
+             workspacePath={workspacePath}
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index b87b32f..dbf5fb3 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -1,3 +1,9 @@
++import {
++  ContextMenu,
++  ContextMenuTrigger,
++  ContextMenuContent,
++  ContextMenuItem,
++} from "@/components/ui/context-menu.js";
+ /* oxlint-disable eslint(max-lines) */
+ import { ArrowLeft, Rocket, type LucideIcon } from "lucide-react";
+ import {
+@@ -56,7 +62,6 @@ import {
+ import { buildUsageEntitlementCacheKey } from "@/lib/usageEntitlementCache.js";
+ import { ModelProviderSection } from "@/settings/ModelProviderSection.js";
+ import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+-import { ModelPurposeDefaults } from "@/settings/ModelPurposeDefaults.js";
+ import { useTeamSubscriptionProducts } from "@/settings/model-provider-section/useTeamSubscriptionProducts.js";
+ import { UsageStatsSection, type UsageStatsSectionTab } from "@/settings/UsageStatsSection.js";
+ import {
+@@ -232,6 +237,7 @@ function SettingsSidebarButton({
+   icon: Icon,
+   label,
+   active,
++  onOpenContext,
+   children,
+   className,
+   ...buttonProps
+@@ -239,10 +245,11 @@ function SettingsSidebarButton({
+   icon: LucideIcon;
+   label: string;
+   active?: boolean;
++  onOpenContext?: () => void;
+   children?: ReactNode;
+   className?: string;
+ } & ButtonHTMLAttributes<HTMLButtonElement>) {
+-  return (
++  const control = (
+     <ControlHintTooltip title={label} side="right" align="center">
+       <button
+         {...buttonProps}
+@@ -265,6 +272,21 @@ function SettingsSidebarButton({
+       </button>
+     </ControlHintTooltip>
+   );
++  const { intl } = useZCodeIntl();
++  return onOpenContext ? (
++    <ContextMenu>
++      <ContextMenuTrigger asChild>
++        <div>{control}</div>
++      </ContextMenuTrigger>
++      <ContextMenuContent>
++        <ContextMenuItem onSelect={onOpenContext}>
++          {intl.formatMessage({ id: "common.open" })}
++        </ContextMenuItem>
++      </ContextMenuContent>
++    </ContextMenu>
++  ) : (
++    control
++  );
+ }
+ 
+ export function SettingsPage({
+@@ -1469,6 +1491,22 @@ export function SettingsPage({
+                           const isActive = activeSection === id;
+                           const label = intl.formatMessage({ id: titleId });
+ 
++                          const openSection = () => {
++                            runUserAction({
++                              input: {
++                                featureId: "settings.navigation",
++                                action: "open_section",
++                                trigger: "button",
++                              },
++                              operation: () => {
++                                setPluginNavigationOrigin(undefined);
++                                setSettingsSectionNavigationVersion((version) => version + 1);
++                                setActiveSettingsSection(id);
++                              },
++                              completed: { resultSource: "local_commit", sectionId: id },
++                              failureStage: "navigation_commit",
++                            });
++                          };
+                           return (
+                             <SettingsSidebarButton
+                               key={id}
+@@ -1477,22 +1515,15 @@ export function SettingsPage({
+                               active={isActive}
+                               aria-current={isActive ? "page" : undefined}
+                               data-testid={testId(TID_SETTINGS_SECTION_NAV, id)}
+-                              onClick={() => {
+-                                runUserAction({
+-                                  input: {
+-                                    featureId: "settings.navigation",
+-                                    action: "open_section",
+-                                    trigger: "button",
+-                                  },
+-                                  operation: () => {
+-                                    setPluginNavigationOrigin(undefined);
+-                                    setSettingsSectionNavigationVersion((version) => version + 1);
+-                                    setActiveSettingsSection(id);
+-                                  },
+-                                  completed: { resultSource: "local_commit", sectionId: id },
+-                                  failureStage: "navigation_commit",
+-                                });
+-                              }}
++                              {...pageAssistantScope(
++                                {
++                                  feature: "app-page",
++                                  pageId: id === "plugins" ? "plugin-store" : id,
++                                },
++                                label,
++                              )}
++                              onClick={openSection}
++                              onOpenContext={openSection}
+                             >
+                               <span className="block text-ui-base text-foreground">{label}</span>
+                             </SettingsSidebarButton>
+@@ -1638,7 +1669,6 @@ export function SettingsPage({
+                       <div className="space-y-8">
+                         {activeSection === "general" ? (
+                           <>
+-                            <ModelPurposeDefaults />
+                             <GeneralSectionContent
+                               localePreference={localePreference}
+                               interfaceMode={interfaceMode}
+@@ -1800,6 +1830,7 @@ export function SettingsPage({
+                           <ServiceProvider services={localHostServices}>
+                             {/* 模型配置属于本机全局事实源；激活远端 workspace 时也不能注入远端 Host。 */}
+                             <ModelProviderSection
++                              onOpenSubagents={() => setActiveSettingsSection("subagents")}
+                               workspacePath={activeWorkspacePath ?? captionWorkspacePath ?? ""}
+                               connectivityWorkspacePath={
+                                 localModelProviderConnectivityWorkspacePath
+diff --git a/packages/ui/src/components/ui/context-menu.tsx b/packages/ui/src/components/ui/context-menu.tsx
+index 7f7a029..2930d47 100644
+--- a/packages/ui/src/components/ui/context-menu.tsx
++++ b/packages/ui/src/components/ui/context-menu.tsx
+@@ -7,7 +7,7 @@ import { usePageAssistant } from "@/page-assistant/PageAssistantContext.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ 
+ function ContextMenu({ ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
+-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
++  return <ContextMenuPrimitive.Root data-slot="context-menu" modal={false} {...props} />;
+ }
+ 
+ function ContextMenuTrigger({
+@@ -29,6 +29,9 @@ function ContextMenuContent({
+     <ContextMenuPrimitive.Portal>
+       <ContextMenuPrimitive.Content
+         data-slot="context-menu-content"
++        // The pointer is a mutable virtual anchor. Resize/scroll observation alone
++        // cannot notice a repeated right-click while this menu remains mounted.
++        updatePositionStrategy="always"
+         className={cn(
+           // 右键菜单与 Dropdown 共用菜单语言，也必须高于仅提供说明的 tooltip。
+           "z-[60] flex flex-col gap-0.5 min-w-44 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-lg border border-popover-border bg-menu p-1 text-foreground shadow-md duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+@@ -37,10 +40,14 @@ function ContextMenuContent({
+         {...props}
+       >
+         {children}
+-        {assistant && !omitPageAssistant ? <>
+-          {React.Children.count(children) > 0 ? <ContextMenuSeparator /> : null}
+-          <ContextMenuItem onSelect={assistant.openCaptured}>{intl.formatMessage({ id: "pageAssistant.open" })}</ContextMenuItem>
+-        </> : null}
++        {assistant && !omitPageAssistant ? (
++          <>
++            {React.Children.count(children) > 0 ? <ContextMenuSeparator /> : null}
++            <ContextMenuItem onSelect={assistant.openCaptured}>
++              {intl.formatMessage({ id: "pageAssistant.open" })}
++            </ContextMenuItem>
++          </>
++        ) : null}
+       </ContextMenuPrimitive.Content>
+     </ContextMenuPrimitive.Portal>
+   );
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 8018c69..2285d09 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7350,6 +7350,7 @@ const enUS: Record<string, string> = {
+   "pageAssistant.confirmChange":
+     "Apply this change? Existing conversations and accepted requests keep their settings.",
+   "pageAssistant.enabled": "On",
++  "pageAssistant.placeholder": "Describe what you'd like to understand or change…",
+   "pageAssistant.move": "Move assistant · use arrow keys when focused",
+   "pageAssistant.resize": "Resize assistant · use arrow keys when focused",
+   "pageAssistant.disabled": "Off",
+@@ -7385,6 +7386,12 @@ const enUS: Record<string, string> = {
+     "This host cannot conditionally save model defaults.",
+   "pageAssistant.error.operation_failed":
+     "This operation did not complete. Check the current page before retrying.",
++  "settings.modelDefaults.vision-bridge": "Image recognition fallback",
++  "settings.modelDefaults.vision-bridge.description": "For a confirmed text-only model, preselect this image model before sending. Each image makes an extra model request; you can change the choice in the composer.",
++  "settings.modelDefaults.chooseEachTime": "Choose for each message",
++  "settings.modelDefaults.subagents": "Subagent models",
++  "settings.modelDefaults.subagents.description": "Configure named subagents and their models in the existing Subagents settings.",
++  "settings.modelDefaults.openSubagents": "Configure subagents",
+   "settings.modelDefaults.title": "Default models",
+   "settings.modelDefaults.description":
+     "Choose models for new conversations. Current conversations keep their own choices.",
+@@ -7393,7 +7400,7 @@ const enUS: Record<string, string> = {
+     "Outside a Project, use this model. Projects keep their last choice and use this default when no choice is saved.",
+   "settings.modelDefaults.page-assistant": "Page conversation",
+   "settings.modelDefaults.page-assistant.description":
+-    "Used when opening a new conversation from a feature page. Choosing a model there does not change ordinary conversation preferences.",
++    "Used when opening a new conversation from a feature page. The assistant uses this choice automatically; current conversations keep their models.",
+   "settings.modelDefaults.automatic": "Automatic",
+   "settings.modelDefaults.followConversation": "Follow conversation default",
+   "settings.modelDefaults.unavailableBadge": "Unavailable",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index d839f2c..6d2d40a 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6958,6 +6958,7 @@ const zhCN: Record<string, string> = {
+   "pageAssistant.setModelDefault": "修改默认模型",
+   "pageAssistant.confirmChange": "是否应用这项修改？已有对话和已接纳的请求仍保留原设置。",
+   "pageAssistant.enabled": "开启",
++  "pageAssistant.placeholder": "描述你想了解或修改的内容…",
+   "pageAssistant.move": "移动助手 · 聚焦后可用方向键",
+   "pageAssistant.resize": "调整助手大小 · 聚焦后可用方向键",
+   "pageAssistant.disabled": "关闭",
+@@ -6986,6 +6987,12 @@ const zhCN: Record<string, string> = {
+   "pageAssistant.error.model_default_unavailable": "所选模型或参数暂不可用，原默认选择已保留。",
+   "pageAssistant.error.model_default_unsupported": "此主机暂不支持按版本保存默认模型。",
+   "pageAssistant.error.operation_failed": "本次操作未完成，请先查看当前页面，再决定是否重试。",
++  "settings.modelDefaults.vision-bridge": "图片识别备用模型",
++  "settings.modelDefaults.vision-bridge.description": "当前模型已确认不支持看图时，发送前自动选用此识图模型。每张图片会额外调用一次模型；仍可在输入框中更换。",
++  "settings.modelDefaults.chooseEachTime": "每次发送时选择",
++  "settings.modelDefaults.subagents": "子智能体模型",
++  "settings.modelDefaults.subagents.description": "各子智能体使用的模型，统一在已有的子智能体设置中配置。",
++  "settings.modelDefaults.openSubagents": "配置子智能体",
+   "settings.modelDefaults.title": "默认模型",
+   "settings.modelDefaults.description": "选择新对话使用的模型，已有对话保留自己的选择。",
+   "settings.modelDefaults.conversation": "新建对话",
+@@ -6993,7 +7000,7 @@ const zhCN: Record<string, string> = {
+     "项目外优先使用此模型；项目内沿用该项目上次选择，未选择过时使用这里的默认模型。",
+   "settings.modelDefaults.page-assistant": "页面对话",
+   "settings.modelDefaults.page-assistant.description":
+-    "从功能页面打开新对话时使用。在小窗里换模型不会影响普通对话的偏好。",
++    "打开新的页面助手时自动使用；已打开的对话保留原来的模型。",
+   "settings.modelDefaults.automatic": "自动选择",
+   "settings.modelDefaults.followConversation": "跟随新对话默认模型",
+   "settings.modelDefaults.unavailableBadge": "暂不可用",
+diff --git a/packages/ui/src/page-assistant/PageAssistantHost.tsx b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+index bc13cfe..b20e43d 100644
+--- a/packages/ui/src/page-assistant/PageAssistantHost.tsx
++++ b/packages/ui/src/page-assistant/PageAssistantHost.tsx
+@@ -201,7 +201,8 @@ export function PageAssistantHost({ children }: { children: ReactNode }) {
+   };
+   return (
+     <PageAssistantContext.Provider value={controller}>
+-      <ContextMenu>
++      {/* A page context menu must leave the page reachable for the next right-click. */}
++      <ContextMenu modal={false}>
+         <ContextMenuTrigger asChild>
+           <div
+             className="h-full"
+diff --git a/packages/ui/src/prompt-editor/ChatPromptEditor.tsx b/packages/ui/src/prompt-editor/ChatPromptEditor.tsx
+index 6a65207..ad687bf 100644
+--- a/packages/ui/src/prompt-editor/ChatPromptEditor.tsx
++++ b/packages/ui/src/prompt-editor/ChatPromptEditor.tsx
+@@ -88,6 +88,7 @@ export function ChatPromptEditor({
+   excludedSlashCommandNames,
+   appSlashCommands,
+   enableMentionPanel,
++  enableSlashCommands,
+ }: {
+   workspacePath: string;
+   workspaceIdentity?: string;
+@@ -148,6 +149,7 @@ export function ChatPromptEditor({
+   appSlashCommands?: readonly AppSlashCommand[];
+   /** mention 面板开关（透传 LexicalChatInput）。 */
+   enableMentionPanel?: boolean;
++  enableSlashCommands?: boolean;
+ }) {
+   const { intl } = useZCodeIntl();
+   const toolbarRef = useComposerToolbarFit();
+@@ -384,6 +386,7 @@ export function ChatPromptEditor({
+           excludedSlashCommandNames={excludedSlashCommandNames}
+           appSlashCommands={appSlashCommands}
+           enableMentionPanel={enableMentionPanel}
++          enableSlashCommands={enableSlashCommands}
+         />
+         <div ref={toolbarRef} className="group/toolbar flex items-end gap-3">
+           <div className="flex min-w-0 flex-1 items-center" data-composer-leading-actions>
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 70d9df6..da71557 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -1,3 +1,5 @@
++import { SlidersHorizontal } from "lucide-react";
++import { ModelPurposeDefaults } from "./ModelPurposeDefaults.js";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ import { useCallback, useEffect, useState } from "react";
+@@ -32,12 +34,14 @@ export function ModelProviderSection({
+   connectivityWorkspaceRequired = false,
+   pendingModelProviderTarget,
+   onConsumePendingModelProviderTarget,
++  onOpenSubagents,
+ }: {
+   workspacePath?: string;
+   connectivityWorkspacePath?: string;
+   connectivityWorkspaceRequired?: boolean;
+   pendingModelProviderTarget?: SettingsModelProviderTarget;
+   onConsumePendingModelProviderTarget?: () => void;
++  onOpenSubagents?: () => void;
+ } = {}) {
+   const { intl, locale } = useZCodeIntl();
+   const confirmDialog = useConfirmDialog();
+@@ -75,6 +79,7 @@ export function ModelProviderSection({
+   const [target, setTarget] = useState(() => consumePendingSettingsModelProviderTarget());
+   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
++  const [defaultsOpen, setDefaultsOpen] = useState(false);
+   const [creatingProvider, setCreatingProvider] = useState(false);
+   const [connectProviderId, setConnectProviderId] = useState<string>();
+   const [expandedAccountByProvider, setExpandedAccountByProvider] = useState<
+@@ -100,6 +105,7 @@ export function ModelProviderSection({
+   const targetExists = target && modelProviders.some((p) => p.providerId === target.providerId);
+   useEffect(() => {
+     if (!target || !targetExists) return;
++    setDefaultsOpen(false);
+     setSelectedNodeKey(createCustomProviderNodeKey(target.providerId));
+     setTemplatePickerOpen(false);
+     setTarget(undefined);
+@@ -187,18 +193,39 @@ export function ModelProviderSection({
+       }}
+       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
+       onAddProvider={() => {
++        setDefaultsOpen(false);
+         setTarget(undefined);
+         setTemplatePickerOpen(true);
+       }}
+       navigationGroups={navigationGroups}
+-      selectedNodeKey={selectedNodeKey}
++      selectedNodeKey={defaultsOpen ? null : selectedNodeKey}
+       onSelectNavItem={(item) => {
++        setDefaultsOpen(false);
+         setTarget(undefined);
+         setSelectedNodeKey(item.key);
+         setTemplatePickerOpen(false);
+       }}
+       onReorderProviderIds={handleReorderProviderIds}
+       reorderableProviderIds={reorderableProviderIds}
++      navigationFooter={
++        <div className="mx-3 mb-3 border-t border-border pt-3">
++          <Button
++            variant={defaultsOpen ? "secondary" : "ghost"}
++            size="sm"
++            className="w-full justify-start"
++            data-model-defaults-navigation
++            aria-current={defaultsOpen ? "page" : undefined}
++            onClick={() => {
++              setTarget(undefined);
++              setTemplatePickerOpen(false);
++              setDefaultsOpen(true);
++            }}
++          >
++            <SlidersHorizontal className="size-4" />
++            {intl.formatMessage({ id: "settings.modelDefaults.title" })}
++          </Button>
++        </div>
++      }
+     >
+       {refreshError ? (
+         <p role="alert" className="mb-3 text-ui-base text-destructive">
+@@ -210,7 +237,9 @@ export function ModelProviderSection({
+           {intl.formatMessage({ id: "settings.modelProvider.navigationUnavailable" })}
+         </p>
+       ) : null}
+-      {templatePickerOpen || (!loading && !selectedNavItem) ? (
++      {defaultsOpen ? (
++        <ModelPurposeDefaults onOpenSubagents={onOpenSubagents} />
++      ) : templatePickerOpen || (!loading && !selectedNavItem) ? (
+         <ProviderTemplatePicker
+           templates={providerTemplates}
+           creating={creatingProvider}
+diff --git a/packages/ui/src/settings/ModelPurposeDefaults.tsx b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+index 52f0187..86e5cee 100644
+--- a/packages/ui/src/settings/ModelPurposeDefaults.tsx
++++ b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+@@ -1,6 +1,6 @@
+ import { useRef, useState } from "react";
+ import { ZCODE_AGENT_PROVIDER, type ModelSelection } from "@zcode/shared";
+-import { completeNewModelSelection } from "@zcode/provider";
++import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+ import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+ import { Card, CardContent } from "@/components/ui/card.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -12,9 +12,9 @@ import { buildRegistryModelSelectGroups } from "@/lib/modelSelectionGroups.js";
+ import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+ 
+-const PURPOSES = ["conversation", "page-assistant"] as const;
+-/** Two purpose choices, one existing Personal preference writer; Project recent choices stay separate. */
+-export function ModelPurposeDefaults() {
++const PURPOSES = ["conversation", "page-assistant", "vision-bridge"] as const;
++/** Purpose choices share the Personal writer; Project and subagent choices keep their own owners. */
++export function ModelPurposeDefaults({ onOpenSubagents }: { onOpenSubagents?: () => void }) {
+   const { modelSelectionService } = useBaseWorkspaceServices();
+   const read = useModelSelectionServiceView(modelSelectionService);
+   const { intl } = useZCodeIntl();
+@@ -45,7 +45,9 @@ export function ModelPurposeDefaults() {
+         expectedRevision: view.preferencesRevision,
+         ...(purpose === "conversation"
+           ? { defaultModelSelection: selection }
+-          : { pageAssistantDefaultModelSelection: selection }),
++          : purpose === "page-assistant"
++            ? { pageAssistantDefaultModelSelection: selection }
++            : { visionBridgeDefaultModelSelection: selection }),
+       });
+     } catch (cause) {
+       const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+@@ -85,20 +87,51 @@ export function ModelPurposeDefaults() {
+             const selection =
+               purpose === "conversation"
+                 ? view?.configuredDefaultSelection
+-                : view?.pageAssistantDefaultSelection;
++                : purpose === "page-assistant"
++                  ? view?.pageAssistantDefaultSelection
++                  : view?.visionBridgeDefaultSelection;
++            const purposeGroups =
++              purpose === "vision-bridge" && view
++                ? groups
++                    .map((group) => ({
++                      ...group,
++                      items: group.items.filter((item) =>
++                        view.providers.some((provider) =>
++                          provider.models.some(
++                            (model) =>
++                              item.value ===
++                                encodeCustomModelValue(provider.providerId, model.modelId) &&
++                              (model.evidenceConfig ?? model.config).properties?.inputFormat
++                                ?.supportsImage === true,
++                          ),
++                        ),
++                      ),
++                    }))
++                    .filter((group) => group.items.length > 0)
++                : groups;
++            const selectedModel = view?.providers
++              .find((provider) => provider.providerId === selection?.providerId)
++              ?.models.find((model) => model.modelId === selection?.modelId);
+             const available =
+               !selection ||
+-              groups.some((group) =>
+-                group.items.some(
+-                  (item) =>
+-                    item.value === encodeCustomModelValue(selection.providerId, selection.modelId),
++              Boolean(
++                selectedModel &&
++                validateModelSelectionOptions(selectedModel, selection).ok &&
++                purposeGroups.some((group) =>
++                  group.items.some(
++                    (item) =>
++                      item.value ===
++                      encodeCustomModelValue(selection.providerId, selection.modelId),
++                  ),
+                 ),
+               );
+             const automatic = intl.formatMessage({
+               id:
+                 purpose === "conversation"
+                   ? "settings.modelDefaults.automatic"
+-                  : "settings.modelDefaults.followConversation",
++                  : purpose === "page-assistant"
++                    ? "settings.modelDefaults.followConversation"
++                    : "settings.modelDefaults.chooseEachTime",
+             });
+             return (
+               <SettingsRow
+@@ -109,7 +142,7 @@ export function ModelPurposeDefaults() {
+                 })}
+                 control={
+                   <ModelConfigSelect
+-                    modelGroups={groups}
++                    modelGroups={purposeGroups}
+                     normalizedValue={
+                       selection
+                         ? encodeCustomModelValue(selection.providerId, selection.modelId)
+@@ -163,6 +196,17 @@ export function ModelPurposeDefaults() {
+           })}
+         </CardContent>
+       </Card>
++      {onOpenSubagents ? (
++        <SettingsRow
++          label={intl.formatMessage({ id: "settings.modelDefaults.subagents" })}
++          description={intl.formatMessage({ id: "settings.modelDefaults.subagents.description" })}
++          control={
++            <Button variant="outline" size="sm" onClick={onOpenSubagents}>
++              {intl.formatMessage({ id: "settings.modelDefaults.openSubagents" })}
++            </Button>
++          }
++        />
++      ) : null}
+       {read.state.status === "loading" ? (
+         <p className="text-ui-sm text-foreground-subtle">
+           {intl.formatMessage({ id: "common.loading" })}
+diff --git a/packages/ui/src/settings/model-provider-section/Navigation.tsx b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+index 16ada32..1ad97d5 100644
+--- a/packages/ui/src/settings/model-provider-section/Navigation.tsx
++++ b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+@@ -1,3 +1,10 @@
++import {
++  ContextMenu,
++  ContextMenuTrigger,
++  ContextMenuContent,
++  ContextMenuItem,
++} from "@/components/ui/context-menu.js";
++import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ /* eslint-disable max-lines -- 设置页 provider 导航同时承载分组、卡片化预置入口和拖拽排序，当前先集中维护交互边界。 */
+ import {
+   closestCenter,
+@@ -82,6 +89,45 @@ function resolveModelProviderSideNavLabel(item: ModelProviderNavItem): string {
+   return item.label;
+ }
+ 
++/** One set of contextual actions for sortable and fixed provider rows. */
++function ProviderNavigationMenu({
++  item,
++  label,
++  onSelectNavItem,
++  children,
++}: {
++  item: ModelProviderNavItem;
++  label: string;
++  onSelectNavItem: (item: ModelProviderNavItem) => void;
++  children: import("react").ReactNode;
++}) {
++  const { intl } = useZCodeIntl();
++  return (
++    <ContextMenu>
++      <ContextMenuTrigger asChild>
++        <div
++          {...pageAssistantScope(
++            item.type === "custom" && item.provider
++              ? { feature: "model-settings", providerId: item.provider.providerId }
++              : { feature: "app-page", pageId: "modelProvider" },
++            label,
++          )}
++        >
++          {children}
++        </div>
++      </ContextMenuTrigger>
++      <ContextMenuContent>
++        <ContextMenuItem
++          disabled={item.type === "codingPlanLoading"}
++          onSelect={() => onSelectNavItem(item)}
++        >
++          {intl.formatMessage({ id: "common.open" })}
++        </ContextMenuItem>
++      </ContextMenuContent>
++    </ContextMenu>
++  );
++}
++
+ function ModelProviderNavigationButton({
+   item,
+   label,
+@@ -103,41 +149,43 @@ function ModelProviderNavigationButton({
+     "provider" in item ? (item.type === "preset" ? item.statusProvider : item.provider) : undefined;
+ 
+   return (
+-    <ControlHintTooltip
+-      title={label}
+-      description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
+-      side="right"
+-    >
+-      <button
+-        type="button"
+-        disabled={isLoadingItem}
+-        aria-label={label}
+-        aria-selected={isSelected}
+-        data-state={isSelected ? "selected" : "idle"}
+-        data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
+-        onClick={() => {
+-          if (isLoadingItem) {
+-            return;
+-          }
+-          onSelectNavItem(item);
+-        }}
+-        className={`relative box-border flex h-8 w-full items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors ${
+-          isSelected
+-            ? "border-border-hover bg-card-selected text-foreground"
+-            : inactiveItemClassName
+-        } disabled:cursor-not-allowed disabled:opacity-60`}
++    <ProviderNavigationMenu item={item} label={label} onSelectNavItem={onSelectNavItem}>
++      <ControlHintTooltip
++        title={label}
++        description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
++        side="right"
+       >
+-        {isLoadingItem ? (
+-          <Loader2Icon className="size-4 shrink-0 animate-spin text-foreground-subtlest" />
+-        ) : showIcon ? (
+-          <span className="shrink-0 text-current">{renderModelProviderNavIcon(item)}</span>
+-        ) : null}
+-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+-          <span className="min-w-0 truncate">{label}</span>
+-        </span>
+-        {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
+-      </button>
+-    </ControlHintTooltip>
++        <button
++          type="button"
++          disabled={isLoadingItem}
++          aria-label={label}
++          aria-selected={isSelected}
++          data-state={isSelected ? "selected" : "idle"}
++          data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
++          onClick={() => {
++            if (isLoadingItem) {
++              return;
++            }
++            onSelectNavItem(item);
++          }}
++          className={`relative box-border flex h-8 w-full items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors ${
++            isSelected
++              ? "border-border-hover bg-card-selected text-foreground"
++              : inactiveItemClassName
++          } disabled:cursor-not-allowed disabled:opacity-60`}
++        >
++          {isLoadingItem ? (
++            <Loader2Icon className="size-4 shrink-0 animate-spin text-foreground-subtlest" />
++          ) : showIcon ? (
++            <span className="shrink-0 text-current">{renderModelProviderNavIcon(item)}</span>
++          ) : null}
++          <span className="flex min-w-0 flex-1 items-center gap-1.5">
++            <span className="min-w-0 truncate">{label}</span>
++          </span>
++          {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
++        </button>
++      </ControlHintTooltip>
++    </ProviderNavigationMenu>
+   );
+ }
+ 
+@@ -190,37 +238,39 @@ function SortableModelProviderNavigationButton({
+   };
+ 
+   return (
+-    <ControlHintTooltip
+-      title={label}
+-      description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
+-      side="right"
+-    >
+-      <div
+-        ref={setNodeRef}
+-        style={style}
+-        aria-label={label}
+-        aria-selected={isSelected}
+-        data-state={isSelected ? "selected" : "idle"}
+-        data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
+-        onClick={() => onSelectNavItem(item)}
+-        {...attributes}
+-        {...listeners}
+-        onKeyDown={handleKeyDown}
+-        className={`relative box-border flex h-8 w-full cursor-grab touch-pan-y select-none items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+-          isSelected
+-            ? "border-border-hover bg-card-selected text-foreground"
+-            : inactiveItemClassName
+-        } ${isDragging ? "z-20 opacity-70" : ""}`}
++    <ProviderNavigationMenu item={item} label={label} onSelectNavItem={onSelectNavItem}>
++      <ControlHintTooltip
++        title={label}
++        description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
++        side="right"
+       >
+-        <span className="shrink-0 text-current" aria-hidden="true">
+-          {renderModelProviderNavIcon(item)}
+-        </span>
+-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+-          <span className="min-w-0 truncate">{label}</span>
+-        </span>
+-        {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
+-      </div>
+-    </ControlHintTooltip>
++        <div
++          ref={setNodeRef}
++          style={style}
++          aria-label={label}
++          aria-selected={isSelected}
++          data-state={isSelected ? "selected" : "idle"}
++          data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
++          onClick={() => onSelectNavItem(item)}
++          {...attributes}
++          {...listeners}
++          onKeyDown={handleKeyDown}
++          className={`relative box-border flex h-8 w-full cursor-grab touch-pan-y select-none items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
++            isSelected
++              ? "border-border-hover bg-card-selected text-foreground"
++              : inactiveItemClassName
++          } ${isDragging ? "z-20 opacity-70" : ""}`}
++        >
++          <span className="shrink-0 text-current" aria-hidden="true">
++            {renderModelProviderNavIcon(item)}
++          </span>
++          <span className="flex min-w-0 flex-1 items-center gap-1.5">
++            <span className="min-w-0 truncate">{label}</span>
++          </span>
++          {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
++        </div>
++      </ControlHintTooltip>
++    </ProviderNavigationMenu>
+   );
+ }
+ 
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 4079d80..84fc543 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -1,3 +1,10 @@
++import {
++  ContextMenu,
++  ContextMenuTrigger,
++  ContextMenuContent,
++  ContextMenuItem,
++  ContextMenuSeparator,
++} from "@/components/ui/context-menu.js";
+ import { ModelDiscoverySection } from "./ModelDiscoverySection.js";
+ /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
+ import {
+@@ -109,82 +116,102 @@ export function ProviderCardHeader({
+   const renameRequestedRef = useRef(false);
+   const secondaryActionsVisible = actionsVisible && (nameEditable || Boolean(onDelete));
+ 
+-  return (
+-    <div className="flex items-center justify-between gap-3" data-testid="model-provider-header">
+-      <div className="flex min-w-0 items-center gap-2">
+-        <ProviderLogo logo={logo} className="size-5" />
+-        {editingName ? (
+-          <Input
+-            {...TECHNICAL_INPUT_ATTRIBUTES}
+-            ref={nameInputRef}
+-            data-testid={TID_MODEL_PROVIDER_NAME_INPUT}
+-            type="text"
+-            size="lg"
+-            className="w-auto min-w-0 text-ui-lg font-semibold"
+-            value={nameValue}
+-            onChange={(event) => onNameChange(event.target.value)}
+-            onCompositionEnd={onNameCompositionEnd}
+-            onCompositionStart={onNameCompositionStart}
+-            onBlur={onNameBlur}
+-            onKeyDown={onNameKeyDown}
+-          />
+-        ) : (
+-          <>
+-            <div className="min-w-0 truncate text-ui-lg font-semibold text-foreground">
+-              {providerName}
+-            </div>
+-          </>
+-        )}
+-      </div>
+-      <div className="flex shrink-0 items-center gap-2">
+-        {providerToggle}
+-        {secondaryActionsVisible ? (
+-          <DropdownMenu>
+-            <DropdownMenuTrigger asChild>
+-              <Button
+-                type="button"
+-                variant="ghost"
+-                size="icon-sm"
+-                data-testid="model-provider-actions-button"
+-                aria-label={intl.formatMessage({ id: "common.more" })}
+-              >
+-                <MoreHorizontal className="size-4" />
+-              </Button>
+-            </DropdownMenuTrigger>
+-            <DropdownMenuContent
+-              align="end"
+-              onCloseAutoFocus={(event) => {
+-                // 重命名后的焦点交给输入框，不能被菜单关闭时重新抢回触发按钮。
+-                if (renameRequestedRef.current) {
+-                  event.preventDefault();
+-                  renameRequestedRef.current = false;
+-                }
+-              }}
+-            >
+-              {nameEditable ? (
+-                <DropdownMenuItem
+-                  data-testid={TID_MODEL_PROVIDER_NAME_EDIT_BUTTON}
+-                  onSelect={() => {
+-                    renameRequestedRef.current = true;
+-                    onStartEditName();
+-                  }}
+-                >
+-                  <Pencil className="size-3.5" />
+-                  {intl.formatMessage({ id: "settings.modelProvider.renameProvider" })}
+-                </DropdownMenuItem>
+-              ) : null}
+-              {nameEditable && onDelete ? <DropdownMenuSeparator /> : null}
+-              {onDelete ? (
+-                <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+-                  <Trash2 className="size-3.5" />
+-                  {intl.formatMessage({ id: "common.delete" })}
+-                </DropdownMenuItem>
+-              ) : null}
+-            </DropdownMenuContent>
+-          </DropdownMenu>
++  // Both menu presentations invoke the same existing rename/delete operations.
++  const renderActions = (kind: "dropdown" | "context") => {
++    const Item = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
++    const Separator = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
++    return (
++      <>
++        {nameEditable ? (
++          <Item
++            data-testid={kind === "dropdown" ? TID_MODEL_PROVIDER_NAME_EDIT_BUTTON : undefined}
++            onSelect={() => {
++              renameRequestedRef.current = true;
++              onStartEditName();
++            }}
++          >
++            <Pencil className="size-3.5" />
++            {intl.formatMessage({ id: "settings.modelProvider.renameProvider" })}
++          </Item>
+         ) : null}
+-      </div>
+-    </div>
++        {nameEditable && onDelete ? <Separator /> : null}
++        {onDelete ? (
++          <Item variant="destructive" onSelect={onDelete}>
++            <Trash2 className="size-3.5" />
++            {intl.formatMessage({ id: "common.delete" })}
++          </Item>
++        ) : null}
++      </>
++    );
++  };
++  const retainRenameFocus = (event: Event) => {
++    if (renameRequestedRef.current) {
++      event.preventDefault();
++      renameRequestedRef.current = false;
++    }
++  };
++  return (
++    <ContextMenu>
++      <ContextMenuTrigger asChild disabled={editingName}>
++        <div
++          className="flex items-center justify-between gap-3"
++          data-testid="model-provider-header"
++          onContextMenu={(event) => {
++            if (editingName) event.stopPropagation();
++          }}
++        >
++          <div className="flex min-w-0 items-center gap-2">
++            <ProviderLogo logo={logo} className="size-5" />
++            {editingName ? (
++              <Input
++                {...TECHNICAL_INPUT_ATTRIBUTES}
++                ref={nameInputRef}
++                data-testid={TID_MODEL_PROVIDER_NAME_INPUT}
++                type="text"
++                size="lg"
++                className="w-auto min-w-0 text-ui-lg font-semibold"
++                value={nameValue}
++                onChange={(event) => onNameChange(event.target.value)}
++                onCompositionEnd={onNameCompositionEnd}
++                onCompositionStart={onNameCompositionStart}
++                onBlur={onNameBlur}
++                onKeyDown={onNameKeyDown}
++              />
++            ) : (
++              <>
++                <div className="min-w-0 truncate text-ui-lg font-semibold text-foreground">
++                  {providerName}
++                </div>
++              </>
++            )}
++          </div>
++          <div className="flex shrink-0 items-center gap-2">
++            {providerToggle}
++            {secondaryActionsVisible ? (
++              <DropdownMenu>
++                <DropdownMenuTrigger asChild>
++                  <Button
++                    type="button"
++                    variant="ghost"
++                    size="icon-sm"
++                    data-testid="model-provider-actions-button"
++                    aria-label={intl.formatMessage({ id: "common.more" })}
++                  >
++                    <MoreHorizontal className="size-4" />
++                  </Button>
++                </DropdownMenuTrigger>
++                <DropdownMenuContent align="end" onCloseAutoFocus={retainRenameFocus}>
++                  {renderActions("dropdown")}
++                </DropdownMenuContent>
++              </DropdownMenu>
++            ) : null}
++          </div>
++        </div>
++      </ContextMenuTrigger>
++      <ContextMenuContent onCloseAutoFocus={retainRenameFocus}>
++        {secondaryActionsVisible ? renderActions("context") : null}
++      </ContextMenuContent>
++    </ContextMenu>
+   );
+ }
+ 
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index b2e32cb..9c2b16a 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -1,3 +1,10 @@
++import {
++  ContextMenu,
++  ContextMenuTrigger,
++  ContextMenuContent,
++  ContextMenuItem,
++} from "@/components/ui/context-menu.js";
++import { pageAssistantScope } from "@/page-assistant/PageAssistantContext.js";
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+ import { modelConnectivityFailure, type ModelConnectivityResult } from "@zcode/shared";
+@@ -273,112 +280,137 @@ export function ModelRowInput({
+     : intl.formatMessage({ id: "settings.modelProvider.contextWindowUnknown" });
+ 
+   return (
+-    <div className="space-y-2 px-3 py-2">
+-      <div className="flex items-center gap-2">
+-        <div className="flex min-w-0 flex-1 items-center gap-2">
+-          <span
+-            data-testid={inputTestId}
+-            className="min-w-0 truncate font-mono text-ui-base text-foreground"
+-          >
+-            {model.modelId}
+-          </span>
+-          {!mediaOnly ? (
+-            <span
+-              className="inline-flex h-5 max-w-20 shrink-0 items-center truncate rounded-md border border-border bg-surface px-1.5 font-mono text-ui-sm text-foreground-subtle"
+-              aria-label={contextWindowAccessibleLabel}
+-              title={contextWindowAccessibleLabel}
+-            >
+-              {contextWindowLabel}
+-            </span>
+-          ) : null}
+-          {!mediaOnly &&
+-          shouldShowModelVisionBadge(
++    <ContextMenu>
++      <ContextMenuTrigger asChild>
++        <div
++          className="space-y-2 px-3 py-2"
++          {...pageAssistantScope(
++            { feature: "model-settings", providerId, modelId: model.modelId },
+             model.modelId,
+-            model.evidenceConfig?.properties?.inputFormat?.supportsImage,
+-            providerAccess,
+-          ) ? (
+-            <ModelInputCapabilityBadge />
+-          ) : null}
+-          {reportedOutput?.supportsImage === true ? (
+-            <span
+-              className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
+-              data-model-output-capability="image"
+-              title={intl.formatMessage({ id: "model.capability.imageOutputHint" })}
+-            >
+-              {intl.formatMessage({ id: "model.capability.imageOutput" })}
+-            </span>
+-          ) : null}
+-          {reportedOutput?.supportsVideo === true ? (
+-            <span
+-              className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
+-              data-model-output-capability="video"
+-              title={intl.formatMessage({ id: "model.capability.videoOutputHint" })}
+-            >
+-              {intl.formatMessage({ id: "model.capability.videoOutput" })}
+-            </span>
+-          ) : null}
++          )}
++        >
++          <div className="flex items-center gap-2">
++            <div className="flex min-w-0 flex-1 items-center gap-2">
++              <span
++                data-testid={inputTestId}
++                className="min-w-0 truncate font-mono text-ui-base text-foreground"
++              >
++                {model.modelId}
++              </span>
++              {!mediaOnly ? (
++                <span
++                  className="inline-flex h-5 max-w-20 shrink-0 items-center truncate rounded-md border border-border bg-surface px-1.5 font-mono text-ui-sm text-foreground-subtle"
++                  aria-label={contextWindowAccessibleLabel}
++                  title={contextWindowAccessibleLabel}
++                >
++                  {contextWindowLabel}
++                </span>
++              ) : null}
++              {!mediaOnly &&
++              shouldShowModelVisionBadge(
++                model.modelId,
++                model.evidenceConfig?.properties?.inputFormat?.supportsImage,
++                providerAccess,
++              ) ? (
++                <ModelInputCapabilityBadge />
++              ) : null}
++              {reportedOutput?.supportsImage === true ? (
++                <span
++                  className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++                  data-model-output-capability="image"
++                  title={intl.formatMessage({ id: "model.capability.imageOutputHint" })}
++                >
++                  {intl.formatMessage({ id: "model.capability.imageOutput" })}
++                </span>
++              ) : null}
++              {reportedOutput?.supportsVideo === true ? (
++                <span
++                  className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++                  data-model-output-capability="video"
++                  title={intl.formatMessage({ id: "model.capability.videoOutputHint" })}
++                >
++                  {intl.formatMessage({ id: "model.capability.videoOutput" })}
++                </span>
++              ) : null}
++            </div>
++            {shouldShowTestButton ? (
++              <Button
++                type="button"
++                variant="ghost"
++                size="icon-sm"
++                className="shrink-0 p-0"
++                disabled={testDisabled}
++                aria-label={intl.formatMessage({ id: "settings.modelProvider.testModel" })}
++                title={intl.formatMessage({
++                  id: providerEnabled
++                    ? "settings.modelProvider.testModel.requestHint"
++                    : "settings.modelProvider.testModel.enableProviderFirst",
++                })}
++                onMouseDown={(event) => {
++                  event.preventDefault();
++                }}
++                onClick={handleTest}
++              >
++                {testIcon}
++              </Button>
++            ) : null}
++            <ProviderModelMetadataDialog
++              onRestore={() => {
++                setDraftErrorField(null);
++                setCommitErrorMessage(null);
++                void editor
++                  .restore()
++                  .catch((error) => setCommitErrorMessage(providerSettingsWriteError(error, intl)));
++              }}
++              mode="edit"
++              open={metadataDialogOpen}
++              draft={draft}
++              draftErrorMessage={draftErrorMessage}
++              draftErrorField={draftErrorField}
++              overrideFields={editor.overrides}
++              inheritedConfig={editor.inheritedConfig}
++              onOpenChange={handleMetadataDialogOpenChange}
++              onDraftChange={updateDraft}
++              onCommit={handleMetadataDialogCommit}
++              saving={metadataSaving}
++              modelConfigResolutionPending={editor.pending}
++              modelDefaultsLoaded={editor.defaultsLoaded}
++              onModelIdBlur={() => {
++                void editor.flush().catch(() => undefined);
++              }}
++              modelIdReadOnly={model.builtin}
++            />
++            {onEnabledChange ? (
++              <Switch
++                size="sm"
++                checked={model.config.enabled !== false}
++                aria-label={intl.formatMessage({
++                  id:
++                    model.config.enabled === false
++                      ? "settings.modelProvider.enableAction"
++                      : "settings.modelProvider.disableAction",
++                })}
++                onCheckedChange={onEnabledChange}
++              />
++            ) : null}
++          </div>
+         </div>
+-        {shouldShowTestButton ? (
+-          <Button
+-            type="button"
+-            variant="ghost"
+-            size="icon-sm"
+-            className="shrink-0 p-0"
+-            disabled={testDisabled}
+-            aria-label={intl.formatMessage({ id: "settings.modelProvider.testModel" })}
+-            title={intl.formatMessage({
+-              id: providerEnabled
+-                ? "settings.modelProvider.testModel.requestHint"
+-                : "settings.modelProvider.testModel.enableProviderFirst",
+-            })}
+-            onMouseDown={(event) => {
+-              event.preventDefault();
+-            }}
+-            onClick={handleTest}
+-          >
+-            {testIcon}
+-          </Button>
+-        ) : null}
+-        <ProviderModelMetadataDialog
+-          onRestore={() => {
+-            setDraftErrorField(null);
+-            setCommitErrorMessage(null);
+-            void editor
+-              .restore()
+-              .catch((error) => setCommitErrorMessage(providerSettingsWriteError(error, intl)));
+-          }}
+-          mode="edit"
+-          open={metadataDialogOpen}
+-          draft={draft}
+-          draftErrorMessage={draftErrorMessage}
+-          draftErrorField={draftErrorField}
+-          overrideFields={editor.overrides}
+-          inheritedConfig={editor.inheritedConfig}
+-          onOpenChange={handleMetadataDialogOpenChange}
+-          onDraftChange={updateDraft}
+-          onCommit={handleMetadataDialogCommit}
+-          saving={metadataSaving}
+-          modelConfigResolutionPending={editor.pending}
+-          modelDefaultsLoaded={editor.defaultsLoaded}
+-          onModelIdBlur={() => {
+-            void editor.flush().catch(() => undefined);
+-          }}
+-          modelIdReadOnly={model.builtin}
+-        />
++      </ContextMenuTrigger>
++      <ContextMenuContent>
++        <ContextMenuItem onSelect={openMetadataDialog}>
++          {intl.formatMessage({ id: "settings.modelProvider.editModel" })}
++        </ContextMenuItem>
+         {onEnabledChange ? (
+-          <Switch
+-            size="sm"
+-            checked={model.config.enabled !== false}
+-            aria-label={intl.formatMessage({
++          <ContextMenuItem onSelect={() => onEnabledChange(model.config.enabled === false)}>
++            {intl.formatMessage({
+               id:
+                 model.config.enabled === false
+                   ? "settings.modelProvider.enableAction"
+                   : "settings.modelProvider.disableAction",
+             })}
+-            onCheckedChange={onEnabledChange}
+-          />
++          </ContextMenuItem>
+         ) : null}
+-      </div>
+-    </div>
++      </ContextMenuContent>
++    </ContextMenu>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+index ea8e809..dfb58e2 100644
+--- a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
++++ b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+@@ -19,6 +19,7 @@ interface ModelProviderSectionLayoutProps {
+   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;
+   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+   reorderableProviderIds?: ReadonlySet<string>;
++  navigationFooter?: ReactNode;
+   children: ReactNode;
+ }
+ 
+@@ -43,6 +44,7 @@ export function ModelProviderSectionLayout({
+   onSelectNavItem,
+   onReorderProviderIds,
+   reorderableProviderIds,
++  navigationFooter,
+   children,
+ }: ModelProviderSectionLayoutProps) {
+   const refreshButtonLoading = shouldShowModelProviderRefreshLoading({
+@@ -84,6 +86,7 @@ export function ModelProviderSectionLayout({
+               onReorderProviderIds={onReorderProviderIds}
+               reorderableProviderIds={reorderableProviderIds}
+             />
++            {navigationFooter}
+           </div>
+           <div
+             className="relative min-w-0 p-4 pb-20 sm:p-6 sm:pb-24"
+diff --git a/packages/ui/src/settings/model-provider-section/SortableProviderModelList.tsx b/packages/ui/src/settings/model-provider-section/SortableProviderModelList.tsx
+index 80ffae8..c1cf8aa 100644
+--- a/packages/ui/src/settings/model-provider-section/SortableProviderModelList.tsx
++++ b/packages/ui/src/settings/model-provider-section/SortableProviderModelList.tsx
+@@ -36,6 +36,8 @@ class ModelRowPointerSensor extends PointerSensor {
+     {
+       eventName: "onPointerDown" as const,
+       handler: ({ nativeEvent }: ReactPointerEvent) =>
++        nativeEvent.isPrimary &&
++        nativeEvent.button === 0 &&
+         !isInteractiveModelDragTarget(nativeEvent.target),
+     },
+   ];
+@@ -131,7 +133,11 @@ export function SortableProviderModelList({
+         {row}
+       </SortableProviderModelRow>
+     ) : (
+-      <div key={modelId} data-model-provider-model-id={modelId} className={isLast ? "border-b-0" : "border-b border-input-border"}>
++      <div
++        key={modelId}
++        data-model-provider-model-id={modelId}
++        className={isLast ? "border-b-0" : "border-b border-input-border"}
++      >
+         {row}
+       </div>
+     );
+diff --git a/packages/ui/src/v4/ConversationComposer.tsx b/packages/ui/src/v4/ConversationComposer.tsx
+index 6e1328b..f999447 100644
+--- a/packages/ui/src/v4/ConversationComposer.tsx
++++ b/packages/ui/src/v4/ConversationComposer.tsx
+@@ -170,7 +170,7 @@ import type { AttachmentPutFn } from "@/v4/composer/attachmentUpload.js";
+ import { useScopedConversationTelemetrySupervisor } from "@/v4/telemetry/ConversationTelemetryAttachment.js";
+ import type { ConversationPromptTelemetrySeed } from "@/v4/telemetry/conversationTelemetrySupervisor.js";
+ import type { ComposerSubmissionConfig } from "@/v4/composer/composerSubmissionConfig.js";
+-import { resolveVisionBridgeChoice } from "./visionBridgeSelection.js";
++import { resolveVisionBridgeChoice, resolveVisionBridgeBackend } from "./visionBridgeSelection.js";
+ import { VisionBridgeAttachmentChoice } from "./VisionBridgeAttachmentChoice.js";
+ import { buildV4ConversationPromptTelemetryExtraDetail } from "@/v4/telemetry/conversationPromptTelemetry.js";
+ import { resolveAttachableShareContext } from "@/lib/conversationShareContext.js";
+@@ -351,6 +351,8 @@ function arePromptHistoryEntriesEqual(left: readonly string[], right: readonly s
+ }
+ 
+ interface ConversationComposerProps {
++  /** Page helpers use only the existing input/send/Stop path; their defaults live in Settings. */
++  compactAssistant?: boolean;
+   snapshot: ConversationSnapshot | null;
+   /** 草稿 scope（sessionId；draft 态 null → "__draft__" scope）。 */
+   sessionId?: string | null;
+@@ -485,6 +487,7 @@ function formatAttachmentLineCount(attachment: ChatComposerAttachment, locale: s
+ }
+ 
+ function ConversationComposerImpl({
++  compactAssistant = false,
+   snapshot,
+   sessionId = null,
+   skillCatalogSessionId = sessionId,
+@@ -565,12 +568,11 @@ function ConversationComposerImpl({
+   const [visionChoiceState, setVisionChoiceState] = useState<{
+     scopeKey: string;
+     selectedKey?: string;
++    chosen?: boolean;
+   }>(() => ({ scopeKey: configPickerScopeKey }));
+-  const visionSelectedKey =
+-    visionChoiceState.scopeKey === configPickerScopeKey ? visionChoiceState.selectedKey : undefined;
+   const handleVisionChoice = useCallback(
+     (selectedKey: string | undefined) => {
+-      setVisionChoiceState({ scopeKey: configPickerScopeKey, selectedKey });
++      setVisionChoiceState({ scopeKey: configPickerScopeKey, selectedKey, chosen: true });
+     },
+     [configPickerScopeKey],
+   );
+@@ -755,8 +757,12 @@ function ConversationComposerImpl({
+       attachmentsApi.attachments,
+     ],
+   );
+-  const visionBackend = visionBridgeChoice.candidates.find(
+-    (candidate) => candidate.key === visionSelectedKey,
++  const visionBackend = resolveVisionBridgeBackend(
++    modelSelectionView,
++    visionBridgeChoice,
++    visionChoiceState.scopeKey === configPickerScopeKey && visionChoiceState.chosen
++      ? visionChoiceState
++      : undefined,
+   );
+   const {
+     contexts: webElementContexts,
+@@ -1655,13 +1661,15 @@ function ConversationComposerImpl({
+ 
+   // 动态 placeholder（旧 chatViewPlaceholder 语义）：无历史 → newTask；
+   // 有历史空闲 → followUpAsk；有历史处理中 → followUpQueue。
+-  const placeholder = intl.formatMessage({
+-    id: resolveChatPlaceholderKey({
+-      hasHistoryMessages: (snapshot?.rows.totalCount ?? 0) > 0,
+-      isTaskProcessing: canStop,
+-      compactNewTask: false,
+-    }),
+-  });
++  const placeholder = compactAssistant
++    ? intl.formatMessage({ id: "pageAssistant.placeholder" })
++    : intl.formatMessage({
++        id: resolveChatPlaceholderKey({
++          hasHistoryMessages: (snapshot?.rows.totalCount ?? 0) > 0,
++          isTaskProcessing: canStop,
++          compactNewTask: false,
++        }),
++      });
+   const sendTooltipTitle = intl.formatMessage({
+     id: mode === "enqueue" ? "chat.queue.enqueue" : "chat.send",
+   });
+@@ -2043,31 +2051,33 @@ function ConversationComposerImpl({
+   const submitControlNode = useMemo(
+     () => (
+       <div className="flex min-w-0 items-center gap-1">
+-        <span className="flex min-w-0 shrink items-center gap-1 overflow-hidden empty:hidden">
+-          <V4ComposerModelControls
+-            workspacePath={workspacePath}
+-            workspaceIdentity={workspaceIdentity}
+-            modelSelectionView={modelSelectionView}
+-            modelSelectionState={modelSelectionState}
+-            modelSelectionReload={modelSelectionReload}
+-            sessionId={sessionId ?? null}
+-            phase={composerPhase}
+-            provider={provider}
+-            draftMode={draftMode}
+-            draftConfig={draftConfig}
+-            usage={composerUsage}
+-            disabled={disabled}
+-            activeConfigPicker={activeConfigPicker}
+-            onConfigPickerOpenChange={handleConfigPickerOpenChange}
+-            onSelectModel={handleSelectModelTrace}
+-            onSelectThought={onSelectThought}
+-            onSelectSpeed={onSelectSpeed}
+-            onSelectContext={onSelectContext}
+-            onSwitchMode={onSwitchMode}
+-            onRecoverCustomModelSelection={onRecoverCustomModelSelection}
+-            onSendCompressionCommand={onSendCompressionCommand}
+-          />
+-        </span>
++        {!compactAssistant && (
++          <span className="flex min-w-0 shrink items-center gap-1 overflow-hidden empty:hidden">
++            <V4ComposerModelControls
++              workspacePath={workspacePath}
++              workspaceIdentity={workspaceIdentity}
++              modelSelectionView={modelSelectionView}
++              modelSelectionState={modelSelectionState}
++              modelSelectionReload={modelSelectionReload}
++              sessionId={sessionId ?? null}
++              phase={composerPhase}
++              provider={provider}
++              draftMode={draftMode}
++              draftConfig={draftConfig}
++              usage={composerUsage}
++              disabled={disabled}
++              activeConfigPicker={activeConfigPicker}
++              onConfigPickerOpenChange={handleConfigPickerOpenChange}
++              onSelectModel={handleSelectModelTrace}
++              onSelectThought={onSelectThought}
++              onSelectSpeed={onSelectSpeed}
++              onSelectContext={onSelectContext}
++              onSwitchMode={onSwitchMode}
++              onRecoverCustomModelSelection={onRecoverCustomModelSelection}
++              onSendCompressionCommand={onSendCompressionCommand}
++            />
++          </span>
++        )}
+         {showStopControl ? (
+           <ControlHintTooltip title={stopTooltipTitle} shortcut="Esc">
+             <Button
+@@ -2106,6 +2116,7 @@ function ConversationComposerImpl({
+       </div>
+     ),
+     [
++      compactAssistant,
+       canSend,
+       activeConfigPicker,
+       composerPhase,
+@@ -2146,35 +2157,37 @@ function ConversationComposerImpl({
+   // 左下：模式选择 + CUA 入口 + 当前 session 后台任务入口。followupMode 由 app 设置页同步到 CLI，
+   // 不在 composer 暴露局部开关；后台入口只消费同一 snapshot，不维护第二份任务状态。
+   const leadingActionsNode = useMemo(
+-    () => (
+-      <>
+-        <V4ComposerModeSwitch
+-          workspacePath={workspacePath}
+-          workspaceIdentity={workspaceIdentity}
+-          provider={provider}
+-          draftConfig={draftConfig}
+-          disabled={disabled}
+-          activeConfigPicker={activeConfigPicker}
+-          onConfigPickerOpenChange={handleConfigPickerOpenChange}
+-          onSwitchMode={onSwitchMode}
+-        />
+-        {/* 附件画廊重构曾整段覆盖 leadingActions，误删 CUA 常驻入口。
++    () =>
++      compactAssistant ? null : (
++        <>
++          <V4ComposerModeSwitch
++            workspacePath={workspacePath}
++            workspaceIdentity={workspaceIdentity}
++            provider={provider}
++            draftConfig={draftConfig}
++            disabled={disabled}
++            activeConfigPicker={activeConfigPicker}
++            onConfigPickerOpenChange={handleConfigPickerOpenChange}
++            onSwitchMode={onSwitchMode}
++          />
++          {/* 附件画廊重构曾整段覆盖 leadingActions，误删 CUA 常驻入口。
+             入口自身继续负责平台、远程与设置可见性，不在 composer 重复判定。 */}
+-        <V4ComposerCuaEntry
+-          workspacePath={workspacePath}
+-          workspaceIdentity={workspaceIdentity}
+-          remoteSessionId={remoteSessionId}
+-          currentSessionBusy={canStop}
+-        />
+-        <ConversationBackgroundWorkTrigger
+-          backgroundWorks={snapshot?.backgroundWorks ?? []}
+-          runningSubagentCount={runningSubagentCount}
+-          onOpen={onOpenRunningBackgroundWorks}
+-          openTarget={backgroundWorkOpenTarget}
+-        />
+-      </>
+-    ),
++          <V4ComposerCuaEntry
++            workspacePath={workspacePath}
++            workspaceIdentity={workspaceIdentity}
++            remoteSessionId={remoteSessionId}
++            currentSessionBusy={canStop}
++          />
++          <ConversationBackgroundWorkTrigger
++            backgroundWorks={snapshot?.backgroundWorks ?? []}
++            runningSubagentCount={runningSubagentCount}
++            onOpen={onOpenRunningBackgroundWorks}
++            openTarget={backgroundWorkOpenTarget}
++          />
++        </>
++      ),
+     [
++      compactAssistant,
+       activeConfigPicker,
+       canStop,
+       disabled,
+@@ -2206,6 +2219,7 @@ function ConversationComposerImpl({
+     // Web 仍共享同一 DOM 顺序，同时恢复错误提示与输入卡之间的独立层级。
+     <div
+       data-testid={TID_V4_COMPOSER}
++      data-page-assistant-composer={compactAssistant || undefined}
+       data-input-routing={mode}
+       aria-hidden={isBlockedByInteraction ? true : undefined}
+       style={isBlockedByInteraction ? { display: "none" } : undefined}
+@@ -2276,12 +2290,12 @@ function ConversationComposerImpl({
+           enterSubmits={enterSubmits}
+           onModifiedSubmit={modifiedEnterSubmits ? handleModifiedEditorSubmit : undefined}
+           submitLabel={sendTooltipTitle}
+-          showSlashButton
++          showSlashButton={!compactAssistant}
+           // @ 是 Plugin / 文件 / 对话 / 画板主入口；# 会话与 $ / ¥ / ￥ Skills
+           // 仍由 MentionPlugin 保留兼容触发，但不在 + 菜单重复展示。
+-          showMentionButton
++          showMentionButton={!compactAssistant}
+           topContent={topContentNode}
+-          attachmentAction={attachmentAction}
++          attachmentAction={compactAssistant ? undefined : attachmentAction}
+           inputTestId={TID_V4_COMPOSER_INPUT}
+           inputApiRef={inputApiRef}
+           promptHistory={promptHistory}
+@@ -2289,7 +2303,8 @@ function ConversationComposerImpl({
+           // secondary pane 按产品能力隐藏 goal，不再追加任何内建命令或别名。
+           excludedSlashCommandNames={suppressGoalCommands ? ["goal"] : undefined}
+           appSlashCommands={appSlashCommands}
+-          enableMentionPanel
++          enableMentionPanel={!compactAssistant}
++          enableSlashCommands={!compactAssistant}
+           leadingActions={leadingActionsNode}
+           submitControl={submitControlNode}
+           className="p-0"
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+index e1ec052..fee7c95 100644
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -1404,9 +1404,10 @@ export function SessionPane({
+       sessionCreateSource?: SessionCreateSource,
+     ): Promise<CommandAck> => {
+       const submission = submissionConfigFromCommand(type, payload);
+-      const acceptRecent = submission && !compactAssistant
+-        ? captureComposerRecentSubmission(workspacePath, submission, workspaceIdentity)
+-        : undefined;
++      const acceptRecent =
++        submission && !compactAssistant
++          ? captureComposerRecentSubmission(workspacePath, submission, workspaceIdentity)
++          : undefined;
+       const acceptSelection =
+         submission && (sessionId === null || targetSessionId === sessionId)
+           ? captureAcceptedModelSelection(submission.modelSelection)
+@@ -3837,7 +3838,10 @@ export function SessionPane({
+     return () => setSelectionSideChatBlocked(sessionId, false);
+   }, [blockingInteractionId, selectionSideChat, sessionId]);
+   const isOfficeMode = useIsOfficeMode();
+-  const generatedOutputs = useMemo(() => currentTurnOutputs(snapshot?.rows.window ?? []), [snapshot?.rows.window]);
++  const generatedOutputs = useMemo(
++    () => currentTurnOutputs(snapshot?.rows.window ?? []),
++    [snapshot?.rows.window],
++  );
+   const statusPanelModel = useMemo(
+     () =>
+       buildConversationStatusPanelModel({
+@@ -4359,7 +4363,8 @@ export function SessionPane({
+       contextHeader={isDraft ? draftComposerHeader : undefined}
+       centered={isDraft}
+       blockingRequestId={blockingInteractionId}
+-      listenAddToChatEvents={focused}
++      // Page context is supplied by its typed target, not unrelated file-tree events.
++      listenAddToChatEvents={focused && !compactAssistant}
+       externalTextInsertRequest={focused && sessionId === null ? composerTextInsertRequest : null}
+       onExternalTextInsertApplied={handleExternalTextInsertApplied}
+       autoFocusEnabled={focused}
+@@ -4408,6 +4413,7 @@ export function SessionPane({
+       onOpenModelSettings={handleOpenModelSettings}
+       onOpenCodeViewer={onOpenCodeViewer}
+       suppressGoalCommands={selectionSideChat || compactAssistant}
++      compactAssistant={compactAssistant}
+       appSlashCommands={appSlashCommands}
+       onDropTargetControllerChange={handleDropTargetControllerChange}
+     />
+diff --git a/packages/ui/src/v4/visionBridgeSelection.ts b/packages/ui/src/v4/visionBridgeSelection.ts
+index d67ab5a..e68017f 100644
+--- a/packages/ui/src/v4/visionBridgeSelection.ts
++++ b/packages/ui/src/v4/visionBridgeSelection.ts
+@@ -1,4 +1,4 @@
+-import { completeNewModelSelection } from "@zcode/provider";
++import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+ import type { ModelSelection } from "@zcode/shared";
+ import type { ModelSelectionView } from "@zcode/services";
+ 
+@@ -55,3 +55,27 @@ export function resolveVisionBridgeChoice(
+     candidates,
+   };
+ }
++
++/** A configured bridge applies only to confirmed text-only input; explicit message choices win. */
++export function resolveVisionBridgeBackend(
++  view: ModelSelectionView | null,
++  choice: VisionBridgeChoice,
++  messageChoice?: { selectedKey?: string },
++): VisionBridgeCandidate | undefined {
++  if (choice.mode === "none") return undefined;
++  if (messageChoice)
++    return choice.candidates.find((candidate) => candidate.key === messageChoice.selectedKey);
++  const configured = view?.visionBridgeDefaultSelection;
++  if (choice.mode !== "required" || !configured) return undefined;
++  const candidate = choice.candidates.find(
++    (item) =>
++      item.selection.providerId === configured.providerId &&
++      item.selection.modelId === configured.modelId,
++  );
++  const model = view?.providers
++    .find((provider) => provider.providerId === configured.providerId)
++    ?.models.find((item) => item.modelId === configured.modelId);
++  if (!candidate || !model || !validateModelSelectionOptions(model, configured).ok)
++    return undefined;
++  return { ...candidate, selection: structuredClone(configured) };
++}
+diff --git a/packages/ui/test/modelPurposeDefaults.browser.test.tsx b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+index b847c4c..9ad6397 100644
+--- a/packages/ui/test/modelPurposeDefaults.browser.test.tsx
++++ b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+@@ -40,7 +40,7 @@ function catalog(): ModelSelectionView {
+         requiresMfjsToolSchema: false,
+         inputFormat: {
+           supportsText: true,
+-          supportsImage: false,
++          supportsImage: modelId === "beta",
+           supportsVideo: false,
+           supportsAudio: false,
+           supportsPdf: false,
+@@ -86,6 +86,7 @@ function host(initial = catalog()) {
+     revision: view.preferencesRevision ?? "",
+     defaultModelSelection: view.configuredDefaultSelection,
+     pageAssistantDefaultModelSelection: view.pageAssistantDefaultSelection,
++    visionBridgeDefaultModelSelection: view.visionBridgeDefaultSelection,
+     favoriteModelSelections: [],
+   });
+   const service: IModelSelectionService = {
+@@ -135,6 +136,12 @@ function host(initial = catalog()) {
+         ...("defaultModelSelection" in write.patch
+           ? { configuredDefaultSelection: write.patch.defaultModelSelection ?? undefined }
+           : {}),
++        ...("visionBridgeDefaultModelSelection" in write.patch
++          ? {
++              visionBridgeDefaultSelection:
++                write.patch.visionBridgeDefaultModelSelection ?? undefined,
++            }
++          : {}),
+         ...("pageAssistantDefaultModelSelection" in write.patch
+           ? {
+               pageAssistantDefaultSelection:
+@@ -184,7 +191,7 @@ async function fixture(locale: Locale = "en-US") {
+       const triggers = [
+         ...node.querySelectorAll<HTMLButtonElement>("button[data-model-current-value]"),
+       ];
+-      check(triggers.length === 2, "The two purpose controls are missing");
++      check(triggers.length === 3, "The three purpose controls are missing");
+       return triggers;
+     },
+     async close() {
+@@ -255,7 +262,11 @@ async function run() {
+       await f.render(h);
+       equal(
+         f.triggers().map((button) => button.dataset.modelCurrentValue),
+-        [encodeCustomModelValue("connected", "alpha"), encodeCustomModelValue("connected", "beta")],
++        [
++          encodeCustomModelValue("connected", "alpha"),
++          encodeCustomModelValue("connected", "beta"),
++          "inherit",
++        ],
+         "Current saved choices were replaced by the catalog recommendation",
+       );
+       await open(f, 0, true);
+@@ -301,6 +312,66 @@ async function run() {
+       await f.close();
+     }
+   });
++  await test("vision default lists only confirmed image models and saves independently", async () => {
++    const f = await fixture();
++    const h = host();
++    try {
++      await f.render(h);
++      await open(f, 2);
++      check(option(encodeCustomModelValue("connected", "beta")), "Confirmed vision model missing");
++      check(
++        !option(encodeCustomModelValue("connected", "alpha")),
++        "Text-only model entered vision defaults",
++      );
++      await act(async () => option(encodeCustomModelValue("connected", "beta"))!.click());
++      equal(
++        h.writes[0]?.patch,
++        { expectedRevision: "personal-7", visionBridgeDefaultModelSelection: selection("beta") },
++        "Vision save changed another purpose",
++      );
++      await h.commit(0);
++      await frame();
++      check(
++        f.triggers()[2]?.dataset.modelCurrentValue === encodeCustomModelValue("connected", "beta"),
++        "Vision save did not update displayed default",
++      );
++      await choose(f, 2, null);
++      await h.commit(1);
++      await frame();
++      check(
++        f.triggers()[2]?.getAttribute("aria-label") === "Choose for each message",
++        "Vision clear lost its explicit fallback meaning",
++      );
++      equal(
++        h.view.configuredDefaultSelection,
++        selection("alpha"),
++        "Vision clear erased ordinary default",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("withdrawn vision options retain the saved identity with an unavailable badge and no implicit writes", async () => {
++    const f = await fixture();
++    const withdrawn = catalog();
++    withdrawn.visionBridgeDefaultSelection = selection("beta");
++    withdrawn.providers[0]!.models[1]!.config.optionSpecs.reasoningLevel.values = ["auto", "low"];
++    const h = host(withdrawn);
++    try {
++      await f.render(h);
++      check(
++        f.triggers()[2]?.textContent?.includes("Unavailable"),
++        "Withdrawn bridge options looked usable",
++      );
++      check(
++        f.triggers()[2]?.dataset.modelCurrentValue === encodeCustomModelValue("connected", "beta"),
++        "Withdrawal erased the saved model",
++      );
++      check(h.writes.length === 0, "Read-only withdrawal repaired preferences without user intent");
++    } finally {
++      await f.close();
++    }
++  });
+   for (const purpose of [0, 1])
+     await test(`clearing purpose ${purpose} sends null and preserves the other saved purpose`, async () => {
+       const f = await fixture();
+diff --git a/packages/ui/test/pageAssistant.browser.test.tsx b/packages/ui/test/pageAssistant.browser.test.tsx
+index ab3f74e..73c3721 100644
+--- a/packages/ui/test/pageAssistant.browser.test.tsx
++++ b/packages/ui/test/pageAssistant.browser.test.tsx
+@@ -1,3 +1,5 @@
++import { ModelProviderSectionNavigation } from "../src/settings/model-provider-section/Navigation.js";
++import { providerWithModel } from "./helpers/providerDraftFixture.js";
+ import { act } from "react";
+ import { createRoot } from "react-dom/client";
+ import {
+@@ -157,6 +159,29 @@ async function fixture(locale: "zh-CN" | "en-US") {
+             <ZCodeIntlProvider initialLocale={locale}>
+               <TooltipProvider>
+                 <PageAssistantHost>
++                  <ModelProviderSectionNavigation
++                    navigationGroups={[
++                      {
++                        id: "custom",
++                        title: "Services",
++                        items: ["fixed", "sortable"].map((kind) => ({
++                          key: `nav-${kind}`,
++                          type: "custom",
++                          label: `Provider ${kind}`,
++                          provider: {
++                            ...providerWithModel(),
++                            providerId: `nav-${kind}`,
++                            providerName: `Provider ${kind}`,
++                          },
++                        })),
++                      },
++                    ]}
++                    selectedNodeKey={null}
++                    presetLoading={false}
++                    customLoading={false}
++                    reorderableProviderIds={new Set(["nav-sortable"])}
++                    onSelectNavItem={() => nativeActions++}
++                  />
+                   <section {...pageAssistantScope(general, "General target")}>
+                     <button data-test-page="general">General</button>
+                   </section>
+@@ -257,7 +282,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+       await tick();
+       await tick();
+     },
+-    async context(page: string, x = 250, y = 90) {
++    async context(page: string, x = 250, y = 90, choose = true) {
+       window.getSelection()?.removeAllRanges();
+       const target = node.querySelector<HTMLElement>(`[data-test-page="${page}"]`);
+       check(target, `Missing page ${page}`);
+@@ -272,7 +297,7 @@ async function fixture(locale: "zh-CN" | "en-US") {
+       await act(async () => target!.dispatchEvent(event));
+       await tick();
+       check(requests.length === before, "Right-click started the assistant before a menu choice");
+-      if (page !== "domain-menu") {
++      if (choose && page !== "domain-menu") {
+         const ask = [
+           ...document.querySelectorAll<HTMLElement>('[data-slot="context-menu-item"]'),
+         ].find((item) => item.textContent === (locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent"));
+@@ -335,6 +360,42 @@ async function run() {
+       const f = await fixture(locale);
+       const askLabel = locale === "zh-CN" ? "让 Agent 帮忙" : "Ask Agent";
+       try {
++        await f.context("general", 24, 90, false);
++        await act(async () => {
++          await new Promise((resolve) => setTimeout(resolve, 150));
++        });
++        const firstMenu = document.querySelector<HTMLElement>(
++          '[data-slot="context-menu-content"][data-state="open"]',
++        )!;
++        const firstMenuBounds = firstMenu.getBoundingClientRect();
++        check(
++          getComputedStyle(f.node).pointerEvents !== "none",
++          "Open context menu blocks the page from receiving the next right-click",
++        );
++        await f.context("model", Math.min(360, window.innerWidth - 186), 220, false);
++        await f.tick();
++        await f.tick();
++        const repeatedMenu = document.querySelector<HTMLElement>(
++          '[data-slot="context-menu-content"][data-state="open"]',
++        )!;
++        const repeatedBounds = repeatedMenu.getBoundingClientRect();
++        check(
++          Math.abs(repeatedBounds.top - firstMenuBounds.top) >= 80 &&
++            Math.abs(repeatedBounds.left - firstMenuBounds.left) >= 60,
++          "Repeated right-click did not move the still-open menu to the new pointer",
++        );
++        check(
++          document.querySelectorAll('[data-slot="context-menu-content"][data-state="open"]')
++            .length === 1 && f.requests.length === 0,
++          "Repositioning created another menu or opened an assistant before selection",
++        );
++        // Escape dismisses the menu without creating a conversation; ordinary page cases continue below.
++        await act(async () =>
++          repeatedMenu.dispatchEvent(
++            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
++          ),
++        );
++        await f.tick();
+         const first = await f.context("general");
+         check(
+           first.defaultPrevented && f.popover(),
+@@ -637,6 +698,71 @@ async function run() {
+         await f.close();
+       }
+     }
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    const f = await fixture(locale);
++    try {
++      const right = async (id: string, x: number, y: number) => {
++        const row = f.node.querySelector<HTMLElement>(
++          `[data-page-assistant-selection='${JSON.stringify({ feature: "model-settings", providerId: id })}']`,
++        )!;
++        check(row, "Actual provider navigation scope missing");
++        await act(async () => {
++          row.dispatchEvent(
++            new PointerEvent("pointerdown", {
++              bubbles: true,
++              button: 2,
++              isPrimary: true,
++              pointerType: "mouse",
++              clientX: x,
++              clientY: y,
++            }),
++          );
++          row.dispatchEvent(
++            new MouseEvent("contextmenu", {
++              bubbles: true,
++              cancelable: true,
++              button: 2,
++              clientX: x,
++              clientY: y,
++            }),
++          );
++        });
++        await f.tick();
++      };
++      await right("nav-fixed", 24, 80);
++      const before = document
++        .querySelector<HTMLElement>('[data-slot="context-menu-content"][data-state="open"]')!
++        .getBoundingClientRect();
++      check(
++        document
++          .querySelector('[data-slot="context-menu-content"][data-state="open"]')
++          ?.textContent?.includes(locale === "zh-CN" ? "打开" : "Open"),
++        "Fixed provider row lost its actual Open action",
++      );
++      await right("nav-sortable", 220, 240);
++      const after = document
++        .querySelector<HTMLElement>('[data-slot="context-menu-content"][data-state="open"]')!
++        .getBoundingClientRect();
++      check(after.top - before.top > 80, "Repeated provider context menu did not relocate");
++      await f.chooseAssistant();
++      check(
++        JSON.stringify(f.requests[0]?.selection) ===
++          JSON.stringify({ feature: "model-settings", providerId: "nav-sortable" }),
++        "Sortable provider right-click borrowed the selected detail's target",
++      );
++      check(
++        f.nativeActions === 0 && f.commands.length === 0,
++        "Opening the menu or assistant changed provider state",
++      );
++      results.push({
++        name: `${locale}: real fixed/sortable provider menus share actions, relocate and retain the latest target`,
++      });
++    } catch (error) {
++      results.push({ name: `${locale}: provider navigation menu`, error: String(error) });
++    } finally {
++      await f.close();
++    }
++  }
+   document.documentElement.classList.remove("dark");
+   return results;
+ }
+diff --git a/packages/ui/test/providerCatalogFilters.browser.test.tsx b/packages/ui/test/providerCatalogFilters.browser.test.tsx
+index c490b4b..c82b52e 100644
+--- a/packages/ui/test/providerCatalogFilters.browser.test.tsx
++++ b/packages/ui/test/providerCatalogFilters.browser.test.tsx
+@@ -175,6 +175,42 @@ async function run() {
+           visibleIds(f.container).length === 11,
+           "Manual addition no longer shows the complete saved catalog",
+         );
++        // The real row editor's context menu reuses its existing edit/enable callbacks.
++        const row = f.container.querySelector<HTMLElement>(
++          '[data-model-provider-model-id="text-0"]',
++        )!;
++        await act(async () => {
++          row.querySelector<HTMLElement>("[data-page-assistant-selection]")!.dispatchEvent(
++            new MouseEvent("contextmenu", {
++              bubbles: true,
++              cancelable: true,
++              button: 2,
++              clientX: 40,
++              clientY: 120,
++            }),
++          );
++        });
++        await act(
++          async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
++        );
++        const menu = document.querySelector<HTMLElement>('[data-slot="context-menu-content"]')!;
++        check(
++          menu.textContent?.includes(locale === "zh-CN" ? "编辑" : "Edit"),
++          "Model menu omitted its actual editor",
++        );
++        check(
++          menu.textContent?.includes(locale === "zh-CN" ? "禁用" : "Disable"),
++          "Model menu omitted its existing enable operation",
++        );
++        check(f.modelActions.length === 0, "Opening a contextual menu changed model state");
++        await act(async () => {
++          menu.querySelector<HTMLElement>('[data-slot="context-menu-item"]')!.click();
++        });
++        check(
++          document.querySelector('[data-slot="dialog-content"]'),
++          "Contextual Edit did not open the existing metadata dialog",
++        );
++        check(f.modelWrites.length === 0, "Opening metadata committed an unreviewed draft");
+         results.push({
+           name: `${locale} ${dark ? "dark" : "light"}: large catalog filters, recovery, keyboard and narrow layout`,
+         });
+diff --git a/packages/ui/test/visionBridgeSelection.test.ts b/packages/ui/test/visionBridgeSelection.test.ts
+index 452d515..84a0cb8 100644
+--- a/packages/ui/test/visionBridgeSelection.test.ts
++++ b/packages/ui/test/visionBridgeSelection.test.ts
+@@ -1,7 +1,10 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import type { ModelSelectionView } from "@zcode/services";
+-import { resolveVisionBridgeChoice } from "../src/v4/visionBridgeSelection.js";
++import {
++  resolveVisionBridgeChoice,
++  resolveVisionBridgeBackend,
++} from "../src/v4/visionBridgeSelection.js";
+ 
+ const view = {
+   revision: 1,
+@@ -84,3 +87,42 @@ test("a video or unknown main model cannot silently trigger a bridge", () => {
+     "optional",
+   );
+ });
++
++test("default bridge is automatic only for confirmed text-only input; message choice and explicit off win", () => {
++  const configured = {
++    providerId: "vision-account",
++    modelId: "vision-model",
++    options: { reasoningLevel: "auto" },
++  };
++  const catalog = { ...view, visionBridgeDefaultSelection: configured };
++  const required = resolveVisionBridgeChoice(
++    catalog,
++    { providerId: "text-account", modelId: "text-model" },
++    ["image/png"],
++  );
++  assert.deepEqual(resolveVisionBridgeBackend(catalog, required)?.selection, configured);
++  assert.equal(resolveVisionBridgeBackend(catalog, required, {}), undefined);
++  assert.equal(
++    resolveVisionBridgeBackend(catalog, required, { selectedKey: "withdrawn" }),
++    undefined,
++  );
++  assert.equal(resolveVisionBridgeBackend(catalog, { ...required, mode: "optional" }), undefined);
++  assert.equal(resolveVisionBridgeBackend(catalog, { ...required, mode: "none" }), undefined);
++  assert.equal(
++    resolveVisionBridgeBackend(
++      { ...catalog, visionBridgeDefaultSelection: { ...configured, providerId: "removed" } },
++      required,
++    ),
++    undefined,
++  );
++  assert.equal(
++    resolveVisionBridgeBackend(
++      {
++        ...catalog,
++        visionBridgeDefaultSelection: { ...configured, options: { reasoningLevel: "unsupported" } },
++      },
++      required,
++    ),
++    undefined,
++  );
++});

@@ -1,0 +1,1449 @@
+diff --git a/package.json b/package.json
+index 0e1bb2c..a089ea8 100644
+--- a/package.json
++++ b/package.json
+@@ -49,12 +49,13 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+-    "test:pi-bundle": "node scripts/test-pi-bundle.mjs"
++    "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
++    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 6cf63af..1a900bb 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -363,19 +363,28 @@ export class ProviderSettingsFacade {
+     ).then(({ result, view }) => ({ providerId: result.providerId, view }));
+   }
+ 
+-  savePersonalProviderOverlay(
++  async savePersonalProviderOverlay(
+     providerId: ProviderId,
+     config: ProviderConfigObject,
+     metadata?: Pick<ProviderConfigRule, "providerName" | "templateId" | "enabled">,
++    basedOnRevision?: number,
+   ): Promise<ProviderSettingsView> {
+-    return this.#mutateProvider(providerId, "save-provider", (target) =>
+-      target.savePersonalProviderOverlay(
++    const submittedConfig = parseProviderConfig(config);
++    const submittedMetadata = metadata ? { ...metadata } : undefined;
++    return this.#mutateProvider(providerId, "save-provider", (target) => {
++      const snapshot = requireSnapshot(this.#source);
++      if (basedOnRevision !== undefined && snapshot.registry.revision !== basedOnRevision) {
++        throw new Error(
++          `Provider Settings revision conflict: expected ${basedOnRevision}, current ${snapshot.registry.revision}`,
++        );
++      }
++      return target.savePersonalProviderOverlay(
+         providerId,
+-        parseProviderConfig(config),
+-        this.#modelMembership(providerId),
+-        metadata,
+-      ),
+-    );
++        submittedConfig,
++        this.#modelMembership(providerId, snapshot),
++        submittedMetadata,
++      );
++    });
+   }
+ 
+   deletePersonalProvider(providerId: ProviderId): Promise<ProviderSettingsView> {
+@@ -467,23 +476,23 @@ export class ProviderSettingsFacade {
+     );
+   }
+ 
+-  savePersonalModelDraft(input: SavePersonalModelDraftInput): Promise<ProviderSettingsView> {
+-    return this.#mutateProvider(input.providerId, "save-model-draft", async (target) => {
++  async savePersonalModelDraft(input: SavePersonalModelDraftInput): Promise<ProviderSettingsView> {
++    const submitted = { ...input, personalConfig: parseModelConfig(input.personalConfig) };
++    return this.#mutateProvider(submitted.providerId, "save-model-draft", async (target) => {
+       const snapshot = requireSnapshot(this.#source);
+-      if (snapshot.registry.revision !== input.basedOnRevision) {
++      if (snapshot.registry.revision !== submitted.basedOnRevision) {
+         throw new Error(
+-          `Provider Settings revision conflict: expected ${input.basedOnRevision}, current ${snapshot.registry.revision}`,
++          `Provider Settings revision conflict: expected ${submitted.basedOnRevision}, current ${snapshot.registry.revision}`,
+         );
+       }
+-      const parsedConfig = parseModelConfig(input.personalConfig);
+       await target.savePersonalModelDraft(
+-        input.providerId,
+-        input.originalModelId,
+-        input.nextModelId,
+-        parsedConfig,
++        submitted.providerId,
++        submitted.originalModelId,
++        submitted.nextModelId,
++        submitted.personalConfig,
+         snapshot.config.personalRevision,
+-        input.useRecommendedConfig,
+-        this.#modelMembership(input.providerId, snapshot),
++        submitted.useRecommendedConfig,
++        this.#modelMembership(submitted.providerId, snapshot),
+       );
+     });
+   }
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 6869237..17cbd70 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -90,6 +90,7 @@ export interface IProviderSettingsService {
+     providerId: ProviderId,
+     config: ProviderConfigObject,
+     metadata?: Parameters<ProviderSettingsFacade["savePersonalProviderOverlay"]>[2],
++    basedOnRevision?: number,
+   ): Promise<ProviderSettingsView>;
+   deletePersonalProvider(providerId: ProviderId): Promise<ProviderSettingsView>;
+   reorderPersonalProviders(providerIds: readonly ProviderId[]): Promise<ProviderSettingsView>;
+@@ -300,9 +301,16 @@ export function createProviderSettingsService(
+       await ensureReady();
+       return facade.resolveModelConfig(input);
+     },
+-    savePersonalProviderOverlay: async (providerId, config, metadata) => {
++    savePersonalProviderOverlay: async (providerId, config, metadata, basedOnRevision) => {
++      const submittedConfig = structuredClone(config);
++      const submittedMetadata = metadata ? { ...metadata } : undefined;
+       await ensureReady();
+-      return facade.savePersonalProviderOverlay(providerId, config, metadata);
++      return facade.savePersonalProviderOverlay(
++        providerId,
++        submittedConfig,
++        submittedMetadata,
++        basedOnRevision,
++      );
+     },
+     deletePersonalProvider: async (providerId) => {
+       await ensureReady();
+@@ -331,8 +339,9 @@ export function createProviderSettingsService(
+       return facade.deletePersonalModel(providerId, modelId);
+     },
+     savePersonalModelDraft: async (input) => {
++      const submitted = structuredClone(input);
+       await ensureReady();
+-      return facade.savePersonalModelDraft(input);
++      return facade.savePersonalModelDraft(submitted);
+     },
+     setPersonalModelEnabled: async (providerId, modelId, enabled, basedOnRevision) => {
+       await ensureReady();
+diff --git a/packages/services/test/provider-overlay-revision.test.ts b/packages/services/test/provider-overlay-revision.test.ts
+new file mode 100644
+index 0000000..0d7cc8c
+--- /dev/null
++++ b/packages/services/test/provider-overlay-revision.test.ts
+@@ -0,0 +1,371 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { NodeProviderRegistryRuntime } from "@zcode/provider-node";
++import { ProviderSettingsFacade, parseProviderConfig, parseModelConfig } from "@zcode/provider";
++import { createProviderSettingsService } from "../src/model-provider/providerFacadeServices.js";
++
++async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-provider-overlay-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  let runtime = new NodeProviderRegistryRuntime(options);
++  await runtime.start();
++  const { providerId } = await runtime.configService.createPersonalProvider({
++    providerName: "Fixture",
++    initialConfig: parseProviderConfig({
++      api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" },
++      access: { type: "api-key", apiKey: "synthetic-original" },
++    }),
++  });
++  await runtime.registryService.refresh("fixture");
++  const facade = new ProviderSettingsFacade(runtime.registryService, {
++    savePersonalProviderOverlay: (
++      ...args: Parameters<typeof runtime.configService.savePersonalProviderOverlay>
++    ) => runtime.configService.savePersonalProviderOverlay(...args),
++    savePersonalModelDraft: (
++      ...args: Parameters<typeof runtime.configService.savePersonalModelDraft>
++    ) => runtime.configService.savePersonalModelDraft(...args),
++    refresh: (reason: string) => runtime.registryService.refresh(reason),
++  } as never);
++  return {
++    facade,
++    providerId,
++    get runtime() {
++      return runtime;
++    },
++    read: () => readFile(options.personalFilePath, "utf8"),
++    async independentWriter() {
++      const writer = new NodeProviderRegistryRuntime(options);
++      await writer.start();
++      return writer;
++    },
++    async reopen() {
++      runtime.dispose();
++      runtime = new NodeProviderRegistryRuntime(options);
++      await runtime.start();
++      return (await runtime.configService.read()).personalProviders.get(providerId)!.toJSON();
++    },
++    async close() {
++      runtime.dispose();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++test("service readiness cannot change the submitted address, nested credentials or name", async () => {
++  const f = await fixture();
++  try {
++    const ready = Promise.withResolvers<void>();
++    const service = createProviderSettingsService(f.facade, () => ready.promise);
++    const config = {
++      api: { type: "openai-chat-completions" as const, baseUrl: "https://admitted.invalid/v1" },
++      access: {
++        type: "api-key" as const,
++        apiKey: "synthetic-admitted",
++        additionalApiKeys: ["synthetic-backup"],
++      },
++    };
++    const metadata = { providerName: "Admitted name", enabled: false };
++    const pending = service.savePersonalProviderOverlay(
++      f.providerId,
++      config,
++      metadata,
++      f.facade.getView().revision,
++    );
++    config.api.baseUrl = "https://mutated.invalid/v1";
++    config.access.apiKey = "synthetic-mutated";
++    config.access.additionalApiKeys[0] = "synthetic-mutated-backup";
++    metadata.providerName = "Mutated name";
++    metadata.enabled = true;
++    ready.resolve();
++    await pending;
++    const reopened = await f.reopen();
++    assert.equal(reopened.api?.baseUrl, "https://admitted.invalid/v1");
++    assert.equal(
++      reopened.access?.type === "api-key" && reopened.access.apiKey,
++      "synthetic-admitted",
++    );
++    assert.deepEqual(reopened.access?.type === "api-key" && reopened.access.additionalApiKeys, [
++      "synthetic-backup",
++    ]);
++    const rule = (await f.runtime.configService.read()).personalProviders.getRule(f.providerId)!;
++    assert.equal(rule.providerName, "Admitted name");
++    assert.equal(rule.enabled, false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("the facade snapshots an overlay before its serialized queue starts", async () => {
++  const f = await fixture();
++  try {
++    const config = {
++      api: { type: "openai-chat-completions" as const, baseUrl: "https://queued.invalid/v1" },
++      access: {
++        type: "api-key" as const,
++        apiKey: "synthetic-queued",
++        additionalApiKeys: ["queued-backup"],
++      },
++    };
++    const metadata = { providerName: "Queued name" };
++    const pending = f.facade.savePersonalProviderOverlay(
++      f.providerId,
++      config,
++      metadata,
++      f.facade.getView().revision,
++    );
++    config.api.baseUrl = "https://mutated.invalid/v1";
++    config.access.additionalApiKeys[0] = "mutated-backup";
++    metadata.providerName = "Mutated name";
++    await pending;
++    const reopened = await f.reopen();
++    assert.equal(reopened.api?.baseUrl, "https://queued.invalid/v1");
++    assert.deepEqual(reopened.access?.type === "api-key" && reopened.access.additionalApiKeys, [
++      "queued-backup",
++    ]);
++    assert.equal(
++      (await f.runtime.configService.read()).personalProviders.getRule(f.providerId)?.providerName,
++      "Queued name",
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("a submitted model draft retains its target, revision and configuration through service readiness", async () => {
++  const f = await fixture();
++  try {
++    await f.runtime.configService.addPersonalModel(
++      f.providerId,
++      "original-model",
++      parseModelConfig({ enabled: true }),
++    );
++    await f.runtime.registryService.refresh("model fixture");
++    const ready = Promise.withResolvers<void>();
++    const service = createProviderSettingsService(f.facade, () => ready.promise);
++    const draft = {
++      providerId: f.providerId,
++      originalModelId: "original-model",
++      nextModelId: "admitted-model",
++      basedOnRevision: f.facade.getView().revision,
++      personalConfig: { enabled: false },
++    };
++    const pending = service.savePersonalModelDraft(draft);
++    draft.providerId = "different-target";
++    draft.nextModelId = "mutated-model";
++    draft.basedOnRevision = -1;
++    draft.personalConfig.enabled = true;
++    ready.resolve();
++    await pending;
++    await f.reopen();
++    const stored = await f.runtime.configService.read();
++    assert.equal(
++      stored.personalModels.getExact(f.providerId, "admitted-model")?.toJSON().enabled,
++      false,
++    );
++    assert.equal(stored.personalModels.getExact(f.providerId, "mutated-model"), undefined);
++    assert.equal(stored.personalModels.getExact(f.providerId, "original-model"), undefined);
++  } finally {
++    await f.close();
++  }
++});
++
++test("the facade cannot redirect a queued model draft to a caller-mutated target", async () => {
++  const f = await fixture();
++  try {
++    await f.runtime.configService.addPersonalModel(
++      f.providerId,
++      "original-model",
++      parseModelConfig({ enabled: true }),
++    );
++    await f.runtime.registryService.refresh("model fixture");
++    const draft = {
++      providerId: f.providerId,
++      originalModelId: "original-model",
++      nextModelId: "queued-model",
++      basedOnRevision: f.facade.getView().revision,
++      personalConfig: { enabled: false },
++    };
++    const pending = f.facade.savePersonalModelDraft(draft);
++    draft.providerId = "different-target";
++    draft.originalModelId = "different-model";
++    draft.nextModelId = "mutated-model";
++    draft.personalConfig.enabled = true;
++    await pending;
++    await f.reopen();
++    const stored = await f.runtime.configService.read();
++    assert.equal(
++      stored.personalModels.getExact(f.providerId, "queued-model")?.toJSON().enabled,
++      false,
++    );
++    assert.equal(stored.personalModels.getExact(f.providerId, "mutated-model"), undefined);
++  } finally {
++    await f.close();
++  }
++});
++
++test("stale connection/name/key overlay cannot overwrite a newer commit, and fresh save survives reopen", async () => {
++  const f = await fixture();
++  try {
++    const initial = f.facade.getView();
++    const staleConfig = initial.providers.find(
++      (p) => p.providerId === f.providerId,
++    )!.personalConfig!;
++    const saved = await f.facade.savePersonalProviderOverlay(
++      f.providerId,
++      { ...staleConfig, access: { type: "api-key", apiKey: "synthetic-new" } },
++      { providerName: "New name", enabled: false },
++      initial.revision,
++    );
++    const before = await f.read();
++    await assert.rejects(
++      f.facade.savePersonalProviderOverlay(
++        f.providerId,
++        { ...staleConfig, api: { ...staleConfig.api, baseUrl: "https://stale.invalid/v1" } },
++        { providerName: "Old name", enabled: true },
++        initial.revision,
++      ),
++      /revision conflict/,
++    );
++    assert.equal(await f.read(), before);
++    const current = saved.providers.find((p) => p.providerId === f.providerId)!;
++    await f.facade.savePersonalProviderOverlay(
++      f.providerId,
++      {
++        ...current.personalConfig,
++        api: { ...current.personalConfig?.api, baseUrl: "https://new.invalid/v1" },
++      },
++      undefined,
++      saved.revision,
++    );
++    const reopened = await f.reopen();
++    assert.equal(reopened.api?.baseUrl, "https://new.invalid/v1");
++    assert.equal(reopened.access?.type === "api-key" && reopened.access.apiKey, "synthetic-new");
++    const rule = (await f.runtime.configService.read()).personalProviders.getRule(f.providerId)!;
++    assert.equal(rule.providerName, "New name");
++    assert.equal(rule.enabled, false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("two queued writes from one rendered revision admit only the first", async () => {
++  const f = await fixture();
++  try {
++    const revision = f.facade.getView().revision;
++    const results = await Promise.allSettled([
++      f.facade.savePersonalProviderOverlay(
++        f.providerId,
++        { api: { baseUrl: "https://first.invalid/v1" } },
++        undefined,
++        revision,
++      ),
++      f.facade.savePersonalProviderOverlay(
++        f.providerId,
++        { api: { baseUrl: "https://second.invalid/v1" } },
++        undefined,
++        revision,
++      ),
++    ]);
++    assert.equal(results[0]!.status, "fulfilled");
++    assert.equal(results[1]!.status, "rejected");
++    assert.match((results[1] as PromiseRejectedResult).reason.message, /revision conflict/);
++    assert.equal((await f.reopen()).api?.baseUrl, "https://first.invalid/v1");
++  } finally {
++    await f.close();
++  }
++});
++
++test("a second runtime's disk commit rejects a stale writer before polling publishes its new view", async () => {
++  const f = await fixture();
++  const writer = await f.independentWriter();
++  try {
++    const revision = f.facade.getView().revision;
++    await writer.configService.savePersonalProviderOverlay(
++      f.providerId,
++      parseProviderConfig({ api: { baseUrl: "https://independent.invalid/v1" } }),
++    );
++    const before = await f.read();
++    assert.equal(
++      f.facade.getView().revision,
++      revision,
++      "the fixture must retain a stale registry view",
++    );
++    await assert.rejects(
++      f.facade.savePersonalProviderOverlay(
++        f.providerId,
++        { api: { baseUrl: "https://stale.invalid/v1" } },
++        undefined,
++        revision,
++      ),
++      /revision conflict/,
++    );
++    assert.equal(await f.read(), before);
++  } finally {
++    writer.dispose();
++    await f.close();
++  }
++});
++
++test("a registry change during the asynchronous writer fails inside the existing transaction", async () => {
++  const f = await fixture();
++  try {
++    let concurrentCommit = "";
++    const guarded = new ProviderSettingsFacade(f.runtime.registryService, {
++      savePersonalProviderOverlay: async (
++        ...args: Parameters<typeof f.runtime.configService.savePersonalProviderOverlay>
++      ) => {
++        await f.runtime.configService.savePersonalProviderOverlay(
++          f.providerId,
++          parseProviderConfig({ access: { type: "api-key", apiKey: "synthetic-concurrent" } }),
++        );
++        await f.runtime.registryService.refresh("changed after admission");
++        concurrentCommit = await f.read();
++        return f.runtime.configService.savePersonalProviderOverlay(...args);
++      },
++      refresh: (reason: string) => f.runtime.registryService.refresh(reason),
++    } as never);
++    await assert.rejects(
++      guarded.savePersonalProviderOverlay(
++        f.providerId,
++        { api: { baseUrl: "https://late.invalid/v1" } },
++        undefined,
++        guarded.getView().revision,
++      ),
++      /revision conflict/,
++    );
++    assert.ok(concurrentCommit);
++    assert.equal(await f.read(), concurrentCommit);
++  } finally {
++    await f.close();
++  }
++});
++
++test("a deleted target stays deleted; legacy three-argument callers retain their existing path", async () => {
++  const f = await fixture();
++  try {
++    await f.facade.savePersonalProviderOverlay(f.providerId, {}, { providerName: "Legacy import" });
++    const revision = f.facade.getView().revision;
++    await f.runtime.configService.deletePersonalProvider(f.providerId);
++    await f.runtime.registryService.refresh("deleted");
++    const before = await f.read();
++    await assert.rejects(
++      f.facade.savePersonalProviderOverlay(f.providerId, {}, undefined, revision),
++      /revision conflict/,
++    );
++    await assert.rejects(f.facade.savePersonalProviderOverlay(f.providerId, {}), /Provider 不存在/);
++    assert.equal(await f.read(), before);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index ed425d2..47cf9c8 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -139,17 +139,21 @@ export function useModelProviders(target: {
+   }, [commitProviderSettingsView, providerSettingsService]);
+ 
+   const saveProvider = useCallback(
+-    async (provider: ProviderSettingsFormProvider) => {
+-      // 新建 Provider 尚未进入 Registry，自然也不会出现在当前 Settings View。
+-      // 保存边界允许缺少继承层，并直接从新建表单构造完整配置。
+-      const savedView = await persistPersonalProvider({ provider, providerSettingsService });
++    async (provider: ProviderSettingsFormProvider, basedOnRevision?: number) => {
++      // Creation has its own command. Existing connections save only their personal overlay
++      // against the draft's revision; a late save cannot recreate a deleted provider.
++      const savedView = await persistPersonalProvider({
++        provider,
++        providerSettingsService,
++        basedOnRevision: basedOnRevision ?? providerSettingsView?.revision,
++      });
+       commitProviderSettingsView(savedView);
+       return {
+         providers: projectProviderSettingsViewToFormProviders(savedView),
+         revision: savedView.revision,
+       };
+     },
+-    [commitProviderSettingsView, providerSettingsService],
++    [commitProviderSettingsView, providerSettingsService, providerSettingsView?.revision],
+   );
+ 
+   const createPersonalProvider = useCallback(
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 6c94250..05c0c6e 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3009,6 +3009,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.providerSaveSuccess": "{provider} saved",
+   "settings.modelProvider.providerSaving": "Saving {provider}",
+   "settings.modelProvider.providerSaveFailure": "Failed to save {provider}: {error}",
++  "settings.modelProvider.settingsChanged":
++    "Settings changed. This edit was not saved. Restore the latest values before editing again.",
+   "settings.modelProvider.modelSaving": "Saving {provider} / {model}",
+   "settings.modelProvider.modelSaveSuccess": "{provider} / {model} saved",
+   "settings.modelProvider.modelDeleting": "Deleting {provider} / {model}",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index f2ecd48..0290fdb 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2790,6 +2790,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.providerSaveSuccess": "{provider} 保存成功",
+   "settings.modelProvider.providerSaving": "正在保存 {provider}",
+   "settings.modelProvider.providerSaveFailure": "{provider} 保存失败：{error}",
++  "settings.modelProvider.settingsChanged": "设置已变更，本次未保存。请恢复最新值后重新编辑。",
+   "settings.modelProvider.modelSaving": "正在保存 {provider} / {model}",
+   "settings.modelProvider.modelSaveSuccess": "{provider} / {model} 保存成功",
+   "settings.modelProvider.modelDeleting": "正在删除 {provider} / {model}",
+diff --git a/packages/ui/src/lib/providerPersonalSave.ts b/packages/ui/src/lib/providerPersonalSave.ts
+index a3b7fa7..fd805ae 100644
+--- a/packages/ui/src/lib/providerPersonalSave.ts
++++ b/packages/ui/src/lib/providerPersonalSave.ts
+@@ -7,6 +7,7 @@ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTyp
+ export async function persistPersonalProvider(params: {
+   provider: ProviderSettingsFormProvider;
+   providerSettingsService: Pick<IProviderSettingsService, "savePersonalProviderOverlay">;
++  basedOnRevision?: number;
+ }): Promise<ProviderSettingsView> {
+   const {
+     builtinModelIds: _builtinModelIds,
+@@ -26,5 +27,6 @@ export async function persistPersonalProvider(params: {
+             ? {}
+             : { enabled: params.provider.enabledUpdate }),
+         },
++    params.basedOnRevision,
+   );
+ }
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index 148387b..a1e13a2 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -47,6 +47,11 @@ export interface ProviderSettingsSaveReceipt {
+   revision: number;
+ }
+ 
++export type ProviderSettingsSaveHandler = (
++  provider: ProviderSettingsFormProvider,
++  basedOnRevision?: number,
++) => Promise<ProviderSettingsSaveReceipt>;
++
+ /** 设置页面在一次编辑会话中使用的 Model 状态。 */
+ export interface ProviderSettingsFormModel {
+   kind: "candidate";
+diff --git a/packages/ui/src/lib/providerSettingsWriteError.ts b/packages/ui/src/lib/providerSettingsWriteError.ts
+new file mode 100644
+index 0000000..f1be005
+--- /dev/null
++++ b/packages/ui/src/lib/providerSettingsWriteError.ts
+@@ -0,0 +1,16 @@
++import type { IntlInstance } from "../i18n/IntlProvider.js";
++
++export function isProviderSettingsWriteConflict(error: unknown): boolean {
++  const message = error instanceof Error ? error.message : String(error);
++  return /(?:Provider Settings(?: membership| snapshot)?|Personal Provider Config) revision conflict/.test(
++    message,
++  );
++}
++
++export function providerSettingsWriteError(error: unknown, intl: IntlInstance): string {
++  return isProviderSettingsWriteConflict(error)
++    ? intl.formatMessage({ id: "settings.modelProvider.settingsChanged" })
++    : error instanceof Error
++      ? error.message
++      : String(error);
++}
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 1afa659..dba1d73 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -125,8 +125,8 @@ export function ModelProviderSection({
+     }
+   };
+   const handleSave = useCallback(
+-    async (provider: ProviderSettingsFormProvider) => {
+-      const saved = await saveProvider(provider);
++    async (provider: ProviderSettingsFormProvider, basedOnRevision?: number) => {
++      const saved = await saveProvider(provider, basedOnRevision);
+       const acknowledged = saved.providers.find((item) => item.providerId === provider.providerId);
+       if (!acknowledged) throw new Error("Provider no longer exists");
+       return { provider: acknowledged, revision: saved.revision };
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index f098c67..7d995a6 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -2,7 +2,7 @@ import type { ModelConnectivityResult } from "@zcode/shared";
+ import {
+   getProviderFormApiKeyManagementUrl,
+   type ProviderSettingsFormProvider,
+-  type ProviderSettingsSaveReceipt,
++  type ProviderSettingsSaveHandler,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelProviderNavItem } from "./constants.js";
+ import { InlineEditableProviderCard } from "./InlineEditableProviderCard.js";
+@@ -26,7 +26,7 @@ export function ModelProviderSectionDetail({
+   onConnectConsumed,
+ }: {
+   selectedNavItem: ModelProviderNavItem | null;
+-  onSave: (config: ProviderSettingsFormProvider) => Promise<ProviderSettingsSaveReceipt>;
++  onSave: ProviderSettingsSaveHandler;
+   onAddPersonalModel?: (
+     providerId: string,
+     modelId: string,
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 04b679f..15b1d49 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -6,7 +6,7 @@ import {
+   getProviderFormApiKey,
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+-  type ProviderSettingsSaveReceipt,
++  type ProviderSettingsSaveHandler,
+   type ProviderSettingsFormModel,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+@@ -23,6 +23,7 @@ import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+ import {
+   resolvePendingProviderDraftSave,
+   resolveProviderProtocolSave,
++  readProviderDraftValues,
+   type ProviderDraftValues,
+ } from "./ProviderDraftSave.js";
+ import {
+@@ -40,6 +41,10 @@ import {
+   type CredentialRowEdit,
+ } from "./ProviderCredentialEdit.js";
+ import { useOptimisticReorder } from "./useOptimisticReorder.js";
++import {
++  isProviderSettingsWriteConflict,
++  providerSettingsWriteError,
++} from "@/lib/providerSettingsWriteError.js";
+ 
+ type ProviderNameEditKeyAction = "commit" | "cancel";
+ interface ProviderSaveNotificationTarget {
+@@ -123,7 +128,7 @@ export function InlineEditableProviderCard({
+   onConnectConsumed,
+ }: {
+   provider: ProviderSettingsFormProvider;
+-  onSave: (config: ProviderSettingsFormProvider) => Promise<ProviderSettingsSaveReceipt>;
++  onSave: ProviderSettingsSaveHandler;
+   onAddPersonalModel?: (
+     providerId: string,
+     modelId: string,
+@@ -198,7 +203,7 @@ export function InlineEditableProviderCard({
+       draftRevisionRef.current++;
+     };
+   }, []);
+-  const dirtyProviderFieldsRef = useRef(new Set<keyof ProviderDraftValues>());
++  const dirtyProviderFieldsRef = useRef(new Map<keyof ProviderDraftValues, number>());
+   const draftRevisionRef = useRef(0);
+   // 写入返回的是 Host 的已提交 View；在 React 发布新 props 前用它衔接下一次行操作。
+   const committedProviderRef = useRef(provider);
+@@ -262,20 +267,10 @@ export function InlineEditableProviderCard({
+     dismissFeedback,
+     showFeedback,
+   };
+-  const draftRef = useRef<ProviderDraftValues>({
+-    nameValue: getProviderFormLabel(provider),
+-    apiFormat: provider.config.api?.type ?? "anthropic-messages",
+-    baseUrlValue: provider.config.api?.baseUrl ?? "",
+-    apiKeyValue: getProviderFormApiKey(provider),
+-    additionalApiKeys,
+-    autoSwitchCredentials,
+-  });
++  const draftRef = useRef<ProviderDraftValues>(readProviderDraftValues(provider));
+ 
+   useEffect(() => {
+-    const resolvedApiFormat = provider.config.api?.type ?? "anthropic-messages";
+-    const resolvedBaseUrl = provider.config.api?.baseUrl ?? "";
+-    const resolvedApiKey = getProviderFormApiKey(provider);
+-    const resolvedLabel = getProviderFormLabel(provider);
++    const resolved = readProviderDraftValues(provider);
+     if (providerIdRef.current !== provider.providerId) {
+       providerIdRef.current = provider.providerId;
+       nameEditProviderIdRef.current = null;
+@@ -301,27 +296,21 @@ export function InlineEditableProviderCard({
+       draftRef.current[key] = value;
+       apply(value);
+     };
+-    syncField("nameValue", resolvedLabel, setNameValue);
+-    syncField("apiFormat", resolvedApiFormat, setApiFormat);
+-    syncField("baseUrlValue", resolvedBaseUrl, setBaseUrlValue);
+-    syncField("apiKeyValue", resolvedApiKey, setApiKeyValue);
+-    syncField(
+-      "additionalApiKeys",
+-      isApiKeyAccess(provider.config.access)
+-        ? [...(provider.config.access.additionalApiKeys ?? [])]
+-        : [],
+-      (value) => setAdditionalApiKeys(value ?? []),
++    syncField("nameValue", resolved.nameValue, setNameValue);
++    syncField("apiFormat", resolved.apiFormat, setApiFormat);
++    syncField("baseUrlValue", resolved.baseUrlValue, setBaseUrlValue);
++    syncField("apiKeyValue", resolved.apiKeyValue, setApiKeyValue);
++    syncField("additionalApiKeys", resolved.additionalApiKeys, (value) =>
++      setAdditionalApiKeys(value ?? []),
+     );
+-    syncField(
+-      "autoSwitchCredentials",
+-      isApiKeyAccess(provider.config.access) &&
+-        provider.config.access.autoSwitchCredentials === true,
+-      (value) => setAutoSwitchCredentials(value === true),
++    syncField("autoSwitchCredentials", resolved.autoSwitchCredentials, (value) =>
++      setAutoSwitchCredentials(value === true),
+     );
+   }, [provider]);
+ 
+   const markDraftDirty = useCallback((field: keyof ProviderDraftValues) => {
+-    dirtyProviderFieldsRef.current.add(field);
++    if (!dirtyProviderFieldsRef.current.has(field))
++      dirtyProviderFieldsRef.current.set(field, committedRevisionRef.current);
+     draftRevisionRef.current += 1;
+     saveNotificationRef.current.dismissFeedback(`provider-save:${providerIdRef.current}`);
+   }, []);
+@@ -389,12 +378,12 @@ export function InlineEditableProviderCard({
+               },
+               {
+                 ...messageValues,
+-                error: error instanceof Error ? error.message : String(error),
++                error: providerSettingsWriteError(error, notification),
+               },
+             ),
+             state: "failure",
+             durationMs: 8_000,
+-            ...(target.draftOwnsRetry
++            ...(target.draftOwnsRetry || isProviderSettingsWriteConflict(error)
+               ? {}
+               : {
+                   actionLabel: notification.formatMessage({ id: "common.retry" }),
+@@ -436,10 +425,13 @@ export function InlineEditableProviderCard({
+   );
+ 
+   const saveProviderDraft = useCallback(
+-    async (nextProvider: ProviderSettingsFormProvider, onFailure?: () => void): Promise<number> => {
++    async (
++      nextProvider: ProviderSettingsFormProvider,
++      basedOnRevision = committedRevisionRef.current,
++    ): Promise<number> => {
+       let savedRevision = -1;
+       const operation = async () => {
+-        const saved = await onSave(nextProvider);
++        const saved = await onSave(nextProvider, basedOnRevision);
+         savedRevision = saved.revision;
+         if (
+           mountedRef.current &&
+@@ -448,6 +440,16 @@ export function InlineEditableProviderCard({
+         ) {
+           committedRevisionRef.current = saved.revision;
+           committedProviderRef.current = saved.provider;
++          // Only our acknowledged write can advance an existing draft's base.
++          // Incoming views never rebase dirty input onto someone else's edit.
++          const submitted = readProviderDraftValues(nextProvider);
++          const acknowledged = readProviderDraftValues(saved.provider);
++          for (const [field, revision] of dirtyProviderFieldsRef.current)
++            if (
++              revision === basedOnRevision &&
++              JSON.stringify(submitted[field]) === JSON.stringify(acknowledged[field])
++            )
++              dirtyProviderFieldsRef.current.set(field, saved.revision);
+         }
+       };
+       await runSaveOperation(operation, { draftOwnsRetry: true }).catch((error) => {
+@@ -455,7 +457,6 @@ export function InlineEditableProviderCard({
+           providerId: provider.providerId,
+           error,
+         });
+-        onFailure?.();
+         throw error;
+       });
+       return savedRevision;
+@@ -478,6 +479,7 @@ export function InlineEditableProviderCard({
+     next: ProviderSettingsFormProvider | null,
+     row: number | "address" | "automatic",
+     apply: () => void,
++    basedOnRevision?: number,
+   ) => {
+     if (savingConnectionRef.current || pendingDraftSaveRef.current) return;
+     if (!next) {
+@@ -489,7 +491,7 @@ export function InlineEditableProviderCard({
+     setSavingConnection(true);
+     setSavingRow(row);
+     try {
+-      const revision = await saveProviderDraft(next);
++      const revision = await saveProviderDraft(next, basedOnRevision);
+       // 旧响应不能把旧行顺序投影到较新的 Host View 上，否则删除会对应错误的密钥。
+       if (
+         mountedRef.current &&
+@@ -514,10 +516,31 @@ export function InlineEditableProviderCard({
+       edit,
+     );
+     if (!result) return;
+-    void saveScopedConnection(result.provider, "index" in edit ? edit.index : "automatic", () => {
+-      applyKeyDraft(result.draftKeys, result.automatic);
+-      setApiKeyVisible(false);
+-    });
++    const credentialRevision = Math.min(
++      committedRevisionRef.current,
++      dirtyProviderFieldsRef.current.get("apiKeyValue") ?? committedRevisionRef.current,
++      dirtyProviderFieldsRef.current.get("additionalApiKeys") ?? committedRevisionRef.current,
++    );
++    void saveScopedConnection(
++      result.provider,
++      "index" in edit ? edit.index : "automatic",
++      () => {
++        applyKeyDraft(result.draftKeys, result.automatic);
++        const committed = configuredProviderKeys(committedProviderRef.current);
++        if ((result.draftKeys[0] ?? "") === (committed[0] ?? ""))
++          dirtyProviderFieldsRef.current.delete("apiKeyValue");
++        if (JSON.stringify(result.draftKeys.slice(1)) === JSON.stringify(committed.slice(1)))
++          dirtyProviderFieldsRef.current.delete("additionalApiKeys");
++        if (
++          isApiKeyAccess(committedProviderRef.current.config.access) &&
++          result.automatic ===
++            (committedProviderRef.current.config.access.autoSwitchCredentials === true)
++        )
++          dirtyProviderFieldsRef.current.delete("autoSwitchCredentials");
++        setApiKeyVisible(false);
++      },
++      credentialRevision,
++    );
+   };
+ 
+   const saveAddress = () => {
+@@ -539,12 +562,17 @@ export function InlineEditableProviderCard({
+       },
+       now: Date.now,
+     });
+-    void saveScopedConnection(next, "address", () => {
+-      const savedUrl = (next ?? current).config.api?.baseUrl ?? "";
+-      draftRef.current.baseUrlValue = savedUrl;
+-      setBaseUrlValue(savedUrl);
+-      dirtyProviderFieldsRef.current.delete("baseUrlValue");
+-    });
++    void saveScopedConnection(
++      next,
++      "address",
++      () => {
++        const savedUrl = (next ?? current).config.api?.baseUrl ?? "";
++        draftRef.current.baseUrlValue = savedUrl;
++        setBaseUrlValue(savedUrl);
++        dirtyProviderFieldsRef.current.delete("baseUrlValue");
++      },
++      dirtyProviderFieldsRef.current.get("baseUrlValue"),
++    );
+   };
+ 
+   const handleProviderEnabledChange = async (enabled: boolean) => {
+@@ -595,11 +623,17 @@ export function InlineEditableProviderCard({
+     const trimmed = draftRef.current.nameValue.trim();
+     const currentLabel = getProviderFormLabel(provider);
+     if (trimmed && trimmed !== currentLabel) {
+-      void saveProviderDraft({
+-        ...committedProviderRef.current,
+-        providerName: trimmed,
+-        providerNameUpdate: trimmed,
+-      }).catch(() => undefined);
++      void saveProviderDraft(
++        {
++          ...committedProviderRef.current,
++          providerName: trimmed,
++          providerNameUpdate: trimmed,
++        },
++        dirtyProviderFieldsRef.current.get("nameValue"),
++      ).then(
++        () => dirtyProviderFieldsRef.current.delete("nameValue"),
++        () => undefined,
++      );
+     } else {
+       draftRef.current.nameValue = currentLabel;
+       setNameValue(currentLabel);
+@@ -656,7 +690,7 @@ export function InlineEditableProviderCard({
+       const previous = {
+         apiFormat: draftRef.current.apiFormat,
+         baseUrlValue: draftRef.current.baseUrlValue,
+-        dirty: new Set(dirtyProviderFieldsRef.current),
++        dirty: new Map(dirtyProviderFieldsRef.current),
+       };
+       const nextUrl = next.config.api?.baseUrl ?? "";
+       markDraftDirty("apiFormat");
+@@ -669,7 +703,7 @@ export function InlineEditableProviderCard({
+       savingConnectionRef.current = true;
+       setSavingConnection(true);
+       // 恢复原版的点击即保存，但只提交协议/地址，保留其他字段尚未完成的草稿。
+-      const pending = saveProviderDraft(next);
++      const pending = saveProviderDraft(next, dirtyProviderFieldsRef.current.get("baseUrlValue"));
+       pendingDraftSaveRef.current = pending;
+       try {
+         const revision = await pending;
+@@ -687,7 +721,8 @@ export function InlineEditableProviderCard({
+         draftRef.current.apiFormat = previous.apiFormat;
+         draftRef.current.baseUrlValue = previous.baseUrlValue;
+         for (const field of ["apiFormat", "baseUrlValue"] as const) {
+-          if (previous.dirty.has(field)) dirtyProviderFieldsRef.current.add(field);
++          if (previous.dirty.has(field))
++            dirtyProviderFieldsRef.current.set(field, previous.dirty.get(field)!);
+           else dirtyProviderFieldsRef.current.delete(field);
+         }
+         setApiFormat(previous.apiFormat);
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+index 34f6f6e..3b4d42c 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftSave.ts
+@@ -1,6 +1,7 @@
+ import { isApiKeyAccess, selectProviderProtocolRoute, type ProviderApiType } from "@zcode/provider";
+ import { isValidProviderBaseUrl } from "./providerSetupDraft.js";
+ import {
++  getProviderFormApiKey,
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
+ } from "../../lib/providerSettingsFormTypes.js";
+@@ -14,6 +15,20 @@ export interface ProviderDraftValues {
+   autoSwitchCredentials?: boolean;
+ }
+ 
++export function readProviderDraftValues(
++  provider: ProviderSettingsFormProvider,
++): ProviderDraftValues {
++  const access = isApiKeyAccess(provider.config.access) ? provider.config.access : undefined;
++  return {
++    nameValue: getProviderFormLabel(provider),
++    apiFormat: provider.config.api?.type ?? "anthropic-messages",
++    baseUrlValue: provider.config.api?.baseUrl ?? "",
++    apiKeyValue: getProviderFormApiKey(provider),
++    additionalApiKeys: [...(access?.additionalApiKeys ?? [])],
++    autoSwitchCredentials: access?.autoSwitchCredentials === true,
++  };
++}
++
+ /** 格式点击只保存协议和地址，不能夹带未完成的密钥、名称或开关草稿。 */
+ export function resolveProviderProtocolSave({
+   provider,
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 736b583..5e8bfee 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -15,6 +15,7 @@ import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
+ import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provider";
+ import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
+ import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
++import { providerSettingsWriteError } from "@/lib/providerSettingsWriteError.js";
+ 
+ export function ModelRowInput({
+   model,
+@@ -149,7 +150,7 @@ export function ModelRowInput({
+       setMetadataDialogOpen(false);
+       return true;
+     } catch (error) {
+-      setCommitErrorMessage(error instanceof Error ? error.message : String(error));
++      setCommitErrorMessage(providerSettingsWriteError(error, intl));
+       return false;
+     } finally {
+       metadataSavingRef.current = false;
+@@ -352,9 +353,7 @@ export function ModelRowInput({
+             setCommitErrorMessage(null);
+             void editor
+               .restore()
+-              .catch((error) =>
+-                setCommitErrorMessage(error instanceof Error ? error.message : String(error)),
+-              );
++              .catch((error) => setCommitErrorMessage(providerSettingsWriteError(error, intl)));
+           }}
+           mode="edit"
+           open={metadataDialogOpen}
+diff --git a/packages/ui/test/providerDrafts.browser.tsx b/packages/ui/test/providerDrafts.browser.tsx
+new file mode 100644
+index 0000000..e675531
+--- /dev/null
++++ b/packages/ui/test/providerDrafts.browser.tsx
+@@ -0,0 +1,378 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { InlineEditableProviderCard } from "../src/settings/model-provider-section/InlineEditableProviderCard.js";
++import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
++import type { SavePersonalModelDraftInput } from "@zcode/provider";
++import type {
++  ProviderSettingsFormProvider,
++  ProviderSettingsSaveReceipt,
++} from "../src/lib/providerSettingsFormTypes.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++function provider(
++  id = "A",
++  url = "https://fixture.invalid/v1",
++  key = "synthetic-original",
++): ProviderSettingsFormProvider {
++  const config = {
++    group: "standard-personal" as const,
++    api: { type: "openai-chat-completions" as const, baseUrl: url },
++    access: { type: "api-key" as const, apiKey: key },
++  };
++  return {
++    providerId: id,
++    providerName: id,
++    enabled: true,
++    executable: true,
++    hasPersonalConfig: true,
++    personalConfig: config,
++    config,
++    models: [],
++  };
++}
++
++async function fixture(locale: "zh-CN" | "en-US" = "en-US") {
++  const container = document.createElement("div");
++  document.body.append(container);
++  const root = createRoot(container);
++  const writes: Array<{
++    provider: ProviderSettingsFormProvider;
++    revision?: number;
++    result: ReturnType<typeof Promise.withResolvers<ProviderSettingsSaveReceipt>>;
++  }> = [];
++  const modelWrites: Array<{
++    input: SavePersonalModelDraftInput;
++    result: ReturnType<typeof Promise.withResolvers<void>>;
++  }> = [];
++  let currentModel: ProviderSettingsFormProvider["models"][number] | undefined;
++  const services = {
++    providerSettingsService: {
++      async discoverModels() {
++        return { models: [], warnings: [] };
++      },
++      async resolveModelConfig() {
++        return {
++          inheritedConfig: currentModel?.config ?? {},
++          effectiveConfig: currentModel?.config ?? {},
++          evidenceConfig: currentModel?.config ?? {},
++          issues: [],
++        };
++      },
++    },
++  };
++  return {
++    container,
++    writes,
++    modelWrites,
++    conflictText: locale === "zh-CN" ? "设置已变更" : "Settings changed",
++    async render(value: ProviderSettingsFormProvider, revision: number) {
++      currentModel = value.models[0];
++      await act(async () => {
++        root.render(
++          <ServiceProvider services={services as never}>
++            <ZCodeIntlProvider initialLocale={locale}>
++              <TooltipProvider>
++                <ProviderDetailFeedbackBoundary>
++                  <InlineEditableProviderCard
++                    provider={value}
++                    settingsRevision={revision}
++                    nameEditable
++                    onSavePersonalModelDraft={(input) => {
++                      const result = Promise.withResolvers<void>();
++                      modelWrites.push({ input, result });
++                      return result.promise;
++                    }}
++                    onSave={(next, basedOnRevision) => {
++                      const result = Promise.withResolvers<ProviderSettingsSaveReceipt>();
++                      writes.push({ provider: next, revision: basedOnRevision, result });
++                      return result.promise;
++                    }}
++                  />
++                </ProviderDetailFeedbackBoundary>
++              </TooltipProvider>
++            </ZCodeIntlProvider>
++          </ServiceProvider>,
++        );
++      });
++    },
++    input(selector: string) {
++      const input = container.querySelector<HTMLInputElement>(selector);
++      check(input, `Missing input: ${selector}`);
++      return input;
++    },
++    async type(input: HTMLInputElement, value: string) {
++      await act(async () => {
++        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++          input,
++          value,
++        );
++        input.dispatchEvent(new Event("input", { bubbles: true }));
++      });
++    },
++    async key(input: HTMLInputElement, key: string) {
++      await act(async () => {
++        input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
++      });
++    },
++    async settle(index: number, value: ProviderSettingsSaveReceipt | Error) {
++      await act(async () => {
++        if (value instanceof Error) writes[index]!.result.reject(value);
++        else writes[index]!.result.resolve(value);
++      });
++    },
++    async close() {
++      await act(async () => {
++        root.unmount();
++      });
++      container.remove();
++    },
++    async failModel(index: number) {
++      await act(async () => {
++        modelWrites[index]!.result.reject(
++          new Error("Provider Settings revision conflict: expected 40, current 41"),
++        );
++      });
++    },
++  };
++}
++
++async function run() {
++  const cases: Record<string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>> = {
++    "dirty endpoint keeps its original revision after a concurrent view; Esc restores the latest and permits a fresh save":
++      async (f) => {
++        await f.render(provider(), 4);
++        const input = f.input('input[value="https://fixture.invalid/v1"]');
++        await f.type(input, "https://typed.invalid/v1");
++        await f.render(provider("A", "https://external.invalid/v1"), 5);
++        check(input.value === "https://typed.invalid/v1", "external view erased the draft");
++        await f.key(input, "Enter");
++        check(
++          f.writes.length === 1 && f.writes[0]!.revision === 4,
++          "dirty endpoint silently rebased",
++        );
++        await f.settle(0, new Error("Provider Settings revision conflict: expected 4, current 5"));
++        check(input.value === "https://typed.invalid/v1", "conflict discarded the draft");
++        check(
++          f.container.textContent?.includes(f.conflictText),
++          "conflict did not use localized feedback",
++        );
++        await f.key(input, "Escape");
++        check(input.value === "https://external.invalid/v1", "Esc did not restore latest state");
++        await f.type(input, "https://accepted.invalid/v1");
++        await f.key(input, "Enter");
++        check(f.writes[1]!.revision === 5, "new edit kept obsolete revision");
++        await f.settle(1, { provider: f.writes[1]!.provider, revision: 6 });
++      },
++    "dirty API key cannot overwrite a concurrent key; Enter and Esc retain the original key interaction":
++      async (f) => {
++        await f.render(provider(), 10);
++        const input = f.input('input[type="password"]');
++        await f.type(input, "synthetic-typed");
++        await f.render(provider("A", "https://fixture.invalid/v1", "synthetic-external"), 11);
++        await f.key(input, "Enter");
++        check(f.writes[0]!.revision === 10, "key silently rebased onto a concurrent key");
++        await f.settle(
++          0,
++          new Error("Provider Settings revision conflict: expected 10, current 11"),
++        );
++        check(input.value === "synthetic-typed", "key conflict discarded input");
++        await f.key(input, "Escape");
++        check(input.value === "synthetic-external", "Esc did not restore current key");
++        check(f.writes.length === 1, "Esc sent a credential write");
++        await f.type(input, "synthetic-fresh");
++        await f.key(input, "Enter");
++        check(f.writes[1]!.revision === 11, "fresh key still used old revision");
++        await f.settle(1, { provider: f.writes[1]!.provider, revision: 12 });
++      },
++    "commit receipt supplies the next revision before React publishes a new provider view": async (
++      f,
++    ) => {
++      await f.render(provider(), 20);
++      const input = f.input('input[value="https://fixture.invalid/v1"]');
++      await f.type(input, "https://first.invalid/v1");
++      await f.key(input, "Enter");
++      await f.settle(0, { provider: f.writes[0]!.provider, revision: 21 });
++      await f.type(input, "https://second.invalid/v1");
++      await f.key(input, "Enter");
++      check(f.writes[1]!.revision === 21, "second write used stale rendered revision");
++      await f.settle(1, { provider: f.writes[1]!.provider, revision: 22 });
++    },
++    "reverting one key preserves the other dirty key's original revision": async (f) => {
++      const original = provider();
++      original.config.access = {
++        type: "api-key",
++        apiKey: "synthetic-original",
++        additionalApiKeys: ["synthetic-second"],
++      };
++      original.personalConfig = structuredClone(original.config);
++      await f.render(original, 24);
++      const inputs = [...f.container.querySelectorAll<HTMLInputElement>('input[type="password"]')];
++      await f.type(inputs[0]!, "synthetic-draft-first");
++      await f.type(inputs[1]!, "synthetic-draft-second");
++      const incoming = structuredClone(original);
++      incoming.config.access = {
++        type: "api-key",
++        apiKey: "synthetic-external",
++        additionalApiKeys: ["synthetic-external-second"],
++      };
++      incoming.personalConfig = structuredClone(incoming.config);
++      await f.render(incoming, 25);
++      await f.key(inputs[0]!, "Escape");
++      check(inputs[0]!.value === "synthetic-external", "first key did not revert");
++      check(inputs[1]!.value === "synthetic-draft-second", "revert erased another dirty row");
++      await f.key(inputs[1]!, "Enter");
++      check(f.writes[0]!.revision === 24, "partial revert rebased another dirty key");
++      await f.settle(0, new Error("Provider Settings revision conflict: expected 24, current 25"));
++    },
++    "our own acknowledged row save advances remaining drafts without requiring a new render":
++      async (f) => {
++        const original = provider();
++        original.config.access = {
++          type: "api-key",
++          apiKey: "synthetic-original",
++          additionalApiKeys: ["synthetic-second"],
++        };
++        original.personalConfig = structuredClone(original.config);
++        await f.render(original, 26);
++        const inputs = [
++          ...f.container.querySelectorAll<HTMLInputElement>('input[type="password"]'),
++        ];
++        await f.type(inputs[0]!, "synthetic-draft-first");
++        await f.type(inputs[1]!, "synthetic-draft-second");
++        await f.key(inputs[0]!, "Enter");
++        await f.settle(0, { provider: f.writes[0]!.provider, revision: 27 });
++        check(inputs[1]!.value === "synthetic-draft-second", "save erased remaining key draft");
++        await f.key(inputs[1]!, "Enter");
++        check(f.writes[1]!.revision === 27, "own receipt did not advance remaining draft");
++        await f.settle(1, { provider: f.writes[1]!.provider, revision: 28 });
++      },
++    "switching provider rejects old presentation results and binds the next input to the new target":
++      async (f) => {
++        await f.render(provider(), 30);
++        const input = f.input('input[value="https://fixture.invalid/v1"]');
++        await f.type(input, "https://late-A.invalid/v1");
++        await f.key(input, "Enter");
++        await f.render(provider("B", "https://B.invalid/v1"), 31);
++        await f.settle(0, { provider: f.writes[0]!.provider, revision: 32 });
++        check(input.value === "https://B.invalid/v1", "late A result replaced B's input");
++        await f.type(input, "https://accepted-B.invalid/v1");
++        await f.key(input, "Enter");
++        check(
++          f.writes[1]!.provider.providerId === "B" && f.writes[1]!.revision === 31,
++          "write lost target identity",
++        );
++        await f.settle(1, { provider: f.writes[1]!.provider, revision: 33 });
++      },
++  };
++  cases[
++    "model editor keeps its opening revision and localizes a conflict without losing its draft"
++  ] = async (f) => {
++    const original = provider();
++    const config = {
++      enabled: true,
++      properties: {
++        contextWindow: 128_000,
++        supportsToolCall: true,
++        inputFormat: {
++          supportsText: true,
++          supportsImage: false,
++          supportsVideo: false,
++          supportsAudio: false,
++          supportsPdf: false,
++        },
++        outputFormat: { supportsText: true },
++      },
++      optionSpecs: {
++        maxOutputTokens: { max: 8192, map: "{}" },
++        reasoningLevel: { values: ["off"], map: "{}" },
++      },
++    };
++    original.models = [
++      {
++        kind: "candidate",
++        modelId: "fixture-model",
++        builtin: false,
++        config,
++        inheritedConfig: config,
++        evidenceConfig: config,
++        personalConfig: {},
++        hasPersonalConfig: false,
++        executable: true,
++        selectable: true,
++      },
++    ];
++    await f.render(original, 40);
++    const edit = f.container.querySelector<HTMLButtonElement>(
++      'button[aria-label="编辑模型配置"],button[aria-label="Edit model settings"]',
++    );
++    check(edit, "model editor is unavailable");
++    await act(async () => {
++      edit.click();
++    });
++    const input = document.querySelector<HTMLInputElement>(
++      '[role="dialog"] input[inputmode="numeric"]',
++    );
++    check(input, "context window input is unavailable");
++    await f.type(input, "200000");
++    await f.render(structuredClone(original), 41);
++    const save = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
++      (button) => button.textContent === "保存" || button.textContent === "Save",
++    );
++    check(save, "save action is unavailable");
++    await act(async () => {
++      save.click();
++    });
++    check(f.modelWrites[0]?.input.basedOnRevision === 40, "model draft silently rebased");
++    await f.failModel(0);
++    check(
++      document.querySelector('[role="dialog"]')?.textContent?.includes(f.conflictText),
++      "dialog displayed the raw conflict",
++    );
++    check(input.value === "200000", "conflict erased the model draft");
++  };
++  cases["a receipt containing a later external edit cannot rebase an unrelated dirty field"] =
++    async (f) => {
++      await f.render(provider(), 50);
++      const address = f.input('input[value="https://fixture.invalid/v1"]');
++      const key = f.input('input[type="password"]');
++      await f.type(address, "https://typed.invalid/v1");
++      await f.type(key, "synthetic-new-key");
++      await f.key(key, "Enter");
++      const receipt = structuredClone(f.writes[0]!.provider);
++      receipt.config.api!.baseUrl = "https://external.invalid/v1";
++      receipt.personalConfig.api!.baseUrl = "https://external.invalid/v1";
++      await f.settle(0, { provider: receipt, revision: 52 });
++      check(address.value === "https://typed.invalid/v1", "receipt erased the address draft");
++      await f.key(address, "Enter");
++      check(f.writes[1]!.revision === 50, "receipt rebased an external edit");
++      await f.settle(1, new Error("Provider Settings revision conflict: expected 50, current 52"));
++    };
++  const results: Array<{ name: string; error?: string }> = [];
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    for (const [name, execute] of Object.entries(cases)) {
++      const f = await fixture(locale);
++      try {
++        await execute(f);
++        results.push({ name: `${locale}: ${name}` });
++      } catch (error) {
++        results.push({
++          name: `${locale}: ${name}`,
++          error: error instanceof Error ? error.stack : String(error),
++        });
++      } finally {
++        await f.close();
++      }
++    }
++  }
++  return results;
++}
++(window as unknown as { __providerDraftTests: ReturnType<typeof run> }).__providerDraftTests =
++  run();
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 3195144..a2cb00d 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -10,15 +10,19 @@ const { build } = createRequire(new URL("../apps/zcode-cli/package.json", import
+   "esbuild",
+ );
+ const root = resolve(import.meta.dirname, "..");
++const entry = process.argv[2] ?? "packages/ui/test/usageHooks.browser.tsx";
++const resultKey = process.argv[3] ?? "__usageHookTests";
++if (!/^__[a-zA-Z0-9]+$/.test(resultKey)) throw new Error("Invalid renderer result key");
+ const profile = await mkdtemp(join(tmpdir(), "fleet-usage-hooks-"));
+ try {
+   await build({
+-    entryPoints: [join(root, "packages/ui/test/usageHooks.browser.tsx")],
++    entryPoints: [join(root, entry)],
+     outfile: join(profile, "test.js"),
+     bundle: true,
+     platform: "browser",
+     format: "esm",
+     tsconfig: join(root, "packages/ui/tsconfig.json"),
++    loader: { ".svg": "dataurl", ".png": "dataurl" },
+     define: { "process.env.NODE_ENV": '"development"' },
+   });
+   await writeFile(join(profile, "index.html"), '<script type="module" src="./test.js"></script>');
+@@ -31,12 +35,12 @@ app.whenReady().then(async () => {
+   session.defaultSession.webRequest.onBeforeRequest({urls:["http://*/*","https://*/*"]}, (_r, cb) => cb({cancel:true}));
+   const window = new BrowserWindow({show:false, webPreferences:{sandbox:true, contextIsolation:true}});
+   await window.loadFile(${JSON.stringify(join(profile, "index.html"))});
+-  const results = await window.webContents.executeJavaScript("window.__usageHookTests");
++  const results = await window.webContents.executeJavaScript("window." + ${JSON.stringify(resultKey)});
+   if (!Array.isArray(results)) throw new Error("Renderer test bundle did not execute");
+   results.forEach(r => console.log((r.error ? "FAIL " : "PASS ") + r.name + (r.error ? ": " + r.error : "")));
+   app.exit(results.some(r => r.error) ? 1 : 0);
+ }).catch(error => {console.error(error);app.exit(1)});
+-setTimeout(() => {console.error("Usage hook tests timed out");app.exit(1)}, 20000);
++setTimeout(() => {console.error("Renderer tests timed out");app.exit(1)}, 20000);
+ `,
+   );
+   const env = { ...process.env };

@@ -1,0 +1,3223 @@
+diff --git a/apps/zcode-cli/docs/automatic-model-selection.md b/apps/zcode-cli/docs/automatic-model-selection.md
+new file mode 100644
+index 0000000..7ae0d42
+--- /dev/null
++++ b/apps/zcode-cli/docs/automatic-model-selection.md
+@@ -0,0 +1,51 @@
++# Automatic model selection lifecycle
++
++Product contract: [typed decisions](../../../../../docs/modules/model-decisions.md).
++
++The existing Provider owner selects the optional decision model. AgentRuntime owns automatic
++first-message decision admission, cancellation, durable receipts and usage through its existing
++artifact and Session stores. No new store, permission mode or default policy is introduced.
++
++The sequencing comparison is Craft `332533f3096d12500012fe089c3f155e32af1c44`
++`packages/server-core/src/decisions/decision-point.ts`: a shared deadline, cancellation and
++request/outcome seam. Fleet retains its existing receipt and usage owners rather than copying
++Craft’s separate decision log.
++
++Only an interactive conversation (including the runtime’s undefined task type default) may route
++a first input explicitly marked `allowAutomaticModelSelection: true`. The marker is frozen in the
++existing submission intent; manual same-model picks, missing legacy markers, page assistants and
++all child/workflow/fork task types retain the offered model. Admission, queue/guide, transcript,
++live/cold projection and canonical edit/retry preserve both true and false without guessing.
++
++An automatic consumer supplies a required Host classification callback: policy/question selection
++does not dispatch inference itself. The Host binds the excerpt, writes a durable unknown intent,
++admits one request with the active turn Stop signal and trace, records observed usage, then saves
++the result. Operation identity binds Session and submission input identity (or an exact input and
++offered-selection digest when an input identity is unavailable; this is a conservative optional-routing fence, not proof of distinct manual submissions). A retained unknown or completed
++intent fences another dispatch after interruption/restart. A fenced retry keeps the offered model,
++not a cached previous tier; original submission intent and resolved Session choice are distinct.
++No missing storage path runs inference.
++
++Only an interactive task's automatically initialized Composer choice may set
++`allowAutomaticModelSelection: true`. The existing command/intent owners freeze and retain this
++marker through admission, queue/Guide, messages, events and cold projection. A manual pick of the
++same standard model or its parameters clears it; Project recent choices and unmarked legacy drafts
++remain fixed. Page/child/fork/side task types and execution-scoped turns cannot consume this path.
++
++A first prompt exceeding 6000 characters is incomplete for this consumer and abstains without
++sending a truncated excerpt.
++
++Stop is checked before and after the optional operation and before applying a replacement model.
++The consumer revalidates policy, tiers and target availability after the answer; withdrawal retains
++the offered model. Billed usage remains observable when post-response validation/publication fails.
++A failed usage-ledger write retains the frozen original receipt through the existing
++`runtime/pending_model_usage` SessionEntry seam. Turn settlement and cold resume reconcile the
++same ledger ID, including a committed write whose acknowledgement was lost; inference never replays.
++The main model context/account meter remains owned by the main request, separate from decision cost.
++Provider-keyed active account bindings remain intact. A cross-provider routed intent never copies
++the offered provider's account ID; the existing request-auth owner binds the target. Guide
++availability follows the final executor, not the initially offered model.
++
++Acceptance: isolated real SQLite/artifact restart tests prove one submission, usage and unknown
++fencing, failed usage writes and committed acknowledgement loss; delayed fixture answers prove Stop and policy/tier withdrawal; response fixtures prove
++observed usage survives observer/refresh failure. No hosted inference or visual acceptance is claimed.
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index ffbbc68..d59c342 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -222,6 +222,22 @@ error or missing-usage row supersedes older counters with identity/time only. Th
+ and retention remain unchanged. The same query supplies cumulative raw main-turn counters from retained records, independent of context capacity, excluding sidecars and without the old statistics input-baseline subtraction. The label is recorded requests total, not an all-time invoice. Repeated or late seeds cannot overwrite a live main request. Optional/unavailable UsageStore support leaves the detail absent,
+ and a delayed restore seed cannot replace any newer live main-request report.
+ 
++## Decision configuration through existing connections
++
++The decision role stays in Model settings → Default models, using the existing Personal writer
++and eligible classifier/chat/native connections. Its selector links directly to the chosen
++connection's original settings, or the existing Add provider entry when no connection is selected.
++The local Help identifies the two implemented consumers (on-demand judgment and automatic
++first-turn selection), cost/privacy and failure behavior; unimplemented Craft features get no switches.
++
++Dedicated sources are named TypeSafe Jev and Laya (local service), not anonymous decision-model
++products. The original Provider writer owns their URL and credentials. A System One loopback URL
++may save without a key, matching the existing backend schema; remote URLs and other protocols
++retain the key requirement. The form marks that exact optional state and recomputes it on URL
++changes. Saving a local connection does not install weights, start a server or prove availability.
++Craft's provider/settings/resolve/health/decision-point source is the comparison; Fleet does not
++copy its separate credential namespace or decision log.
++
+ ## Final Host request budget (K-07)
+ 
+ The Host assembles MCP/discovered declarations and their Skill/context guidance before automatic
+diff --git a/apps/zcode-cli/packages/adapters/src/model/decision-automatic.ts b/apps/zcode-cli/packages/adapters/src/model/decision-automatic.ts
+new file mode 100644
+index 0000000..7dd8eea
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/decision-automatic.ts
+@@ -0,0 +1,66 @@
++import type { DecisionModelPort } from "@zcode/contracts";
++import type { ProviderRegistryServiceSnapshot } from "@zcode/provider";
++import { decisionInputSchema, type DecisionInput, type DecisionModelRef } from "@zcode/shared";
++import { AUTOMATIC_TIER_QUESTION } from "./decision-chat.js";
++
++type AutomaticModel = NonNullable<DecisionModelPort["automaticModel"]>;
++
++/** Policy only: the required callback dispatches through the existing Host owners. */
++export async function routeAutomaticDecision(
++  value: Parameters<AutomaticModel>[0],
++  signal: Parameters<AutomaticModel>[1],
++  execute: Parameters<AutomaticModel>[2],
++  input: {
++    getSnapshot(): ProviderRegistryServiceSnapshot | null;
++    refresh(signal: AbortSignal): Promise<unknown>;
++    isAvailable(): boolean;
++  },
++): ReturnType<AutomaticModel> {
++  const snapshot = input.getSnapshot();
++  const tiers = snapshot?.config.decisionModelSettings?.automaticTiers;
++  const standard = tiers?.standard;
++  const same = (ref?: DecisionModelRef) =>
++    ref?.providerId === value.current.providerId && ref?.modelId === value.current.modelId;
++  if (snapshot?.config.newConversationModelPolicy !== "automatic" || !standard || !same(standard))
++    return {};
++  const executable = (ref?: DecisionModelRef) =>
++    Boolean(
++      ref &&
++      (input.getSnapshot()?.resolution.resolvedProviders ?? [])
++        .find((provider) => provider.providerId === ref.providerId)
++        ?.models.find((model) => model.modelId === ref.modelId)?.executable,
++    );
++  if (value.prompt.length > 6000) return { tier: "standard", reason: "evidence-incomplete" };
++  let request: DecisionInput;
++  try {
++    request = decisionInputSchema.parse({
++      state: value.prompt,
++      questions: AUTOMATIC_TIER_QUESTION,
++    });
++  } catch {
++    return {};
++  }
++  if (!input.isAvailable()) return { tier: "standard", reason: "decision-unavailable" };
++  const result = await execute(request);
++  signal.throwIfAborted();
++  await input.refresh(signal);
++  signal.throwIfAborted();
++  const latest = input.getSnapshot();
++  // 策略或档位撤回后，不使用请求开始时捕获的旧选择。
++  if (
++    latest?.config.newConversationModelPolicy !== "automatic" ||
++    JSON.stringify(latest.config.decisionModelSettings?.automaticTiers) !== JSON.stringify(tiers) ||
++    !latest.config.decisionModelSettings?.enabled
++  )
++    return { tier: "standard", reason: "policy-changed" };
++  const choice = (result.answers.tier as { choice?: string } | undefined)?.choice;
++  if (result.status !== "completed" || (choice !== "fast" && choice !== "deep"))
++    return {
++      tier: "standard",
++      reason: result.status === "completed" ? "decision" : "decision-unavailable",
++    };
++  const target = tiers[choice];
++  return executable(target)
++    ? { selection: { ...target! }, tier: choice, reason: "decision" }
++    : { tier: "standard", reason: "tier-unavailable" };
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/model/decision-model.ts b/apps/zcode-cli/packages/adapters/src/model/decision-model.ts
+index 622a418..85ff0d9 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/decision-model.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/decision-model.ts
+@@ -1,3 +1,5 @@
++import { observedTokenCount as count, reportedFacts } from "./decision-observed-facts.js";
++import { routeAutomaticDecision } from "./decision-automatic.js";
+ import { createHash, randomUUID } from "node:crypto";
+ import { classify } from "@earendil-works/pi-ai/api/typesafe-system-one";
+ import type { ClassifierContext, ClassifierModel } from "@earendil-works/pi-ai";
+@@ -7,8 +9,8 @@ import {
+   isLocalClassifierEndpoint,
+   type ProviderRegistryServiceSnapshot,
+ } from "@zcode/provider";
+-import { decisionInputSchema, type DecisionInput, type DecisionModelRef } from "@zcode/shared";
+-import { AUTOMATIC_TIER_QUESTION, chatDecisionMessages, parseChatDecisionAnswers } from "./decision-chat.js";
++import { decisionInputSchema, type DecisionModelRef } from "@zcode/shared";
++import { chatDecisionMessages, parseChatDecisionAnswers } from "./decision-chat.js";
+ import {
+   createRootTraceContext,
+   createModelId,
+@@ -21,35 +23,6 @@ import {
+ } from "@zcode/contracts";
+ 
+ const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+-const count = (value: unknown) =>
+-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+-
+-function reportedFacts(wire?: Record<string, any>) {
+-  const usage =
+-    wire?.usage && typeof wire.usage === "object"
+-      ? {
+-          ...(count(wire.usage.input_tokens) === undefined
+-            ? {}
+-            : { inputTokens: count(wire.usage.input_tokens) }),
+-          ...(count(wire.usage.output_tokens) === undefined
+-            ? {}
+-            : { outputTokens: count(wire.usage.output_tokens) }),
+-        }
+-      : undefined;
+-  const model =
+-    typeof wire?.model === "string" && wire.model.length <= 256 ? wire.model : undefined;
+-  const cost =
+-    typeof wire?.usage?.cost === "number" &&
+-    Number.isFinite(wire.usage.cost) &&
+-    wire.usage.cost >= 0
+-      ? wire.usage.cost
+-      : undefined;
+-  return {
+-    ...(usage && Object.keys(usage).length ? { usage } : {}),
+-    ...(model ? { reportedModelId: model } : {}),
+-    ...(cost === undefined ? {} : { reportedCostUsd: cost }),
+-  };
+-}
+ 
+ export function createDecisionModelPort(input: {
+   registry: {
+@@ -82,7 +55,12 @@ export function createDecisionModelPort(input: {
+         selected,
+         member,
+         billingProvider: provider.providerId,
+-        fingerprint: digest([settings.selection, provider.config.access, entry?.config.toJSON(), entry?.evidenceConfig.toJSON()]),
++        fingerprint: digest([
++          settings.selection,
++          provider.config.access,
++          entry?.config.toJSON(),
++          entry?.evidenceConfig.toJSON(),
++        ]),
+       };
+     }
+     const api = provider.config.api!;
+@@ -144,16 +122,18 @@ export function createDecisionModelPort(input: {
+     return resolve();
+   };
+ 
++  const isAvailable = () => {
++    try {
++      resolve();
++      return true;
++    } catch {
++      return false;
++    }
++  };
++
+   return {
+     listModels: () => decisionModelCandidates(input.registry.getSnapshot()),
+-    isAvailable() {
+-      try {
+-        resolve();
+-        return true;
+-      } catch {
+-        return false;
+-      }
+-    },
++    isAvailable,
+     async prepare(value, callerSignal) {
+       const request = decisionInputSchema.parse(value);
+       const signal = AbortSignal.any([
+@@ -173,40 +153,12 @@ export function createDecisionModelPort(input: {
+       });
+       return { binding, model: { ...current.selected }, inputDigest };
+     },
+-    /**
+-     * Automatic choice for a new conversation: only when the policy is automatic, tiers are set and
+-     * the conversation is still on the standard tier the picker offered (a manual choice wins).
+-     */
+-    async automaticModel(value, signal) {
+-      const snapshot = input.registry.getSnapshot();
+-      const tiers = snapshot?.config.decisionModelSettings?.automaticTiers;
+-      const standard = tiers?.standard;
+-      const same = (ref?: DecisionModelRef) =>
+-        ref?.providerId === value.current.providerId && ref?.modelId === value.current.modelId;
+-      if (snapshot?.config.newConversationModelPolicy !== "automatic" || !standard || !same(standard))
+-        return {};
+-      const executable = (ref?: DecisionModelRef) =>
+-        Boolean(
+-          ref &&
+-            snapshot.resolution.resolvedProviders
+-              .find((provider) => provider.providerId === ref.providerId)
+-              ?.models.find((model) => model.modelId === ref.modelId)?.executable,
+-        );
+-      let request: DecisionInput;
+-      try {
+-        request = decisionInputSchema.parse({ state: value.prompt.slice(0, 6000), questions: AUTOMATIC_TIER_QUESTION });
+-      } catch {
+-        return {};
+-      }
+-      if (!this.isAvailable()) return { tier: "standard", reason: "decision-unavailable" };
+-      const prepared = await this.prepare(request, signal);
+-      const result = await this.classify({ ...request, binding: prepared.binding, signal: signal ?? AbortSignal.timeout(10000) });
+-      const choice = (result.answers.tier as { choice?: string } | undefined)?.choice;
+-      if (result.status !== "completed" || (choice !== "fast" && choice !== "deep"))
+-        return { tier: "standard", reason: result.status === "completed" ? "decision" : "decision-unavailable" };
+-      const target = tiers[choice];
+-      return executable(target) ? { selection: { ...target! }, tier: choice, reason: "decision" } : { tier: "standard", reason: "tier-unavailable" };
+-    },
++    automaticModel: (value, signal, execute) =>
++      routeAutomaticDecision(value, signal, execute, {
++        getSnapshot: () => input.registry.getSnapshot(),
++        refresh: fresh,
++        isAvailable,
++      }),
+     async classify(value) {
+       const request = decisionInputSchema.parse({ state: value.state, questions: value.questions });
+       const binding = pending.get(value.binding);
+@@ -235,11 +187,13 @@ export function createDecisionModelPort(input: {
+       };
+       let ticket: ModelRequestAdmissionTicket | undefined;
+       let wire: Record<string, any> | undefined;
++      let observedChatUsage: DecisionModelResult["usage"];
+       let httpStatus: number | undefined;
+       const resultBase = {
+         requestedModel: { ...current.selected },
+         inputDigest: binding.requestDigest,
+-        billingProvider: current.lane === "chat" ? current.billingProvider : new URL(current.baseUrl).hostname,
++        billingProvider:
++          current.lane === "chat" ? current.billingProvider : new URL(current.baseUrl).hostname,
+       };
+       try {
+         ticket =
+@@ -253,13 +207,36 @@ export function createDecisionModelPort(input: {
+         if (current.lane === "chat") {
+           // 聊天模型车道：同一份问题，要求严格 JSON，按分类器同样的规则校验；无效即错误，不强行解释。
+           const chat = input.chatModel!(current.selected);
+-          const response = await chat.generateText({ messages: chatDecisionMessages(request), abortSignal: signal });
++          const response = await chat.generateText({
++            messages: chatDecisionMessages(request),
++            abortSignal: signal,
++          });
++          // 返回已观察到的计费事实；后续撤回、刷新或事件发布失败不能抹去用量。
++          const usage = {
++            ...(count(response.usage?.inputTokens) === undefined
++              ? {}
++              : { inputTokens: response.usage.inputTokens }),
++            ...(count(response.usage?.outputTokens) === undefined
++              ? {}
++              : { outputTokens: response.usage.outputTokens }),
++          };
++          observedChatUsage = Object.keys(usage).length ? usage : undefined;
+           const answers = parseChatDecisionAnswers(request, response.text);
+-          let status: DecisionModelResult["status"] = signal.aborted ? "cancelled" : answers ? "completed" : "error";
+-          if (status === "completed" && (await fresh(signal)).fingerprint !== binding.fingerprint) status = "stale";
++          let status: DecisionModelResult["status"] = signal.aborted
++            ? "cancelled"
++            : answers
++              ? "completed"
++              : "error";
++          if (status === "completed" && (await fresh(signal)).fingerprint !== binding.fingerprint)
++            status = "stale";
+           await ticket?.publish(
+             status === "completed"
+-              ? { ...statusBase, type: "model_request_completed", durationMs: Date.now() - startedAt, finishReason: "classified" }
++              ? {
++                  ...statusBase,
++                  type: "model_request_completed",
++                  durationMs: Date.now() - startedAt,
++                  finishReason: "classified",
++                }
+               : {
+                   ...statusBase,
+                   type: "model_request_failed",
+@@ -269,16 +246,14 @@ export function createDecisionModelPort(input: {
+                   message: "Decision request did not produce a current, valid answer",
+                 },
+           );
+-          const usage = {
+-            ...(count(response.usage?.inputTokens) === undefined ? {} : { inputTokens: response.usage.inputTokens }),
+-            ...(count(response.usage?.outputTokens) === undefined ? {} : { outputTokens: response.usage.outputTokens }),
+-          };
+           return {
+             ...resultBase,
+             ...(Object.keys(usage).length ? { usage } : {}),
+             status,
+             answers: status === "completed" ? answers! : {},
+-            ...(status === "completed" ? {} : { message: "The chat model's decision answer was invalid or unavailable" }),
++            ...(status === "completed"
++              ? {}
++              : { message: "The chat model's decision answer was invalid or unavailable" }),
+           };
+         }
+         const model: ClassifierModel<"typesafe-system-one"> = {
+@@ -399,6 +374,7 @@ export function createDecisionModelPort(input: {
+         return {
+           ...resultBase,
+           ...reportedFacts(wire),
++          ...(observedChatUsage ? { usage: observedChatUsage } : {}),
+           status: signal.aborted ? "cancelled" : "error",
+           answers: {},
+           message: "Decision request failed or its scope changed",
+diff --git a/apps/zcode-cli/packages/adapters/src/model/decision-observed-facts.ts b/apps/zcode-cli/packages/adapters/src/model/decision-observed-facts.ts
+new file mode 100644
+index 0000000..ff12eaa
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/model/decision-observed-facts.ts
+@@ -0,0 +1,29 @@
++export const observedTokenCount = (value: unknown) =>
++  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
++
++export function reportedFacts(wire?: Record<string, any>) {
++  const usage =
++    wire?.usage && typeof wire.usage === "object"
++      ? {
++          ...(observedTokenCount(wire.usage.input_tokens) === undefined
++            ? {}
++            : { inputTokens: observedTokenCount(wire.usage.input_tokens) }),
++          ...(observedTokenCount(wire.usage.output_tokens) === undefined
++            ? {}
++            : { outputTokens: observedTokenCount(wire.usage.output_tokens) }),
++        }
++      : undefined;
++  const model =
++    typeof wire?.model === "string" && wire.model.length <= 256 ? wire.model : undefined;
++  const cost =
++    typeof wire?.usage?.cost === "number" &&
++    Number.isFinite(wire.usage.cost) &&
++    wire.usage.cost >= 0
++      ? wire.usage.cost
++      : undefined;
++  return {
++    ...(usage && Object.keys(usage).length ? { usage } : {}),
++    ...(model ? { reportedModelId: model } : {}),
++    ...(cost === undefined ? {} : { reportedCostUsd: cost }),
++  };
++}
+diff --git a/apps/zcode-cli/packages/adapters/test/decision-chat.test.ts b/apps/zcode-cli/packages/adapters/test/decision-chat.test.ts
+index b18813a..2959285 100644
+--- a/apps/zcode-cli/packages/adapters/test/decision-chat.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/decision-chat.test.ts
+@@ -13,50 +13,98 @@ import {
+ import { createModelSelectionService } from "../../../../../packages/services/src/model-provider/modelSelectionService.js";
+ import { createDecisionModelPort } from "../src/model/decision-model.js";
+ import { parseChatDecisionAnswers } from "../src/model/decision-chat.js";
++import { fixture as hostFixture, reply } from "../../core/test/helpers/pi-runtime-fixture.js";
++import { DatabaseSync } from "node:sqlite";
+ import { NodeHttpClientAdapter } from "../src/http/index.js";
+ 
+ const choice = {
+   state: "Synthetic evidence",
+   questions: {
+-    kind: { type: "choice" as const, instructions: "Pick", criteria: { useful: "Useful", other: "Other" } },
++    kind: {
++      type: "choice" as const,
++      instructions: "Pick",
++      criteria: { useful: "Useful", other: "Other" },
++    },
+     rank: { type: "score" as const, instructions: "Rate", criteria: ["low", "mid", "high"] },
+-    ok: { type: "bool" as const, instructions: "Is it fine?", criteria: { true: "yes", false: "no" } },
++    ok: {
++      type: "bool" as const,
++      instructions: "Is it fine?",
++      criteria: { true: "yes", false: "no" },
++    },
+   },
+ };
+ const valid = {
+   answers: {
+-    kind: { type: "choice", choice: "useful", probabilities: { useful: 0.7, other: 0.3 }, confidence: 0.7 },
++    kind: {
++      type: "choice",
++      choice: "useful",
++      probabilities: { useful: 0.7, other: 0.3 },
++      confidence: 0.7,
++    },
+     rank: { type: "score", score: 2, confidence: 0.5 },
+     ok: { type: "bool", probability: 0.9 },
+   },
+ };
+ 
+ test("chat decision answers pass only the classifier contract", () => {
+-  assert.deepEqual(parseChatDecisionAnswers(choice, "```json\n" + JSON.stringify(valid) + "\n```")?.rank, {
+-    type: "score",
+-    score: 2,
+-    confidence: 0.5,
+-  });
++  assert.deepEqual(
++    parseChatDecisionAnswers(choice, "```json\n" + JSON.stringify(valid) + "\n```")?.rank,
++    {
++      type: "score",
++      score: 2,
++      confidence: 0.5,
++    },
++  );
+   const broken = (patch: (answers: any) => void) => {
+     const copy = structuredClone(valid);
+     patch(copy.answers);
+     return parseChatDecisionAnswers(choice, JSON.stringify(copy));
+   };
+-  assert.equal(broken((a) => (a.kind.choice = "unoffered")), undefined, "unoffered label");
+-  assert.equal(broken((a) => (a.kind.probabilities = { useful: 0.7, other: 0.7 })), undefined, "mass not 1");
+-  assert.equal(broken((a) => (a.kind.choice = "other")), undefined, "choice not the most probable");
+-  assert.equal(broken((a) => delete a.kind.probabilities.other), undefined, "missing label");
+-  assert.equal(broken((a) => (a.rank.score = 4)), undefined, "score outside rubric");
+-  assert.equal(broken((a) => (a.ok.probability = 1.2)), undefined, "probability outside [0,1]");
+-  assert.equal(broken((a) => delete a.ok), undefined, "missing question");
++  assert.equal(
++    broken((a) => (a.kind.choice = "unoffered")),
++    undefined,
++    "unoffered label",
++  );
++  assert.equal(
++    broken((a) => (a.kind.probabilities = { useful: 0.7, other: 0.7 })),
++    undefined,
++    "mass not 1",
++  );
++  assert.equal(
++    broken((a) => (a.kind.choice = "other")),
++    undefined,
++    "choice not the most probable",
++  );
++  assert.equal(
++    broken((a) => delete a.kind.probabilities.other),
++    undefined,
++    "missing label",
++  );
++  assert.equal(
++    broken((a) => (a.rank.score = 4)),
++    undefined,
++    "score outside rubric",
++  );
++  assert.equal(
++    broken((a) => (a.ok.probability = 1.2)),
++    undefined,
++    "probability outside [0,1]",
++  );
++  assert.equal(
++    broken((a) => delete a.ok),
++    undefined,
++    "missing question",
++  );
+   assert.equal(parseChatDecisionAnswers(choice, "I think it is useful."), undefined, "prose");
+ });
+ 
+-async function fixture(replies: string[]) {
++async function fixture(replies: string[], afterResponse?: () => Promise<void>) {
+   const root = await mkdtemp(join(tmpdir(), "fleet-decision-chat-"));
+   const runtime = new NodeProviderRegistryRuntime({
+     personalFilePath: join(root, "personal.json"),
+-    zcodeBuiltinFilePath: fileURLToPath(new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url)),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
+     personalPollingIntervalMs: false,
+     watch: false,
+   });
+@@ -69,7 +117,13 @@ async function fixture(replies: string[]) {
+     providerName: "Chat fixture",
+   });
+   for (const modelId of ["small-model", "middle-model", "large-model"])
+-    await runtime.configService.addPersonalModel(providerId, modelId, parseModelConfig({}), undefined, true);
++    await runtime.configService.addPersonalModel(
++      providerId,
++      modelId,
++      parseModelConfig({}),
++      undefined,
++      true,
++    );
+   await runtime.registryService.refresh();
+   const prompts: string[] = [];
+   const port = createDecisionModelPort({
+@@ -82,7 +136,12 @@ async function fixture(replies: string[]) {
+       ({
+         async generateText(request: { messages: { content: unknown }[] }) {
+           prompts.push(String(request.messages.at(-1)?.content));
+-          return { text: replies.shift() ?? "", finishReason: "stop", usage: { inputTokens: 40, outputTokens: 12 } };
++          await afterResponse?.();
++          return {
++            text: replies.shift() ?? "",
++            finishReason: "stop",
++            usage: { inputTokens: 40, outputTokens: 12 },
++          };
+         },
+       }) as never,
+   });
+@@ -97,7 +156,10 @@ async function fixture(replies: string[]) {
+     );
+     try {
+       const view = await service.getView();
+-      await service.savePreferences({ expectedRevision: view.preferencesRevision, ...patch } as never);
++      await service.savePreferences({
++        expectedRevision: view.preferencesRevision,
++        ...patch,
++      } as never);
+       return await service.getView();
+     } finally {
+       service.dispose();
+@@ -109,6 +171,14 @@ async function fixture(replies: string[]) {
+     prompts,
+     runtime,
+     save,
++    automatic: (
++      value: { prompt: string; current: { providerId: string; modelId: string } },
++      signal = new AbortController().signal,
++    ) =>
++      port.automaticModel!(value, signal, async (request) => {
++        const prepared = await port.prepare(request, signal);
++        return port.classify({ ...request, binding: prepared.binding, signal });
++      }),
+     async close() {
+       runtime.dispose();
+       await rm(root, { recursive: true, force: true });
+@@ -121,15 +191,28 @@ test("an ordinary chat model can be the decision model and answers through the s
+   try {
+     const candidates = decisionModelCandidates(f.runtime.registryService.getSnapshot());
+     assert.ok(candidates.some((m) => m.modelId === "small-model" && m.lane === "chat"));
+-    await f.save({ decisionModelSettings: { enabled: true, selection: { providerId: f.providerId, modelId: "small-model" } } });
++    await f.save({
++      decisionModelSettings: {
++        enabled: true,
++        selection: { providerId: f.providerId, modelId: "small-model" },
++      },
++    });
+     assert.equal(f.port.isAvailable(), true);
+     const first = await f.port.prepare(choice);
+-    const ok = await f.port.classify({ ...choice, binding: first.binding, signal: new AbortController().signal });
++    const ok = await f.port.classify({
++      ...choice,
++      binding: first.binding,
++      signal: new AbortController().signal,
++    });
+     assert.equal(ok.status, "completed");
+     assert.deepEqual((ok.answers.kind as { choice: string }).choice, "useful");
+     assert.deepEqual(ok.usage, { inputTokens: 40, outputTokens: 12 });
+     const second = await f.port.prepare(choice);
+-    const invalid = await f.port.classify({ ...choice, binding: second.binding, signal: new AbortController().signal });
++    const invalid = await f.port.classify({
++      ...choice,
++      binding: second.binding,
++      signal: new AbortController().signal,
++    });
+     assert.equal(invalid.status, "error");
+     assert.deepEqual(invalid.answers, {});
+   } finally {
+@@ -144,7 +227,11 @@ test("automatic choice moves a new conversation off the standard tier only when
+         tier: {
+           type: "choice",
+           choice: tier,
+-          probabilities: { fast: tier === "fast" ? 0.8 : 0.1, standard: 0.1, deep: tier === "deep" ? 0.8 : 0.1 },
++          probabilities: {
++            fast: tier === "fast" ? 0.8 : 0.1,
++            standard: 0.1,
++            deep: tier === "deep" ? 0.8 : 0.1,
++          },
+           confidence: 0.8,
+         },
+       },
+@@ -162,22 +249,306 @@ test("automatic choice moves a new conversation off the standard tier only when
+       newConversationModelPolicy: "automatic",
+       decisionModelSettings: { enabled: false, automaticTiers: tiers },
+     });
+-    assert.equal(view.preferredSelection?.modelId, "middle-model", "new conversations start on the standard tier");
+-    assert.deepEqual(await f.port.automaticModel!({ prompt: "Refactor the whole storage layer", current: standard }), {
++    assert.equal(
++      view.preferredSelection?.modelId,
++      "middle-model",
++      "new conversations start on the standard tier",
++    );
++    assert.deepEqual(
++      await f.automatic({ prompt: "Refactor the whole storage layer", current: standard }),
++      {
++        tier: "standard",
++        reason: "decision-unavailable",
++      },
++    );
++    await f.save({
++      decisionModelSettings: {
++        enabled: true,
++        selection: { providerId: f.providerId, modelId: "small-model" },
++        automaticTiers: tiers,
++      },
++    });
++    const promptCount = f.prompts.length;
++    assert.deepEqual(await f.automatic({ prompt: "x".repeat(6001), current: standard }), {
+       tier: "standard",
+-      reason: "decision-unavailable",
++      reason: "evidence-incomplete",
+     });
+-    await f.save({
+-      decisionModelSettings: { enabled: true, selection: { providerId: f.providerId, modelId: "small-model" }, automaticTiers: tiers },
++    assert.equal(
++      f.prompts.length,
++      promptCount,
++      "incomplete evidence must abstain without inference",
++    );
++    const deep = await f.automatic({
++      prompt: "Refactor the whole storage layer",
++      current: standard,
+     });
+-    const deep = await f.port.automaticModel!({ prompt: "Refactor the whole storage layer", current: standard });
+     assert.deepEqual(deep.selection, tiers.deep);
+     assert.match(f.prompts.at(-1)!, /Refactor the whole storage layer/);
+     // A model the user picked by hand is never replaced.
+-    assert.deepEqual(await f.port.automaticModel!({ prompt: "hi", current: tiers.deep }), {});
+-    const fast = await f.port.automaticModel!({ prompt: "What time zone is UTC+8?", current: standard });
++    assert.deepEqual(await f.automatic({ prompt: "hi", current: tiers.deep }), {});
++    const fast = await f.automatic({ prompt: "What time zone is UTC+8?", current: standard });
+     assert.deepEqual(fast.selection, tiers.fast);
+   } finally {
+     await f.close();
+   }
+ });
++
++test("chat response usage survives post-response observer failure", async () => {
++  const f = await fixture([JSON.stringify(valid)]);
++  try {
++    await f.save({
++      decisionModelSettings: {
++        enabled: true,
++        selection: { providerId: f.providerId, modelId: "small-model" },
++      },
++    });
++    const prepared = await f.port.prepare(choice);
++    const result = await f.port.classify({
++      ...choice,
++      binding: prepared.binding,
++      signal: new AbortController().signal,
++      admission: {
++        acquire: async () => ({
++          release() {},
++          publish: async (event: { type: string }) => {
++            if (event.type === "model_request_completed") throw new Error("observer unavailable");
++          },
++        }),
++      } as never,
++    });
++    assert.equal(result.status, "error");
++    assert.deepEqual(result.usage, { inputTokens: 40, outputTokens: 12 });
++  } finally {
++    await f.close();
++  }
++});
++
++test("automatic policy and tier withdrawal while a chat answer is pending keep the offered model", async () => {
++  for (const withdrawal of ["policy", "tier"] as const) {
++    let f: Awaited<ReturnType<typeof fixture>>;
++    f = await fixture(
++      [
++        JSON.stringify({
++          answers: {
++            tier: {
++              type: "choice",
++              choice: "deep",
++              probabilities: { fast: 0.1, standard: 0.1, deep: 0.8 },
++            },
++          },
++        }),
++      ],
++      async () => {
++        await f.save(
++          withdrawal === "policy"
++            ? { newConversationModelPolicy: "recent" }
++            : {
++                decisionModelSettings: {
++                  enabled: true,
++                  selection: { providerId: f.providerId, modelId: "small-model" },
++                  automaticTiers: {
++                    standard: { providerId: f.providerId, modelId: "middle-model" },
++                  },
++                },
++              },
++        );
++      },
++    );
++    try {
++      const standard = { providerId: f.providerId, modelId: "middle-model" };
++      await f.save({
++        newConversationModelPolicy: "automatic",
++        decisionModelSettings: {
++          enabled: true,
++          selection: { providerId: f.providerId, modelId: "small-model" },
++          automaticTiers: { standard, deep: { providerId: f.providerId, modelId: "large-model" } },
++        },
++      });
++      assert.equal(
++        (await f.automatic({ prompt: "Synthetic task", current: standard })).selection,
++        undefined,
++      );
++    } finally {
++      await f.close();
++    }
++  }
++});
++
++for (const failure of ["stop", "policy", "tier", "observer", "refresh"] as const) {
++  test(
++    `public Host lifecycle ${failure} uses existing admission, usage and receipts`,
++    { timeout: 15000 },
++    async () => {
++      let host: Awaited<ReturnType<typeof hostFixture>>;
++      let f: Awaited<ReturnType<typeof fixture>>;
++      f = await fixture(
++        [
++          JSON.stringify({
++            answers: {
++              tier: {
++                type: "choice",
++                choice: "deep",
++                probabilities: { fast: 0.1, standard: 0.1, deep: 0.8 },
++              },
++            },
++          }),
++        ],
++        async () => {
++          if (failure === "stop") host.runtime.stopActiveForegroundExecution();
++          if (failure === "refresh") await f.save({ decisionModelSettings: { enabled: false } });
++          if (failure === "policy") await f.save({ newConversationModelPolicy: "recent" });
++          if (failure === "tier")
++            await f.save({
++              decisionModelSettings: {
++                enabled: true,
++                selection: { providerId: f.providerId, modelId: "small-model" },
++                automaticTiers: { standard: { providerId: f.providerId, modelId: "middle-model" } },
++              },
++            });
++        },
++      );
++      const standard = {
++        providerId: f.providerId,
++        modelId: "middle-model",
++        options: { reasoningLevel: "off" },
++      };
++      let decisionAdmission = 0;
++      let decisionReleased = 0;
++      host = await hostFixture(undefined, false, {
++        config: { modelSelection: standard as never },
++        deps: {
++          decisionModelPort: f.port,
++          modelRequestAdmission: {
++            acquire: async ({ model }: any) => {
++              const decision = model.modelId === "small-model";
++              if (decision) decisionAdmission++;
++              return {
++                release() {
++                  if (decision) decisionReleased++;
++                },
++                publish: async (event: any) => {
++                  if (
++                    decision &&
++                    failure === "observer" &&
++                    event.type === "model_request_completed"
++                  )
++                    throw new Error("observer failed");
++                },
++              };
++            },
++          } as never,
++        },
++      });
++      // The real model factory supplies default options for a tier reference.
++      const modelFactory = (host.runtime as any).modelFactory;
++      (host.runtime as any).modelFactory = (value: any) =>
++        modelFactory({
++          ...value,
++          selection: {
++            ...value.selection,
++            options: value.selection.options ?? { reasoningLevel: "off" },
++          },
++        });
++      try {
++        await f.save({
++          newConversationModelPolicy: "automatic",
++          decisionModelSettings: {
++            enabled: true,
++            selection: { providerId: f.providerId, modelId: "small-model" },
++            automaticTiers: {
++              standard: { providerId: f.providerId, modelId: "middle-model" },
++              deep: { providerId: f.providerId, modelId: "large-model" },
++            },
++          },
++        });
++        host.steps.push(() => reply("Original model retained"));
++        const turn = host.runtime.executeTurn("Synthetic automatic task", undefined, {
++          inputId: `input-${failure}`,
++          intent: { allowAutomaticModelSelection: true, modelSelection: standard },
++        } as never);
++        if (failure === "stop") await assert.rejects(turn);
++        else await turn;
++        assert.equal(f.prompts.length, 1);
++        if (failure === "stop") assert.equal(host.requests.length, 0);
++        else assert.equal(host.requests[0]?.selection.modelId, "middle-model");
++        const db = new DatabaseSync(join(host.dir, "session.sqlite"), { readOnly: true });
++        try {
++          const rows = db
++            .prepare(
++              "select input_tokens, output_tokens from model_usage where query_source = 'decision_classification'",
++            )
++            .all();
++          assert.equal(rows.length, 1);
++          assert.equal(rows[0]?.input_tokens, 40);
++          assert.equal(rows[0]?.output_tokens, 12);
++        } finally {
++          db.close();
++        }
++        assert.equal(decisionAdmission, 1);
++        assert.equal(decisionReleased, 1);
++        await host.reopen();
++        assert.equal(f.prompts.length, 1, "cold recovery must not submit auxiliary inference");
++      } finally {
++        await host.close();
++        await f.close();
++      }
++    },
++  );
++}
++
++test(
++  "public Host Stop cancels queued automatic admission before dispatch",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture([]);
++    const entered = Promise.withResolvers<void>();
++    const standard = {
++      providerId: f.providerId,
++      modelId: "middle-model",
++      options: { reasoningLevel: "off" },
++    };
++    const host = await hostFixture(undefined, false, {
++      config: { modelSelection: standard as never },
++      deps: {
++        decisionModelPort: f.port,
++        modelRequestAdmission: {
++          acquire: async ({ model, signal }: any) => {
++            if (model.modelId !== "small-model") return { release() {}, publish: async () => {} };
++            entered.resolve();
++            return new Promise((_resolve, reject) =>
++              signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
++            );
++          },
++        } as never,
++      },
++    });
++    try {
++      await f.save({
++        newConversationModelPolicy: "automatic",
++        decisionModelSettings: {
++          enabled: true,
++          selection: { providerId: f.providerId, modelId: "small-model" },
++          automaticTiers: {
++            standard: { providerId: f.providerId, modelId: "middle-model" },
++            deep: { providerId: f.providerId, modelId: "large-model" },
++          },
++        },
++      });
++      const turn = host.runtime.executeTurn("Wait for synthetic admission", undefined, {
++        inputId: "queued",
++        intent: { allowAutomaticModelSelection: true, modelSelection: standard },
++      } as never);
++      const rejected = assert.rejects(turn);
++      await entered.promise;
++      host.runtime.stopActiveForegroundExecution();
++      await rejected;
++      assert.equal(f.prompts.length, 0);
++      assert.equal(host.requests.length, 0);
++      await host.reopen();
++      assert.equal(f.prompts.length, 0);
++    } finally {
++      await host.close();
++      await f.close();
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+index bd53202..1dc333b 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+@@ -356,6 +356,7 @@ async function startCanonicalIntent(
+       fallbackReasonCode: editTarget.intent.fallbackReasonCode,
+       modelSelection: editTarget.intent.modelSelection,
+       visionModelSelection: editTarget.intent.visionModelSelection,
++      allowAutomaticModelSelection: editTarget.intent.allowAutomaticModelSelection,
+       subscriptionAccountId: editTarget.intent.subscriptionAccountId,
+       mode: editTarget.intent.mode,
+       planEnabled: editTarget.intent.planEnabled,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
+index 53482aa..0363928 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
+@@ -259,6 +259,9 @@ async function sendGoalCommand(
+     inputIntentMetadata(envelope, {
+       ...options,
+       ...submittedExecutionState,
++      ...(payload.allowAutomaticModelSelection !== undefined
++        ? { allowAutomaticModelSelection: payload.allowAutomaticModelSelection }
++        : {}),
+       ...(payload.subscriptionAccountId
+         ? { subscriptionAccountId: payload.subscriptionAccountId }
+         : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
+index 77cb94b..56fd7e3 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
+@@ -47,6 +47,9 @@ async function createSelectionSideSession(
+         text: firstInput.text,
+         requestedDelivery: "startNow",
+         ...(firstInput.modelSelection ? { modelSelection: firstInput.modelSelection } : {}),
++        ...(firstInput.allowAutomaticModelSelection !== undefined
++          ? { allowAutomaticModelSelection: firstInput.allowAutomaticModelSelection }
++          : {}),
+         ...(firstInput.subscriptionAccountId
+           ? { subscriptionAccountId: firstInput.subscriptionAccountId }
+           : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+index bc57f33..866b651 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+@@ -200,6 +200,9 @@ async function sendText(
+       ...(payload.visionModelSelection
+         ? { visionModelSelection: payload.visionModelSelection }
+         : {}),
++      ...(payload.allowAutomaticModelSelection !== undefined
++        ? { allowAutomaticModelSelection: payload.allowAutomaticModelSelection }
++        : {}),
+       ...(payload.subscriptionAccountId
+         ? { subscriptionAccountId: payload.subscriptionAccountId }
+         : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
+index 2bc7ea1..8c509ea 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
+@@ -96,6 +96,9 @@ async function createSession(
+         requestedDelivery: "startNow",
+         attachmentRefs: payload.firstInput.attachments,
+         ...resolveSubmittedExecutionState(record, payload.firstInput),
++        ...(payload.firstInput.allowAutomaticModelSelection !== undefined
++          ? { allowAutomaticModelSelection: payload.firstInput.allowAutomaticModelSelection }
++          : {}),
+         ...(payload.firstInput.subscriptionAccountId
+           ? { subscriptionAccountId: payload.firstInput.subscriptionAccountId }
+           : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
+index f00a0a0..2732c31 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
+@@ -9,6 +9,7 @@ interface CanonicalCommandIntent {
+   text: string;
+   modelSelection?: ModelSelection;
+   visionModelSelection?: ModelSelection;
++  allowAutomaticModelSelection?: boolean;
+   subscriptionAccountId?: string;
+   mode?: SubmissionMode;
+   planEnabled?: boolean;
+@@ -33,6 +34,7 @@ export function inputIntentMetadata(
+     attachmentRefs?: readonly AttachmentRef[];
+     modelSelection?: ModelSelection;
+     visionModelSelection?: ModelSelection;
++    allowAutomaticModelSelection?: boolean;
+     subscriptionAccountId?: string;
+     mode?: SubmissionMode;
+     planEnabled?: boolean;
+@@ -57,6 +59,9 @@ export function inputIntentMetadata(
+     ...(options.visionModelSelection
+       ? { visionModelSelection: options.visionModelSelection }
+       : {}),
++    ...(options.allowAutomaticModelSelection !== undefined
++      ? { allowAutomaticModelSelection: options.allowAutomaticModelSelection }
++      : {}),
+     ...(options.subscriptionAccountId
+       ? { subscriptionAccountId: options.subscriptionAccountId }
+       : {}),
+@@ -97,6 +102,9 @@ export function inputIntentMetadataFromCanonical(
+     ...(canonical.visionModelSelection
+       ? { visionModelSelection: canonical.visionModelSelection }
+       : {}),
++    ...(canonical.allowAutomaticModelSelection !== undefined
++      ? { allowAutomaticModelSelection: canonical.allowAutomaticModelSelection }
++      : {}),
+     ...(canonical.subscriptionAccountId
+       ? { subscriptionAccountId: canonical.subscriptionAccountId }
+       : {}),
+@@ -136,6 +144,9 @@ export function inputIntentMetadataFromQueueItem(
+     ...(item.visionModelSelection
+       ? { visionModelSelection: item.visionModelSelection }
+       : {}),
++    ...(item.allowAutomaticModelSelection !== undefined
++      ? { allowAutomaticModelSelection: item.allowAutomaticModelSelection }
++      : {}),
+     ...(item.subscriptionAccountId
+       ? { subscriptionAccountId: item.subscriptionAccountId }
+       : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
+index fa59b4b..71c9073 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
+@@ -87,6 +87,7 @@ export interface CanonicalUserIntentFact extends CanonicalConversationFactBase {
+   fallbackReasonCode?: string;
+   modelSelection?: TurnInputIntentMetadata["modelSelection"];
+   visionModelSelection?: TurnInputIntentMetadata["visionModelSelection"];
++  allowAutomaticModelSelection?: boolean;
+   subscriptionAccountId?: TurnInputIntentMetadata["subscriptionAccountId"];
+   mode?: TurnInputIntentMetadata["mode"];
+   planEnabled?: boolean;
+@@ -286,6 +287,9 @@ function normalizeTurnStarted(
+     ...(payload.intent?.visionModelSelection
+       ? { visionModelSelection: payload.intent.visionModelSelection }
+       : {}),
++    ...(payload.intent?.allowAutomaticModelSelection !== undefined
++      ? { allowAutomaticModelSelection: payload.intent?.allowAutomaticModelSelection }
++      : {}),
+     ...(payload.intent?.subscriptionAccountId
+       ? { subscriptionAccountId: payload.intent.subscriptionAccountId }
+       : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index 6269ed3..856b76c 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -322,6 +322,7 @@ export interface ConversationEditTarget {
+     fallbackReasonCode?: string;
+     modelSelection?: TurnInputIntentMetadata["modelSelection"];
+     visionModelSelection?: TurnInputIntentMetadata["visionModelSelection"];
++    allowAutomaticModelSelection?: boolean;
+     subscriptionAccountId?: TurnInputIntentMetadata["subscriptionAccountId"];
+     mode?: TurnInputIntentMetadata["mode"];
+     planEnabled?: boolean;
+@@ -2117,6 +2118,9 @@ export class ProductProjection {
+                 ...(fact.visionModelSelection
+                   ? { visionModelSelection: fact.visionModelSelection }
+                   : {}),
++                ...(fact.allowAutomaticModelSelection !== undefined
++                  ? { allowAutomaticModelSelection: fact.allowAutomaticModelSelection }
++                  : {}),
+                 ...(fact.subscriptionAccountId
+                   ? { subscriptionAccountId: fact.subscriptionAccountId }
+                   : {}),
+@@ -3467,6 +3471,8 @@ export class ProductProjection {
+       modelSelection: payload.intent?.modelSelection ?? existing?.modelSelection,
+       visionModelSelection:
+         payload.intent?.visionModelSelection ?? existing?.visionModelSelection,
++      allowAutomaticModelSelection:
++        payload.intent?.allowAutomaticModelSelection ?? existing?.allowAutomaticModelSelection,
+       subscriptionAccountId:
+         payload.intent?.subscriptionAccountId ?? existing?.subscriptionAccountId,
+       mode: payload.intent?.mode ?? existing?.mode,
+@@ -3605,6 +3611,9 @@ export class ProductProjection {
+           ...(queueItem.visionModelSelection
+             ? { visionModelSelection: queueItem.visionModelSelection }
+             : {}),
++          ...(queueItem.allowAutomaticModelSelection !== undefined
++            ? { allowAutomaticModelSelection: queueItem.allowAutomaticModelSelection }
++            : {}),
+           ...(queueItem.subscriptionAccountId
+             ? { subscriptionAccountId: queueItem.subscriptionAccountId }
+             : {}),
+@@ -3703,6 +3712,9 @@ export class ProductProjection {
+                 ...(item.intent?.visionModelSelection
+                   ? { visionModelSelection: item.intent.visionModelSelection }
+                   : {}),
++                ...(item.intent?.allowAutomaticModelSelection !== undefined
++                  ? { allowAutomaticModelSelection: item.intent?.allowAutomaticModelSelection }
++                  : {}),
+                 ...(item.intent?.subscriptionAccountId
+                   ? { subscriptionAccountId: item.intent.subscriptionAccountId }
+                   : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+index 8fb53f6..1d7bc5e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+@@ -398,6 +398,9 @@ function inputIntentOfMessage(message: MessageWithParts): TurnInputIntentMetadat
+       ...(value.visionModelSelection
+         ? { visionModelSelection: value.visionModelSelection }
+         : {}),
++      ...(value.allowAutomaticModelSelection !== undefined
++        ? { allowAutomaticModelSelection: value.allowAutomaticModelSelection }
++        : {}),
+       ...(value.subscriptionAccountId
+         ? { subscriptionAccountId: value.subscriptionAccountId }
+         : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts b/apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts
+new file mode 100644
+index 0000000..679b325
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts
+@@ -0,0 +1,227 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { SessionEventType } from "@zcode/contracts";
++import type { DecisionModelPort } from "@zcode/contracts";
++import {
++  parseCommandEnvelope,
++  queueItemSchema,
++  conversationInputIntentSchema,
++} from "@zcode/shared/zcode-protocol-v4";
++import { fixture, reply, selection } from "../../core/test/helpers/pi-runtime-fixture.js";
++import { createInputFacade } from "../src/app/input-facade.js";
++import { V4CommandExecutor } from "../src/zcode-protocol-v4/commands/executor.js";
++import {
++  inputIntentMetadata,
++  inputIntentMetadataFromCanonical,
++  inputIntentMetadataFromQueueItem,
++} from "../src/zcode-protocol-v4/commands/input-intent.js";
++import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
++import { synthesizeEventsFromMessages } from "../src/zcode-protocol-v4/transcript-hydration.js";
++
++for (const { marker, taskType } of [
++  { marker: true },
++  { marker: false },
++  { marker: undefined },
++  { marker: true, taskType: "page_assistant" },
++]) {
++  test(`native protocol admission retains automatic-default marker ${String(marker)} for ${taskType ?? "interactive"} through runtime and cold hydration`, async () => {
++    let routed = 0;
++    const port: DecisionModelPort = {
++      isAvailable: () => true,
++      listModels: () => [],
++      prepare: async () => {
++        throw new Error("No classification in this metadata fixture");
++      },
++      classify: async () => {
++        throw new Error("No classification in this metadata fixture");
++      },
++      automaticModel: async () => {
++        routed++;
++        return {};
++      },
++    };
++    const f = await fixture(undefined, false, {
++      config: { taskType: taskType as never },
++      deps: { decisionModelPort: port },
++    });
++    const runtime = f.runtime;
++    const projection = new ProductProjection("session", "live");
++    const unsubscribe = runtime.subscribeEvents({
++      onSessionEvent: async (event) => {
++        projection.applyEvent(event);
++      },
++    });
++    const trace = (runtime as any).rootTraceContext;
++    const facade = createInputFacade({
++      runtime,
++      sessionId: "session" as never,
++      traceContext: trace,
++      logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
++      prepareUserExecutionBoundary: async () => {},
++    });
++    let completion: Promise<unknown> | undefined;
++    let submitted: any;
++    const record = {
++      app: {
++        ...facade,
++        sessionId: "session",
++        runtime,
++        getModel: () => "fixture/model-a",
++        getMode: () => "build",
++        sendInput: async (input: any, options: any) => {
++          submitted = options.intent;
++          const admitted = await facade.sendInput(input, options);
++          if (admitted.kind === "started_turn") completion = admitted.completion;
++          return admitted;
++        },
++      },
++      traceContext: trace,
++      workspace: { workspacePath: f.dir },
++      persistence: "immediate",
++      taskType: taskType ?? "interactive",
++    };
++    const executor = new V4CommandExecutor({
++      getRecord: () => record,
++      getInputRoutingMode: () => null,
++    } as never);
++    const parsed = parseCommandEnvelope({
++      commandId: "first",
++      clientId: "desktop",
++      sessionId: "session",
++      type: "sendText",
++      issuedAt: Date.now(),
++      payload: {
++        text: "Synthetic first input",
++        modelSelection: selection(),
++        ...(marker === undefined ? {} : { allowAutomaticModelSelection: marker }),
++      },
++    });
++    assert.equal(parsed.ok, true);
++    if (!parsed.ok) return;
++    try {
++      f.steps.push(() => reply("Synthetic result"));
++      await executor.execute(parsed.envelope, {
++        admissionSeq: 1,
++        admittedAt: Date.now(),
++        queueItemId: "queue-first",
++      });
++      assert.ok(completion);
++      await completion;
++      assert.equal(submitted.allowAutomaticModelSelection, marker);
++      assert.equal(routed, marker === true && taskType === undefined ? 1 : 0);
++      const messages = await f.store.messages({ sessionID: "session" as never });
++      const user = messages.find((message) => message.info.role === "user")!;
++      const retained = conversationInputIntentSchema.parse(
++        user.info.metadata?.conversationInputIntent,
++      );
++      assert.equal(retained.allowAutomaticModelSelection, marker);
++      const liveRow = projection.getSnapshot().rows.window.find((row) => row.kind === "userInput")!;
++      assert.equal(
++        projection.resolveEditTarget(liveRow.rowId)?.intent.allowAutomaticModelSelection,
++        marker,
++      );
++      await f.reopen();
++      const cold = new ProductProjection("session", "cold");
++      const restored = await f.store.messages({ sessionID: "session" as never });
++      cold.beginHydrationReplay();
++      for (const event of synthesizeEventsFromMessages(restored, { sessionId: "session" }))
++        cold.applyHydrationEvent(event);
++      cold.completeHydrationReplay();
++      const coldRow = cold.getSnapshot().rows.window.find((row) => row.kind === "userInput")!;
++      const canonical = cold.resolveEditTarget(coldRow.rowId)!.intent;
++      assert.equal(canonical.allowAutomaticModelSelection, marker);
++      const queued = queueItemSchema.parse({
++        ...retained,
++        delivery: { requested: "queue", admitted: "queue" },
++        dispatch: { state: "queued" },
++      });
++      assert.equal(
++        inputIntentMetadataFromQueueItem(queued, queued.text).allowAutomaticModelSelection,
++        marker,
++      );
++      assert.equal(
++        inputIntentMetadataFromCanonical({ ...parsed.envelope, commandId: "retry" }, canonical)
++          .allowAutomaticModelSelection,
++        marker,
++      );
++      assert.equal(
++        routed,
++        marker === true && taskType === undefined ? 1 : 0,
++        "cold hydration must not invoke the optional decision",
++      );
++    } finally {
++      unsubscribe();
++      await f.close();
++    }
++  });
++}
++
++for (const delivery of ["queue", "guide"] as const) {
++  for (const marker of [true, false]) {
++    test(`${delivery} projection preserves explicit automatic marker ${marker} through drain and canonical retry`, () => {
++      const projection = new ProductProjection("session", "projection");
++      const envelope = {
++        commandId: "queued",
++        clientId: "desktop",
++        sessionId: "session",
++        type: "sendText",
++        issuedAt: 1,
++        payload: {},
++      } as const;
++      const intent = inputIntentMetadata(envelope, {
++        text: "Queued input",
++        modelSelection: selection(),
++        allowAutomaticModelSelection: marker,
++        requestedDelivery: delivery,
++        admittedDelivery: delivery,
++      });
++      const event = (type: string, sequenceNumber: number, payload: unknown) =>
++        ({
++          id: `event-${sequenceNumber}`,
++          sessionId: "session",
++          turnId: "parent",
++          traceId: "trace",
++          timestamp: new Date(sequenceNumber),
++          type,
++          sequenceNumber,
++          payload,
++        }) as never;
++      projection.applyEvent(
++        event(SessionEventType.TurnSteerQueued, 1, {
++          pendingInputId: intent.queueItemId,
++          inputId: "queued",
++          input: "Queued input",
++          inputPreview: "Queued input",
++          inputSize: 12,
++          targetTurnId: "parent",
++          queueLength: 1,
++          delivery,
++          intent,
++        }),
++      );
++      const queued = projection.getSnapshot().queue.items[0]!;
++      assert.equal(queued.allowAutomaticModelSelection, marker);
++      assert.equal(
++        inputIntentMetadataFromQueueItem(queued, queued.text).allowAutomaticModelSelection,
++        marker,
++      );
++      projection.applyEvent(
++        event(SessionEventType.TurnSteerDrained, 2, {
++          pendingInputIds: [queued.queueItemId],
++          injectedMessageIds: ["injected"],
++          targetTurnId: "parent",
++        }),
++      );
++      const row = projection
++        .getSnapshot()
++        .rows.window.find((candidate) => candidate.kind === "userInput")!;
++      const canonical = projection.resolveEditTarget(row.rowId)!.intent;
++      assert.equal(canonical.allowAutomaticModelSelection, marker);
++      assert.equal(
++        inputIntentMetadataFromCanonical({ ...envelope, commandId: "retry" }, canonical)
++          .allowAutomaticModelSelection,
++        marker,
++      );
++    });
++  }
++}
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/decision-model.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/decision-model.port.ts
+index 6e3f951..cbacd63 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/decision-model.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/decision-model.port.ts
+@@ -24,8 +24,13 @@ export interface DecisionModelPort {
+   /** One automatic tier choice for a new conversation's first message (see decision settings). */
+   automaticModel?(
+     input: { prompt: string; current: DecisionModelRef },
+-    signal?: AbortSignal,
+-  ): Promise<{ selection?: DecisionModelRef; tier?: "fast" | "standard" | "deep"; reason?: string }>;
++    signal: AbortSignal,
++    classify: (input: DecisionInput) => Promise<DecisionModelResult>,
++  ): Promise<{
++    selection?: DecisionModelRef;
++    tier?: "fast" | "standard" | "deep";
++    reason?: string;
++  }>;
+   classify(
+     input: DecisionInput & {
+       binding: string;
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
+index 8ee270f..d92897c 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
+@@ -290,6 +290,8 @@ export interface TurnInputIntentMetadata {
+   modelSelection?: ModelSelection;
+   /** User-chosen image-description backend, frozen at the same admission boundary. */
+   visionModelSelection?: ModelSelection;
++  /** True only for an explicitly initialized automatic default; missing legacy markers stay manual. */
++  allowAutomaticModelSelection?: boolean;
+   /** Account identity fixed at submission admission; the Host still owns live credentials. */
+   subscriptionAccountId?: string;
+   /** 与本次用户 Submission 一起固定的协作模式。 */
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts b/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
+index c13373c..6e26cb4 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
+@@ -31,6 +31,9 @@ export function buildPersistedConversationInputIntent(
+     attachments: intent.attachmentRefs ?? [],
+     ...(intent.modelSelection ? { modelSelection: intent.modelSelection } : {}),
+     ...(intent.visionModelSelection ? { visionModelSelection: intent.visionModelSelection } : {}),
++    ...(intent.allowAutomaticModelSelection !== undefined
++      ? { allowAutomaticModelSelection: intent.allowAutomaticModelSelection }
++      : {}),
+     ...(intent.subscriptionAccountId
+       ? { subscriptionAccountId: intent.subscriptionAccountId }
+       : {}),
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+index fe34b2f..0ca58da 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+@@ -1,15 +1,21 @@
++import type { DecisionInput } from "@zcode/shared";
++import { createHash } from "node:crypto";
+ import {
+   SESSION_ENTRY_MODEL_SELECTION,
+   type Model,
+   type ModelSelection,
+   type TraceContext,
+   type TurnInputIntentMetadata,
++  type DecisionModelResult,
++  type UsageStorePort,
++  type ModelUsageRecord,
+ } from "@zcode/contracts";
+ import { getCurrentModelInvocationContext } from "../deps.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { cloneModelSelection } from "../model-selection.js";
+ import { createRefreshRuntimeHeadersBeforeModelAttempt } from "./model-runtime-headers.js";
+ import { createRuntimeModel, withModelInvocationContext } from "./runtime-model.js";
++import { retainPendingModelUsage } from "./usage-recovery.js";
+ import { applyRuntimeExecutionState } from "../execution-state.js";
+ 
+ export function createTurnModel(
+@@ -88,7 +94,19 @@ export async function routeAutomaticModel(
+   runtime: AgentRuntimeInternal,
+   intent: TurnInputIntentMetadata | undefined,
+   prompt: string,
++  operation?: { signal: AbortSignal; trace: TraceContext; inputId?: string },
+ ): Promise<{ intent: TurnInputIntentMetadata | undefined; changed: boolean }> {
++  const signal = AbortSignal.any([
++    AbortSignal.timeout(12000),
++    ...(operation ? [operation.signal] : []),
++  ]);
++  signal.throwIfAborted();
++  // 模型 ID 相同不代表自动默认；手动同档选择及页面/子任务不得被改写。
++  if (
++    intent?.allowAutomaticModelSelection !== true ||
++    (runtime.config.taskType ?? "interactive") !== "interactive"
++  )
++    return { intent, changed: false };
+   const current = intent?.modelSelection;
+   const port = runtime.decisionModelPort;
+   if (!current || !port?.automaticModel || !prompt.trim()) return { intent, changed: false };
+@@ -97,7 +115,13 @@ export async function routeAutomaticModel(
+     if (history?.length) return { intent, changed: false };
+     const decided = await port.automaticModel(
+       { prompt, current: { providerId: current.providerId, modelId: current.modelId } },
+-      AbortSignal.timeout(12000),
++      signal,
++      (request) =>
++        executeAutomaticDecision(runtime, request, current, prompt, {
++          signal,
++          trace: operation?.trace ?? runtime.rootTraceContext,
++          inputId: operation?.inputId,
++        }),
+     );
+     runtime.logger?.info("Automatic model choice", {
+       event: "model.automatic_choice",
+@@ -106,11 +130,19 @@ export async function routeAutomaticModel(
+       reason: decided.reason,
+       switched: Boolean(decided.selection),
+     });
++    signal.throwIfAborted();
+     if (!decided.selection) return { intent, changed: false };
+-    const next: ModelSelection = { providerId: decided.selection.providerId, modelId: decided.selection.modelId } as ModelSelection;
++    const next: ModelSelection = {
++      providerId: decided.selection.providerId,
++      modelId: decided.selection.modelId,
++    } as ModelSelection;
+     if (sameModelSelection(current, next)) return { intent, changed: false };
+-    return { intent: { ...intent, modelSelection: next }, changed: true };
++    // 账号引用只属于原提供方；同提供方保留，跨提供方由既有请求鉴权 owner 绑定目标账号。
++    const routedIntent = { ...intent, modelSelection: next };
++    if (current.providerId !== next.providerId) delete routedIntent.subscriptionAccountId;
++    return { intent: routedIntent, changed: true };
+   } catch (error) {
++    operation?.signal.throwIfAborted();
+     runtime.logger?.warn("Automatic model choice failed; keeping the offered model", {
+       event: "model.automatic_choice_failed",
+       module: "core.runtime",
+@@ -120,6 +152,147 @@ export async function routeAutomaticModel(
+   }
+ }
+ 
++/** 复用 Host 的 artifact/Session 用量所有者；未知收据在冷恢复后也阻止重发。 */
++async function executeAutomaticDecision(
++  runtime: AgentRuntimeInternal,
++  request: DecisionInput,
++  offered: ModelSelection,
++  prompt: string,
++  operation: { signal: AbortSignal; trace: TraceContext; inputId?: string },
++): Promise<DecisionModelResult> {
++  const port = runtime.decisionModelPort!;
++  const artifacts = runtime.artifactStore;
++  const usage = runtime.sessionStore as Partial<UsageStorePort> | undefined;
++  if (
++    !artifacts?.writeToolResultArtifactOnce ||
++    !usage?.recordModelUsage ||
++    !runtime.sessionStore?.saveSessionEntry
++  )
++    throw new Error(
++      "Automatic decision receipt/accounting storage unavailable; no inference was made",
++    );
++  const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(10000)]);
++  signal.throwIfAborted();
++  const key = createHash("sha256")
++    .update(
++      JSON.stringify([
++        runtime.sessionId,
++        operation.inputId !== undefined
++          ? ["input", operation.inputId]
++          : ["fallback", prompt, offered],
++      ]),
++    )
++    .digest("hex");
++  const id = `automatic-decision:${key}`;
++  const prepared = await port.prepare(request, signal);
++  const startedAt = Date.now();
++  const artifact = (suffix: string, content: unknown) =>
++    artifacts.writeToolResultArtifactOnce!({
++      sessionId: runtime.sessionId,
++      toolCallId: id,
++      toolName: "DecisionReceipt",
++      idempotencyKey: `${id}:${suffix}`,
++      content: JSON.stringify(content),
++      contentType: "application/json",
++      retention: "session",
++      trace: operation.trace,
++    });
++  const claim = await artifact("intent", {
++    version: 1,
++    status: "unknown",
++    id,
++    model: prepared.model,
++    offered,
++    inputDigest: prepared.inputDigest,
++    startedAt,
++  });
++  if (!claim.created)
++    throw new Error("Automatic decision may already exist; no repeated inference was made");
++  let result: DecisionModelResult;
++  try {
++    result = await port.classify({
++      ...request,
++      binding: prepared.binding,
++      signal,
++      admission: runtime.modelRequestAdmission,
++      trace: operation.trace,
++    });
++  } catch {
++    result = {
++      status: signal.aborted ? "cancelled" : "error",
++      requestedModel: prepared.model,
++      inputDigest: prepared.inputDigest,
++      answers: {},
++      message: "Automatic decision binding unavailable",
++    };
++  }
++  const completedAt = Date.now();
++  const record: ModelUsageRecord = {
++    id,
++    logicalRequestId: id,
++    sessionID: runtime.sessionId,
++    turnID: operation.trace.turnId,
++    traceID: operation.trace.traceId,
++    querySource: "decision_classification",
++    providerId: result.requestedModel.providerId,
++    modelId: result.requestedModel.modelId,
++    startedAt,
++    completedAt,
++    status:
++      result.status === "completed"
++        ? "completed"
++        : result.status === "cancelled"
++          ? "cancelled"
++          : "error",
++    inputTokens: result.usage?.inputTokens,
++    outputTokens: result.usage?.outputTokens,
++    rawUsage: result.usage,
++    errorMessage: result.message,
++    providerMetadata: {
++      operation: "classifier",
++      reportedModelId: result.reportedModelId,
++      inputDigest: result.inputDigest,
++      fleetAccounting: {
++        billingProvider: result.billingProvider,
++        workspacePath: runtime.config.workspacePath,
++        reportedRequestUsd: result.reportedCostUsd,
++      },
++    },
++  };
++  let usageRecorded = true;
++  let usageRecoveryPending = false;
++  try {
++    await usage.recordModelUsage!(record);
++  } catch {
++    usageRecorded = false;
++    // 复用已有 Session 恢复指令；已提交但回执丢失也按原始 ID 对账，绝不重发推理。
++    try {
++      await retainPendingModelUsage(runtime, record);
++      usageRecoveryPending = true;
++    } catch (error) {
++      runtime.logger?.warn("Automatic decision usage recovery instruction unavailable", {
++        event: "usage.model.recovery.failed",
++        module: "core.runtime",
++        receiptId: id,
++        error: error instanceof Error ? error.message : String(error),
++      });
++    }
++  }
++  await artifact("result", {
++    version: 1,
++    id,
++    startedAt,
++    completedAt,
++    ...result,
++    usageRecorded,
++    usageRecoveryPending,
++  });
++  signal.throwIfAborted();
++  if (!usageRecorded)
++    throw new Error("Automatic decision accounting unavailable; retaining offered model");
++  return result;
++}
++
+ export function sameModelSelection(
+   left: ModelSelection | undefined,
+   right: ModelSelection,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+index 1ae1c7a..750bcb0 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+@@ -63,7 +63,11 @@ import {
+ import { scheduleProjectMemoryExtraction } from "../helpers/project-memory-extraction.js";
+ import { appendBrowserTurnScreenshot } from "./browser-turn-screenshot.js";
+ import { clearBrowserTurnState } from "../../repl/browser-turn-state.js";
+-import { applySubmissionExecutionState, routeAutomaticModel, createTurnModel } from "./turn-model.js";
++import {
++  applySubmissionExecutionState,
++  routeAutomaticModel,
++  createTurnModel,
++} from "./turn-model.js";
+ import { rebuildContextPrefix } from "./context-refresh.js";
+ import { applyTurnVisionBridge } from "./vision-bridge.js";
+ import { subscriptionAccountsForSubmission } from "./model-runtime-headers.js";
+@@ -314,7 +318,12 @@ export async function executeTurnCommand(
+       const routed =
+         options?.modelExecution?.selectionScope === "execution"
+           ? { intent: options?.intent, changed: false }
+-          : await routeAutomaticModel(this, options?.intent, input);
++          : await routeAutomaticModel(this, options?.intent, input, {
++              signal: turnAbortSignal,
++              trace: turnTraceContext,
++              inputId: options?.inputId,
++            });
++      throwIfTurnAborted(turnAbortSignal);
+       const submissionModel = await applySubmissionExecutionState(
+         this,
+         routed.intent,
+@@ -322,6 +331,8 @@ export async function executeTurnCommand(
+         options?.modelExecution,
+         routed.changed ? undefined : admittedModel,
+       );
++      // 自动档位可能跨执行器；Guide 能力必须跟随最终模型，不能沿用候选模型的能力。
++      activeTurn.steerable = !(submissionModel ?? admittedModel)?.nativeExecutor;
+       startedTarget = await this.readSessionTargetForContext(turnTraceContext);
+       completeTurnPhase("target_read", phaseStartedAt);
+       if (startedTarget?.status !== "active") {
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts b/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
+index 838184f..e867782 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/decide.ts
+@@ -150,7 +150,6 @@ export function createDecisionModelTool(port: DecisionModelPort): ToolEntry {
+             inputDigest: result.inputDigest,
+             fleetAccounting: {
+               billingProvider: result.billingProvider,
+-              authKind: "api-key",
+               workspacePath: context.workspaceRoot,
+               reportedRequestUsd: result.reportedCostUsd,
+             },
+diff --git a/apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts b/apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts
+new file mode 100644
+index 0000000..3a564d0
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts
+@@ -0,0 +1,58 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, reply, selection } from "./helpers/pi-runtime-fixture.js";
++
++test("automatic API-to-native routing publishes the final executor's Guide capability", async () => {
++  const f = await fixture();
++  try {
++    const runtime = f.runtime as any;
++    const originalFactory = runtime.modelFactory;
++    const factory = (input: any): any => {
++      const selected = {
++        ...input.selection,
++        options: input.selection.options ?? { reasoningLevel: "off" },
++      };
++      const model = originalFactory({ ...input, selection: selected });
++      return {
++        ...model,
++        nativeExecutor:
++          selected.modelId === "native"
++            ? { kind: "claude", accountId: "fixture-native" }
++            : undefined,
++        bind: (options: any) =>
++          factory({
++            ...input,
++            selection: { ...selected, options: { ...selected.options, ...options } },
++          }),
++      };
++    };
++    runtime.modelFactory = factory;
++    runtime.decisionModelPort = {
++      automaticModel: async () => ({
++        selection: { providerId: "fixture", modelId: "native" },
++        tier: "deep",
++      }),
++    };
++    let nativeTurns = 0;
++    runtime.nativeAgentPort = {
++      createTurn(request: any) {
++        nativeTurns++;
++        assert.equal(runtime.activeTurn.steerable, false);
++        return {
++          model: request.model,
++          admitNextStep() {},
++          retainToolReceipts() {},
++          async close() {},
++        };
++      },
++    };
++    f.steps.push(() => reply("native fixture completed"));
++    await runtime.executeTurn("A document request", [], {
++      intent: { allowAutomaticModelSelection: true, modelSelection: selection() },
++    });
++    assert.equal(nativeTurns, 1);
++    assert.equal(runtime.getSessionModelSelection().modelId, "native");
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/automatic-model.test.ts b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+index 054dd90..bf86594 100644
+--- a/apps/zcode-cli/packages/core/test/automatic-model.test.ts
++++ b/apps/zcode-cli/packages/core/test/automatic-model.test.ts
+@@ -1,26 +1,404 @@
++import { DatabaseSync } from "node:sqlite";
++import type { DecisionModelPort, ModelUsageRecord } from "@zcode/contracts";
++import { fixture as hostFixture, reply, selection } from "./helpers/pi-runtime-fixture.js";
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { randomUUID } from "node:crypto";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+ import { routeAutomaticModel } from "../src/runtime/methods/turn-model.js";
+ 
+-function runtime(history: unknown[], decide: () => Promise<unknown>) {
++function runtime(history: unknown[], decide: (...args: any[]) => Promise<unknown>) {
+   return {
+     sessionId: "s",
++    config: {},
+     sessionStore: { messages: async () => history },
+     decisionModelPort: { automaticModel: decide },
+     logger: { info() {}, warn() {} },
+   } as never;
+ }
+-const intent = { modelSelection: { providerId: "p", modelId: "middle-model" } } as never;
++const intent = {
++  allowAutomaticModelSelection: true,
++  modelSelection: { providerId: "p", modelId: "middle-model" },
++} as never;
++
++test("automatic routing keeps account pins provider-scoped without rewriting the original intent", async () => {
++  const offered = {
++    allowAutomaticModelSelection: true,
++    modelSelection: { providerId: "p", modelId: "middle" },
++    subscriptionAccountId: "account-p",
++  } as never;
++  for (const providerId of ["p", "other"]) {
++    const result = await routeAutomaticModel(
++      runtime([], async () => ({
++        selection: { providerId, modelId: "deep" },
++        tier: "deep",
++        reason: "decision",
++      })),
++      offered,
++      "bounded routing",
++    );
++    assert.equal(
++      result.intent?.subscriptionAccountId,
++      providerId === "p" ? "account-p" : undefined,
++    );
++    assert.equal((offered as any).subscriptionAccountId, "account-p");
++  }
++});
+ 
+ test("automatic choice routes only the first turn and keeps the offered model on failure", async () => {
+-  const deep = async () => ({ selection: { providerId: "p", modelId: "large-model" }, tier: "deep", reason: "decision" });
++  const deep = async () => ({
++    selection: { providerId: "p", modelId: "large-model" },
++    tier: "deep",
++    reason: "decision",
++  });
+   const first = await routeAutomaticModel(runtime([], deep), intent, "Plan a migration");
+   assert.equal(first.changed, true);
+   assert.equal((first.intent as any).modelSelection.modelId, "large-model");
+   const later = await routeAutomaticModel(runtime([{ role: "user" }], deep), intent, "next");
+   assert.equal(later.changed, false, "later turns never switch automatically");
+-  const failing = await routeAutomaticModel(runtime([], async () => { throw new Error("offline"); }), intent, "x");
++  const failing = await routeAutomaticModel(
++    runtime([], async () => {
++      throw new Error("offline");
++    }),
++    intent,
++    "x",
++  );
+   assert.deepEqual(failing, { intent, changed: false });
+-  const stay = await routeAutomaticModel(runtime([], async () => ({ tier: "standard" })), intent, "x");
++  const stay = await routeAutomaticModel(
++    runtime([], async () => ({ tier: "standard" })),
++    intent,
++    "x",
++  );
+   assert.equal(stay.changed, false);
+ });
++
++test("automatic Host operation records usage and fences unknown receipts after SQLite reopen", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-automatic-host-"));
++  const path = join(root, "sessions.sqlite");
++  let store = new SqliteSessionStore({ dbPath: path });
++  const artifacts = new NodeToolArtifactStore({
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  });
++  const controller = new AbortController();
++  const trace = { traceId: "trace", sessionId: "session", turnId: "turn", attributes: {} };
++  let calls = 0;
++  let admitted = 0;
++  let released = 0;
++  const rt = {
++    sessionId: "session",
++    sessionStore: store,
++    artifactStore: artifacts,
++    config: { workspacePath: root },
++    rootTraceContext: trace,
++    logger: { info() {}, warn() {} },
++    modelRequestAdmission: {
++      acquire: async () => {
++        admitted++;
++        return {
++          publish: async () => {},
++          release: () => {
++            released++;
++          },
++        };
++      },
++    },
++    decisionModelPort: {
++      prepare: async () => ({
++        binding: randomUUID(),
++        model: { providerId: "p", modelId: "classifier" },
++        inputDigest: "a".repeat(64),
++      }),
++      classify: async (request: any) => {
++        const ticket = await request.admission.acquire({
++          model: { providerId: "p", modelId: "classifier" },
++          signal: request.signal,
++        });
++        assert.equal(request.trace.traceId, "trace");
++        calls++;
++        ticket.release();
++        return {
++          status: "completed",
++          requestedModel: { providerId: "p", modelId: "classifier" },
++          inputDigest: "a".repeat(64),
++          answers: {},
++          usage: { inputTokens: 40, outputTokens: 12 },
++          reportedCostUsd: 0.002,
++        };
++      },
++      automaticModel: async (
++        _value: unknown,
++        _signal: AbortSignal,
++        classify: (request: unknown) => Promise<unknown>,
++      ) => {
++        await classify({
++          state: "Synthetic input",
++          questions: {
++            tier: {
++              type: "choice",
++              instructions: "Pick",
++              criteria: { standard: "standard", deep: "deep" },
++            },
++          },
++        });
++        return { selection: { providerId: "p", modelId: "large-model" }, tier: "deep" };
++      },
++    },
++  } as any;
++  const context = { signal: controller.signal, trace, inputId: "input" } as any;
++  try {
++    await store.createSession({
++      id: "session" as never,
++      projectID: "project" as never,
++      slug: "fixture",
++      directory: root,
++      title: "fixture",
++      version: "fixture",
++    });
++    assert.equal((await routeAutomaticModel(rt, intent, "Synthetic input", context)).changed, true);
++    assert.equal(admitted, 1);
++    assert.equal(released, 1);
++    const used = await store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    assert.ok(
++      used.accounting?.some((row) => row.modelId === "classifier" && row.estimatedUsd === 0.002),
++    );
++    store.close();
++    store = new SqliteSessionStore({ dbPath: path });
++    rt.sessionStore = store;
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", context)).changed,
++      false,
++    );
++    assert.equal(calls, 1);
++    assert.equal(
++      (
++        await routeAutomaticModel(
++          rt,
++          {
++            allowAutomaticModelSelection: true,
++            modelSelection: { providerId: "p", modelId: "changed-offer" },
++          } as never,
++          "Changed input with retained identity",
++          context,
++        )
++      ).changed,
++      false,
++    );
++    assert.equal(
++      calls,
++      1,
++      "same durable input identity cannot evade its receipt by changing offered bindings",
++    );
++    const write = artifacts.writeToolResultArtifactOnce.bind(artifacts);
++    artifacts.writeToolResultArtifactOnce = async (value) => {
++      if (value.idempotencyKey.endsWith(":result")) throw new Error("crash before result receipt");
++      return write(value);
++    };
++    const unknownContext = { ...context, inputId: "unknown-input" };
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", unknownContext)).changed,
++      false,
++    );
++    artifacts.writeToolResultArtifactOnce = write;
++    store.close();
++    store = new SqliteSessionStore({ dbPath: path });
++    rt.sessionStore = store;
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", unknownContext)).changed,
++      false,
++    );
++    assert.equal(calls, 2, "unknown result receipt must not repeat an already submitted decision");
++    artifacts.writeToolResultArtifactOnce = async (value) => {
++      const receipt = await write(value);
++      if (value.idempotencyKey.endsWith(":result"))
++        throw new Error("result committed; acknowledgement lost");
++      return receipt;
++    };
++    const ackContext = { ...context, inputId: "result-ack-input" };
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", ackContext)).changed,
++      false,
++    );
++    artifacts.writeToolResultArtifactOnce = write;
++    store.close();
++    store = new SqliteSessionStore({ dbPath: path });
++    rt.sessionStore = store;
++    assert.equal(
++      (await routeAutomaticModel(rt, intent, "Synthetic input", ackContext)).changed,
++      false,
++    );
++    assert.equal(calls, 3, "committed result with lost ACK must not repeat inference");
++  } finally {
++    store.close();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("Stop reaches the pending automatic operation and cannot apply its answer", async () => {
++  const controller = new AbortController();
++  let observed = false;
++  const rt = runtime([], async (_value: unknown, signal: AbortSignal) => {
++    const answer = await new Promise((resolve) =>
++      signal.addEventListener(
++        "abort",
++        () => {
++          observed = true;
++          resolve({ selection: { providerId: "p", modelId: "large-model" }, tier: "deep" });
++        },
++        { once: true },
++      ),
++    );
++    return answer;
++  });
++  const pending = routeAutomaticModel(rt, intent, "Synthetic input", {
++    signal: controller.signal,
++    trace: { traceId: "trace", attributes: {} } as never,
++    inputId: "stop",
++  });
++  await new Promise<void>((resolve) => setImmediate(resolve));
++  controller.abort();
++  await assert.rejects(pending, /abort/i);
++  assert.equal(observed, true);
++});
++
++for (const failure of ["write", "committed-ack"] as const) {
++  test(`automatic observed usage reconciles a ${failure} failure on public Host reopen`, async () => {
++    let calls = 0;
++    const port: DecisionModelPort = {
++      isAvailable: () => true,
++      listModels: () => [],
++      prepare: async () => ({
++        binding: randomUUID(),
++        model: { providerId: "fixture", modelId: "classifier" },
++        inputDigest: "b".repeat(64),
++      }),
++      classify: async () => {
++        calls++;
++        return {
++          status: "completed",
++          requestedModel: { providerId: "fixture", modelId: "classifier" },
++          inputDigest: "b".repeat(64),
++          answers: {},
++          usage: { inputTokens: 40, outputTokens: 12 },
++          reportedCostUsd: 0.002,
++        };
++      },
++      automaticModel: async (_value, _signal, classify) => {
++        await classify({
++          state: "Synthetic input",
++          questions: {
++            tier: {
++              type: "choice",
++              instructions: "Pick",
++              criteria: { standard: "standard", deep: "deep" },
++            },
++          },
++        });
++        return { selection: { providerId: "fixture", modelId: "large-model" }, tier: "deep" };
++      },
++    };
++    const f = await hostFixture(undefined, false, { deps: { decisionModelPort: port } });
++    const original = f.store.recordModelUsage.bind(f.store);
++    let observed: ModelUsageRecord | undefined;
++    f.store.recordModelUsage = async (record) => {
++      if (record.querySource !== "decision_classification") return original(record);
++      observed ??= structuredClone(record);
++      if (failure === "committed-ack") await original(record);
++      throw new Error("Synthetic decision ledger unavailable");
++    };
++    const rows = () => {
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        return db
++          .prepare("select * from model_usage where query_source = 'decision_classification'")
++          .all();
++      } finally {
++        db.close();
++      }
++    };
++    try {
++      f.steps.push(() => reply("Original offered model"));
++      await f.runtime.executeTurn("Synthetic input", undefined, {
++        inputId: "usage-recovery",
++        intent: { allowAutomaticModelSelection: true, modelSelection: selection() },
++      } as never);
++      assert.equal(f.requests[0]?.selection.modelId, "model-a");
++      assert.equal(calls, 1);
++      assert.equal(rows().length, failure === "write" ? 0 : 1);
++      const pending = await f.store.sessionEntries({
++        sessionID: "session" as never,
++        type: "runtime/pending_model_usage",
++      });
++      assert.equal(pending.length, 1);
++      assert.deepEqual(pending[0]?.data, { record: JSON.parse(JSON.stringify(observed)) });
++      await f.reopen();
++      const recovered = rows();
++      assert.equal(recovered.length, 1);
++      assert.equal(recovered[0]?.id, observed?.id);
++      assert.equal(recovered[0]?.logical_request_id, observed?.logicalRequestId);
++      assert.equal(recovered[0]?.input_tokens, 40);
++      assert.equal(recovered[0]?.output_tokens, 12);
++      assert.equal(
++        recovered[0]?.provider_metadata_json,
++        JSON.stringify(observed?.providerMetadata),
++      );
++      const cleared = await f.store.sessionEntries({
++        sessionID: "session" as never,
++        type: "runtime/pending_model_usage",
++      });
++      assert.deepEqual(cleared[0]?.data, { record: null });
++      await f.reopen();
++      assert.equal(rows().length, 1);
++      assert.equal(calls, 1);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("automatic routing requires an explicit automatic-default marker and an interactive task", async () => {
++  let calls = 0;
++  const decide = async () => {
++    calls++;
++    return { selection: { providerId: "p", modelId: "large-model" }, tier: "deep" };
++  };
++  for (const marker of [undefined, false]) {
++    const manual = { ...intent, allowAutomaticModelSelection: marker };
++    assert.equal(
++      (
++        await routeAutomaticModel(
++          runtime([], decide),
++          manual as never,
++          "Same standard model selected manually",
++        )
++      ).changed,
++      false,
++    );
++  }
++  for (const taskType of [
++    "page_assistant",
++    "subagent_child",
++    "workflow_child",
++    "nested_workflow_child",
++    "workflow_parent",
++    "fork",
++    "selection_side_chat",
++  ]) {
++    const child = runtime([], decide) as any;
++    child.config.taskType = taskType;
++    assert.equal((await routeAutomaticModel(child, intent, "First child input")).changed, false);
++  }
++  assert.equal(calls, 0, "manual/legacy/child input must never dispatch the optional model");
++  const interactive = runtime([], decide) as any;
++  interactive.config.taskType = "interactive";
++  assert.equal(
++    (await routeAutomaticModel(interactive, intent, "Explicit automatic default")).changed,
++    true,
++  );
++  assert.equal(calls, 1);
++});
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 443ec6d..f22d52a 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2412,8 +2412,8 @@
+             },
+             "serviceId": "decisions",
+             "serviceNameMap": {
+-              "zh-CN": "决策模型 API",
+-              "en-US": "Decision API"
++              "zh-CN": "TypeSafe Jev",
++              "en-US": "TypeSafe Jev"
+             },
+             "region": "global"
+           },
+@@ -2431,8 +2431,8 @@
+         {
+           "templateId": "fleet-laya-local",
+           "templateNameMap": {
+-            "zh-CN": "Laya（本地决策模型）",
+-            "en-US": "Laya (local decision model)"
++            "zh-CN": "Laya（本地服务）",
++            "en-US": "Laya (local service)"
+           },
+           "catalog": {
+             "vendorId": "laya",
+@@ -2442,8 +2442,8 @@
+             },
+             "serviceId": "decisions",
+             "serviceNameMap": {
+-              "zh-CN": "本地决策模型",
+-              "en-US": "Local decisions"
++              "zh-CN": "Laya（本地服务）",
++              "en-US": "Laya (local service)"
+             }
+           },
+           "config": {
+diff --git a/package.json b/package.json
+index a58f847..fac7aaf 100644
+--- a/package.json
++++ b/package.json
+@@ -76,7 +76,7 @@
+     "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles",
+     "test:decision-classifier": "tsx --test apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+-    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts",
++    "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+     "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts",
+     "lint:cli": "pnpm --dir apps/zcode-cli lint"
+diff --git a/packages/services/test/model-purpose-defaults.test.ts b/packages/services/test/model-purpose-defaults.test.ts
+index 32e21b9..d5b0abb 100644
+--- a/packages/services/test/model-purpose-defaults.test.ts
++++ b/packages/services/test/model-purpose-defaults.test.ts
+@@ -140,6 +140,53 @@ async function fixture() {
+   };
+ }
+ 
++test("a keyless local classifier uses the existing Provider and preference owners through reopen", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.runtime.configService.createPersonalProvider({
++      templateId: "fleet-laya-local",
++      initialConfig: parseProviderConfig({ access: { type: "api-key", apiKey: "" } }),
++    });
++    await f.runtime.registryService.refresh("local-classifier-created");
++    const view = await f.service.getView();
++    assert.ok(
++      view.classifierModels?.some(
++        (model) => model.providerId === providerId && model.modelId === "multilingual",
++      ),
++    );
++    const chosen = { providerId, modelId: "multilingual" };
++    await f.service.savePreferences({
++      expectedRevision: (await f.service.getPreferences()).revision,
++      decisionModelSettings: { enabled: true, selection: chosen },
++    });
++    await f.reopen();
++    assert.deepEqual((await f.service.getPreferences()).decisionModelSettings, {
++      enabled: true,
++      selection: chosen,
++    });
++    const restored = await f.service.getView();
++    assert.ok(restored.classifierModels?.some((model) => model.providerId === providerId));
++    assert.ok(
++      !restored.providers.some(
++        (provider) => provider.providerId === providerId && provider.models.length,
++      ),
++      "classifier is not offered as a chat model",
++    );
++    await f.runtime.configService.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({ api: { baseUrl: "https://remote-classifier.example/v1" } }),
++    );
++    await f.runtime.registryService.refresh("local-classifier-moved");
++    assert.ok(
++      !(await f.service.getView()).classifierModels?.some(
++        (model) => model.providerId === providerId,
++      ),
++    );
++  } finally {
++    await f.close();
++  }
++});
++
+ test("purpose defaults share one versioned writer, survive other Provider writes and cold reopen, and clear independently", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 8c9806e..e2fe4b0 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -33,6 +33,30 @@ const facade = new ProviderSettingsFacade({
+   }),
+ } as unknown as ProviderRegistryFacadeSource);
+ const templates = facade.getView().providerTemplates;
++
++test("local System One setup accepts no key while remote and other protocols still require one", () => {
++  const local = templates.find((item) => item.templateId === "fleet-laya-local")!;
++  const draft = newProviderSetupDraft(local);
++  const config = providerSetupConfig(local, draft);
++  assert.ok(config?.access?.type === "api-key");
++  assert.equal(config.access.apiKey, "");
++  assert.equal(
++    providerSetupConfig(local, { ...draft, baseUrl: "https://classifier.example/v1" }),
++    undefined,
++  );
++  assert.equal(
++    providerSetupConfig(local, { ...draft, baseUrl: "http://127.0.0.1:8000/v1?token=x" }),
++    undefined,
++  );
++  const chat = templates.find((item) => item.templateId === "openai")!;
++  assert.equal(
++    providerSetupConfig(chat, {
++      ...newProviderSetupDraft(chat),
++      baseUrl: "http://127.0.0.1:8000/v1",
++    }),
++    undefined,
++  );
++});
+ const vendors = groupProviderTemplates(templates, "zh-CN");
+ const family = (id: string) => vendors.find((vendor) => vendor.id === `vendor:${id}`)!.templates;
+ 
+@@ -358,19 +382,13 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(subscriptions.find((g) => g.id === "vendor:openai")?.label, "ChatGPT");
+   assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
+   // OV-103 将 CLI 移至独立终端页；订阅页继续显示产品名，而不是公司或执行器名。
+-  assert.equal(
+-    subscriptions.find((g) => g.id === "vendor:kimi")?.label,
+-    "Kimi Code",
+-  );
++  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code");
+   assert.ok(
+     api
+       .find((g) => g.id === "vendor:kimi")
+       ?.templates.some((t) => t.config.access?.type === "api-key"),
+   );
+-  assert.equal(
+-    subscriptions.find((g) => g.id === "vendor:opencode")?.label,
+-    "OpenCode Go",
+-  );
++  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
+   assert.ok(
+     subscriptions
+       .find((g) => g.id === "vendor:opencode")
+diff --git a/packages/shared/src/zcode-protocol-v4/command.ts b/packages/shared/src/zcode-protocol-v4/command.ts
+index a3379bf..a2d3613 100644
+--- a/packages/shared/src/zcode-protocol-v4/command.ts
++++ b/packages/shared/src/zcode-protocol-v4/command.ts
+@@ -54,6 +54,7 @@ export const commandPayloadSchemas = {
+         text: z.string(),
+         attachments: z.array(attachmentRefSchema).optional(),
+         modelSelection: modelSelectionSchema.optional(),
++        allowAutomaticModelSelection: z.boolean().optional(),
+         subscriptionAccountId: z.string().min(1).optional(),
+         mode: submissionModeSchema.optional(),
+         planEnabled: z.boolean().optional(),
+@@ -77,6 +78,7 @@ export const commandPayloadSchemas = {
+         text: z.string().trim().min(1),
+         // 提交推荐只覆盖新 child 的完整选择，缺省保留父 runtime 继承。
+         modelSelection: modelSelectionSchema.optional(),
++        allowAutomaticModelSelection: z.boolean().optional(),
+         subscriptionAccountId: z.string().min(1).optional(),
+       })
+       .optional(),
+@@ -105,6 +107,7 @@ export const commandPayloadSchemas = {
+       /** Optional image-description backend, frozen with this submission before queue admission. */
+       visionModelSelection: modelSelectionSchema.optional(),
+       /** Host-captured subscription identity for this submission; no credentials travel here. */
++      allowAutomaticModelSelection: z.boolean().optional(),
+       subscriptionAccountId: z.string().min(1).optional(),
+       mode: submissionModeSchema.optional(),
+       planEnabled: z.boolean().optional(),
+@@ -146,6 +149,7 @@ export const commandPayloadSchemas = {
+     text: z.string(),
+     displayText: z.string().optional(),
+     modelSelection: modelSelectionSchema.optional(),
++    allowAutomaticModelSelection: z.boolean().optional(),
+     subscriptionAccountId: z.string().min(1).optional(),
+     mode: submissionModeSchema.optional(),
+     planEnabled: z.boolean().optional(),
+diff --git a/packages/shared/src/zcode-protocol-v4/input-intent.ts b/packages/shared/src/zcode-protocol-v4/input-intent.ts
+index d82706a..c1f76c0 100644
+--- a/packages/shared/src/zcode-protocol-v4/input-intent.ts
++++ b/packages/shared/src/zcode-protocol-v4/input-intent.ts
+@@ -48,6 +48,7 @@ export const conversationInputIntentSchema = z
+     // optional 只服务旧 snapshot hydration；新 admission 必须填入完整 Submission。
+     modelSelection: modelSelectionSchema.optional(),
+     visionModelSelection: modelSelectionSchema.optional(),
++    allowAutomaticModelSelection: z.boolean().optional(),
+     subscriptionAccountId: z.string().min(1).optional(),
+     mode: submissionModeSchema.optional(),
+     planEnabled: z.boolean().optional(),
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 66ccf3d..e304969 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7574,19 +7574,21 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.modelOptions.contextUnavailable": "Context option unavailable",
+   "chat.toolbar.modelOptions.context": "Context",
+   "chat.toolbar.modelOptions.model": "Model",
++  "settings.modelProvider.apiKeyOptional": "API Key (optional)",
++  "settings.modelDefaults.decision.manageConnection": "Connection settings",
+   "settings.modelDefaults.decision": "Auxiliary decision model",
+   "settings.modelDefaults.decision.description":
+-    "Off by default. When enabled, the Agent can request classification, scoring or yes/no advice. It does not replace the conversation model or grant permissions.",
++    "Off by default. Reuse a configured chat model or classifier for on-demand judgments and first-turn routing under the automatic policy. Failed judgments retain the offered model and never grant action permissions.",
+   "settings.modelDefaults.decision.model": "Decision model",
+   "settings.modelDefaults.decision.notice":
+     "Each decision is a separate request. Selected evidence goes to this connection and usage is recorded separately.",
+   "settings.modelDefaults.decision.empty":
+-    "Add a TypeSafe API or local Laya connection first, then choose a model. Chat models cannot use this interface.",
++    "Choose a configured chat model or add a classifier service such as TypeSafe Jev or Laya.",
+   "settings.modelDefaults.decision.choose": "Choose a decision model",
+   "settings.modelDefaults.decision.none": "No decision model",
+   "settings.modelProvider.apiFormat.title.systemOne": "Decision model format",
+   "settings.modelProvider.help.format.typesafe-system-one":
+-    "System One classification, scoring and yes/no interface. Enter the base URL ending in /v1. This connection is excluded from conversation model choices. Local Laya needs no API key.",
++    "System One classification, scoring and yes/no interface. Enter the base URL ending in /v1. This connection is excluded from conversation model choices. The key is optional for a local service; enter one if the server requires authentication.",
+   "settings.modelProvider.catalogFilter.decision": "Decisions",
+   "settings.modelProvider.classifierBadge": "Decision",
+   "settings.modelDefaults.recent": "Use last selection",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 60adab6..3697f4e 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -7167,19 +7167,21 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.modelOptions.contextUnavailable": "上下文档位不可用",
+   "chat.toolbar.modelOptions.context": "上下文",
+   "chat.toolbar.modelOptions.model": "模型",
++  "settings.modelProvider.apiKeyOptional": "API Key（可选）",
++  "settings.modelDefaults.decision.manageConnection": "连接设置",
+   "settings.modelDefaults.decision": "辅助决策模型",
+   "settings.modelDefaults.decision.description":
+-    "默认关闭。启用后，Agent 可按需调用独立模型做分类、评分或是非判断；不替代主对话模型，也不决定操作权限。",
++    "默认关闭。可复用已有聊天模型或专用分类服务，用于按需辅助判断和自动策略下的新对话首轮分档。判断失败保留原模型，结果不授予操作权限。",
+   "settings.modelDefaults.decision.model": "决策模型",
+   "settings.modelDefaults.decision.notice":
+     "每次判断都是独立调用，会将所选证据发送到此连接，并单独记录用量。",
+   "settings.modelDefaults.decision.empty":
+-    "先添加 TypeSafe API 或本地 Laya 连接，再选择模型。普通聊天模型不能用于此接口。",
++    "可选择已配置的聊天模型，或添加 TypeSafe Jev、Laya 等分类服务。",
+   "settings.modelDefaults.decision.choose": "选择决策模型",
+   "settings.modelDefaults.decision.none": "不使用决策模型",
+   "settings.modelProvider.apiFormat.title.systemOne": "决策模型格式",
+   "settings.modelProvider.help.format.typesafe-system-one":
+-    "用于分类、评分和是非判断的 System One 接口，基地址填写至 /v1。此连接不会出现在聊天模型选择中。本地 Laya 服务无需 API 密钥。",
++    "用于分类、评分和是非判断的 System One 接口，基地址填写至 /v1。此连接不会出现在聊天模型选择中。本地服务可留空密钥；若服务启用了鉴权，请填写密钥。",
+   "settings.modelProvider.catalogFilter.decision": "辅助决策",
+   "settings.modelProvider.classifierBadge": "决策",
+   "settings.modelDefaults.recent": "沿用上次选择",
+diff --git a/packages/ui/src/settings/DecisionModelDefaults.tsx b/packages/ui/src/settings/DecisionModelDefaults.tsx
+index b611649..c3f8c8e 100644
+--- a/packages/ui/src/settings/DecisionModelDefaults.tsx
++++ b/packages/ui/src/settings/DecisionModelDefaults.tsx
+@@ -6,16 +6,19 @@ import { selectTriggerVariants } from "@/components/ui/select.js";
+ import { SettingsRow, SettingsGroupCard } from "@/settings/SettingsPageParts.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
++import { ModelConfigHelp } from "@/settings/model-provider-section/ModelConfigHelp.js";
+ 
+ /** Separate operation family; all writes still go through the parent Personal writer. */
+ export function DecisionModelDefaults({
+   view,
+   pending,
+   onChange,
++  onManageConnection,
+ }: {
+   view: ModelSelectionView | null;
+   pending: boolean;
+   onChange(settings: DecisionModelSettings): void | Promise<void>;
++  onManageConnection?(providerId?: string): void;
+ }) {
+   const { intl } = useZCodeIntl();
+   const decision = view?.decisionModelSettings ?? { enabled: false };
+@@ -44,7 +47,16 @@ export function DecisionModelDefaults({
+     <div data-decision-model-settings>
+       <SettingsGroupCard>
+         <SettingsRow
+-          label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++          label={
++            <span className="inline-flex items-center">
++              {intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++              <ModelConfigHelp
++                field="advanced"
++                label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
++                copy={`${intl.formatMessage({ id: "settings.modelDefaults.decision.description" })}\n\n${intl.formatMessage({ id: "settings.modelDefaults.decision.notice" })}`}
++              />
++            </span>
++          }
+           control={
+             <Switch
+               aria-label={intl.formatMessage({ id: "settings.modelDefaults.decision" })}
+@@ -85,7 +97,11 @@ export function DecisionModelDefaults({
+                   name: intl.formatMessage({ id: "settings.modelDefaults.decision.none" }),
+                 },
+               ]}
+-              showManageModelsAction={false}
++              showManageModelsAction={Boolean(onManageConnection)}
++              manageModelsLabel={intl.formatMessage({
++                id: "settings.modelDefaults.decision.manageConnection",
++              })}
++              onManageModels={() => onManageConnection?.(decision.selection?.providerId)}
+               focusSelectorOnClose={null}
+               footerActions={[]}
+               labelVisibilityClassName="inline-flex"
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index a28ea56..f45f6c1 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -249,7 +249,20 @@ export function ModelProviderSection({
+         </p>
+       ) : null}
+       {defaultsOpen ? (
+-        <ModelPurposeDefaults />
++        <ModelPurposeDefaults
++          onManageConnection={(providerId) => {
++            if (
++              providerId &&
++              modelProviders.some((provider) => provider.providerId === providerId)
++            ) {
++              setTarget({ providerId });
++            } else {
++              setTarget(undefined);
++              setDefaultsOpen(false);
++              setTemplatePickerOpen(true);
++            }
++          }}
++        />
+       ) : templatePickerOpen || (!loading && !selectedNavItem) ? (
+         <ProviderTemplatePicker
+           templates={providerTemplates}
+diff --git a/packages/ui/src/settings/ModelPurposeDefaults.tsx b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+index bbc6cc0..6732e3c 100644
+--- a/packages/ui/src/settings/ModelPurposeDefaults.tsx
++++ b/packages/ui/src/settings/ModelPurposeDefaults.tsx
+@@ -26,7 +26,9 @@ import { DecisionModelDefaults } from "./DecisionModelDefaults.js";
+ 
+ const PURPOSES = ["conversation", "page-assistant", "vision-bridge"] as const;
+ /** Purpose choices share the Personal writer; Project and subagent choices keep their own owners. */
+-export function ModelPurposeDefaults() {
++export function ModelPurposeDefaults({
++  onManageConnection,
++}: { onManageConnection?(providerId?: string): void } = {}) {
+   const { modelSelectionService } = useBaseWorkspaceServices();
+   const read = useModelSelectionServiceView(modelSelectionService);
+   const { intl } = useZCodeIntl();
+@@ -108,7 +110,7 @@ export function ModelPurposeDefaults() {
+           <ModelConfigHelp
+             field="advanced"
+             label={intl.formatMessage({ id: "settings.modelDefaults.title" })}
+-            copy={["conversation", "page-assistant", "vision-bridge", "decision"]
++            copy={["conversation", "page-assistant", "vision-bridge"]
+               .map((purpose) =>
+                 intl.formatMessage({ id: `settings.modelDefaults.${purpose}.description` }),
+               )
+@@ -299,6 +301,7 @@ export function ModelPurposeDefaults() {
+         view={view}
+         pending={pending}
+         onChange={(settings) => save({ decisionModelSettings: settings })}
++        onManageConnection={onManageConnection}
+       />
+       {read.state.status === "loading" ? (
+         <p className="text-ui-sm text-foreground-subtle">
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 2fd8195..02df22b 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -313,6 +313,7 @@ export function ProviderConnectionSection({
+ }
+ 
+ export function ProviderApiKeySection({
++  apiKeyLabel,
+   rowEditing,
+   additionalApiKeys,
+   autoSwitchCredentials,
+@@ -329,6 +330,7 @@ export function ProviderApiKeySection({
+   onApiKeyCompositionEnd,
+   onToggleApiKeyVisibility,
+ }: {
++  apiKeyLabel?: string;
+   rowEditing?: {
+     savedKeys: readonly string[];
+     enabledFlags: readonly boolean[];
+@@ -398,7 +400,7 @@ export function ProviderApiKeySection({
+     <div>
+       <div className="mb-1 flex items-center justify-between gap-2">
+         <div className="flex items-center text-ui-base text-foreground-subtle">
+-          <span>{intl.formatMessage({ id: "settings.modelProvider.apiKey" })}</span>
++          <span>{apiKeyLabel ?? intl.formatMessage({ id: "settings.modelProvider.apiKey" })}</span>
+         </div>
+         {presetApiKeyUrl && onOpenPresetApiKey ? (
+           <PresetProviderApiKeyBanner onOpenApiKey={onOpenPresetApiKey} />
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index 3f77163..773914c 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -19,6 +19,7 @@ import { ProviderLogo } from "./ProviderLogo.js";
+ import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
+ import { ProviderProtocolControl } from "./ProviderProtocolControl.js";
+ import {
++  allowsEmptyProviderKey,
+   newProviderSetupDraft,
+   providerSetupConfig,
+   type ProviderSetupDraft,
+@@ -54,6 +55,7 @@ export function ProviderTemplateSetup({
+   const selected = vendor.templates.find((template) => template.templateId === selectedId);
+   if (!selected) return null;
+   const draft = drafts[selectedId] ?? newProviderSetupDraft(selected);
++  const keyOptional = allowsEmptyProviderKey(draft);
+   const patch = (values: Partial<ProviderSetupDraft>) => {
+     setInvalid(false);
+     setDrafts((previous) => ({ ...previous, [selectedId]: { ...draft, ...values } }));
+@@ -213,6 +215,11 @@ export function ProviderTemplateSetup({
+               }}
+             />
+             <ProviderApiKeySection
++              apiKeyLabel={
++                keyOptional
++                  ? intl.formatMessage({ id: "settings.modelProvider.apiKeyOptional" })
++                  : undefined
++              }
+               apiKeyValue={draft.primary}
+               additionalApiKeys={draft.additional}
+               autoSwitchCredentials={draft.automatic}
+@@ -278,7 +285,8 @@ export function ProviderTemplateSetup({
+               (custom && !name.trim()) ||
+               (api &&
+                 (!draft.baseUrl.trim() ||
+-                  ![draft.primary, ...draft.additional].some((key) => key.trim())))
++                  (!keyOptional &&
++                    ![draft.primary, ...draft.additional].some((key) => key.trim()))))
+             }
+           >
+             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+index 8f5de94..793703e 100644
+--- a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -1,5 +1,6 @@
+ import {
+   isApiKeyAccess,
++  isLocalClassifierEndpoint,
+   resolveProviderProtocolPolicy,
+   type ProviderApiType,
+   type ProviderConfigObject,
+@@ -14,6 +15,13 @@ export interface ProviderSetupDraft {
+   automatic: boolean;
+ }
+ 
++/** Match the existing Provider schema; keyless setup does not imply a running local service. */
++export function allowsEmptyProviderKey(
++  draft: Pick<ProviderSetupDraft, "api" | "baseUrl">,
++): boolean {
++  return draft.api === "typesafe-system-one" && isLocalClassifierEndpoint(draft.baseUrl.trim());
++}
++
+ export function isValidProviderBaseUrl(value: string): boolean {
+   try {
+     const url = new URL(value.trim());
+@@ -47,7 +55,11 @@ export function providerSetupConfig(
+   const keys = [
+     ...new Set([draft.primary, ...draft.additional].map((key) => key.trim()).filter(Boolean)),
+   ];
+-  if ((!keys.length && !options.allowEmptyCredentials) || keys.length > 10) return undefined;
++  if (
++    (!keys.length && !options.allowEmptyCredentials && !allowsEmptyProviderKey(draft)) ||
++    keys.length > 10
++  )
++    return undefined;
+   const api = { type: draft.api, baseUrl: draft.baseUrl.trim() };
+   const policy = resolveProviderProtocolPolicy(template.config, { ...template.config, api });
+   if (policy.mode === "override" && !acceptedFormats.includes(draft.api)) return undefined;
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+index 3d7181c..cec1e0d 100644
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -422,6 +422,7 @@ function submissionConfigFromCommand(
+   if (!candidate?.modelSelection || !candidate.mode) return null;
+   return {
+     modelSelection: candidate.modelSelection as ComposerSubmissionConfig["modelSelection"],
++    ...(candidate.allowAutomaticModelSelection === true ? { allowAutomaticModelSelection: true } : {}),
+     mode: candidate.mode as ComposerSubmissionConfig["mode"],
+     planEnabled:
+       typeof candidate.planEnabled === "boolean"
+diff --git a/packages/ui/src/v4/composer/composerDraftStore.ts b/packages/ui/src/v4/composer/composerDraftStore.ts
+index 47cb283..84c4b46 100644
+--- a/packages/ui/src/v4/composer/composerDraftStore.ts
++++ b/packages/ui/src/v4/composer/composerDraftStore.ts
+@@ -24,6 +24,8 @@ export interface V4ComposerDraft {
+   lastPlanTransitionId?: string;
+   lastPermissionGrantId?: string;
+   modelSelection?: ModelSelection;
++  /** True only for a new-chat automatic default; explicit and legacy drafts keep their model. */
++  allowAutomaticModelSelection?: boolean;
+   /** 首次分享导入等待公共新任务初始化；不能由空 Session snapshot 抢先填充。 */
+   initializeFromNewTask?: true;
+   updatedAt: number;
+@@ -133,6 +135,9 @@ function readDraft(value: unknown): V4ComposerDraft | null {
+       ? { lastPlanTransitionId: value.lastPlanTransitionId }
+       : {}),
+     ...(modelSelection ? { modelSelection } : {}),
++    ...(typeof value.allowAutomaticModelSelection === "boolean"
++      ? { allowAutomaticModelSelection: value.allowAutomaticModelSelection }
++      : {}),
+     ...(value.initializeFromNewTask === true && !mode.success
+       ? { initializeFromNewTask: true as const }
+       : {}),
+@@ -194,6 +199,7 @@ export function resetEmptyV4DraftModel(workspacePath: string, workspaceIdentity?
+   persistV4ComposerDraft(workspacePath, workspaceIdentity, V4_DRAFT_SCOPE_ROOT, {
+     ...draft,
+     modelSelection: undefined,
++    allowAutomaticModelSelection: undefined,
+   });
+ }
+ 
+diff --git a/packages/ui/src/v4/composer/composerSubmissionConfig.ts b/packages/ui/src/v4/composer/composerSubmissionConfig.ts
+index ae27c31..17a7ec6 100644
+--- a/packages/ui/src/v4/composer/composerSubmissionConfig.ts
++++ b/packages/ui/src/v4/composer/composerSubmissionConfig.ts
+@@ -7,12 +7,18 @@ export interface ComposerSubmissionConfig {
+   modelSelection: ModelSelection;
+   mode: SubmissionMode;
+   planEnabled: boolean;
++  allowAutomaticModelSelection?: boolean;
+ }
+ 
+ /** 在点击提交的瞬间，把 Composer 意图冻结成本次 Submission 的执行配置。 */
+ export function createComposerSubmissionConfig(
+   composer:
+-    | { mode?: string; planEnabled?: boolean; modelSelection?: ModelSelection }
++    | {
++        mode?: string;
++        planEnabled?: boolean;
++        modelSelection?: ModelSelection;
++        allowAutomaticModelSelection?: boolean;
++      }
+     | null
+     | undefined,
+   view: ModelSelectionView | null,
+@@ -35,6 +41,9 @@ export function createComposerSubmissionConfig(
+   return Object.freeze({
+     mode: mode.data === "plan" ? "build" : mode.data,
+     planEnabled: resolveExecutionState(composer).planEnabled,
++    ...(composer.allowAutomaticModelSelection === true
++      ? { allowAutomaticModelSelection: true }
++      : {}),
+     modelSelection: Object.freeze({
+       providerId: selection.providerId,
+       modelId: selection.modelId,
+diff --git a/packages/ui/src/v4/composer/newTaskDraft.ts b/packages/ui/src/v4/composer/newTaskDraft.ts
+index 3bcf1c6..22a49ed 100644
+--- a/packages/ui/src/v4/composer/newTaskDraft.ts
++++ b/packages/ui/src/v4/composer/newTaskDraft.ts
+@@ -91,9 +91,29 @@ export function initializeNewTaskDraft(
+     modelSelection:
+       draft.modelSelection ??
+       resolveNewTaskDefault(view, recent?.modelSelection, preferConfiguredDefault),
++    allowAutomaticModelSelection: draft.modelSelection
++      ? draft.allowAutomaticModelSelection === true
++      : isAutomaticNewTaskDefault(view, recent?.modelSelection, preferConfiguredDefault),
+   };
+ }
+ 
++/** A project-scoped recent choice and a manually saved draft retain their own model. */
++export function isAutomaticNewTaskDefault(
++  view: ModelSelectionView,
++  recent?: ModelSelection,
++  outsideProject = false,
++): boolean {
++  if (view.newConversationModelPolicy !== "automatic") return false;
++  return (
++    outsideProject ||
++    !recent ||
++    !resolveNewTaskModelChoice(
++      { ...view, configuredDefaultSelection: undefined, preferredSelection: undefined },
++      recent,
++    )
++  );
++}
++
+ /** 在激活首次导入的 Session 前调用；不依赖模型可执行，也不把原新任务正文带入分享。 */
+ export function seedImportedSessionDraft(result: {
+   workspacePath: string;
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index a78f0f1..9353d8b 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -34,6 +34,7 @@ import { isWorkspaceTab } from "@/store/tabStore.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+ import {
+   initializeNewTaskDraft,
++  isAutomaticNewTaskDefault,
+   resolveNewTaskModelChoice,
+   resolveNewTaskDefault,
+ } from "@/v4/composer/newTaskDraft.js";
+@@ -54,6 +55,9 @@ import { resolveAppFollowupMode } from "@/v4/composer/followupModeSettings.js";
+ import { logger } from "@/logger.js";
+ import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
+ 
++type ComposerDraftConfig = Partial<SessionConfigState> &
++  Pick<V4ComposerDraft, "allowAutomaticModelSelection">;
++
+ /** 目录水合单飞（per workspaceKey）：draft、已有 session 和严格模式双挂载共享一次 RPC。 */
+ const workspaceCatalogHydrationFlights = new Map<string, Promise<void>>();
+ 
+@@ -93,9 +97,9 @@ function shouldHydrateWorkspaceCatalog(params: {
+ interface DraftConfigControl {
+   modelSelectionRead: ModelSelectionRead;
+   /** Renderer 下一次提交的配置；Session 只在 scope 首次初始化时提供种子。 */
+-  draftConfig: Partial<SessionConfigState>;
++  draftConfig: ComposerDraftConfig;
+   /** 草稿已选 config（partial）；createSession 时经 buildDraftCreateConfigPayload 携带。 */
+-  draftConfigRef: React.RefObject<Partial<SessionConfigState>>;
++  draftConfigRef: React.RefObject<ComposerDraftConfig>;
+   /** 当前草稿生命周期冻结的初始化 config；只供 prewarm/createSession 建立时使用。 */
+   resolveInitialDraftConfig: () => Partial<SessionConfigState> | undefined;
+   composerDraft: V4ComposerDraft;
+@@ -225,7 +229,16 @@ export function useDraftConfigControl(params: {
+       readComposerRecent(workspacePath, workspaceIdentity)?.modelSelection,
+       workspacePurpose === "conversation",
+     );
+-    if (choice) draft = { ...draft, modelSelection: choice };
++    if (choice)
++      draft = {
++        ...draft,
++        modelSelection: choice,
++        allowAutomaticModelSelection: isAutomaticNewTaskDefault(
++          modelSelectionView,
++          readComposerRecent(workspacePath, workspaceIdentity)?.modelSelection,
++          workspacePurpose === "conversation",
++        ),
++      };
+   }
+   if (draft !== currentState.draft) currentState = { ...currentState, draft };
+   if (currentState !== storedState) setStoredState(currentState);
+@@ -236,16 +249,17 @@ export function useDraftConfigControl(params: {
+   const effectiveSelection = modelSelectionView
+     ? (modelSelectionView.effectiveSelection ?? undefined)
+     : draft.modelSelection;
+-  const draftConfig = useMemo<Partial<SessionConfigState>>(
++  const draftConfig = useMemo<ComposerDraftConfig>(
+     () => ({
+       mode: draft.mode,
+       planEnabled: draft.planEnabled ?? false,
+       modelSelection: effectiveSelection,
++      allowAutomaticModelSelection: draft.allowAutomaticModelSelection,
+       provider: effectiveSelection?.providerId ?? "",
+       model: effectiveSelection?.modelId ?? "",
+       thought: effectiveSelection?.options?.reasoningLevel ?? "",
+     }),
+-    [draft.mode, draft.planEnabled, effectiveSelection],
++    [draft.mode, draft.planEnabled, draft.allowAutomaticModelSelection, effectiveSelection],
+   );
+   const draftConfigRef = useRef(draftConfig);
+   draftConfigRef.current = draftConfig;
+@@ -277,6 +291,7 @@ export function useDraftConfigControl(params: {
+         mode: next.mode,
+         planEnabled: next.planEnabled ?? false,
+         modelSelection: selection,
++        allowAutomaticModelSelection: next.allowAutomaticModelSelection,
+         provider: selection?.providerId ?? "",
+         model: selection?.modelId ?? "",
+         thought: selection?.options?.reasoningLevel ?? "",
+@@ -295,6 +310,7 @@ export function useDraftConfigControl(params: {
+         ...current,
+         mode: mode.success ? mode.data : current.mode,
+         modelSelection: next.modelSelection,
++        allowAutomaticModelSelection: false,
+         // 用户已经显式改选，不能再由导入时等待的默认初始化覆盖。
+         ...(current.initializeFromNewTask
+           ? { mode: mode.success ? mode.data : "build", initializeFromNewTask: undefined }
+@@ -331,7 +347,7 @@ export function useDraftConfigControl(params: {
+   );
+   const resolveInitialDraftConfig = useCallback((): Partial<SessionConfigState> | undefined => {
+     if (!draftConfigRef.current.mode) return undefined;
+-    const config = { ...draftConfigRef.current };
++    const { allowAutomaticModelSelection: _automatic, ...config } = draftConfigRef.current;
+     if (appFollowupMode) {
+       config.followupMode = appFollowupMode;
+     }
+@@ -667,10 +683,10 @@ export function useDraftConfigControl(params: {
+ 
+ /** createSession payload 的草稿 config 片段（无选择时返回空对象，不携带 config 键）。 */
+ export function buildDraftCreateConfigPayload(
+-  draftConfig: Partial<SessionConfigState>,
++  draftConfig: ComposerDraftConfig,
+   appFollowupMode?: SessionConfigState["followupMode"] | null,
+ ): { config?: Partial<SessionConfigState> } {
+-  const config: Partial<SessionConfigState> = { ...draftConfig };
++  const { allowAutomaticModelSelection: _automatic, ...config } = draftConfig;
+   if (appFollowupMode) {
+     config.followupMode = appFollowupMode;
+   }
+diff --git a/packages/ui/test/connectionIntake.browser.test.tsx b/packages/ui/test/connectionIntake.browser.test.tsx
+index 9f9c4ec..7e15b75 100644
+--- a/packages/ui/test/connectionIntake.browser.test.tsx
++++ b/packages/ui/test/connectionIntake.browser.test.tsx
+@@ -93,8 +93,14 @@ async function run() {
+           node.textContent?.includes(zh ? "订阅会员" : "Subscriptions"),
+           "Original subscription entry was lost",
+         );
+-        check(buttons().some((b) => b.textContent?.startsWith("GitHub Copilot")), "Copilot subscription disappeared");
+-        check(buttons().some((b) => b.textContent?.trim() === "Grok"), "Grok subscription disappeared");
++        check(
++          buttons().some((b) => b.textContent?.startsWith("GitHub Copilot")),
++          "Copilot subscription disappeared",
++        );
++        check(
++          buttons().some((b) => b.textContent?.trim() === "Grok"),
++          "Grok subscription disappeared",
++        );
+         await click("MiniMax", true);
+         check(node.querySelector("#provider-setup-url"), "API-key plan lost its URL/key form");
+         check(
+@@ -108,14 +114,21 @@ async function run() {
+         await act(async () => back.click());
+         await click("GitHub Copilot", true);
+         await click(zh ? "连接订阅账号" : "Connect subscription account");
+-        check(created.at(-1)?.[0] === "fleet-github-copilot" && created.at(-1)?.[2] === true,
+-          "Copilot no longer reaches its original subscription operation");
++        check(
++          created.at(-1)?.[0] === "fleet-github-copilot" && created.at(-1)?.[2] === true,
++          "Copilot no longer reaches its original subscription operation",
++        );
+         await click("Grok");
+         await click(zh ? "连接订阅账号" : "Connect subscription account");
+-        check(created.at(-1)?.[0] === "fleet-xai" && created.at(-1)?.[2] === true,
+-          "Grok no longer reaches its original subscription operation");
++        check(
++          created.at(-1)?.[0] === "fleet-xai" && created.at(-1)?.[2] === true,
++          "Grok no longer reaches its original subscription operation",
++        );
+         await click(zh ? "按量计费" : "Usage-based");
+-        check(!buttons().some((b) => b.textContent?.includes("MiniMax Token Plan")), "Subscription plan moved into usage-based access");
++        check(
++          !buttons().some((b) => b.textContent?.includes("MiniMax Token Plan")),
++          "Subscription plan moved into usage-based access",
++        );
+         await click(zh ? "终端接入" : "Terminal access");
+         check(
+           node.textContent?.includes("Pi"),
+@@ -144,29 +157,83 @@ async function run() {
+         );
+         await click(zh ? "连接当前账号" : "Connect current account");
+         check(
+-          created.length === 3 && created.at(-1)?.[0] === "fleet-claude-native" && created.at(-1)?.[2] === true,
++          created.length === 3 &&
++            created.at(-1)?.[0] === "fleet-claude-native" &&
++            created.at(-1)?.[2] === true,
+           "Native creation changed its route",
+         );
+-        check(JSON.stringify(created.at(-1)?.[1]) === "{}", "Native setup invented API credentials");
++        check(
++          JSON.stringify(created.at(-1)?.[1]) === "{}",
++          "Native setup invented API credentials",
++        );
+         await click("Antigravity", true);
+         await click(zh ? "连接当前账号" : "Connect current account");
+         check(document.querySelector('[role="dialog"]'), "Antigravity acknowledgement was skipped");
+         check(created.length === 3, "Warning opened after creating the connection");
+-        const cancel = buttons().find((button) => button.textContent?.trim().startsWith(zh ? "取消" : "Cancel"));
++        const cancel = buttons().find((button) =>
++          button.textContent?.trim().startsWith(zh ? "取消" : "Cancel"),
++        );
+         check(cancel, "Missing cancel action");
+         await act(async () => {
+           cancel.focus();
+-          const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
++          const enter = new KeyboardEvent("keydown", {
++            key: "Enter",
++            bubbles: true,
++            cancelable: true,
++          });
+           cancel.dispatchEvent(enter);
+-          check(!enter.defaultPrevented, "Dialog Enter shortcut overrides the focused Cancel button");
++          check(
++            !enter.defaultPrevented,
++            "Dialog Enter shortcut overrides the focused Cancel button",
++          );
+           // A synthetic key event has no native button activation; exercise that browser action.
+           cancel.click();
+         });
+         check(created.length === 3, "Cancelled warning created a connection");
+         await click(zh ? "连接当前账号" : "Connect current account");
+         await click(zh ? "了解风险并继续" : "Accept risk and continue", true);
+-        check(created.length === 4 && created.at(-1)?.[0] === "fleet-antigravity-native",
+-          "Confirmed Antigravity addition did not use its original native operation");
++        check(
++          created.length === 4 && created.at(-1)?.[0] === "fleet-antigravity-native",
++          "Confirmed Antigravity addition did not use its original native operation",
++        );
++        await click(zh ? "按量计费" : "Usage-based");
++        check(
++          buttons().some((b) => b.textContent?.trim() === "TypeSafe Jev"),
++          "TypeSafe service identity is hidden",
++        );
++        check(
++          !node.textContent?.includes(zh ? "决策模型 API" : "Decision model API"),
++          "Generic classifier card remains",
++        );
++        await click(zh ? "Laya（本地服务）" : "Laya (local service)");
++        const save = node.querySelector<HTMLButtonElement>('button[type="submit"]');
++        const url = node.querySelector<HTMLInputElement>("#provider-setup-url");
++        check(save && url, "Local classifier setup missing");
++        check(
++          !save.disabled &&
++            node.textContent?.includes(zh ? "API Key（可选）" : "API Key (optional)"),
++          "Local setup still requires a key",
++        );
++        const enterUrl = async (value: string) =>
++          act(async () => {
++            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++              url,
++              value,
++            );
++            url.dispatchEvent(new Event("input", { bubbles: true }));
++          });
++        await enterUrl("https://classifier.example/v1");
++        check(save.disabled, "Remote classifier was allowed without a key");
++        await enterUrl("http://127.0.0.1:8000/v1");
++        check(!save.disabled, "Loopback setup stayed blocked");
++        await act(async () => save.click());
++        check(
++          created.length === 5 &&
++            created.at(-1)?.[0] === "fleet-laya-local" &&
++            created.at(-1)?.[2] === false,
++          "Local classifier did not use its existing provider creation operation",
++        );
++        check(created.at(-1)?.[1]?.access?.apiKey === "", "Empty local key was not preserved");
+         results.push({ name });
+       } catch (error) {
+         results.push({ name, error: error instanceof Error ? error.message : String(error) });
+diff --git a/packages/ui/test/draftModelDefaults.browser.test.tsx b/packages/ui/test/draftModelDefaults.browser.test.tsx
+index b59a0fe..f7b26e6 100644
+--- a/packages/ui/test/draftModelDefaults.browser.test.tsx
++++ b/packages/ui/test/draftModelDefaults.browser.test.tsx
+@@ -164,6 +164,66 @@ async function test(name: string, run: () => Promise<void>) {
+ }
+ 
+ (window as any).__draftModelDefaultTests = (async () => {
++  await test("automatic origin survives drafts and submission; selecting the same model or options withdraws it", async () => {
++    const f = await fixture();
++    const path = "/defaults/automatic-origin";
++    try {
++      await f.catalog({ ...f.view, newConversationModelPolicy: "automatic" });
++      await f.render(path);
++      check(
++        f.latest.composerDraft.allowAutomaticModelSelection === true,
++        "Automatic default lost its source",
++      );
++      check(
++        createComposerSubmissionConfig(f.latest.draftConfig, f.view as never)
++          ?.allowAutomaticModelSelection === true,
++        "Submission lost automatic source",
++      );
++      check(
++        readV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT)?.allowAutomaticModelSelection ===
++          true,
++        "Cold draft lost automatic source",
++      );
++      await f.choose("a");
++      check(
++        f.latest.draftConfig.allowAutomaticModelSelection === false,
++        "Manual same-standard choice remains automatic",
++      );
++      check(
++        !createComposerSubmissionConfig(f.latest.draftConfig, f.view as never)
++          ?.allowAutomaticModelSelection,
++        "Manual choice would reroute",
++      );
++      await f.render("/defaults/automatic-origin-second");
++      check(
++        f.latest.draftConfig.allowAutomaticModelSelection === true,
++        "Fresh default is not automatic",
++      );
++      await act(async () => f.latest.handleDraftSelectThought("high"));
++      check(
++        f.latest.draftConfig.allowAutomaticModelSelection === false,
++        "Explicit effort was left replaceable",
++      );
++      persistV4ComposerDraft("/defaults/legacy-origin", undefined, V4_DRAFT_SCOPE_ROOT, {
++        text: "legacy",
++        mode: "build",
++        modelSelection: auto("a"),
++      });
++      await f.render("/defaults/legacy-origin");
++      check(
++        !f.latest.draftConfig.allowAutomaticModelSelection,
++        "Legacy draft was guessed to be automatic",
++      );
++      rememberComposerModelChoice("/defaults/project-origin", auto("a"));
++      await f.render("/defaults/project-origin");
++      check(
++        !f.latest.draftConfig.allowAutomaticModelSelection,
++        "Project recent choice was replaced by global automation",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("changing an old conversation's Grok speed does not replace another model's default", async () => {
+     const f = await fixture();
+     const path = "/defaults/grok-old-speed";
+diff --git a/packages/ui/test/modelPurposeDefaults.browser.test.tsx b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+index fd708e3..8782b45 100644
+--- a/packages/ui/test/modelPurposeDefaults.browser.test.tsx
++++ b/packages/ui/test/modelPurposeDefaults.browser.test.tsx
+@@ -179,17 +179,21 @@ async function fixture(locale: Locale = "en-US") {
+   node.style.marginTop = "32px";
+   document.body.append(node);
+   const root = createRoot(node);
++  const managedTargets: Array<string | undefined> = [];
+   const previousBase = useRemoteWorkspaceSessionStore.getState().baseServices;
+   useRemoteWorkspaceSessionStore.setState({ baseServices: null });
+   return {
+     node,
++    managedTargets,
+     async render(owner: ReturnType<typeof host>) {
+       await act(async () =>
+         root.render(
+           <ServiceProvider services={{ modelSelectionService: owner.service } as never}>
+             <ZCodeIntlProvider initialLocale={locale}>
+               <TooltipProvider>
+-                <ModelPurposeDefaults />
++                <ModelPurposeDefaults
++                  onManageConnection={(providerId) => managedTargets.push(providerId)}
++                />
+               </TooltipProvider>
+             </ZCodeIntlProvider>
+           </ServiceProvider>,
+@@ -589,11 +593,14 @@ async function run() {
+       await f.close();
+     }
+   });
+-  await test("classifier-only selection remains opt-in and shares the original revision", async () => {
++  await test("eligible decision choices reuse connections, remain opt-in and share the original revision", async () => {
+     const f = await fixture();
+     const h = host({
+       ...catalog(),
+-      classifierModels: [{ providerId: "typed", providerName: "TypeSafe", modelId: "jev-latest" }],
++      classifierModels: [
++        { providerId: "typed", providerName: "TypeSafe", modelId: "jev-latest" },
++        { providerId: "connected", providerName: "Existing chat", modelId: "alpha" },
++      ],
+     });
+     try {
+       await f.render(h);
+@@ -615,9 +622,26 @@ async function run() {
+         "Classifier is absent from its purpose picker",
+       );
+       check(
+-        !option(encodeCustomModelValue("connected", "alpha")),
+-        "A chat model leaked into the decision picker",
++        option(encodeCustomModelValue("connected", "alpha")),
++        "An eligible existing chat model was lost from the decision picker",
++      );
++      const addConnection = [
++        ...document.querySelectorAll<HTMLElement>('[role="menuitem"],button'),
++      ].find((entry) => entry.textContent?.trim() === "Connection settings");
++      check(addConnection, "Empty decision setting has no setup route");
++      await act(async () => addConnection!.click());
++      equal(
++        f.managedTargets,
++        [undefined],
++        "Empty setting did not request the existing add-connection entry",
+       );
++      check(h.writes.length === 0, "Opening setup enabled inference");
++      await act(async () =>
++        picker.dispatchEvent(
++          new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++        ),
++      );
++      await frame();
+       await act(async () => option(encodeCustomModelValue("typed", "jev-latest"))!.click());
+       equal(
+         h.writes[0]?.patch,
+@@ -644,6 +668,23 @@ async function run() {
+         "Enablement lost its bound selection/revision",
+       );
+       await h.commit(1);
++      await act(async () =>
++        picker.dispatchEvent(
++          new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++        ),
++      );
++      await frame();
++      const manage = [...document.querySelectorAll<HTMLElement>('[role="menuitem"],button')].find(
++        (entry) => entry.textContent?.trim() === "Connection settings",
++      );
++      check(manage, "Missing connection recovery action");
++      await act(async () => manage!.click());
++      equal(
++        f.managedTargets,
++        [undefined, "typed"],
++        "Manage did not return to the selected existing connection",
++      );
++      check(h.writes.length === 2, "Managing a connection unexpectedly changed decision settings");
+     } finally {
+       await f.close();
+     }
