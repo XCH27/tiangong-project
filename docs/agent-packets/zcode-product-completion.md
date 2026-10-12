@@ -237,6 +237,20 @@ mutation. Production fixes require a confirmed counterexample and Lead exact pat
 
 ## W UI continuation — S worker
 
+The integrated strict gate additionally delegates `core/src/runtime/methods/turn.ts` and
+`compact-active.ts`, their same-owner private leaves and concrete original turn/compaction
+regressions to S. Preserve the original Runtime, catch/finally and mutable closures; no waiver,
+dependency edit or prototype change. The real package-level strict command remains the gate.
+
+The final cross-review reproduces a valid PreToolUse input modification followed by checkpoint
+publication failure: committed whiteboard bytes survive, but cold recovery compares original
+requested input with effective committed content and refuses. C owns
+`native-whiteboard-checkpoint.ts`, `native-tool-persistence.ts`, their original private handler/
+checkpoint leaves and focused recovery fixtures to retain exact effective-action evidence in the
+same Session/ArtifactStore. Keep requested input and unique successful receipt/trace/scope anchors;
+do not weaken identity checks or replay a write. Shared executor/result/context changes remain
+Lead-owned and require an exact consumed-field proposal first.
+
 Lead delegates these existing UI paths after the coherent integrated native backend commit:
 `packages/ui/src/WhiteboardPane.tsx`, `store/whiteboardStore.ts`,
 `store/whiteboardNativeProjection.ts`, `lib/nativeWhiteboardControl.ts`, native whiteboard
