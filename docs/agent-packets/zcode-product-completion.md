@@ -296,6 +296,10 @@ Hook refs retain scope/Session presentation only, not a competing execution owne
 current matching request handle; stale callbacks cannot cancel another pending request. No Map,
 new store, wire/permission field or persisted control record. Prove pre-creation/pre-frame/queued/
 admitted close-Save Stop retains draft and refuses close through the original handshake.
+The same original actions may expose `reportNativeSaveError(target, requestId, error)` semantics:
+update only the matching pending operation's error, retain its cancellation/receipt uncertainty,
+and ignore late failure after ACK or replacement. Every Save caller reports Stop delivery failure
+there before optional presentation callbacks; it must never reuse failNativeSave to clear pending.
 
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
