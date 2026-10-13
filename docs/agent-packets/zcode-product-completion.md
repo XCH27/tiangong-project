@@ -279,6 +279,10 @@ native TurnStarted field. R owns only `bootstrap/src/zcode-protocol-v4/product-p
 and focused original projection/actual native Host fixtures: expose exact native control-only
 foreground work through existing activeWorks (`primaryTurn`, tool target, never steerable), while
 legacy missing identities and /goal control-only queries retain their previous exclusion.
+The exact R terminal leaf is `product-projection-turn-finish.ts`: release only the matching native
+control-only work through the original control patch, preserving legacy /goal and Agent-duration
+behavior. A late unrelated terminal event may not clear a newer foreground work. Actual allow,
+deny, Stop, queued admission and terminal projection are required; no guessed terminal identity.
 C may map original known failed-result codes to the existing localized whiteboard error convention;
 PERMISSION_DENIED is neutral unapproved because permission-wait Stop shares that code. Unknown
 failures retain original diagnostic evidence and may never be labeled guaranteed no effect.
