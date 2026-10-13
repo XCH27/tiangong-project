@@ -247,6 +247,13 @@ queue or public field. Error/closed/transport loss/stale scope and 30-second rea
 reject before effect, preserving draft/reconciliation. R owns the separate readonly transport
 admission/poll bounds; Root owns public seams/registrations and visible native GUI.
 
+The explicitly acknowledged `v4/conversationProjectionStore.ts` change is a pure UI-internal
+predicate over existing live/subscription/snapshot/applied-base and `connectInFlight` facts.
+It adds no state and preserves connect/notification ordering. A reconnect ACK must not authorize
+a retained prior snapshot before the original connect unwinds; valid same-epoch resume is covered.
+S's test-only rendered fixtures publish the valid initial subscription frame through the original
+port before expecting actor dispatch. They may not bypass presentation admission.
+
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
 update depth on uncached/native Session navigation. Select stable store inputs and derive options
