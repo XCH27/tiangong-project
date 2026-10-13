@@ -351,3 +351,22 @@ mask or 512MiB swap growth within 30 seconds under Warning aborts its owned tree
 This changes external observation, not any assertion, deadline or required stage. Other user
 jobs and apps are untouched. All 16 root checks and subsequent strict CLI type checks pass;
 final whole-wrapper and visible product results remain pending until their actual completion.
+
+The 2GiB full invocation on `7e743ab` reaches the final native-CLI styled group and exits 1
+on a stale assertion requiring the former "built-in executor" wording. This is **not a passing
+wrapper**; its real exit and all logs remain in `recovery-bounded-2g`. Root keeps the corrected
+app-provided CLI copy and verifies the missing-CLI recovery in both languages, with raw ENOENT
+and unintended model-editor checks retained. That entire native group then exits 0, and the
+remaining actual strict CLI lint exits 0; this bounded evidence remains distinct from a full
+zero-exit wrapper. Peak aggregate owned RSS is 2727MiB, no Critical mask or rapid-swap cutoff.
+
+An actual fresh empty review shows an additional discoverability defect: the empty side pane
+has Review/Terminal/Browser but no Whiteboard, even though the later add-tab menu already offers
+it. Candidate `2cda91840263afe99b87095f71e64a44b702283f` (patch 0220, tree
+`6d6fe24d0bf8d5881b7449fef977984b486a4923`) adds the same existing action to that chooser.
+The full-shell fixture now enters through the empty whiteboard card before drawing/Save, checks
+both locales and forbids premature Session/model/native commands. Root's read-only review exits
+normally with Host cleanup code 0; all original rows across 23 tables remain unchanged, with
+15 sessions and 36 model-usage rows. Fresh reconstruction of 220 patches matches the exact tree
+and leaves the original index unchanged. A complete current-source rerun and actual new-build
+first-Save/close/cold recovery are in progress; no earlier interruption or failure is relabeled.

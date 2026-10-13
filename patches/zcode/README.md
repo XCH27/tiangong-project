@@ -236,6 +236,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0217 | [0217-canonical-login-plugin-and-service-recovery.patch](0217-canonical-login-plugin-and-service-recovery.patch) | `b7941b6570a72385fd2710c493435ec5de455753` |
 | 0218 | [0218-native-login-no-effect-rejection.patch](0218-native-login-no-effect-rejection.patch) | `68ebb1af4d61fb75c4cb6a9a841b908c26a4b163` |
 | 0219 | [0219-bounded-root-typecheck-processes.patch](0219-bounded-root-typecheck-processes.patch) | `ebca395799e10e22ec8b35193a31197bea6ddf0a` |
+| 0220 | [0220-first-empty-whiteboard-entry.patch](0220-first-empty-whiteboard-entry.patch) | `6d6fe24d0bf8d5881b7449fef977984b486a4923` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -332,3 +333,14 @@ TypeScript build mode and caller environment; real failure stops later checks. T
 lifetimes are bounded without changing TS settings, checked projects, deadlines or release gates.
 Real child tests cover separate PIDs, environment/path handling and failure propagation. Actual
 memory-pressure and complete delivery acceptance are recorded separately.
+
+
+## First empty whiteboard entry
+
+Candidate `2cda91840263afe99b87095f71e64a44b702283f`, tree
+`6d6fe24d0bf8d5881b7449fef977984b486a4923`. Patch 0220 exposes the existing Whiteboard action
+in the empty side-pane chooser, without requiring an unrelated tab or a model turn. The full
+Workbench regression starts at that actual empty card in both locales, then draws and saves
+through the original pane/control. The native-CLI missing-tool assertion follows the corrected
+app-provided CLI wording in both languages; raw-process-error and editor-refusal checks remain.
+No new navigation, Session, document, permission or persistence owner is introduced.

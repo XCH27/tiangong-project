@@ -1,0 +1,86 @@
+diff --git a/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx b/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+index 41ac4451..5ebbcd6a 100644
+--- a/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
++++ b/packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+@@ -109,7 +109,7 @@ type TabsScrollMaskEdges = {
+   right: boolean;
+ };
+ type OpenTabLauncherItem = {
+-  id: OpenTabLauncherItemId;
++  id: OpenTabLauncherItemId | "whiteboard";
+   label: string;
+   icon: LucideIcon;
+   onOpen: () => void;
+@@ -823,6 +823,12 @@ export function AnimatedSidePanePanel({
+   })
+     .filter((itemId) => !isOfficeMode || (itemId !== "terminal" && itemId !== "review"))
+     .map((itemId) => openTabLauncherItemById[itemId]);
++  openTabLauncherItems.push({
++    id: "whiteboard",
++    label: intl.formatMessage({ id: "whiteboard.title" }),
++    icon: PaletteIcon,
++    onOpen: () => onOpenWhiteboard(),
++  });
+   const closeSidePaneButton =
+     isVisible && onCloseSidePane ? (
+       <div className="flex shrink-0 items-center gap-0.5 [app-region:no-drag]">
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index 88083fe0..c86eabea 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -454,16 +454,19 @@ async function run() {
+       await f.close();
+     }
+   });
+-  await test("missing CLI uses original page feedback with localized recovery copy", async () => {
++  for (const [locale, button, recovery] of [
++    ["zh-CN", "连接当前账号", "应用附带的 Claude Code 不可用"],
++    ["en-US", "Connect current account", "Claude Code included with the app is unavailable"],
++  ] as const) await test(`${locale}: missing CLI uses original page feedback with localized recovery copy`, async () => {
+     const f = await fixture();
+     f.setConnect(async () => {
+       throw new Error("spawn claude ENOENT");
+     });
+     try {
+-      await f.render();
+-      await f.click("连接当前账号");
++      await f.render("A", locale);
++      await f.click(button);
+       check(
+-        f.node.textContent?.includes("内置 Claude 执行器不可用") &&
++        f.node.textContent?.includes(recovery) &&
+           !f.node.textContent?.includes("ENOENT"),
+         "Raw or unlocalized process error",
+       );
+diff --git a/packages/ui/test/nativeWorkbench.browser.test.tsx b/packages/ui/test/nativeWorkbench.browser.test.tsx
+index 2a5fbef3..44094783 100644
+--- a/packages/ui/test/nativeWorkbench.browser.test.tsx
++++ b/packages/ui/test/nativeWorkbench.browser.test.tsx
+@@ -179,9 +179,24 @@ async function run() {
+           });
+         } else {
+           await click('[data-testid="side-pane-toggle"]');
+-          await click('[data-side-pane-open-tab-item="review"]');
+-          await click("[data-side-pane-add-trigger]");
+-          await click('[data-side-pane-add-item="whiteboard"]');
++          check(
++            !node.querySelector("[data-side-pane-tab-id]"),
++            "First whiteboard regression must start with no side-pane tabs",
++          );
++          const chooser = node.querySelector<HTMLButtonElement>(
++            '[data-side-pane-open-tab-item="whiteboard"]',
++          );
++          check(chooser, "Empty side-pane chooser omitted the original whiteboard action");
++          check(
++            chooser.textContent?.trim() ===
++              (locale === "en-US" ? enUS : zhCN)["whiteboard.title"],
++            "Empty whiteboard card did not use the current locale",
++          );
++          check(
++            fixture.commands.length === 0 && fixture.updates.length === 0,
++            "Opening the empty chooser dispatched Session/model/native work",
++          );
++          await click('[data-side-pane-open-tab-item="whiteboard"]');
+           const board = Object.values(boards.getState().workspaces[workspace]?.boardsById ?? {})[0];
+           check(board, "Original New whiteboard control did not create a draft");
+           await pointer("pointerdown", 10);

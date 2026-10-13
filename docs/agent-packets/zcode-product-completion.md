@@ -617,3 +617,14 @@ old-space ceiling to 2GiB. Advisory Warning remains visible; Critical/unknown ma
 swap growth within 30 seconds under Warning interrupts only this tree and fails.
 Percentage alone is not a pressure event. Unrelated user tasks and application processes remain
 outside this worker's process ownership.
+
+### First empty native surface discovery
+
+Lead's actual current-build review finds that the empty side pane offers Review/Terminal/Browser
+but omits Whiteboard; its existing add-tab menu is unavailable until another tab exists. Root
+delegates only `ui/src/app-shell/AnimatedSidePanePanel.tsx` and a narrow original
+`ui/test/nativeWorkbench.browser.test.tsx` full-shell regression. The empty chooser must open
+the same existing Whiteboard pane through `onOpenWhiteboard`, with the original workspace and
+without creating an unrelated tab, Session turn or inference. Reuse its existing button/icon and
+localized title; no store, Core, API or new navigation owner. Root owns shipped-CSS rebuild,
+styled execution, actual first empty-Session Save/close/restart and integration.
