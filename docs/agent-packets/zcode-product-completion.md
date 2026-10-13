@@ -265,6 +265,10 @@ owned-Save handle may distinguish pending admission from dispatched execution; n
 state authority is added. Prove Stop during Session creation/initial hydration prevents late dispatch
 and preserves drafts. Dispatched operations retain exact original backend Stop/receipt semantics.
 S owns the corresponding test-only full Workbench early-Stop regression in its existing claims.
+`lib/nativeWhiteboardControl.ts` may accept the same private optional AbortSignal in
+`ensureNativeWhiteboardSession` to release its original creation lease promptly. Observe the original
+create promise through late settlement without duplicating or replaying it; a late empty Session
+does not authorize native tool dispatch, model work or a new persistence owner.
 
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
