@@ -444,3 +444,15 @@ before commands/query; keep-warm reconnection must not keep invoking an obsolete
 Promote consumer may change only `settings/saved-workflows/useSavedWorkflowPromote.ts` acquisition
 placement inside the original try/finally, restoring pending on activation failure. No generic
 registry rewrite, new attachment owner, live SSH claim or model-promotion behavior change.
+
+### Upstream-derived existing edit preemption correction
+
+Gate: existing ZC-COMPLETE/C In Progress. The refresh worker now claims only
+`bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts` and focused original
+Host/runtime fixtures in a new isolated candidate worktree. Upstream default HEAD `aac4755`
+exposes an existing defect: ordinary turns use Core foreground ownership while this handler still
+checks only the legacy Bootstrap controller. Check existing runtime active-turn/foreground facts
+and reuse original `preemptActiveTurnAndWait` before rewind/history mutation/new input. Preserve
+legacy controller, idle and exact identity semantics. Prove held real stream/late result, idle,
+native foreground and stop/idle failure; no write on failed preemption, no second execution owner,
+no Highspeed feature/import/copied handler. Extra helper/public changes require Lead acknowledgement.
