@@ -287,6 +287,16 @@ C may map original known failed-result codes to the existing localized whiteboar
 PERMISSION_DENIED is neutral unapproved because permission-wait Stop shares that code. Unknown
 failures retain original diagnostic evidence and may never be labeled guaranteed no effect.
 
+Close-started Saves must use that same cancellation owner. C's exact additional UI claims are
+`store/whiteboardNativeProjection.ts`, `store/whiteboardNativeActions.ts` and
+`store/whiteboardStore.ts`: the existing RAM `native.pending` may hold its one private cancellation
+callback/handle, expired by existing ACK/fail and never serialized. Draft establishes it for every
+Save caller, including hidden/window/pane-close; external optional signals are observed/cleaned up.
+Hook refs retain scope/Session presentation only, not a competing execution owner. Stop reads the
+current matching request handle; stale callbacks cannot cancel another pending request. No Map,
+new store, wire/permission field or persisted control record. Prove pre-creation/pre-frame/queued/
+admitted close-Save Stop retains draft and refuses close through the original handshake.
+
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
 update depth on uncached/native Session navigation. Select stable store inputs and derive options
