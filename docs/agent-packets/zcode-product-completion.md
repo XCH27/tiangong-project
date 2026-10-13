@@ -386,3 +386,20 @@ native GUI through CUA and accepts final real Host/file/close/restart evidence. 
 source/service/draft race tests, types/lint/architecture and real renderer cases; no live provider
 effects, credentials or data changes. Continue until this loop is reviewable, then Lead integrates
 and assigns the next exposed product gap. No capability promotion by a worker.
+
+## Evidence-led horizontal comparison continuation (2026-10-13)
+
+The owner requests comparison with open-source projects and installed products while current
+implementation/acceptance continues. Three Sol workers may inspect read-only references and ZCode,
+in disjoint domains: connection/plugin/settings journeys; workflow/artifact/native-document handoff;
+runtime/permission/history/recovery. Pin sources actually inspected and distinguish installed
+behavior, public documentation, static symbols and executed evidence. No reference source/assets,
+repin, dependency, runtime or data copying is authorized. Reference Policy and D56 still apply.
+
+Limit findings to consequential, reproducible gaps in exposed promises, with concrete triggers,
+exact owners, existing state authority and bounded repairs. Future surfaces and historical Craft
+gates remain separate. Save external evidence under
+`/Volumes/AIGC/.fleet-tmp/fleet-horizontal-comparison-2026-10-13`; no worker production/doc edits or
+GUI. Lead owns installed-product GUI, adjudication, subsequent exact source claims, reconstruction,
+acceptance and status promotion. Comparison is not a second roadmap or a reason to abandon the
+unfinished build/close/cold-recovery acceptance.
