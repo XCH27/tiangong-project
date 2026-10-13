@@ -439,3 +439,8 @@ fixtures. Propagate preset loading/error/unavailable into original notices, dist
 empty data. Original journal/service remains authority. A draining prior generation cannot drop
 the current generation's read; prove reconnect/context reachability through original React rather
 than assuming keyed-tab switching reuses an instance. No new artifact/job store or document editor.
+The original `acquireLaunchLease` action helper activates the registry's current remote service
+before commands/query; keep-warm reconnection must not keep invoking an obsolete proxy. Its existing
+Promote consumer may change only `settings/saved-workflows/useSavedWorkflowPromote.ts` acquisition
+placement inside the original try/finally, restoring pending on activation failure. No generic
+registry rewrite, new attachment owner, live SSH claim or model-promotion behavior change.
