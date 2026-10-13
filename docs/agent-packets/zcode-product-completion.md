@@ -274,6 +274,14 @@ projection/detail lease and exact existing foreground ID to send one original ta
 admitted. R owns read-only actual-wire cross-validation of queued-send/cold-admission behavior.
 Do not add transport/Host/Shared fields, a future-ID store or a second accepted queue. Pending
 receipts remain until actual settlement, including lost/failed Stop and effect uncertainty.
+Root emits the original `activeForegroundExecution.foregroundExecutionId` in the already-supported
+native TurnStarted field. R owns only `bootstrap/src/zcode-protocol-v4/product-projection-turn-start.ts`
+and focused original projection/actual native Host fixtures: expose exact native control-only
+foreground work through existing activeWorks (`primaryTurn`, tool target, never steerable), while
+legacy missing identities and /goal control-only queries retain their previous exclusion.
+C may map original known failed-result codes to the existing localized whiteboard error convention;
+PERMISSION_DENIED is neutral unapproved because permission-wait Stop shares that code. Unknown
+failures retain original diagnostic evidence and may never be labeled guaranteed no effect.
 
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
