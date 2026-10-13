@@ -6,6 +6,13 @@ D56 supersedes historical Craft-as-base wording: product owners are ZCode plus o
 Reference mechanisms must adapt to those existing owners. REA (D58) is external analysis tooling;
 installed TraeWork/MiniMax resources are read-only evidence, not product implementation sources.
 
+The owner authorized refreshing external references on 2026-10-13. All 76 top-level checkouts
+(74 distinct origins) now have separately verified clean default-branch snapshots: 66 changed,
+10 unchanged, no final failures. Old pins and dirty trees are retained. Default HEAD is not a
+claim about the latest release. Exact manifest:
+`/Volumes/AIGC/.fleet-tmp/fleet-horizontal-comparison-2026-10-13/reference-updates.json`.
+Reading updated mechanisms does not promote dependency/source copying or change product upstream.
+
 ## Green-Light Sources
 
 The following projects may be copied or adapted within the stated boundary, with license and attribution preserved:
@@ -13,7 +20,7 @@ The following projects may be copied or adapted within the stated boundary, with
 | Source | License Boundary | Allowed Use |
 |---|---|---|
 | `craft-agents-oss` | Apache-2.0 | Interaction reference and historical pin only (D56). Tag `v0.11.0` → `f4e172bf372f4ccc7389a189be1e0b0541f96282`; D51 evidence does not select the product base. |
-| `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
+| `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into the original ZCode Session/permission/timeline (D56). |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |
 | `fleet-old` | Internal Reference | Older Fleet-derived checkout. Selectively port documented Fleet-specific behaviour only through the v0.11 migration ledger; never merge or copy the old shell wholesale. The cloud tree at the 2026-10-10 audit had no `源码参考/software/fleet-old` directory and no gitlink. Those rows stay deferred (D52). |
@@ -94,7 +101,7 @@ Never build Fleet into:
 - a bot-detection bypass product
 - an automatic account rotation or quota evasion tool
 - a product that reads cookies/tokens to infer account state
-- a second agent/session platform beside Craft
+- a second agent/session platform beside the original ZCode Host (D56)
 
 ## Promotion Process
 

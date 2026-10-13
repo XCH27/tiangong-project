@@ -15,6 +15,12 @@ presentations, or web projects.
 
 The selected route is **spatial orchestration plus native editors**:
 
+For current implementation, these logical domains map to the original ZCode owners listed in
+`modules/zcode-product-completion.md`; the historical M00–M19/Craft paths do not create replacement
+Session, permission, workflow, job, file or memory authorities. Proposed future contracts remain
+unimplemented until their own gate is opened. A verified fixed-stroke native whiteboard loop does
+not promote the proposed spatial renderer or a document/video/presentation editor.
+
 - the canvas owns spatial presentation and selection;
 - capability modules own typed operations;
 - the workflow module owns executable graphs and run state;

@@ -20,6 +20,16 @@ valuable only when it can move real work from intent to output with evidence, pe
 and honest undo/cancellation. The infinite canvas is a spatial orchestration surface; native
 editors and modules keep their own document models.
 
+### Current implementation authority (D56/D59)
+
+The product is `.fleet/zcode` plus ordered `patches/zcode/`. Existing ZCode Session, Core
+foreground execution, permission/ToolExecutor, workflow journal, file/ArtifactStore and preferences
+remain the single implementation authorities. Pi sequences default model turns after Host admission;
+it is not a second execution Host. Craft-named layers and phases below preserve historical
+composition references and cannot authorize migration or parallel stores. Exposed-loop corrections
+use `modules/zcode-product-completion.md` and its packet. Future spatial/native creative modules
+retain their explicit contract and execution gates.
+
 ## 2. The Product We Are Actually Building
 
 > **SUPERSEDED 2026-10-10 (D56):** product baseline is `.fleet/zcode`. The Craft-shell layers below are interaction reference and historical shape, not authorization to migrate the product onto Craft. They do not block the ZCode path.
