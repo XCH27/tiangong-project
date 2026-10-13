@@ -403,3 +403,39 @@ gates remain separate. Save external evidence under
 GUI. Lead owns installed-product GUI, adjudication, subsequent exact source claims, reconstruction,
 acceptance and status promotion. Comparison is not a second roadmap or a reason to abandon the
 unfinished build/close/cold-recovery acceptance.
+
+The owner subsequently authorized refreshing external reference sources to upstream default HEAD.
+The refresh worker preserves every old pin/dirty tree, creates separate clean detached snapshots,
+records successful/unchanged/failed updates and distinguishes source HEAD from released versions.
+This does not update product upstream, promote dependencies or authorize copying branded/source assets.
+
+### Reference-derived P correction — connection worker
+
+Gate: existing ZC-COMPLETE/P In Progress. Exact UI claims: `store/pluginManagementStore.ts`,
+`store/pluginManagementStoreLoading.ts`, `settings/usePluginUninstall.ts`,
+`settings/PluginUninstallConfirmDialog.tsx`, `settings/PluginsSection.tsx` and
+`settings/PluginStorePage.tsx`, plus focused original-owner tests. Use a new isolated candidate
+worktree. Uninstall returns its original result; a private failure-reconciliation option rereads
+canonical state without replaying deletion. Preserve failure diagnostics and original context,
+generation and operation-version fences. Hook request tokens/context and captured confirmation
+labels are view state only; installed availability remains canonical. Do not retry after canonical
+absence; expose error/canConfirm on the original dialog and keep Cancel available after failure.
+Stale/same-ID replacement and A→B→A completions cannot close a newer confirmation or run its
+success callback. Lead owns shared test lists/locales/build; no worker GUI while Lead desktop runs.
+
+### Reference-derived C correction — workflow worker
+
+Gate: existing ZC-COMPLETE/C In Progress. First exact claim:
+`settings/saved-workflows/useSavedWorkflowLauncher.ts` and focused original transport/Host tests.
+Retain the original created Session and start envelope on uncertain delivery; never automatically
+close a possibly accepted run or replay it. Reconcile only through existing command-query/run
+facts. Only positive safe rejection may authorize empty-session cleanup; lost/error/unsupported
+reconciliation stays visible and recoverable. Shared wire/permission/Core changes remain Lead.
+
+Second exact UI claims: `hooks/useWorkflowRunArtifactData.ts`,
+`app-shell/WorkflowArtifactSidePane.tsx`, `app-shell/workflow-artifacts/WorkflowArtifactBody.tsx`
+and `app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx`, plus original React/transport
+fixtures. Propagate preset loading/error/unavailable into original notices, distinct from successful
+empty data. Original journal/service remains authority. A draining prior generation cannot drop
+the current generation's read; prove reconnect/context reachability through original React rather
+than assuming keyed-tab switching reuses an instance. No new artifact/job store or document editor.
