@@ -253,6 +253,10 @@ It adds no state and preserves connect/notification ordering. A reconnect ACK mu
 a retained prior snapshot before the original connect unwinds; valid same-epoch resume is covered.
 S's test-only rendered fixtures publish the valid initial subscription frame through the original
 port before expecting actor dispatch. They may not bypass presentation admission.
+The exact S test-only port claims are `nativeWorkbenchFixture.ts`,
+`nativeWorkbench.browser.test.tsx`, `whiteboardNativePane.browser.test.tsx`,
+`whiteboardPaneClose.browser.test.tsx` and `pluginViewNativeBridge.browser.test.tsx` under
+`packages/ui/test/`; original behavior/failure assertions and owners stay intact.
 
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
