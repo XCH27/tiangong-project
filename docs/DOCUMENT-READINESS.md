@@ -253,3 +253,23 @@ assumption. Positive CLI capability admission is the selected original-owner cor
 legitimate source/generated CLI and SEA acceptance required. This supersedes a diagnosis based
 only on outer concurrency; no Codex application leak is asserted. Captures remain in
 `memory-diagnosis/confirmed-recursive-launch.json` and `plugin-single-process-trace.json`.
+
+Candidate `a499ba1c16d670ad125dd7b1d7e4e60681915d07` corrects that launcher on its existing
+owner. The same actual Host/SDK/SQLite counterexample completes in 0.74 seconds, with 0.92GiB
+aggregate process-tree peak and no test-file plugin-host children. Three admission regressions
+pass; fresh source/generated/staged CLI declarations are checked, and the actual staged private
+dispatcher serves an authored read-only MCP runtime on Node24 and packaged Node22, with normal
+EOF exit, isolated HOME and zero model calls. Actual SEA execution is not newly measured.
+
+Current automatic delivery evidence is **composed on one frozen source**: canonical steps 0–4
+(fresh CLI, all type gates and complete pre-push checks) pass in `fixed-delivery.log`. A conservative
+3.5GiB aggregate-RSS observer interrupts desktop build at normal pressure 69%; that run is not
+recorded as a zero-exit full wrapper. Exact canonical steps 5–10 then pass naturally in
+`remaining-delivery.log`: desktop build, staged separate-session/EOF/cold recovery, all styled UI
+groups and actual strict recursive CLI lint. Combined evidence records 1819 Node test executions
+(overlap is possible), 80 styled cases and zero failed assertions. Every process retains a 4GiB
+old-space ceiling; remaining-step aggregate RSS peaks at 3779MiB with pressure 65–72%, and all
+13 renderer invocations report code 0 / no signal. Patch 0216 reconstructs an untouched base into
+tree `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39` without changing the main candidate index.
+Deferred visible product checks and whole-project `usable` promotion remain open; no baseline,
+permission, store, dependency, real profile or existing-data migration is introduced.
