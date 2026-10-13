@@ -1,0 +1,3874 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+index 1dc333b8..9f3a1c52 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+@@ -140,7 +140,12 @@ async function editUserQuery(
+   }
+   // 附件映射在 rewind 前完成：引用失效要在截断历史之前暴露，避免半程失败。
+   const attachments = await mapAttachmentRefsToTurnAttachments(record.app, attachmentRefs);
+-  if (record.activeAbortController) {
++  const runtimeHasActiveWork =
++    record.app.runtime?.getActiveTurnInfo?.() !== undefined ||
++    record.app.runtime?.getActiveForegroundExecutionId?.() !== undefined;
++  // Core owns ordinary, notification and native foreground work. Join it before
++  // rewinding history; the retained Bootstrap controller is only a legacy fallback.
++  if (record.activeAbortController || runtimeHasActiveWork) {
+     await preemptActiveTurnAndWait(host, record, {
+       abortMessage: "v4 editUserQuery preempts active turn",
+       goalPausedMutationReason: "edit_user_query_goal_paused",
+diff --git a/apps/zcode-cli/packages/bootstrap/test/active-edit-core-preempt.test.ts b/apps/zcode-cli/packages/bootstrap/test/active-edit-core-preempt.test.ts
+new file mode 100644
+index 00000000..712d4fae
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/active-edit-core-preempt.test.ts
+@@ -0,0 +1,310 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { randomUUID } from "node:crypto";
++import { readFile } from "node:fs/promises";
++import { join } from "node:path";
++import { zcodeProtocolMethods as M, whiteboardRelativePath } from "@zcode/shared";
++import { SessionEventType, type SessionEvent } from "@zcode/contracts";
++import { activeEditHostFixture, waitFor } from "./helpers/active-edit-host-fixture.js";
++
++test(
++  "actual Host Edit waits for the Core-owned old stream to stop and join before rewinding",
++  { timeout: 15_000 },
++  async () => {
++    const h = await activeEditHostFixture();
++    try {
++      const app = await h.createSession();
++      const sent = await h.command(app.sessionId, "sendText", { text: "old question" });
++      assert.equal(sent.status, "accepted", JSON.stringify(sent));
++      await h.entered;
++      await waitFor(() => !!app.runtime.getActiveTurnInfo(), "real active streaming turn");
++      const view = await h.rows(app.sessionId);
++      const row = view.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(row?.entityId, "original UI projection exposes Edit for latest real user");
++      const editing = h.command(
++        app.sessionId,
++        "editUserQuery",
++        {
++          target: { rowId: row.rowId, entityId: row.entityId },
++          newText: "edited question",
++        },
++        view,
++      );
++      await waitFor(
++        () => !!h.firstSignal?.aborted,
++        "old stream receives Core Stop before mutation",
++      );
++      assert.equal(h.firstFinished, false, "abort delivery is not yet completion");
++      assert.equal((await h.store.getSession(app.sessionId))?.revert, undefined);
++      assert.equal(h.streams, 1);
++      h.release();
++      const edited = await editing;
++      assert.equal(edited.status, "accepted", JSON.stringify(edited));
++      await waitFor(
++        () => h.streams === 2 && !app.runtime.getActiveTurnInfo(),
++        "replacement turn finishes",
++      );
++      const restored = await h.rows(app.sessionId);
++      assert.ok(
++        restored.rows.some((row) => row.kind === "userInput" && row.text === "edited question"),
++      );
++      assert.ok(
++        restored.rows.some((row) => row.kind === "assistantText" && row.text === "edited answer"),
++      );
++      assert.equal(
++        restored.rows.some(
++          (row) => row.kind === "assistantText" && row.text.includes("old late result"),
++        ),
++        false,
++      );
++      assert.ok((await h.store.getSession(app.sessionId))?.revert);
++      assert.equal(h.f.httpCalls, 0);
++    } finally {
++      await h.close();
++    }
++  },
++);
++
++test(
++  "stale Edit leaves a later native foreground alone; current Edit stops it before replacing history",
++  { timeout: 15_000 },
++  async () => {
++    const h = await activeEditHostFixture();
++    try {
++      const app = await h.createSession();
++      const sent = await h.command(app.sessionId, "sendText", { text: "old question" });
++      assert.equal(sent.status, "accepted");
++      await h.entered;
++      const stale = await h.rows(app.sessionId);
++      const old = stale.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(old?.entityId);
++      h.release();
++      await waitFor(
++        () => h.firstFinished && !app.runtime.getActiveForegroundExecutionId(),
++        "original turn settles",
++      );
++      const events: Array<{ event: SessionEvent; foreground: string | undefined }> = [];
++      const off = app.runtime.subscribeEvents({
++        onSessionEvent(event) {
++          events.push({ event, foreground: app.runtime.getActiveForegroundExecutionId() });
++        },
++      });
++      const document = {
++        id: `whiteboard:${randomUUID()}`,
++        name: "Held native Save",
++        width: 1280 as const,
++        height: 800 as const,
++        strokes: [],
++        undoneStrokes: [],
++        createdAt: 1,
++        updatedAt: 1,
++      };
++      const operationId = randomUUID();
++      const saving = h.request(M.sessionWhiteboardControl, {
++        workspace: h.workspace,
++        sessionId: app.sessionId,
++        operationId,
++        command: {
++          operation: "update",
++          input: { document, mutationId: randomUUID(), expectedAbsent: true },
++        },
++      });
++      await waitFor(() => !!h.permission, "real native permission wait");
++      const foreground = app.runtime.getActiveForegroundExecutionId();
++      assert.equal(foreground, `native-whiteboard:${operationId}`);
++      assert.equal(app.runtime.getActiveTurnInfo(), undefined);
++      const rejected = await h.command(
++        app.sessionId,
++        "editUserQuery",
++        {
++          target: { rowId: old.rowId, entityId: old.entityId },
++          newText: "stale edited question",
++        },
++        stale,
++      );
++      assert.equal(rejected.status, "stale", JSON.stringify(rejected));
++      assert.equal(app.runtime.getActiveForegroundExecutionId(), foreground);
++      assert.equal((await h.store.getSession(app.sessionId))?.revert, undefined);
++      const current = await h.rows(app.sessionId);
++      const row = current.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(row?.entityId);
++      const edited = await h.command(
++        app.sessionId,
++        "editUserQuery",
++        {
++          target: { rowId: row.rowId, entityId: row.entityId },
++          newText: "edited question",
++        },
++        current,
++      );
++      assert.equal(edited.status, "accepted", JSON.stringify(edited));
++      const native = await saving;
++      assert.ok(native && typeof native === "object" && "status" in native);
++      assert.equal(native.status, "failed", JSON.stringify(native));
++      const stoppedAt = events.findIndex(
++        ({ event }) =>
++          event.type === SessionEventType.TurnComplete &&
++          (event.payload as { resultType?: string }).resultType === "cancelled",
++      );
++      const rewoundAt = events.findIndex(
++        ({ event }) => event.type === SessionEventType.RewindTriggered,
++      );
++      assert.ok(stoppedAt >= 0, "original native TurnComplete observes its aborted signal");
++      assert.ok(rewoundAt > stoppedAt, "native cancelled settlement precedes durable rewind");
++      assert.equal(
++        events[rewoundAt]?.foreground,
++        undefined,
++        "old foreground finally joined before rewind",
++      );
++      assert.equal(app.runtime.getPendingPermissionRequests().length, 0);
++      off();
++      await assert.rejects(
++        readFile(join(h.workspace.workspacePath, whiteboardRelativePath(document.id))),
++        { code: "ENOENT" },
++      );
++      await waitFor(
++        () => h.streams === 2 && !app.runtime.getActiveForegroundExecutionId(),
++        "replacement stream completes",
++      );
++      assert.ok((await h.store.getSession(app.sessionId))?.revert);
++      assert.equal(h.f.httpCalls, 0);
++    } finally {
++      await h.close();
++    }
++  },
++);
++
++test("idle Edit uses original history without issuing a Stop", { timeout: 15_000 }, async () => {
++  const h = await activeEditHostFixture();
++  try {
++    const app = await h.createSession();
++    await h.command(app.sessionId, "sendText", { text: "old question" });
++    await h.entered;
++    h.release();
++    await waitFor(
++      () => h.firstFinished && !app.runtime.getActiveForegroundExecutionId(),
++      "idle original Session",
++    );
++    const view = await h.rows(app.sessionId);
++    const row = view.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++    assert.ok(row?.entityId);
++    const stop = app.runtime.stopActiveForegroundExecution;
++    app.runtime.stopActiveForegroundExecution = () => {
++      throw new Error("Idle Edit must not Stop");
++    };
++    try {
++      const edited = await h.command(
++        app.sessionId,
++        "editUserQuery",
++        {
++          target: { rowId: row.rowId, entityId: row.entityId },
++          newText: "edited question",
++        },
++        view,
++      );
++      assert.equal(edited.status, "accepted", JSON.stringify(edited));
++      await waitFor(
++        () => h.streams === 2 && !app.runtime.getActiveForegroundExecutionId(),
++        "idle replacement finishes",
++      );
++      const rows = await h.rows(app.sessionId);
++      assert.ok(
++        rows.rows.some((row) => row.kind === "userInput" && row.text === "edited question"),
++      );
++      assert.equal(h.f.httpCalls, 0);
++    } finally {
++      app.runtime.stopActiveForegroundExecution = stop;
++    }
++  } finally {
++    await h.close();
++  }
++});
++
++test(
++  "actual Host Stop failure refuses Edit before history or replacement input changes",
++  { timeout: 15_000 },
++  async () => {
++    const h = await activeEditHostFixture();
++    try {
++      const app = await h.createSession();
++      await h.command(app.sessionId, "sendText", { text: "old question" });
++      await h.entered;
++      const view = await h.rows(app.sessionId);
++      const row = view.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(row?.entityId);
++      const stop = app.runtime.stopActiveForegroundExecution;
++      // Fault only the public lifecycle boundary; actual Host admission/store remain production.
++      app.runtime.stopActiveForegroundExecution = () => {
++        throw new Error("Authored Stop delivery failure");
++      };
++      try {
++        const edited = await h.command(
++          app.sessionId,
++          "editUserQuery",
++          {
++            target: { rowId: row.rowId, entityId: row.entityId },
++            newText: "must not publish",
++          },
++          view,
++        );
++        assert.equal(edited.status, "failed", JSON.stringify(edited));
++        assert.match(edited.message ?? "", /Stop delivery failure/);
++        assert.equal(h.firstSignal?.aborted, false);
++        assert.equal((await h.store.getSession(app.sessionId))?.revert, undefined);
++        const rows = await h.rows(app.sessionId);
++        assert.ok(rows.rows.some((row) => row.kind === "userInput" && row.text === "old question"));
++        assert.equal(
++          rows.rows.some((row) => row.kind === "userInput" && row.text === "must not publish"),
++          false,
++        );
++        assert.equal(h.streams, 1);
++        assert.equal(h.f.httpCalls, 0);
++      } finally {
++        app.runtime.stopActiveForegroundExecution = stop;
++      }
++    } finally {
++      await h.close();
++    }
++  },
++);
++
++test(
++  "an aborted stream that fails to join by the original idle deadline cannot rewind",
++  { timeout: 15_000 },
++  async () => {
++    const h = await activeEditHostFixture();
++    try {
++      const app = await h.createSession();
++      await h.command(app.sessionId, "sendText", { text: "old question" });
++      await h.entered;
++      const view = await h.rows(app.sessionId);
++      const row = view.rows.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(row?.entityId);
++      const edited = await h.command(
++        app.sessionId,
++        "editUserQuery",
++        {
++          target: { rowId: row.rowId, entityId: row.entityId },
++          newText: "must not publish",
++        },
++        view,
++      );
++      assert.equal(edited.status, "failed", JSON.stringify(edited));
++      assert.match(edited.message ?? "", /idle/i);
++      assert.equal(h.firstSignal?.aborted, true);
++      assert.equal(h.firstFinished, false);
++      assert.ok(app.runtime.getActiveForegroundExecutionId());
++      assert.equal((await h.store.getSession(app.sessionId))?.revert, undefined);
++      assert.equal(h.streams, 1);
++      const rows = await h.rows(app.sessionId);
++      assert.ok(rows.rows.some((row) => row.kind === "userInput" && row.text === "old question"));
++      assert.equal(
++        rows.rows.some((row) => row.kind === "userInput" && row.text === "must not publish"),
++        false,
++      );
++      assert.equal(h.f.httpCalls, 0);
++    } finally {
++      await h.close();
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/bootstrap/test/active-edit-legacy-facade.test.ts b/apps/zcode-cli/packages/bootstrap/test/active-edit-legacy-facade.test.ts
+new file mode 100644
+index 00000000..851dd1e0
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/active-edit-legacy-facade.test.ts
+@@ -0,0 +1,120 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { randomUUID } from "node:crypto";
++import { createRootTraceContext } from "@zcode/contracts";
++import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
++import { V4CommandExecutor } from "../src/zcode-protocol-v4/commands/executor.js";
++import type { V4SessionRecordView } from "../src/zcode-protocol-v4/commands/types.js";
++import { activeEditHostFixture, waitFor } from "./helpers/active-edit-host-fixture.js";
++
++for (const legacyBusy of [false, true]) {
++  test(`existing custom facade without optional activity getters supports ${legacyBusy ? "legacy controller join" : "idle Edit"}`, async () => {
++    const h = await activeEditHostFixture();
++    let off = () => {};
++    try {
++      const app = await h.createSession();
++      const projection = new ProductProjection(app.sessionId, "authored-facade");
++      off = app.runtime.subscribeEvents({
++        onSessionEvent(event) {
++          projection.applyEvent(event);
++        },
++      });
++      await h.command(app.sessionId, "sendText", { text: "old question" });
++      await h.entered;
++      h.release();
++      await waitFor(
++        () => h.firstFinished && !app.runtime.getActiveForegroundExecutionId(),
++        "real Core idle",
++      );
++      const original = app.runtime;
++      // Existing custom embedder's facade omits only optional lifecycle capabilities.
++      // Every surviving method remains bound to the SAME original Core/App/SQLite.
++      const facade = new Proxy(original, {
++        get(target, key) {
++          if (
++            [
++              "getActiveTurnInfo",
++              "getActiveForegroundExecutionId",
++              "stopActiveForegroundExecution",
++            ].includes(String(key))
++          )
++            return undefined;
++          const value = Reflect.get(target, key);
++          return typeof value === "function" ? value.bind(target) : value;
++        },
++      });
++      const customApp = new Proxy(app, {
++        get(target, key) {
++          if (key === "runtime") return facade;
++          const value = Reflect.get(target, key);
++          return typeof value === "function" ? value.bind(target) : value;
++        },
++      });
++      const controller = legacyBusy ? new AbortController() : undefined;
++      const joined = Promise.withResolvers<void>();
++      const record: V4SessionRecordView = {
++        app: customApp,
++        workspace: h.workspace,
++        persistence: "immediate",
++        traceContext: createRootTraceContext(),
++        ...(controller ? { activeAbortController: controller } : {}),
++      };
++      controller?.signal.addEventListener(
++        "abort",
++        () => {
++          assert.equal(
++            (
++              projection.getSnapshot().rows.window.find((row) => row.kind === "userInput") as {
++                text?: string;
++              }
++            )?.text,
++            "old question",
++          );
++          setTimeout(() => {
++            record.activeAbortController = undefined;
++            joined.resolve();
++          }, 10);
++        },
++        { once: true },
++      );
++      if (!controller) joined.resolve();
++      const row = projection
++        .getSnapshot()
++        .rows.window.find((row) => row.kind === "userInput" && row.actions?.canEdit);
++      assert.ok(row?.entityId);
++      const executor = new V4CommandExecutor({
++        getRecord: (sessionId) => (sessionId === app.sessionId ? record : undefined),
++        resolveRowActionTarget: (_sessionId, target, action) =>
++          projection.resolveRowActionTarget(target, action),
++      });
++      const editing = executor.execute({
++        commandId: randomUUID(),
++        clientId: "authored-facade",
++        sessionId: app.sessionId,
++        issuedAt: Date.now(),
++        type: "editUserQuery",
++        payload: {
++          target: { rowId: row.rowId, entityId: row.entityId },
++          newText: "edited question",
++        },
++      });
++      await joined.promise;
++      await editing;
++      if (controller) assert.equal(controller.signal.aborted, true);
++      await waitFor(
++        () => h.streams === 2 && !original.getActiveForegroundExecutionId(),
++        "same original Core replacement",
++      );
++      assert.ok((await h.store.getSession(app.sessionId))?.revert);
++      assert.ok(
++        projection
++          .getSnapshot()
++          .rows.window.some((row) => row.kind === "userInput" && row.text === "edited question"),
++      );
++      assert.equal(h.f.httpCalls, 0);
++    } finally {
++      off();
++      await h.close();
++    }
++  });
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/test/helpers/active-edit-host-fixture.ts b/apps/zcode-cli/packages/bootstrap/test/helpers/active-edit-host-fixture.ts
+new file mode 100644
+index 00000000..fb08e329
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/helpers/active-edit-host-fixture.ts
+@@ -0,0 +1,211 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { join } from "node:path";
++import { AiSdkModelAdapter } from "@zcode/adapters/model";
++import { SqliteSessionStore } from "@zcode/adapters/storage";
++import type { Model } from "@zcode/contracts";
++import { zcodeProtocolMethods as M, type ZCodeProtocolMessage } from "@zcode/shared";
++import {
++  V4_METHODS as V,
++  commandAckSchema,
++  v4ConversationRowsRangeResultSchema,
++  type CommandEnvelope,
++} from "@zcode/shared/zcode-protocol-v4";
++import { ZCodeProtocolAgentServer } from "../../src/zcode-protocol/server.js";
++import { appModelFixture } from "./app-model-completion-fixture.js";
++
++export async function waitFor(condition: () => boolean, label: string) {
++  for (let i = 0; i < 600; i++) {
++    if (condition()) return;
++    await new Promise((resolve) => setTimeout(resolve, 5));
++  }
++  throw new Error(`Timed out: ${label}`);
++}
++
++export async function activeEditHostFixture() {
++  const f = await appModelFixture();
++  const workspace = {
++    workspacePath: join(f.root, "workspace"),
++    workspaceKey: join(f.root, "workspace"),
++  };
++  const store = new SqliteSessionStore({ dbPath: join(f.root, "active-edit.sqlite") });
++  const adapter = new AiSdkModelAdapter({ env: {} });
++  const createModel = adapter.createModel.bind(adapter);
++  const entered = Promise.withResolvers<void>();
++  const released = Promise.withResolvers<void>();
++  const aborted = Promise.withResolvers<void>();
++  let firstSignal: AbortSignal | undefined;
++  let firstFinished = false;
++  let streams = 0;
++  const decorate = (model: Model): Model => ({
++    providerId: model.providerId,
++    modelId: model.modelId,
++    properties: model.properties,
++    optionSpecs: model.optionSpecs,
++    options: model.options,
++    bind: (options) => decorate(model.bind(options)),
++    async generateText() {
++      throw new Error("This fixture requires the real streaming turn");
++    },
++    async *streamText(input) {
++      streams++;
++      yield { type: "start" };
++      if (streams === 1) {
++        firstSignal = input.abortSignal;
++        firstSignal?.addEventListener("abort", () => aborted.resolve(), { once: true });
++        yield { type: "text_delta", text: "old partial" };
++        entered.resolve();
++        await released.promise;
++        try {
++          if (firstSignal?.aborted) throw firstSignal.reason;
++          yield { type: "text_delta", text: " old late result" };
++          yield {
++            type: "finish",
++            finishReason: "stop",
++            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
++          };
++        } finally {
++          firstFinished = true;
++        }
++      } else {
++        yield { type: "text_delta", text: "edited answer" };
++        yield {
++          type: "finish",
++          finishReason: "stop",
++          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
++        };
++      }
++    },
++  });
++  adapter.createModel = (input) => decorate(createModel(input));
++  const apps = new Map<string, Awaited<ReturnType<typeof f.create>>>();
++  const server = new ZCodeProtocolAgentServer({
++    cwd: workspace.workspacePath,
++    env: {},
++    sessionStore: store,
++    createZCodeApp: async (options) => {
++      const app = await f.create({
++        ...options,
++        sessionStore: store,
++        modelAdapter: adapter,
++        configuredDefaultModelSelection: {
++          providerId: f.providerId,
++          modelId: "standard",
++          options: { reasoningLevel: "high" },
++        },
++        runtimeConfig: {
++          ...options?.runtimeConfig,
++          workingDirectory: workspace.workspacePath,
++          memory: { enabled: false },
++          mcp: { enabled: false, servers: {} },
++          toolAllowlist: ["ReadWhiteboard", "WhiteboardUpdate"],
++          modelStreaming: "on",
++        },
++      });
++      apps.set(String(app.sessionId), app);
++      return app;
++    },
++  });
++  let id = 0;
++  let permission: ZCodeProtocolMessage | undefined;
++  const notifications: ZCodeProtocolMessage[] = [];
++  server.setNotificationSink((message) => {
++    notifications.push(message);
++    if ("method" in message && message.method === M.interactionRequestPermission)
++      permission = message;
++    if (
++      "method" in message &&
++      "id" in message &&
++      message.method === M.sessionRequestRuntimePreferences
++    )
++      void server.handleMessage({
++        id: message.id,
++        result: { nativeSearchEnhancementsEnabled: true, memoryEnabled: false },
++      });
++  });
++  async function request(method: string, params: unknown) {
++    const requestId = ++id;
++    const response = await server.handleMessage({
++      id: requestId,
++      method,
++      params,
++    } as ZCodeProtocolMessage);
++    assert.ok(response && "result" in response, JSON.stringify(response));
++    notifications.push(...server.takePostResponseMessages(requestId));
++    return response.result;
++  }
++  async function command(
++    sessionId: string,
++    type: CommandEnvelope["type"],
++    payload: unknown,
++    base?: { atRevision: number; atLogEpoch: string },
++  ) {
++    return commandAckSchema.parse(
++      await request(V.command, {
++        commandId: randomUUID(),
++        clientId: "authored-active-edit",
++        sessionId,
++        type,
++        payload,
++        issuedAt: Date.now(),
++        ...(base ? { baseRevision: base.atRevision, baseLogEpoch: base.atLogEpoch } : {}),
++      }),
++    );
++  }
++  return {
++    f,
++    store,
++    workspace,
++    apps,
++    server,
++    request,
++    command,
++    notifications,
++    entered: entered.promise,
++    aborted: aborted.promise,
++    release() {
++      released.resolve();
++    },
++    get permission() {
++      return permission;
++    },
++    async denyPermission() {
++      if (permission && "id" in permission) {
++        const held = permission;
++        permission = undefined;
++        await server.handleMessage({ id: held.id, result: { decision: "deny" } });
++      }
++    },
++    get firstSignal() {
++      return firstSignal;
++    },
++    get firstFinished() {
++      return firstFinished;
++    },
++    get streams() {
++      return streams;
++    },
++    async createSession() {
++      const result = await request(M.sessionCreate, { workspace, persistence: "deferred" });
++      assert.ok(result && typeof result === "object" && "session" in result);
++      const session = result.session as { sessionId: string };
++      const app = apps.get(session.sessionId);
++      assert.ok(app);
++      return app;
++    },
++    async rows(sessionId: string) {
++      return v4ConversationRowsRangeResultSchema.parse(
++        await request(V.conversationRowsRange, { sessionId, limit: 200 }),
++      );
++    },
++    async close() {
++      released.resolve();
++      if (permission && "id" in permission)
++        await server.handleMessage({ id: permission.id, result: { decision: "deny" } });
++      await server.shutdown();
++      server.disposeProjections();
++      store.close();
++      await f.close();
++    },
++  };
++}
+diff --git a/package.json b/package.json
+index 0f860db8..c0781780 100644
+--- a/package.json
++++ b/package.json
+@@ -84,7 +84,7 @@
+     "test:plugin-market-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pluginMarketConsistency.browser.test.tsx __pluginMarketConsistencyTests --desktop-styles",
+     "verify:delivery": "node scripts/verify-delivery.mjs",
+     "test:product-completion": "node scripts/verify-product-completion.mjs",
+-    "test:product-completion-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/savedWorkflowConsistency.browser.test.tsx __savedWorkflowConsistencyTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/whiteboardNativePane.browser.test.tsx __whiteboardNativePaneTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/whiteboardPaneClose.browser.test.tsx __whiteboardPaneCloseTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/pluginViewNativeBridge.browser.test.tsx __pluginViewNativeBridgeTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/toolbarConfigSnapshot.browser.test.tsx __toolbarConfigSnapshotTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeWorkbench.browser.test.tsx __nativeWorkbenchTests --desktop-styles --viewport-width=1280"
++    "test:product-completion-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/savedWorkflowConsistency.browser.test.tsx __savedWorkflowConsistencyTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/whiteboardNativePane.browser.test.tsx __whiteboardNativePaneTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/whiteboardPaneClose.browser.test.tsx __whiteboardPaneCloseTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/pluginViewNativeBridge.browser.test.tsx __pluginViewNativeBridgeTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/toolbarConfigSnapshot.browser.test.tsx __toolbarConfigSnapshotTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeWorkbench.browser.test.tsx __nativeWorkbenchTests --desktop-styles --viewport-width=1280 && node scripts/test-usage-hooks.mjs packages/ui/test/pluginUninstallDialog.browser.test.tsx __pluginUninstallDialogTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/savedWorkflowLaunchScope.browser.test.tsx __savedWorkflowLaunchScopeTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/workflowArtifactRecovery.browser.test.tsx __workflowArtifactRecoveryTests --desktop-styles"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/WhiteboardPane.tsx b/packages/ui/src/WhiteboardPane.tsx
+index 19787e68..82b61a5e 100644
+--- a/packages/ui/src/WhiteboardPane.tsx
++++ b/packages/ui/src/WhiteboardPane.tsx
+@@ -239,9 +239,9 @@ export function WhiteboardPane({
+   const addToChatLabel = intl.formatMessage({ id: "whiteboard.addToChat" });
+ 
+   return (
+-    <div className="flex h-full min-h-0 flex-col bg-panel text-foreground">
++    <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel text-foreground">
+       {nativeControls}
+-      <div className="flex min-h-10 items-center gap-2 border-b border-border px-2">
++      <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-border px-2 py-1">
+         <Input
+           value={nameDraft}
+           disabled={frozen}
+@@ -266,7 +266,7 @@ export function WhiteboardPane({
+           aria-label={intl.formatMessage({ id: "whiteboard.nameLabel" })}
+           className="max-w-48"
+         />
+-        <div className="ml-auto flex min-w-0 items-center gap-1">
++        <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center gap-1">
+           <ControlHintTooltip title={addToChatLabel}>
+             <Button
+               type="button"
+diff --git a/packages/ui/src/app-shell/WorkflowArtifactSidePane.tsx b/packages/ui/src/app-shell/WorkflowArtifactSidePane.tsx
+index a1f27185..e44f7933 100644
+--- a/packages/ui/src/app-shell/WorkflowArtifactSidePane.tsx
++++ b/packages/ui/src/app-shell/WorkflowArtifactSidePane.tsx
+@@ -12,6 +12,7 @@ import {
+   isArtifactPresetKind,
+   isTextArtifactContentType,
+ } from "@/app-shell/workflow-artifacts/artifactPresentation.js";
++import { ArtifactNotice } from "@/app-shell/workflow-artifacts/WorkflowArtifactCards.js";
+ import { WorkflowArtifactBody } from "@/app-shell/workflow-artifacts/WorkflowArtifactBody.js";
+ import { useWorkflowRunArtifactBytes } from "@/hooks/useWorkflowRunArtifactBytes.js";
+ import { useWorkflowRunArtifactData } from "@/hooks/useWorkflowRunArtifactData.js";
+@@ -66,6 +67,7 @@ const WorkflowArtifactContent = memo(function WorkflowArtifactContent({
+     artifacts,
+     loading: metadataLoading,
+     unavailable,
++    error: metadataError,
+   } = useWorkflowRunArtifacts({
+     sessionId: tab.parentSessionId,
+     runId: tab.runId,
+@@ -85,7 +87,14 @@ const WorkflowArtifactContent = memo(function WorkflowArtifactContent({
+       data-workflow-artifact-id={tab.artifactId}
+       data-workflow-run-id={tab.runId}
+     >
+-      {artifact === undefined ? (
++      {metadataError !== null && artifact === undefined ? (
++        <ArtifactNotice
++          testId="workflow-artifact-metadata-error"
++          tone="error"
++          text={intl.formatMessage({ id: "chat.toolCall.workflow.run.artifacts.loadError" })}
++          detail={metadataError}
++        />
++      ) : artifact === undefined ? (
+         // 三态必须分开：还在读 / 这个会话读不到产物详情（老 CLI）/ 读完了但这个 id 不在
+         // （run 的 journal 已被清理，或 chip 指向的产物不存在）。合并成一句「正在读取」的
+         // 结果是最后一种情形永远停在加载文案上。
+@@ -107,6 +116,8 @@ const WorkflowArtifactContent = memo(function WorkflowArtifactContent({
+         <WorkflowArtifactView
+           artifact={artifact}
+           metadataLoading={metadataLoading}
++          metadataError={metadataError}
++          metadataUnavailable={unavailable}
+           tab={tab}
+           theme={theme}
+           {...(onOpenBrowserUrl === undefined ? {} : { onOpenBrowserUrl })}
+@@ -124,6 +135,8 @@ const WorkflowArtifactContent = memo(function WorkflowArtifactContent({
+ function WorkflowArtifactView({
+   artifact,
+   metadataLoading,
++  metadataError,
++  metadataUnavailable,
+   tab,
+   theme,
+   onOpenBrowserUrl,
+@@ -132,6 +145,8 @@ function WorkflowArtifactView({
+   artifact: WorkflowRunArtifactView;
+   /** 元数据（含预置看板的 spec）还在读；正文据此区分「还没到」与「真的没有」。 */
+   metadataLoading: boolean;
++  metadataError: string | null;
++  metadataUnavailable: boolean;
+   tab: WorkflowArtifactSidePaneTab;
+   theme: Theme;
+   onOpenBrowserUrl?: (url: string) => void;
+@@ -277,10 +292,11 @@ function WorkflowArtifactView({
+           artifact={artifact}
+           blob={bytesState.blob}
+           bytes={bytesState.bytes}
+-          error={bytesState.error}
++          error={metadataError ?? (preset ? dataState.error : bytesState.error)}
++          unavailable={preset && (metadataUnavailable || dataState.unavailable)}
+           isLatestVersion={isLatestVersion}
+           items={dataState.items}
+-          loading={bytesState.loading}
++          loading={preset ? metadataLoading || dataState.loading : bytesState.loading}
+           metadataLoading={metadataLoading}
+           objectUrl={bytesState.objectUrl}
+           resolvedTheme={resolveTheme(theme)}
+diff --git a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactBody.tsx b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactBody.tsx
+index 48007957..6dcbb123 100644
+--- a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactBody.tsx
++++ b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactBody.tsx
+@@ -71,6 +71,8 @@ interface WorkflowArtifactBodyProps {
+   /** 字节读取的状态：loading 与 error 都由本组件呈现（各查看器自己的 loading 只覆盖解析）。 */
+   loading: boolean;
+   error: string | null;
++  /** Original preset item reader is unsupported, distinct from an empty result. */
++  unavailable?: boolean;
+   /** 预置看板的条目流；内容产物恒空。 */
+   items: readonly ArtifactItem[];
+   theme: Theme;
+@@ -91,6 +93,34 @@ export function WorkflowArtifactBody(props: WorkflowArtifactBodyProps) {
+   const { intl } = useZCodeIntl();
+   const { artifact } = props;
+ 
++  if (props.error !== null) {
++    return (
++      <ArtifactNotice
++        testId="workflow-artifact-error"
++        tone="error"
++        text={intl.formatMessage({ id: "chat.toolCall.workflow.run.artifacts.loadError" })}
++        detail={props.error}
++      />
++    );
++  }
++  if (props.loading) {
++    return (
++      <ArtifactNotice
++        testId="workflow-artifact-loading"
++        text={intl.formatMessage({ id: "chat.toolCall.workflow.run.artifacts.loading" })}
++      />
++    );
++  }
++
++  if (props.unavailable) {
++    return (
++      <ArtifactNotice
++        testId="workflow-artifact-unavailable"
++        text={intl.formatMessage({ id: "chat.toolCall.workflow.run.artifacts.unavailable" })}
++      />
++    );
++  }
++
+   // 预置看板不读字节，直接画。
+   if (isArtifactPresetKind(artifact.kind)) {
+     const labels = buildPresetLabels((descriptor, values) =>
+@@ -119,17 +149,7 @@ export function WorkflowArtifactBody(props: WorkflowArtifactBodyProps) {
+     );
+   }
+ 
+-  if (props.error !== null) {
+-    return (
+-      <ArtifactNotice
+-        testId="workflow-artifact-error"
+-        tone="error"
+-        text={intl.formatMessage({ id: "chat.toolCall.workflow.run.artifacts.loadError" })}
+-        detail={props.error}
+-      />
+-    );
+-  }
+-  if (props.loading || props.bytes === null) {
++  if (props.bytes === null) {
+     return (
+       <ArtifactNotice
+         testId="workflow-artifact-loading"
+@@ -137,7 +157,6 @@ export function WorkflowArtifactBody(props: WorkflowArtifactBodyProps) {
+       />
+     );
+   }
+-
+   return <WorkflowArtifactContent {...props} bytes={props.bytes} />;
+ }
+ 
+diff --git a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
+index b272a9a8..913f791c 100644
+--- a/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
++++ b/packages/ui/src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.tsx
+@@ -6,6 +6,7 @@ import {
+   buildPresetLabels,
+   isArtifactPresetKind,
+ } from "@/app-shell/workflow-artifacts/artifactPresentation.js";
++import { ArtifactNotice } from "@/app-shell/workflow-artifacts/WorkflowArtifactCards.js";
+ import { ArtifactPresetBody } from "@/app-shell/workflow-artifacts/ArtifactPresetBody.js";
+ import { cn } from "@/components/lib/utils.js";
+ import {
+@@ -146,6 +147,22 @@ export function WorkflowArtifactTilePreview({
+   const glyph = <ArtifactSheetGlyph {...(badge === undefined ? {} : { badge })} />;
+ 
+   if (preset) {
++    if (dataState.error !== null || dataState.unavailable) {
++      return (
++        <div className="absolute inset-0" data-testid="workflow-artifact-preview-read-error">
++          <ArtifactNotice
++            tone={dataState.error !== null ? "error" : undefined}
++            text={intl.formatMessage({
++              id:
++                dataState.error !== null
++                  ? "chat.toolCall.workflow.run.artifacts.loadError"
++                  : "chat.toolCall.workflow.run.artifacts.unavailable",
++            })}
++          />
++        </div>
++      );
++    }
++    if (dataState.loading) return <Pending />;
+     // spec 只有 journal 带得回来；还没到时安静留白，不闪一句「无法渲染」。到了但坏了才说。
+     if (artifact.spec === undefined) return <Pending />;
+     return (
+diff --git a/packages/ui/src/hooks/useWorkflowRunArtifactData.ts b/packages/ui/src/hooks/useWorkflowRunArtifactData.ts
+index 5503ed66..a22e5f25 100644
+--- a/packages/ui/src/hooks/useWorkflowRunArtifactData.ts
++++ b/packages/ui/src/hooks/useWorkflowRunArtifactData.ts
+@@ -161,8 +161,12 @@ export function useWorkflowRunArtifactData(options: {
+         });
+         setState((current) => ({ ...current, loading: false, error: message }));
+       } finally {
+-        inFlightRef.current = false;
+-        pendingRef.current = false;
++        // Only this generation may release its gate. A late old reader cannot
++        // erase the new context's active or pending drain.
++        if (requestVersion === requestVersionRef.current) {
++          inFlightRef.current = false;
++          pendingRef.current = false;
++        }
+       }
+     },
+     [artifactId, enabled, runId, sessionId, workflowRunArtifactData],
+@@ -171,11 +175,18 @@ export function useWorkflowRunArtifactData(options: {
+   // 切产物 / 切 run / 从关到开：先清空再整份重取。别的看板的点绝不能留在这块画布上。
+   useEffect(() => {
+     requestVersionRef.current += 1;
++    inFlightRef.current = false;
++    pendingRef.current = false;
+     cursorRef.current = undefined;
+     lastDrainedCountRef.current = undefined;
+     setState(emptyState());
+     if (!enabled) return;
+     void drain("replace");
++    return () => {
++      requestVersionRef.current += 1;
++      inFlightRef.current = false;
++      pendingRef.current = false;
++    };
+   }, [drain, enabled]);
+ 
+   // 增量：`itemCount` 抬升即续拉。
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e6296f99..2b2dd69f 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4604,6 +4604,8 @@ const enUS: Record<string, string> = {
+   "settings.plugins.restore": "Restore",
+   "settings.plugins.restorableBuiltins.title": "Restore built-in plugins",
+   "settings.plugins.uninstall.confirmTitle": "Uninstall {name}?",
++  "settings.plugins.uninstall.inspectBeforeRetry":
++    "The installation may already have changed. Inspect its current state before retrying.",
+   "settings.plugins.uninstall.confirmDescription":
+     "The plugin will become unavailable and its saved configuration will be removed. Its data will be kept for reinstallation.",
+   "settings.plugins.uninstall.confirm": "Uninstall",
+@@ -5723,6 +5725,8 @@ const enUS: Record<string, string> = {
+   "workflows.hub.launch.error.unsupported":
+     "The current agent does not support running workflows directly",
+   "workflows.hub.launch.error.generic": "The workflow could not be started",
++  "workflows.hub.launch.error.uncertain":
++    "The launch result is unconfirmed and the original conversation is retained. Run again checks its receipt without starting another run.",
+   "workflows.hub.detail.tab.definition": "Definition",
+   "workflows.hub.detail.tab.history": "Run history",
+   "workflows.hub.detail.projectColumn": "Project",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 18bccac7..946cff4b 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4278,6 +4278,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.restore": "恢复",
+   "settings.plugins.restorableBuiltins.title": "恢复内置插件",
+   "settings.plugins.uninstall.confirmTitle": "卸载 {name}？",
++  "settings.plugins.uninstall.inspectBeforeRetry": "安装状态可能已经改变。重试前请先检查当前状态。",
+   "settings.plugins.uninstall.confirmDescription":
+     "卸载后将无法使用该插件，并清除其已保存的配置。插件数据会保留，可在重新安装后继续使用。",
+   "settings.plugins.uninstall.confirm": "卸载",
+@@ -5380,6 +5381,8 @@ const zhCN: Record<string, string> = {
+   "workflows.hub.launch.error.start_failed": "工作流启动失败",
+   "workflows.hub.launch.error.unsupported": "当前 agent 不支持直接启动工作流",
+   "workflows.hub.launch.error.generic": "工作流启动失败",
++  "workflows.hub.launch.error.uncertain":
++    "启动结果尚未确认，原对话已保留。再次点击运行只会核对原启动回执，不会重复启动。",
+   "workflows.hub.detail.tab.definition": "定义",
+   "workflows.hub.detail.tab.history": "运行历史",
+   "workflows.hub.detail.projectColumn": "项目",
+diff --git a/packages/ui/src/settings/PluginStorePage.tsx b/packages/ui/src/settings/PluginStorePage.tsx
+index 4b30a402..79c2f55b 100644
+--- a/packages/ui/src/settings/PluginStorePage.tsx
++++ b/packages/ui/src/settings/PluginStorePage.tsx
+@@ -657,6 +657,8 @@ export function PluginStorePage({
+             : ""
+         }
+         pending={uninstall.uninstalling}
++        canConfirm={uninstall.canConfirm}
++        error={uninstall.error}
+         onCancel={uninstall.cancelUninstall}
+         onConfirm={() => void uninstall.confirmUninstall()}
+       />
+diff --git a/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx b/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
+index b7516d37..4dee122d 100644
+--- a/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
++++ b/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
+@@ -16,12 +16,16 @@ export function PluginUninstallConfirmDialog({
+   open,
+   pluginName,
+   pending,
++  canConfirm = true,
++  error,
+   onCancel,
+   onConfirm,
+ }: {
+   open: boolean;
+   pluginName: string;
+   pending: boolean;
++  canConfirm?: boolean;
++  error?: string | null;
+   onCancel: () => void;
+   onConfirm: () => void;
+ }) {
+@@ -45,6 +49,14 @@ export function PluginUninstallConfirmDialog({
+             {intl.formatMessage({ id: "settings.plugins.uninstall.confirmDescription" })}
+           </AlertDialogDescription>
+         </AlertDialogHeader>
++        {error ? (
++          <div role="alert" className="text-ui-base text-destructive">
++            <p>{error}</p>
++            {!canConfirm ? (
++              <p>{intl.formatMessage({ id: "settings.plugins.uninstall.inspectBeforeRetry" })}</p>
++            ) : null}
++          </div>
++        ) : null}
+         <AlertDialogFooter>
+           <AlertDialogCancel
+             type="button"
+@@ -59,7 +71,7 @@ export function PluginUninstallConfirmDialog({
+             data-testid="plugin-store-uninstall-confirm"
+             variant="destructive"
+             size="sm"
+-            disabled={pending}
++            disabled={pending || !canConfirm}
+             onClick={(event) => {
+               // 阻止 Radix 默认在点击 action 后关闭弹窗；卸载是异步操作，等结果再由父组件收起。
+               event.preventDefault();
+diff --git a/packages/ui/src/settings/PluginsSection.tsx b/packages/ui/src/settings/PluginsSection.tsx
+index b8e8cf95..ba490849 100644
+--- a/packages/ui/src/settings/PluginsSection.tsx
++++ b/packages/ui/src/settings/PluginsSection.tsx
+@@ -538,7 +538,12 @@ function PluginList({
+       });
+       toast(
+         intl.formatMessage(
+-          { id: result.skipped.length > 0 ? "settings.plugins.export.doneSkipped" : "settings.plugins.export.done" },
++          {
++            id:
++              result.skipped.length > 0
++                ? "settings.plugins.export.doneSkipped"
++                : "settings.plugins.export.done",
++          },
+           { path: result.path, skipped: result.skipped.map((item) => item.path).join(", ") },
+         ),
+       );
+@@ -864,6 +869,8 @@ function PluginList({
+               : ""
+           }
+           pending={uninstall.uninstalling}
++          canConfirm={uninstall.canConfirm}
++          error={uninstall.error}
+           onCancel={uninstall.cancelUninstall}
+           onConfirm={() => void uninstall.confirmUninstall()}
+         />
+@@ -1012,6 +1019,8 @@ function PluginList({
+             : ""
+         }
+         pending={uninstall.uninstalling}
++        canConfirm={uninstall.canConfirm}
++        error={uninstall.error}
+         onCancel={uninstall.cancelUninstall}
+         onConfirm={() => void uninstall.confirmUninstall()}
+       />
+@@ -1246,7 +1255,9 @@ export function PluginsSection({
+     [selectedScope.key, selectedTargetKey],
+   );
+   const updateHookCount = useCallback((count: number) => {
+-    setCapabilityCounts((current) => (current.hooks === count ? current : { ...current, hooks: count }));
++    setCapabilityCounts((current) =>
++      current.hooks === count ? current : { ...current, hooks: count },
++    );
+   }, []);
+   const handleMcpEditorOpenChange = useCallback((open: boolean) => {
+     setMcpEditorOpen(open);
+@@ -1533,7 +1544,9 @@ export function PluginsSection({
+           <TabsContent
+             forceMount
+             value="hooks"
+-            className={hookEditorOpen ? "data-[state=inactive]:hidden" : "mt-6 data-[state=inactive]:hidden"}
++            className={
++              hookEditorOpen ? "data-[state=inactive]:hidden" : "mt-6 data-[state=inactive]:hidden"
++            }
+           >
+             <HooksSection
+               // Same host as the other views: they share one plugin store keyed by this target.
+diff --git a/packages/ui/src/settings/saved-workflows/useSavedWorkflowLauncher.ts b/packages/ui/src/settings/saved-workflows/useSavedWorkflowLauncher.ts
+index 61af55b4..db389a88 100644
+--- a/packages/ui/src/settings/saved-workflows/useSavedWorkflowLauncher.ts
++++ b/packages/ui/src/settings/saved-workflows/useSavedWorkflowLauncher.ts
+@@ -1,13 +1,9 @@
+-// 中枢「运行」的直接启动编排。
+-// 不再合成对话文案：在目标项目里建一个空会话 → 向它发 startSavedWorkflow 命令 →
+-// accepted 则导航到新会话（启动卡已在顶部）；rejected / 抛错则删掉空会话、把错误回给调用方
+-// （实参窗行内 / toast），用户留在中枢。「失败在会话存在之前」（不变式 2）：createSession
+-// 被拒时不发 start、不留会话；start 被拒时立即 deleteSession 收回刚建的空会话。
+ import { useCallback, useRef, useState } from "react";
+ import {
+   SAVED_WORKFLOW_START_REJECTED_FAULT_PREFIX,
+   savedWorkflowStartRejectionReasonSchema,
+   type CommandAck,
++  type CommandEnvelope,
+   type SavedWorkflowStartRejectionReason,
+ } from "@zcode/shared/zcode-protocol-v4";
+ import { createCommandEnvelope } from "@/v4/commandFactory.js";
+@@ -15,6 +11,7 @@ import {
+   acquireWorkspaceConnection,
+   type WorkspaceConnectionAgentService,
+ } from "@/v4/workspaceConnectionRegistry.js";
++import type { ConversationTransport } from "@/v4/transport.js";
+ import { logger } from "@/logger.js";
+ 
+ /** 目标项目坐标（工作流所属项目，绝不取活动项目；不变式 7）；remoteSessionId 决定连接 endpoint。 */
+@@ -35,7 +32,8 @@ interface SavedWorkflowLaunchRequest {
+ export type SavedWorkflowLaunchErrorReason =
+   | SavedWorkflowStartRejectionReason
+   | "unsupported"
+-  | "generic";
++  | "generic"
++  | "uncertain";
+ 
+ export interface SavedWorkflowLaunchError {
+   reason: SavedWorkflowLaunchErrorReason;
+@@ -77,7 +75,7 @@ export function acquireLaunchLease(
+   target: SavedWorkflowLaunchTarget,
+   agentService: WorkspaceConnectionAgentService,
+ ) {
+-  return acquireWorkspaceConnection(
++  const lease = acquireWorkspaceConnection(
+     {
+       workspacePath: target.workspacePath,
+       ...(target.workspaceIdentity ? { workspaceIdentity: target.workspaceIdentity } : {}),
+@@ -85,6 +83,15 @@ export function acquireLaunchLease(
+     },
+     agentService,
+   );
++  try {
++    // Both callers acquire only inside an explicit UI action. A warm remote
++    // entry must activate its incoming original proxy before any command/query.
++    lease.activateRemoteService();
++    return lease;
++  } catch (error) {
++    lease.release();
++    throw error;
++  }
+ }
+ 
+ /** 把被拒 ACK 映射成结构化错误：能力缺席 → unsupported；拒绝词表 → 对应 reason；其余 → generic。 */
+@@ -103,11 +110,158 @@ function mapLaunchError(ack: CommandAck): SavedWorkflowLaunchError {
+   return { reason: "generic", code, ...(message ? { message } : {}) };
+ }
+ 
+-/**
+- * 中枢启动器 hook。载体 `agentService` 由调用组解析（项目组 = 目标项目的解析 service；
+- * 全局组 = 本机 base service，目标 = 「运行于」选中的本地项目）。`onNavigate` 在 accepted
+- * 后切到新会话（`handleSelectTaskInChat` 镜像，含 `showChatMainView`）。
+- */
++/** Pending renderer operation; original Session and CommandInbox remain authoritative. */
++interface UnsettledWorkflowLaunch {
++  target: SavedWorkflowLaunchTarget;
++  createdSessionId: string;
++  startEnvelope: CommandEnvelope;
++  agentService: WorkspaceConnectionAgentService;
++}
++
++/** Internal orchestration seam consumed by the hook and original transport/Host fixtures. */
++export async function runSavedWorkflowLaunch(input: {
++  target: SavedWorkflowLaunchTarget;
++  request: SavedWorkflowLaunchRequest;
++  agentService: WorkspaceConnectionAgentService;
++  transport: Pick<ConversationTransport, "sendCommand" | "queryCommands">;
++  unsettled: { current: UnsettledWorkflowLaunch | null };
++  onNavigate?: (target: SavedWorkflowLaunchTarget, sessionId: string) => void;
++}): Promise<SavedWorkflowLaunchResult> {
++  const { transport, unsettled } = input;
++  const uncertain = (code: string, message?: string): SavedWorkflowLaunchResult => ({
++    ok: false,
++    error: {
++      reason: "uncertain",
++      code,
++      message: [unsettled.current ? `Session: ${unsettled.current.createdSessionId}` : "", message]
++        .filter(Boolean)
++        .join("\n"),
++    },
++  });
++  const settle = async (ack: CommandAck): Promise<SavedWorkflowLaunchResult> => {
++    const operation = unsettled.current;
++    if (!operation || ack.commandId !== operation.startEnvelope.commandId)
++      return uncertain("launch_receipt_mismatch");
++    if (
++      (ack.status === "accepted" || ack.status === "duplicate") &&
++      ack.result?.type === "startSavedWorkflow" &&
++      ack.result.runId &&
++      ack.result.toolCallId
++    ) {
++      unsettled.current = null;
++      // A presentation failure cannot undo backend acceptance or close its Session.
++      try {
++        input.onNavigate?.(operation.target, operation.createdSessionId);
++      } catch (error) {
++        logger.warn("[saved-workflow-launch] accepted Session navigation failed", { error });
++      }
++      return {
++        ok: true,
++        sessionId: operation.createdSessionId,
++        runId: ack.result.runId,
++        toolCallId: ack.result.toolCallId,
++      };
++    }
++    const error = mapLaunchError(ack);
++    // Only these original preflight outcomes precede any run/context publication.
++    // session_busy/start_failed/generic/unsupported do not prove an empty Session.
++    if (
++      (ack.status === "rejected" || ack.status === "failed") &&
++      ["invalid_name", "not_found", "invalid_args", "compile_failed"].includes(error.reason)
++    ) {
++      unsettled.current = null;
++      try {
++        await transport.sendCommand(
++          createCommandEnvelope({
++            type: "deleteSession",
++            payload: {},
++            sessionId: operation.createdSessionId,
++          }),
++        );
++      } catch (cleanupError) {
++        logger.warn("[saved-workflow-launch] empty Session cleanup failed", { cleanupError });
++      }
++      return { ok: false, error };
++    }
++    return uncertain(error.code, error.message);
++  };
++  const reconcile = async (): Promise<SavedWorkflowLaunchResult> => {
++    const operation = unsettled.current;
++    if (!operation) return uncertain("launch_receipt_missing");
++    const key = {
++      sessionId: operation.createdSessionId,
++      commandId: operation.startEnvelope.commandId,
++    };
++    try {
++      const query = await transport.queryCommands({ commands: [key] });
++      const receipt = query.results.find(
++        (item) => item.key.sessionId === key.sessionId && item.key.commandId === key.commandId,
++      );
++      if (!receipt || receipt.result === "unknown") return uncertain("launch_receipt_unknown");
++      return await settle(receipt.result);
++    } catch (error) {
++      return uncertain(
++        "launch_receipt_unavailable",
++        error instanceof Error ? error.message : String(error),
++      );
++    }
++  };
++  // Run again means reconcile this exact operation, even if the caller changed inputs.
++  if (unsettled.current) return reconcile();
++  try {
++    const createEnvelope = createCommandEnvelope({
++      type: "createSession",
++      payload: { workspaceId: launchWorkspaceId(input.target) },
++      sessionId: null,
++    });
++    const createAck = await transport.sendCommand(createEnvelope);
++    if (
++      createAck.commandId !== createEnvelope.commandId ||
++      createAck.status !== "accepted" ||
++      createAck.result?.type !== "createSession"
++    ) {
++      return {
++        ok: false,
++        error: {
++          reason: "generic",
++          code: createAck.reasonCode ?? createAck.status,
++          ...(createAck.message ? { message: createAck.message } : {}),
++        },
++      };
++    }
++    const startEnvelope = createCommandEnvelope({
++      type: "startSavedWorkflow",
++      payload: {
++        name: input.request.name,
++        scope: input.request.scope,
++        ...(Object.keys(input.request.args).length ? { args: input.request.args } : {}),
++      },
++      sessionId: createAck.result.sessionId,
++    });
++    unsettled.current = {
++      target: { ...input.target },
++      createdSessionId: createAck.result.sessionId,
++      startEnvelope,
++      agentService: input.agentService,
++    };
++    try {
++      return await settle(await transport.sendCommand(startEnvelope));
++    } catch {
++      // Lost response is not rejection. Query, never send this writable start again.
++      return await reconcile();
++    }
++  } catch (error) {
++    return {
++      ok: false,
++      error: {
++        reason: "generic",
++        code: "exception",
++        message: error instanceof Error ? error.message : String(error),
++      },
++    };
++  }
++}
++
+ export function useSavedWorkflowLauncher(params: {
+   agentService: WorkspaceConnectionAgentService;
+   onNavigate?: (target: SavedWorkflowLaunchTarget, sessionId: string) => void;
+@@ -115,114 +269,57 @@ export function useSavedWorkflowLauncher(params: {
+   const { agentService, onNavigate } = params;
+   const [pending, setPending] = useState(false);
+   const [error, setError] = useState<SavedWorkflowLaunchError | null>(null);
+-  // pending 的同步事实源：防同一帧内重复触发（setPending 异步，单靠 state 挡不住）。
+   const pendingRef = useRef(false);
+-
++  const unsettledLaunchRef = useRef<UnsettledWorkflowLaunch | null>(null);
+   const clearError = useCallback(() => setError(null), []);
+-
+   const launch = useCallback(
+     async (
+       target: SavedWorkflowLaunchTarget,
+       request: SavedWorkflowLaunchRequest,
+     ): Promise<SavedWorkflowLaunchResult> => {
+-      if (pendingRef.current) {
++      if (pendingRef.current)
+         return { ok: false, error: { reason: "generic", code: "launch_in_flight" } };
+-      }
+       pendingRef.current = true;
+       setPending(true);
+       setError(null);
+-
+-      const workspaceId = launchWorkspaceId(target);
+-      const lease = acquireLaunchLease(target, agentService);
+-
+-      const deleteCreatedSession = (sessionId: string) => {
+-        void lease.transport
+-          .sendCommand(createCommandEnvelope({ type: "deleteSession", payload: {}, sessionId }))
+-          .then((ack) => {
+-            if (ack.status !== "accepted" && ack.status !== "noop") {
+-              logger.warn("[saved-workflow-launch] 回收空会话被拒", {
+-                sessionId,
+-                status: ack.status,
+-                reasonCode: ack.reasonCode ?? null,
+-              });
+-            }
+-          })
+-          .catch(() => {
+-            // 回收失败无碍：内存会话随 CLI 退出消失，转写里也不会出现它（无任何行）。
+-          });
+-      };
+-
+-      let createdSessionId: string | null = null;
++      // Never query an unresolved old operation through a newly selected workspace.
++      const operation = unsettledLaunchRef.current;
++      let lease: ReturnType<typeof acquireLaunchLease> | undefined;
+       try {
+-        // ① 空会话：无 firstInput、无 config，用 runtime 缺省模型 / 模式（不复用 composer 草稿配置）。
+-        const createAck = await lease.transport.sendCommand(
+-          createCommandEnvelope({
+-            type: "createSession",
+-            payload: { workspaceId },
+-            sessionId: null,
+-          }),
++        lease = acquireLaunchLease(
++          operation?.target ?? target,
++          operation?.agentService ?? agentService,
+         );
+-        if (createAck.status !== "accepted" || createAck.result?.type !== "createSession") {
+-          // 会话没建成：不发 start、不留会话，通用错误。
+-          logger.warn("[saved-workflow-launch] createSession 被拒", {
+-            workspaceId,
+-            status: createAck.status,
+-            reasonCode: createAck.reasonCode ?? null,
+-          });
+-          const err: SavedWorkflowLaunchError = {
+-            reason: "generic",
+-            code: createAck.reasonCode ?? createAck.status,
+-            ...(createAck.message ? { message: createAck.message } : {}),
+-          };
+-          setError(err);
+-          return { ok: false, error: err };
+-        }
+-        createdSessionId = createAck.result.sessionId;
+-
+-        // ② startSavedWorkflow：name / scope 定向查找 + 实参；无实参不带 args 键。
+-        const startAck = await lease.transport.sendCommand(
+-          createCommandEnvelope({
+-            type: "startSavedWorkflow",
+-            payload: {
+-              name: request.name,
+-              scope: request.scope,
+-              ...(Object.keys(request.args).length > 0 ? { args: request.args } : {}),
+-            },
+-            sessionId: createdSessionId,
+-          }),
+-        );
+-        if (startAck.status === "accepted" && startAck.result?.type === "startSavedWorkflow") {
+-          // accepted：启动卡已在新会话顶部，切过去让它活起来（无导航载体时静默启动，不切页）。
+-          onNavigate?.(target, createdSessionId);
+-          return {
+-            ok: true,
+-            sessionId: createdSessionId,
+-            runId: startAck.result.runId,
+-            toolCallId: startAck.result.toolCallId,
+-          };
+-        }
+-        // 启动被拒 / 失败：收回刚建的空会话（不变式 2），把原因回给实参窗 / toast。
+-        deleteCreatedSession(createdSessionId);
+-        const err = mapLaunchError(startAck);
+-        setError(err);
+-        return { ok: false, error: err };
+-      } catch (thrown) {
+-        if (createdSessionId) deleteCreatedSession(createdSessionId);
+-        const err: SavedWorkflowLaunchError = {
+-          reason: "generic",
+-          code: "exception",
+-          message: thrown instanceof Error ? thrown.message : String(thrown),
++        const result = await runSavedWorkflowLaunch({
++          target,
++          request,
++          agentService,
++          transport: lease.transport,
++          unsettled: unsettledLaunchRef,
++          onNavigate,
++        });
++        if (!result.ok) setError(result.error);
++        return result;
++      } catch (error) {
++        const launchError: SavedWorkflowLaunchError = {
++          reason: operation ? "uncertain" : "generic",
++          code: "launch_connection_unavailable",
++          message: [
++            operation ? `Session: ${operation.createdSessionId}` : "",
++            error instanceof Error ? error.message : String(error),
++          ]
++            .filter(Boolean)
++            .join("\n"),
+         };
+-        setError(err);
+-        return { ok: false, error: err };
++        setError(launchError);
++        return { ok: false, error: launchError };
+       } finally {
+-        lease.release();
++        lease?.release();
+         pendingRef.current = false;
+         setPending(false);
+       }
+     },
+     [agentService, onNavigate],
+   );
+-
+   return { launch, pending, error, clearError };
+ }
+diff --git a/packages/ui/src/settings/saved-workflows/useSavedWorkflowPromote.ts b/packages/ui/src/settings/saved-workflows/useSavedWorkflowPromote.ts
+index de6f7370..d1480361 100644
+--- a/packages/ui/src/settings/saved-workflows/useSavedWorkflowPromote.ts
++++ b/packages/ui/src/settings/saved-workflows/useSavedWorkflowPromote.ts
+@@ -70,8 +70,9 @@ export function useSavedWorkflowPromote(params: {
+       }
+       pendingRef.current = true;
+       setPending(true);
+-      const lease = acquireLaunchLease(target, agentService);
++      let lease: ReturnType<typeof acquireLaunchLease> | undefined;
+       try {
++        lease = acquireLaunchLease(target, agentService);
+         const ack = await lease.transport.sendCommand(
+           createCommandEnvelope({
+             type: "createSession",
+@@ -104,7 +105,7 @@ export function useSavedWorkflowPromote(params: {
+           message: thrown instanceof Error ? thrown.message : String(thrown),
+         };
+       } finally {
+-        lease.release();
++        lease?.release();
+         pendingRef.current = false;
+         setPending(false);
+       }
+diff --git a/packages/ui/src/settings/usePluginUninstall.ts b/packages/ui/src/settings/usePluginUninstall.ts
+index dc4d381d..290fb80b 100644
+--- a/packages/ui/src/settings/usePluginUninstall.ts
++++ b/packages/ui/src/settings/usePluginUninstall.ts
+@@ -1,4 +1,4 @@
+-import { useCallback, useMemo, useState } from "react";
++import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+ import type { ZCodeInstalledPluginSummary, ZCodePluginInfo } from "@zcode/shared";
+ import type { IPluginManagementService } from "@zcode/services";
+ import { usePluginManagementStore } from "@/store/pluginManagementStore.js";
+@@ -8,22 +8,47 @@ interface UsePluginUninstallInput {
+   installedPlugins: ZCodeInstalledPluginSummary[];
+   plugins: ZCodePluginInfo[];
+   operationId: string | null;
+-  // 卸载会让插件提供的技能/命令失效，调用方传入统一的「能力变更后刷新」收尾逻辑。
+   onAfterUninstall: () => Promise<void>;
+ }
+ 
++type ConfirmationTarget = Pick<ZCodePluginInfo, "id" | "name">;
++interface PendingConfirmation {
++  target: ConfirmationTarget;
++  epoch: number;
++  service: IPluginManagementService;
++  phase: "ready" | "running" | "failed";
++  error?: string;
++}
+ interface PluginUninstallController {
+-  pendingPlugin: ZCodePluginInfo | ZCodeInstalledPluginSummary | null;
++  pendingPlugin: ConfirmationTarget | null;
+   uninstalling: boolean;
++  canConfirm: boolean;
++  error: string | null;
+   requestUninstall: (pluginId: string) => void;
+   cancelUninstall: () => void;
+   confirmUninstall: () => Promise<void>;
+ }
+ 
+-/**
+- * 集中管理插件卸载的确认流程：UI 各入口（已安装详情、市场面板）都通过它发起卸载，
+- * 共用同一份 pending 状态、确认弹窗目标解析与卸载收尾逻辑。
+- */
++function contextKey(): string {
++  const { workspacePath, workspaceIdentity, configScope } = usePluginManagementStore.getState();
++  return JSON.stringify([workspacePath, workspaceIdentity, configScope]);
++}
++
++function hasInstallation(
++  pluginId: string,
++  installed: readonly ZCodeInstalledPluginSummary[],
++  plugins: readonly ZCodePluginInfo[],
++): boolean {
++  return (
++    installed.some((item) => item.id === pluginId) ||
++    plugins.some(
++      (item) =>
++        item.id === pluginId && item.source !== "missing" && item.packageStatus !== "missing",
++    )
++  );
++}
++
++/** The retained target is dialog text only; current installation facts stay in the original store. */
+ export function usePluginUninstall({
+   pluginService,
+   installedPlugins,
+@@ -32,33 +57,133 @@ export function usePluginUninstall({
+   onAfterUninstall,
+ }: UsePluginUninstallInput): PluginUninstallController {
+   const uninstallPlugin = usePluginManagementStore((state) => state.uninstallPlugin);
+-  const [pendingId, setPendingId] = useState<string | null>(null);
+-
+-  const pendingPlugin = useMemo(() => {
+-    if (!pendingId) return null;
+-    return (
+-      installedPlugins.find((item) => item.id === pendingId) ??
+-      plugins.find((item) => item.id === pendingId) ??
+-      null
+-    );
+-  }, [installedPlugins, pendingId, plugins]);
+-
+-  const uninstalling = pendingId !== null && operationId === `plugin:uninstall:${pendingId}`;
+-
+-  const requestUninstall = useCallback((pluginId: string) => {
+-    setPendingId(pluginId);
++  const canonicalPlugins = usePluginManagementStore((state) => state.plugins);
++  const canonicalInstalled = usePluginManagementStore((state) => state.installedPlugins);
++  const availabilityKnown = usePluginManagementStore((state) => state.marketplaceAvailabilityKnown);
++  const [pending, setPending] = useState<PendingConfirmation | null>(null);
++  const pendingRef = useRef(pending);
++  const requestRef = useRef<object | null>(null);
++  const owner = useRef({ key: contextKey(), service: pluginService, epoch: 0 });
++  const publish = useCallback((next: PendingConfirmation | null) => {
++    pendingRef.current = next;
++    setPending(next);
+   }, []);
++  useEffect(() => {
++    // Subscribe to transitions, not just a rendered key: batched A→B→A is still a new owner.
++    const unsubscribe = usePluginManagementStore.subscribe(() => {
++      const key = contextKey();
++      if (key === owner.current.key) return;
++      owner.current = { ...owner.current, key, epoch: owner.current.epoch + 1 };
++      requestRef.current = null;
++      publish(null);
++    });
++    return () => {
++      unsubscribe();
++      owner.current.epoch++;
++      requestRef.current = null;
++    };
++  }, [publish]);
++  useLayoutEffect(() => {
++    if (owner.current.service === pluginService) return;
++    owner.current = { ...owner.current, service: pluginService, epoch: owner.current.epoch + 1 };
++    requestRef.current = null;
++    publish(null);
++  }, [pluginService, publish]);
+ 
++  const isCurrent = (target: PendingConfirmation) =>
++    pendingRef.current === target &&
++    target.epoch === owner.current.epoch &&
++    target.service === owner.current.service &&
++    owner.current.key === contextKey();
++  const current =
++    pending && pending.service === pluginService && isCurrent(pending) ? pending : null;
++  const present = Boolean(
++    current && hasInstallation(current.target.id, canonicalInstalled, canonicalPlugins),
++  );
++  const uninstalling = Boolean(
++    current &&
++    (current.phase === "running" || operationId === `plugin:uninstall:${current.target.id}`),
++  );
++  const canConfirm = Boolean(
++    current && present && !uninstalling && (current.phase !== "failed" || availabilityKnown),
++  );
++  const requestUninstall = useCallback(
++    (pluginId: string) => {
++      if (owner.current.service !== pluginService) return;
++      const target =
++        installedPlugins.find((item) => item.id === pluginId) ??
++        plugins.find((item) => item.id === pluginId);
++      if (!target) return;
++      requestRef.current = null;
++      publish({
++        target: { id: target.id, name: target.name },
++        epoch: owner.current.epoch,
++        service: pluginService,
++        phase: "ready",
++      });
++    },
++    [installedPlugins, plugins, pluginService, publish],
++  );
+   const cancelUninstall = useCallback(() => {
+-    setPendingId(null);
+-  }, []);
+-
+-  const confirmUninstall = useCallback(async () => {
+-    if (!pendingId) return;
+-    await uninstallPlugin(pendingId, pluginService);
+-    await onAfterUninstall();
+-    setPendingId(null);
+-  }, [pluginService, onAfterUninstall, pendingId, uninstallPlugin]);
+-
+-  return { pendingPlugin, uninstalling, requestUninstall, cancelUninstall, confirmUninstall };
++    requestRef.current = null;
++    publish(null);
++  }, [publish]);
++  const confirmUninstall = async () => {
++    const target = pendingRef.current;
++    if (!target || !isCurrent(target) || target.phase === "running" || requestRef.current) return;
++    const state = usePluginManagementStore.getState();
++    const presentNow = hasInstallation(target.target.id, state.installedPlugins, state.plugins);
++    if (
++      !presentNow ||
++      (target.phase === "failed" && !state.marketplaceAvailabilityKnown) ||
++      state.operationId === `plugin:uninstall:${target.target.id}`
++    )
++      return;
++    const request = {};
++    requestRef.current = request;
++    const running = { ...target, phase: "running" as const, error: undefined };
++    publish(running);
++    const operation = uninstallPlugin(target.target.id, pluginService);
++    const version = usePluginManagementStore.getState().operationVersion;
++    const ownsRequest = () =>
++      requestRef.current === request &&
++      isCurrent(running) &&
++      usePluginManagementStore.getState().operationVersion === version;
++    try {
++      const succeeded = await operation;
++      if (!ownsRequest()) return;
++      if (!succeeded) {
++        publish({
++          ...running,
++          phase: "failed",
++          error: usePluginManagementStore.getState().error ?? undefined,
++        });
++        return;
++      }
++      await onAfterUninstall();
++      if (ownsRequest()) publish(null);
++    } catch (error) {
++      if (ownsRequest())
++        publish({
++          ...running,
++          phase: "failed",
++          error: error instanceof Error ? error.message : String(error),
++        });
++    } finally {
++      if (requestRef.current === request) {
++        requestRef.current = null;
++        // A superseding operation must not leave this old confirmation perpetually busy.
++        if (pendingRef.current === running) publish({ ...running, phase: "failed" });
++      }
++    }
++  };
++  return {
++    pendingPlugin: current?.target ?? null,
++    uninstalling,
++    canConfirm,
++    error: current?.error ?? null,
++    requestUninstall,
++    cancelUninstall,
++    confirmUninstall,
++  };
+ }
+diff --git a/packages/ui/src/store/pluginManagementStore.ts b/packages/ui/src/store/pluginManagementStore.ts
+index a174598d..6f67259a 100644
+--- a/packages/ui/src/store/pluginManagementStore.ts
++++ b/packages/ui/src/store/pluginManagementStore.ts
+@@ -83,7 +83,7 @@ export interface PluginManagementState {
+     pluginId: string,
+     pluginService: IPluginManagementService,
+     removeCache?: boolean,
+-  ) => Promise<void>;
++  ) => Promise<boolean>;
+   updatePlugin: (pluginId: string, pluginService: IPluginManagementService) => Promise<void>;
+   restoreBuiltin: (pluginId: string, pluginService: IPluginManagementService) => Promise<void>;
+   configurePlugin: (
+@@ -295,7 +295,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+   },
+ 
+   async uninstallPlugin(pluginId, pluginService, removeCache = true) {
+-    await runWorkspaceOperation(
++    return runWorkspaceOperation(
+       set,
+       get,
+       pluginService,
+@@ -307,6 +307,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+           removeCache,
+         });
+       },
++      { reconcileFailure: true },
+     );
+   },
+ 
+diff --git a/packages/ui/src/store/pluginManagementStoreLoading.ts b/packages/ui/src/store/pluginManagementStoreLoading.ts
+index f3a48a85..ee9a9632 100644
+--- a/packages/ui/src/store/pluginManagementStoreLoading.ts
++++ b/packages/ui/src/store/pluginManagementStoreLoading.ts
+@@ -23,6 +23,7 @@ export async function runWorkspaceOperation(
+   pluginService: IPluginManagementService,
+   operationId: string,
+   operation: (workspace: { workspacePath: string; workspaceIdentity?: string }) => Promise<void>,
++  options?: { reconcileFailure?: boolean },
+ ): Promise<boolean> {
+   const { workspacePath, workspaceIdentity, configScope } = get();
+   if (!workspacePath) return false;
+@@ -66,6 +67,18 @@ export async function runWorkspaceOperation(
+     // 旧操作不能覆盖同一配置层中新操作的错误态；只有仍持有可见 operationId 的操作才回写。
+     if (ownsVisibleOperation()) {
+       set({ error: toMessage(error), lastFailedPluginId: null });
++      if (options?.reconcileFailure) {
++        // Uninstall may remove the installation before config cleanup rejects. Observe
++        // the existing canonical owner once; never replay a possibly committed write.
++        await loadInto(set, get, {
++          workspacePath,
++          workspaceIdentity,
++          configScope,
++          pluginService,
++          forceFresh: true,
++          preserveOperationError: true,
++        });
++      }
+     }
+     return false;
+   } finally {
+@@ -88,6 +101,7 @@ export async function loadInto(
+     configScope: ZCodePluginScope | null;
+     pluginService: IPluginManagementService;
+     forceFresh?: boolean;
++    preserveOperationError?: boolean;
+   },
+ ): Promise<void> {
+   const workspaceKey = buildWorkspaceKey(params.workspacePath, params.workspaceIdentity);
+@@ -124,6 +138,7 @@ async function runLoadInto(
+     pluginService: IPluginManagementService;
+     context: PluginRequestContext;
+     generation: number;
++    preserveOperationError?: boolean;
+   },
+ ): Promise<void> {
+   const errorAtStart = get().error;
+@@ -142,7 +157,11 @@ async function runLoadInto(
+       return;
+     }
+     // 同代读取也可能在操作进行中启动；它不能覆盖随后出现的操作失败。
+-    if (current.operationVersion !== operationVersionAtStart || current.error !== errorAtStart) {
++    if (
++      params.preserveOperationError ||
++      current.operationVersion !== operationVersionAtStart ||
++      current.error !== errorAtStart
++    ) {
+       const { error: _error, lastFailedPluginId: _failedPlugin, ...rest } = partial;
+       set(rest);
+     } else {
+diff --git a/packages/ui/test/nativeWhiteboardProjection.test.ts b/packages/ui/test/nativeWhiteboardProjection.test.ts
+index f712d1ff..8e2cbf56 100644
+--- a/packages/ui/test/nativeWhiteboardProjection.test.ts
++++ b/packages/ui/test/nativeWhiteboardProjection.test.ts
+@@ -8,6 +8,7 @@ import { readNativeWhiteboardProjection } from "../src/lib/nativeWhiteboardContr
+ import { useWhiteboardStore as store } from "../src/store/whiteboardStore.js";
+ import { buildWhiteboardWorkspaceKey } from "../src/lib/whiteboard.js";
+ import { whiteboardProjectionHookFixture } from "./helpers/whiteboardProjectionHookFixture.js";
++import { nativePresentationAgent } from "./helpers/nativePresentationAgent.js";
+ 
+ type ProjectionRequest = Parameters<IZCodeAgentService["readWhiteboardProjection"]>[0];
+ const tick = async () => {
+@@ -181,7 +182,7 @@ test("A-to-B-to-A service replacement fences the original held reply and dispatc
+ });
+ 
+ test("successful first Save keeps its original owner when admission shows the newly created Session", async (t) => {
+-  t.mock.timers.enable({ apis: ["setTimeout"] });
++  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+   store.setState({ ...store.getInitialState() }, true);
+   const workspacePath = `/owned-first-save-${crypto.randomUUID()}`;
+   const board = store.getState().createBoard({ workspacePath, defaultNamePrefix: "First Save" });
+@@ -195,6 +196,7 @@ test("successful first Save keeps its original owner when admission shows the ne
+     ...service(async () => {
+       throw new Error("Uncommitted first Save must not auto read");
+     }),
++    ...nativePresentationAgent().agent,
+     async sendConversationCommandV4({
+       envelope,
+     }: Parameters<IZCodeAgentService["sendConversationCommandV4"]>[0]) {
+@@ -222,7 +224,10 @@ test("successful first Save keeps its original owner when admission shows the ne
+   try {
+     const controls = hook.render({ target, agent, sessionId: null, rpcReady: true, showSession });
+     const saving = controls.save();
+-    await tick();
++    for (let attempt = 0; !admitted && attempt < 4; attempt++) {
++      await tick();
++      t.mock.timers.tick(100);
++    }
+     assert.ok(admitted);
+     held.resolve({
+       status: "completed",
+@@ -257,7 +262,7 @@ test("successful first Save keeps its original owner when admission shows the ne
+ 
+ for (const switchBack of [false, true]) {
+   test(`a pending Save cannot acknowledge after an unrelated Session change${switchBack ? " and return" : ""}`, async (t) => {
+-    t.mock.timers.enable({ apis: ["setTimeout"] });
++    t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+     store.setState({ ...store.getInitialState() }, true);
+     const workspacePath = `/owned-existing-save-${crypto.randomUUID()}`;
+     const board = store
+@@ -271,6 +276,7 @@ for (const switchBack of [false, true]) {
+       ...service(async () => {
+         throw new Error("Uncommitted draft must not auto read");
+       }),
++      ...nativePresentationAgent().agent,
+       async performWhiteboardControl({
+         command,
+       }: Parameters<IZCodeAgentService["performWhiteboardControl"]>[0]) {
+@@ -283,7 +289,10 @@ for (const switchBack of [false, true]) {
+       const input = { target, agent, rpcReady: true, showSession() {} };
+       const controls = hook.render({ ...input, sessionId: "old" });
+       const saving = controls.save();
+-      await tick();
++      for (let attempt = 0; !admitted && attempt < 4; attempt++) {
++        await tick();
++        t.mock.timers.tick(100);
++      }
+       assert.ok(admitted);
+       hook.render({ ...input, sessionId: "unrelated" });
+       if (switchBack) hook.render({ ...input, sessionId: "old" });
+diff --git a/packages/ui/test/pluginUninstallDialog.browser.test.tsx b/packages/ui/test/pluginUninstallDialog.browser.test.tsx
+new file mode 100644
+index 00000000..c41c5e3b
+--- /dev/null
++++ b/packages/ui/test/pluginUninstallDialog.browser.test.tsx
+@@ -0,0 +1,165 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import type { IPluginManagementService } from "@zcode/services";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { usePluginManagementStore as store } from "../src/store/pluginManagementStore.js";
++import { usePluginUninstall } from "../src/settings/usePluginUninstall.js";
++import { PluginUninstallConfirmDialog } from "../src/settings/PluginUninstallConfirmDialog.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++async function run() {
++  for (const locale of ["en-US", "zh-CN"] as const) {
++    for (const scenario of ["removed", "unknown", "before-effect"] as const) {
++      const node = document.createElement("div");
++      document.body.append(node);
++      const root = createRoot(node);
++      const id = `uninstall-probe-${locale}-${scenario}@authored`;
++      const plugin = { id, name: "Authored Uninstall", enabled: true };
++      let present = true;
++      let writes = 0;
++      let after = 0;
++      let control!: ReturnType<typeof usePluginUninstall>;
++      const service = {
++        async uninstallPlugin() {
++          writes++;
++          if (scenario !== "before-effect") present = false;
++          throw new Error("Authored uninstall cleanup failure");
++        },
++        async listPlugins() {
++          if (scenario === "unknown") throw new Error("Authored inspection unavailable");
++          return {
++            plugins: present
++              ? [plugin]
++              : [{ ...plugin, source: "missing", packageStatus: "missing" }],
++            diagnostics: [],
++          };
++        },
++        async getPluginsOverview() {
++          if (scenario === "unknown") throw new Error("Authored overview unavailable");
++          return {
++            marketplaces: [],
++            installedPlugins: [],
++            availablePlugins: [],
++            restorableBuiltins: [],
++            diagnostics: [],
++          };
++        },
++      } as unknown as IPluginManagementService;
++      store.setState(
++        {
++          ...store.getInitialState(),
++          workspacePath: `/fixture/${id}`,
++          configScope: "user",
++          marketplaceAvailabilityKnown: true,
++          plugins: [plugin] as never,
++        },
++        true,
++      );
++      function Probe() {
++        const plugins = store((state) => state.plugins);
++        const installedPlugins = store((state) => state.installedPlugins);
++        const operationId = store((state) => state.operationId);
++        control = usePluginUninstall({
++          pluginService: service,
++          plugins,
++          installedPlugins,
++          operationId,
++          onAfterUninstall: async () => {
++            after++;
++          },
++        });
++        return (
++          <PluginUninstallConfirmDialog
++            open={control.pendingPlugin !== null}
++            pluginName={control.pendingPlugin?.name ?? ""}
++            pending={control.uninstalling}
++            canConfirm={control.canConfirm}
++            error={control.error}
++            onCancel={control.cancelUninstall}
++            onConfirm={() => void control.confirmUninstall()}
++          />
++        );
++      }
++      const button = (kind: "confirm" | "cancel") => {
++        const value = document.querySelector<HTMLButtonElement>(
++          `[data-testid="plugin-store-uninstall-${kind}"]`,
++        );
++        check(value, `Missing ${kind} action`);
++        return value;
++      };
++      const name = `${locale}: original hook + uninstall dialog ${scenario}`;
++      try {
++        await act(async () => {
++          root.render(
++            <ZCodeIntlProvider initialLocale={locale}>
++              <Probe />
++            </ZCodeIntlProvider>,
++          );
++        });
++        await act(async () => {
++          control.requestUninstall(id);
++        });
++        await act(async () => {
++          button("confirm").click();
++        });
++        check(control.pendingPlugin?.id === id, "Failure target closed prematurely");
++        check(writes === 1 && after === 0, "Failure invoked another write or success finalization");
++        const dialog = document.querySelector<HTMLElement>(
++          '[data-testid="plugin-store-uninstall-dialog"]',
++        );
++        check(dialog && dialog.dataset.state === "open", "Failure dialog did not remain open");
++        check(
++          dialog
++            .querySelector('[role="alert"]')
++            ?.textContent?.includes("Authored uninstall cleanup failure"),
++          "Actual failure diagnostic missing",
++        );
++        check(!button("cancel").disabled, "Cancel remained locked after failure");
++        if (scenario === "before-effect") {
++          check(!button("confirm").disabled, "Confirmed present installation was not retryable");
++        } else {
++          check(button("confirm").disabled, "Unknown/removed installation allowed blind retry");
++          const expected =
++            locale === "en-US"
++              ? "The installation may already have changed."
++              : "安装状态可能已经改变。";
++          check(
++            dialog.textContent?.includes(expected),
++            "Localized current-state inspection notice missing",
++          );
++          await act(async () => {
++            button("confirm").click();
++          });
++          check(writes === 1, "Disabled confirmation replayed uninstall");
++        }
++        await act(async () => {
++          button("cancel").click();
++        });
++        check(control.pendingPlugin === null, "Cancel did not dismiss failure confirmation");
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: error instanceof Error ? error.stack : String(error) });
++      } finally {
++        await act(async () => {
++          root.unmount();
++        });
++        node.remove();
++      }
++    }
++  }
++  return results;
++}
++(window as unknown as Record<string, unknown>).__pluginUninstallDialogTests = run().then(
++  (value) => value,
++  (error) => [
++    {
++      name: "plugin uninstall dialog fixture",
++      error: error instanceof Error ? error.stack : String(error),
++    },
++  ],
++);
+diff --git a/packages/ui/test/pluginUninstallHook.test.ts b/packages/ui/test/pluginUninstallHook.test.ts
+new file mode 100644
+index 00000000..45da8824
+--- /dev/null
++++ b/packages/ui/test/pluginUninstallHook.test.ts
+@@ -0,0 +1,402 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createElement, act } from "react";
++import Reconciler from "react-reconciler";
++import type { IPluginManagementService } from "@zcode/services";
++import { usePluginManagementStore as store } from "../src/store/pluginManagementStore.js";
++import { usePluginUninstall } from "../src/settings/usePluginUninstall.js";
++
++// Node-only React lifecycle: the probe returns null, so no browser/renderer window,
++// DOM, authored style, or native UI is created. Exercise the original hook caller.
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++let priority = 0;
++const renderer = Reconciler({
++  rendererVersion: "test",
++  rendererPackageName: "node-plugin-uninstall-hook",
++  isPrimaryRenderer: true,
++  supportsMutation: true,
++  supportsPersistence: false,
++  supportsHydration: false,
++  getRootHostContext: () => ({}),
++  getChildHostContext: () => ({}),
++  prepareForCommit: () => null,
++  resetAfterCommit() {},
++  clearContainer() {},
++  scheduleTimeout: setTimeout,
++  cancelTimeout: clearTimeout,
++  noTimeout: -1,
++  supportsMicrotasks: true,
++  scheduleMicrotask: queueMicrotask,
++  getCurrentUpdatePriority: () => priority,
++  setCurrentUpdatePriority(value: number) {
++    priority = value;
++  },
++  resolveUpdatePriority: () => priority || 32,
++  resolveEventTimeStamp: () => -1,
++  resolveEventType: () => null,
++  trackSchedulerEvent() {},
++  shouldAttemptEagerTransition: () => false,
++  maySuspendCommit: () => false,
++  maySuspendCommitOnUpdate: () => false,
++  maySuspendCommitInSyncRender: () => false,
++  preloadInstance: () => true,
++});
++
++async function fixture() {
++  store.setState(
++    {
++      ...store.getInitialState(),
++      workspacePath: "/fixture",
++      configScope: "user",
++      marketplaceAvailabilityKnown: true,
++    },
++    true,
++  );
++  const plugin = { id: "writer@fixture", name: "writer", enabled: true };
++  store.setState({ plugins: [plugin] as never });
++  let present = true;
++  let writes = 0;
++  let after = 0;
++  const service = {
++    async uninstallPlugin() {
++      writes++;
++      present = false;
++      throw new Error("cleanup failed after removal");
++    },
++    async listPlugins() {
++      return { plugins: present ? [plugin] : [], diagnostics: [] };
++    },
++    async getPluginsOverview() {
++      return {
++        marketplaces: [],
++        installedPlugins: [],
++        availablePlugins: [],
++        restorableBuiltins: [],
++        diagnostics: [],
++      };
++    },
++  } as unknown as IPluginManagementService;
++  let target = service;
++  let controller!: ReturnType<typeof usePluginUninstall>;
++  function Probe() {
++    const plugins = store((state) => state.plugins);
++    const installedPlugins = store((state) => state.installedPlugins);
++    const operationId = store((state) => state.operationId);
++    controller = usePluginUninstall({
++      pluginService: target,
++      plugins,
++      installedPlugins,
++      operationId,
++      onAfterUninstall: async () => {
++        after++;
++      },
++    });
++    return null;
++  }
++  const fail = (error: Error) => {
++    throw error;
++  };
++  const root = renderer.createContainer({}, 1, null, false, null, "", fail, fail, fail, null);
++  const render = () =>
++    act(async () => {
++      renderer.updateContainer(createElement(Probe), root, null, null);
++    });
++  await render();
++  return {
++    service,
++    plugin,
++    controller: () => controller,
++    writes: () => writes,
++    after: () => after,
++    render,
++    setPresent(value: boolean) {
++      present = value;
++    },
++    replaceService(value: IPluginManagementService) {
++      target = value;
++    },
++    async close() {
++      await act(async () => {
++        renderer.updateContainer(null, root, null, null);
++      });
++    },
++  };
++}
++
++test("original uninstall hook keeps failure target visible, disallows removed-target retry and skips success finalization", async () => {
++  const f = await fixture();
++  try {
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.controller().pendingPlugin?.id, f.plugin.id);
++    assert.equal(f.controller().error, "cleanup failed after removal");
++    assert.equal(f.controller().canConfirm, false);
++    assert.equal(f.controller().uninstalling, false);
++    assert.equal(f.after(), 0);
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.writes(), 1);
++    await act(async () => {
++      f.controller().cancelUninstall();
++    });
++    assert.equal(f.controller().pendingPlugin, null);
++  } finally {
++    await f.close();
++  }
++});
++
++test("successful original hook finalizes once and releases its matching confirmation", async () => {
++  const f = await fixture();
++  try {
++    f.service.uninstallPlugin = async () => {
++      f.setPresent(false);
++      return { diagnostics: [] };
++    };
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.after(), 1);
++    assert.equal(f.controller().pendingPlugin, null);
++  } finally {
++    await f.close();
++  }
++});
++
++test("before-effect failure stays retryable only while canonical membership is confirmed", async () => {
++  const f = await fixture();
++  try {
++    f.service.uninstallPlugin = async () => {
++      throw new Error("before effect");
++    };
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.controller().canConfirm, true);
++    assert.equal(f.controller().error, "before effect");
++    assert.equal(f.after(), 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("unknown canonical inspection keeps Cancel available but does not authorize another uninstall", async () => {
++  const f = await fixture();
++  try {
++    f.service.listPlugins = async () => {
++      throw new Error("read unavailable");
++    };
++    f.service.getPluginsOverview = async () => {
++      throw new Error("overview unavailable");
++    };
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.controller().error, "cleanup failed after removal");
++    assert.equal(f.controller().canConfirm, false);
++    assert.equal(f.controller().uninstalling, false);
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.writes(), 1);
++    await act(async () => {
++      f.controller().cancelUninstall();
++    });
++    assert.equal(f.controller().pendingPlugin, null);
++  } finally {
++    await f.close();
++  }
++});
++
++for (const change of ["workspace", "scope", "service"] as const) {
++  test(`late successful uninstall cannot finalize after ${change} A→B→A ownership`, async () => {
++    const f = await fixture();
++    let resolve!: () => void;
++    f.service.uninstallPlugin = async () => {
++      await new Promise<void>((done) => {
++        resolve = done;
++      });
++      f.setPresent(false);
++      return { diagnostics: [] };
++    };
++    try {
++      await act(async () => {
++        f.controller().requestUninstall(f.plugin.id);
++      });
++      let pending!: Promise<void>;
++      await act(async () => {
++        pending = f.controller().confirmUninstall();
++      });
++      if (change === "service") {
++        f.replaceService({ ...f.service });
++        await f.render();
++        f.replaceService(f.service);
++        await f.render();
++      } else {
++        await act(async () => {
++          store.setState(
++            change === "workspace" ? { workspacePath: "/other" } : { configScope: "workspace" },
++          );
++          store.setState(
++            change === "workspace" ? { workspacePath: "/fixture" } : { configScope: "user" },
++          );
++        });
++      }
++      await act(async () => {
++        resolve();
++        await pending;
++      });
++      assert.equal(f.after(), 0);
++      assert.equal(f.controller().pendingPlugin, null);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("same-id new confirmation is not cleared by the older request settlement", async () => {
++  const f = await fixture();
++  let resolve!: () => void;
++  f.service.uninstallPlugin = async () => {
++    await new Promise<void>((done) => {
++      resolve = done;
++    });
++    return { diagnostics: [] };
++  };
++  try {
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    let pending!: Promise<void>;
++    await act(async () => {
++      pending = f.controller().confirmUninstall();
++    });
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      resolve();
++      await pending;
++    });
++    assert.equal(f.after(), 0);
++    assert.equal(f.controller().pendingPlugin?.id, f.plugin.id);
++    assert.equal(f.controller().uninstalling, false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("newer unrelated failure is not attributed to the older uninstall confirmation", async () => {
++  const f = await fixture();
++  let resolve!: () => void;
++  f.service.uninstallPlugin = async () => {
++    await new Promise<void>((done) => {
++      resolve = done;
++    });
++    throw new Error("old failure");
++  };
++  f.service.configurePlugin = async () => {
++    throw new Error("new unrelated failure");
++  };
++  try {
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    let pending!: Promise<void>;
++    await act(async () => {
++      pending = f.controller().confirmUninstall();
++    });
++    await act(async () => {
++      await store.getState().configurePlugin(f.plugin.id, {}, f.service);
++    });
++    await act(async () => {
++      resolve();
++      await pending;
++    });
++    assert.equal(f.after(), 0);
++    assert.equal(f.controller().error, null);
++    assert.equal(f.controller().uninstalling, false);
++    assert.equal(store.getState().error, "new unrelated failure");
++  } finally {
++    await f.close();
++  }
++});
++
++test("missing-package config footprint is diagnostic membership and cannot authorize uninstall retry", async () => {
++  const f = await fixture();
++  try {
++    f.service.listPlugins = async () => ({
++      plugins: [{ ...f.plugin, source: "missing", packageStatus: "missing" }] as never,
++      diagnostics: [],
++    });
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.controller().pendingPlugin?.id, f.plugin.id);
++    assert.equal(f.controller().error, "cleanup failed after removal");
++    assert.equal(f.controller().canConfirm, false);
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.writes(), 1);
++    assert.equal(f.after(), 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("canonical absence at action time refuses even a previously enabled confirmation callback", async () => {
++  const f = await fixture();
++  try {
++    await act(async () => {
++      f.controller().requestUninstall(f.plugin.id);
++    });
++    const oldConfirm = f.controller().confirmUninstall;
++    await act(async () => {
++      store.setState({ plugins: [], installedPlugins: [] });
++      await oldConfirm();
++    });
++    assert.equal(f.writes(), 0);
++    assert.equal(f.after(), 0);
++    assert.equal(f.controller().canConfirm, false);
++    await act(async () => {
++      f.controller().cancelUninstall();
++    });
++    assert.equal(f.controller().pendingPlugin, null);
++  } finally {
++    await f.close();
++  }
++});
++
++test("missing pending target refuses confirmation without a write", async () => {
++  const f = await fixture();
++  try {
++    await act(async () => {
++      f.controller().requestUninstall("absent@fixture");
++    });
++    assert.equal(f.controller().pendingPlugin, null);
++    await act(async () => {
++      await f.controller().confirmUninstall();
++    });
++    assert.equal(f.writes(), 0);
++    assert.equal(f.after(), 0);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/ui/test/pluginUninstallRecovery.test.ts b/packages/ui/test/pluginUninstallRecovery.test.ts
+new file mode 100644
+index 00000000..754fd3a6
+--- /dev/null
++++ b/packages/ui/test/pluginUninstallRecovery.test.ts
+@@ -0,0 +1,221 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { IPluginManagementService } from "@zcode/services";
++import { usePluginManagementStore as store } from "../src/store/pluginManagementStore.js";
++import { deferred } from "./pluginMarketFixture.js";
++
++function fixture() {
++  store.setState(
++    { ...store.getInitialState(), workspacePath: "/fixture", configScope: "user" },
++    true,
++  );
++  const plugin = { id: "writer@fixture", name: "writer", enabled: true };
++  store.setState({ plugins: [plugin] as never });
++  let present = true;
++  let reads = 0;
++  let writes = 0;
++  const service = {
++    async uninstallPlugin() {
++      writes++;
++      present = false;
++      throw new Error("cleanup failed after removal");
++    },
++    async listPlugins() {
++      reads++;
++      return { plugins: present ? [plugin] : [], diagnostics: [] };
++    },
++    async getPluginsOverview() {
++      reads++;
++      return {
++        marketplaces: [],
++        installedPlugins: [],
++        availablePlugins: [],
++        restorableBuiltins: [],
++        diagnostics: [],
++      };
++    },
++  } as unknown as IPluginManagementService;
++  return {
++    service,
++    plugin,
++    reads: () => reads,
++    writes: () => writes,
++    setPresent(value: boolean) {
++      present = value;
++    },
++  };
++}
++
++test("uninstall partial failure rereads canonical state, preserves failure and never retries mutation", async () => {
++  const f = fixture();
++  assert.equal(await store.getState().uninstallPlugin(f.plugin.id, f.service), false);
++  assert.equal(f.writes(), 1);
++  assert.equal(f.reads(), 2);
++  assert.deepEqual(store.getState().plugins, []);
++  assert.equal(store.getState().error, "cleanup failed after removal");
++  assert.equal(store.getState().operationId, null);
++});
++
++test("uninstall pre-effect rejection preserves the existing plugin and its original diagnostic", async () => {
++  const f = fixture();
++  f.service.uninstallPlugin = async () => {
++    throw new Error("before removal");
++  };
++  assert.equal(await store.getState().uninstallPlugin(f.plugin.id, f.service), false);
++  assert.equal(f.reads(), 2);
++  assert.equal(store.getState().plugins[0]?.id, f.plugin.id);
++  assert.equal(store.getState().error, "before removal");
++});
++
++test("failed reconciliation keeps the actual uninstall failure and marks catalog uncertainty", async () => {
++  const f = fixture();
++  f.service.listPlugins = async () => {
++    throw new Error("inspection unavailable");
++  };
++  f.service.getPluginsOverview = async () => {
++    throw new Error("overview unavailable");
++  };
++  assert.equal(await store.getState().uninstallPlugin(f.plugin.id, f.service), false);
++  assert.equal(store.getState().error, "cleanup failed after removal");
++  assert.equal(store.getState().marketplaceAvailabilityKnown, false);
++  assert.equal(f.writes(), 1);
++});
++
++test("uninstall success returns true with canonical removal", async () => {
++  const f = fixture();
++  f.service.uninstallPlugin = async () => {
++    f.setPresent(false);
++    return { diagnostics: [] };
++  };
++  assert.equal(await store.getState().uninstallPlugin(f.plugin.id, f.service), true);
++  assert.deepEqual(store.getState().plugins, []);
++  assert.equal(store.getState().error, null);
++});
++
++test("older uninstall failure cannot reread or override a newer mutation diagnostic", async () => {
++  const f = fixture();
++  const fail = deferred();
++  f.service.uninstallPlugin = async () => {
++    await fail.promise;
++    throw new Error("old uninstall failed");
++  };
++  const old = store.getState().uninstallPlugin(f.plugin.id, f.service);
++  f.service.configurePlugin = async () => {
++    throw new Error("new operation failed");
++  };
++  assert.equal(await store.getState().configurePlugin(f.plugin.id, {}, f.service), false);
++  fail.resolve();
++  assert.equal(await old, false);
++  assert.equal(f.reads(), 0);
++  assert.equal(store.getState().error, "new operation failed");
++});
++
++test("a newer mutation while failure reconciliation is waiting retains the newer diagnostic", async () => {
++  const f = fixture();
++  const ready = deferred();
++  const release = deferred();
++  const read = f.service.listPlugins;
++  f.service.listPlugins = async (input) => {
++    ready.resolve();
++    await release.promise;
++    return read(input);
++  };
++  const old = store.getState().uninstallPlugin(f.plugin.id, f.service);
++  await ready.promise;
++  f.service.configurePlugin = async () => {
++    throw new Error("new operation failed");
++  };
++  assert.equal(await store.getState().configurePlugin(f.plugin.id, {}, f.service), false);
++  release.resolve();
++  assert.equal(await old, false);
++  assert.equal(store.getState().error, "new operation failed");
++});
++
++test("original Bootstrap uninstall + real file cleanup failure reconciles removal without losing plugin user data", async (t) => {
++  const { pluginMarketFixture } = await import("./pluginMarketFixture.js");
++  const { default: fs } = await import("node:fs");
++  const { syncBuiltinESMExports } = await import("node:module");
++  const { join } = await import("node:path");
++  const { getPluginDataDir, listInstalledPluginRecords } =
++    await import("../../../apps/zcode-cli/packages/adapters/src/plugins/index.js");
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().installPlugin("writer", "audit-market", f.service);
++    const id = "writer@audit-market";
++    assert.equal(
++      await f.store.getState().configurePlugin(id, { retained: "original" }, f.service),
++      true,
++    );
++    const storage = join(f.root, "storage", "cli", "plugins");
++    const file = join(getPluginDataDir(storage, id), "authored-user-document.txt");
++    await fs.promises.mkdir(getPluginDataDir(storage, id), { recursive: true });
++    await fs.promises.writeFile(file, "Keep this original artifact");
++    const originalRename = fs.promises.rename;
++    let faultCount = 0;
++    const fault = t.mock.method(fs.promises, "rename", async (from, to) => {
++      if (String(to) === f.configPath) {
++        faultCount++;
++        throw Object.assign(new Error("authored publication fault"), { code: "EIO" });
++      }
++      return originalRename(from, to);
++    });
++    syncBuiltinESMExports();
++    try {
++      assert.equal(await f.store.getState().uninstallPlugin(id, f.service), false);
++      assert.equal(faultCount, 1);
++      assert.equal(
++        listInstalledPluginRecords(storage).some((item) => item.id === id),
++        false,
++      );
++      const missing = f.store.getState().plugins.find((item) => item.id === id);
++      assert.equal(missing?.source, "missing");
++      assert.equal(missing?.packageStatus, "missing");
++      // enabled describes the config footprint whose cleanup actually failed.
++      assert.equal(missing?.enabled, true);
++      assert.equal(
++        f.store.getState().installedPlugins.some((item) => item.id === id),
++        false,
++      );
++      assert.match(f.store.getState().error ?? "", /Unable to write config file/);
++      assert.equal(await fs.promises.readFile(file, "utf8"), "Keep this original artifact");
++      const config = JSON.parse(await fs.promises.readFile(f.configPath, "utf8"));
++      assert.deepEqual(config.plugins.options[id], { retained: "original" });
++    } finally {
++      fault.mock.restore();
++      syncBuiltinESMExports();
++    }
++  } finally {
++    await f.close();
++  }
++});
++
++for (const change of ["workspace", "scope", "service"] as const) {
++  test(`old uninstall failure cannot reread ${change} A→B→A owner`, async () => {
++    const f = fixture();
++    const fail = deferred();
++    f.service.uninstallPlugin = async () => {
++      await fail.promise;
++      throw new Error("old failure");
++    };
++    const old = store.getState().uninstallPlugin(f.plugin.id, f.service);
++    if (change === "service") {
++      await store.getState().refresh({ ...f.service });
++      await store.getState().refresh(f.service);
++    } else {
++      await store.getState().initialize({
++        workspacePath: change === "workspace" ? "/other" : "/fixture",
++        configScope: change === "scope" ? "workspace" : "user",
++        pluginService: f.service,
++      });
++      await store
++        .getState()
++        .initialize({ workspacePath: "/fixture", configScope: "user", pluginService: f.service });
++    }
++    const reads = f.reads();
++    fail.resolve();
++    assert.equal(await old, false);
++    assert.equal(f.reads(), reads);
++    assert.equal(store.getState().error, null);
++    assert.equal(store.getState().operationId, null);
++  });
++}
+diff --git a/packages/ui/test/savedWorkflowLaunchActivation.test.ts b/packages/ui/test/savedWorkflowLaunchActivation.test.ts
+new file mode 100644
+index 00000000..ff644771
+--- /dev/null
++++ b/packages/ui/test/savedWorkflowLaunchActivation.test.ts
+@@ -0,0 +1,226 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { IZCodeAgentService } from "@zcode/services";
++import type { CommandEnvelope, CommandKey } from "@zcode/shared/zcode-protocol-v4";
++import { acquireWorkspaceConnection } from "../src/v4/workspaceConnectionRegistry.js";
++import {
++  acquireLaunchLease,
++  runSavedWorkflowLaunch,
++} from "../src/settings/saved-workflows/useSavedWorkflowLauncher.js";
++import { nativePresentationAgent } from "./helpers/nativePresentationAgent.js";
++
++type Input = Parameters<typeof runSavedWorkflowLaunch>[0];
++const scope = () => ({
++  workspacePath: `/authored-remote-${crypto.randomUUID()}`,
++  workspaceIdentity: `remote-${crypto.randomUUID()}`,
++  remoteSessionId: `attachment-${crypto.randomUUID()}`,
++});
++function proxy(owner: string) {
++  const agent = nativePresentationAgent().agent;
++  const hello = agent.helloConversationV4.bind(agent);
++  const sent: CommandEnvelope[] = [],
++    queries: CommandKey[][] = [];
++  let outcome: "accepted" | "unknown" = "accepted",
++    loseReply = true;
++  agent.helloConversationV4 = async () => ({
++    ...(await hello()),
++    connectionId: owner,
++    clientMode: "web-remote-replayable",
++    deliveryProfile: "replayable",
++  });
++  agent.sendConversationCommandV4 = async ({ envelope }) => {
++    sent.push(envelope);
++    const ack = {
++      commandId: envelope.commandId,
++      status: "accepted" as const,
++      revisionAtDecision: 0,
++    };
++    if (envelope.type === "createSession")
++      return { ...ack, result: { type: "createSession", sessionId: "original-parent" } };
++    if (loseReply) {
++      loseReply = false;
++      throw new Error("Authored accepted start reply lost");
++    }
++    return {
++      ...ack,
++      result: { type: "startSavedWorkflow", runId: "original-run", toolCallId: "original-tool" },
++    };
++  };
++  agent.queryConversationCommandsV4 = async ({ commands }) => {
++    queries.push(commands);
++    return {
++      results: commands.map((key) => ({
++        key,
++        result:
++          outcome === "unknown"
++            ? ("unknown" as const)
++            : {
++                commandId: key.commandId,
++                status: "duplicate" as const,
++                revisionAtDecision: 0,
++                result: {
++                  type: "startSavedWorkflow" as const,
++                  runId: "original-run",
++                  toolCallId: "original-tool",
++                },
++              },
++      })),
++    };
++  };
++  return {
++    agent,
++    sent,
++    queries,
++    unknown() {
++      outcome = "unknown";
++    },
++  };
++}
++const request = { name: "authored", scope: "project" as const, args: {} };
++function inputFor(
++  lease: ReturnType<typeof acquireLaunchLease>,
++  target: ReturnType<typeof scope>,
++  agentService: IZCodeAgentService,
++  unsettled: Input["unsettled"] = { current: null },
++): Input {
++  return { target, request, agentService, transport: lease.transport, unsettled };
++}
++
++test("Hub action without mounted provider activates warm incoming proxy before original create/start/query", async (t) => {
++  t.mock.timers.enable({ apis: ["setTimeout"] });
++  const target = scope(),
++    old = proxy("old"),
++    incoming = proxy("incoming");
++  const warm = acquireWorkspaceConnection(target, old.agent);
++  warm.release();
++  const lease = acquireLaunchLease(target, incoming.agent);
++  try {
++    assert.equal(
++      lease.transport,
++      warm.transport,
++      "same original remote transport owner is retained",
++    );
++    const result = await runSavedWorkflowLaunch(inputFor(lease, target, incoming.agent));
++    assert.ok(result.ok);
++    assert.equal(old.sent.length + old.queries.length, 0, "old proxy performs no action/query");
++    assert.deepEqual(
++      incoming.sent.map((x) => x.type),
++      ["createSession", "startSavedWorkflow"],
++    );
++    assert.deepEqual(incoming.queries, [
++      [{ sessionId: "original-parent", commandId: incoming.sent[1]!.commandId }],
++    ]);
++  } finally {
++    lease.release();
++    t.mock.timers.tick(30_001);
++  }
++});
++
++test("retained pending carrier cannot roll back newer original attachment or route to changed Host B", async (t) => {
++  t.mock.timers.enable({ apis: ["setTimeout"] });
++  const target = scope(),
++    initial = proxy("original-A"),
++    renewed = proxy("renewed-A"),
++    foreign = proxy("B");
++  initial.unknown();
++  const firstLease = acquireLaunchLease(target, initial.agent);
++  const input = inputFor(firstLease, target, initial.agent);
++  try {
++    assert.equal((await runSavedWorkflowLaunch(input)).ok, false);
++    const operation = input.unsettled.current;
++    assert.ok(operation);
++    firstLease.release();
++    const activated = acquireLaunchLease(target, renewed.agent);
++    activated.release();
++    const foreignLease = acquireLaunchLease(scope(), foreign.agent);
++    foreignLease.release();
++    // The actual hook's already-verified captured target/service selection uses this original helper.
++    const resumedLease = acquireLaunchLease(operation.target, operation.agentService);
++    try {
++      const result = await runSavedWorkflowLaunch({ ...input, transport: resumedLease.transport });
++      assert.ok(result.ok);
++      assert.equal(result.sessionId, operation.createdSessionId);
++      assert.equal(initial.sent.length, 2);
++      assert.equal(initial.queries.length, 1);
++      assert.equal(
++        renewed.sent.length,
++        0,
++        "new owner queries only, never repeats a writable start",
++      );
++      assert.deepEqual(renewed.queries, [
++        [{ sessionId: operation.createdSessionId, commandId: operation.startEnvelope.commandId }],
++      ]);
++      assert.equal(foreign.sent.length + foreign.queries.length, 0);
++    } finally {
++      resumedLease.release();
++    }
++  } finally {
++    firstLease.release();
++    t.mock.timers.tick(30_001);
++  }
++});
++
++test("unknown receipt after action-time activation retains original operation and never closes/replays", async (t) => {
++  t.mock.timers.enable({ apis: ["setTimeout"] });
++  const target = scope(),
++    old = proxy("old"),
++    incoming = proxy("incoming");
++  incoming.unknown();
++  const warm = acquireWorkspaceConnection(target, old.agent);
++  warm.release();
++  const lease = acquireLaunchLease(target, incoming.agent),
++    input = inputFor(lease, target, incoming.agent);
++  try {
++    assert.equal((await runSavedWorkflowLaunch(input)).ok, false);
++    const operation = input.unsettled.current;
++    assert.ok(operation);
++    assert.equal((await runSavedWorkflowLaunch(input)).ok, false);
++    assert.equal(input.unsettled.current, operation);
++    assert.deepEqual(
++      incoming.sent.map((x) => x.type),
++      ["createSession", "startSavedWorkflow"],
++    );
++    assert.equal(incoming.queries.length, 2);
++    assert.equal(old.sent.length + old.queries.length, 0);
++  } finally {
++    lease.release();
++    t.mock.timers.tick(30_001);
++  }
++});
++
++test("activation failure releases exactly its acquired reference and makes no command/query", async (t) => {
++  t.mock.timers.enable({ apis: ["setTimeout"] });
++  const target = scope(),
++    old = proxy("old"),
++    failing = proxy("failing");
++  const warm = acquireWorkspaceConnection(target, old.agent);
++  const dispose = t.mock.method(warm.layer, "dispose");
++  failing.agent.onDynamicConversationFrame = () => () => {
++    throw new Error("Authored incoming frame attachment failure");
++  };
++  try {
++    assert.throws(
++      () => acquireLaunchLease(target, failing.agent),
++      /incoming frame attachment failure/,
++    );
++    assert.equal(
++      old.sent.length + old.queries.length + failing.sent.length + failing.queries.length,
++      0,
++    );
++    assert.equal(
++      dispose.mock.callCount(),
++      0,
++      "failed action cannot release the existing warm holder",
++    );
++    warm.release();
++    t.mock.timers.tick(30_001);
++    assert.equal(
++      dispose.mock.callCount(),
++      1,
++      "failed action's reference was released, not leaked or over-released",
++    );
++  } finally {
++    warm.release();
++    t.mock.timers.tick(30_001);
++  }
++});
+diff --git a/packages/ui/test/savedWorkflowLaunchRecovery.test.ts b/packages/ui/test/savedWorkflowLaunchRecovery.test.ts
+new file mode 100644
+index 00000000..fa515f1c
+--- /dev/null
++++ b/packages/ui/test/savedWorkflowLaunchRecovery.test.ts
+@@ -0,0 +1,288 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { randomUUID } from "node:crypto";
++import {
++  V4_METHODS,
++  V4_WIRE_PROTOCOL_VERSION,
++  commandAckSchema,
++  commandsQueryResultSchema,
++  type CommandEnvelope,
++  type CommandAck,
++} from "@zcode/shared/zcode-protocol-v4";
++import { zcodeProtocolMethods } from "@zcode/shared";
++import { createAgentConversationTransport } from "../src/v4/agentConversationTransport.js";
++import { runSavedWorkflowLaunch } from "../src/settings/saved-workflows/useSavedWorkflowLauncher.js";
++import {
++  productionHandoffFixture,
++  waitForRun,
++} from "../../../apps/zcode-cli/packages/bootstrap/test/helpers/production-handoff-fixture.js";
++
++type Input = Parameters<typeof runSavedWorkflowLaunch>[0];
++function operationInput(transport: Input["transport"], agentService: Input["agentService"]): Input {
++  return {
++    target: { workspacePath: "/authored-only" },
++    request: { name: "authored", scope: "project", args: {} },
++    transport,
++    agentService,
++    unsettled: { current: null },
++  };
++}
++
++async function actualTransport(h: Awaited<ReturnType<typeof productionHandoffFixture>>) {
++  const sent: CommandEnvelope[] = [];
++  const queries: Array<{ commands: Array<{ sessionId: string | null; commandId: string }> }> = [];
++  let loseStart = true;
++  let queryUnavailable = false;
++  const connectionId = randomUUID();
++  const service = {
++    async helloConversationV4() {
++      return {
++        kind: "hello",
++        protocolVersion: V4_WIRE_PROTOCOL_VERSION,
++        connectionId,
++        clientMode: "desktop-continuous",
++        deliveryProfile: "continuous",
++        serverTime: Date.now(),
++        capabilities: {
++          nativeDialogs: true,
++          localTerminal: true,
++          binaryFrames: false,
++          compression: "none",
++        },
++        auth: {},
++      };
++    },
++    async initializeConversationV4() {},
++    async sendConversationCommandV4(params: { envelope: CommandEnvelope; workspacePath: string }) {
++      assert.equal(params.workspacePath, h.workspace.workspacePath);
++      sent.push(params.envelope);
++      const ack = commandAckSchema.parse(await h.request(V4_METHODS.command, params.envelope));
++      if (params.envelope.type === "startSavedWorkflow" && loseStart) {
++        loseStart = false;
++        assert.equal(ack.status, "accepted", JSON.stringify(ack));
++        throw new Error("Authored loss of real Host accepted reply");
++      }
++      return ack;
++    },
++    async queryConversationCommandsV4(params: {
++      commands: Array<{ sessionId: string | null; commandId: string }>;
++      workspacePath: string;
++    }) {
++      assert.equal(params.workspacePath, h.workspace.workspacePath);
++      queries.push({ commands: params.commands });
++      if (queryUnavailable) throw new Error("Authored receipt read unavailable");
++      return commandsQueryResultSchema.parse(
++        await h.request(V4_METHODS.commandsQuery, { commands: params.commands }),
++      );
++    },
++  } as Parameters<typeof createAgentConversationTransport>[0];
++  return {
++    transport: createAgentConversationTransport(service, {
++      workspacePath: h.workspace.workspacePath,
++    }),
++    service,
++    sent,
++    queries,
++    unavailable(value: boolean) {
++      queryUnavailable = value;
++    },
++    keepReply() {
++      loseStart = false;
++    },
++  };
++}
++
++test("real registered saved workflow: lost accepted reply reconciles original command, keeps Session and cold one-run artifact", async () => {
++  const h = await productionHandoffFixture();
++  try {
++    const definitionOwner = await h.createSession();
++    await h.saveWorkflow(
++      definitionOwner,
++      "authored",
++      'await artifact.markdown("receipt", "one original run");',
++    );
++    const modelCallsBefore = h.f.calls.length;
++    const wire = await actualTransport(h);
++    const input = operationInput(wire.transport, wire.service as Input["agentService"]);
++    input.target.workspacePath = h.workspace.workspacePath;
++    let navigated = "";
++    input.onNavigate = (_target, sessionId) => {
++      navigated = sessionId;
++      throw new Error("Authored navigation failure after accepted start");
++    };
++    const result = await runSavedWorkflowLaunch(input);
++    assert.ok(result.ok, JSON.stringify(result));
++    assert.equal(navigated, result.sessionId);
++    assert.equal(input.unsettled.current, null);
++    assert.equal(wire.sent.filter((x) => x.type === "startSavedWorkflow").length, 1);
++    assert.equal(wire.sent.filter((x) => x.type === "deleteSession").length, 0);
++    const start = wire.sent.find((x) => x.type === "startSavedWorkflow");
++    assert.ok(start);
++    assert.deepEqual(wire.queries, [
++      { commands: [{ sessionId: result.sessionId, commandId: start.commandId }] },
++    ]);
++    const app = h.apps.get(result.sessionId);
++    assert.ok(app, "original accepted Session remains resident");
++    await h.request(zcodeProtocolMethods.sessionRead, { sessionId: result.sessionId });
++    const run = await waitForRun(app, result.runId);
++    assert.equal(run.status, "completed");
++    assert.equal((await app.listDynamicWorkflowRuns?.({ limit: 64 }))?.length, 1);
++    const bytes = await app.readDynamicWorkflowRunArtifact?.({
++      runId: result.runId,
++      artifactId: "receipt",
++      version: 1,
++    });
++    assert.equal(Buffer.from(bytes?.bytes ?? []).toString(), "one original run");
++    await h.restart();
++    await h.request(zcodeProtocolMethods.sessionResume, {
++      sessionId: result.sessionId,
++      workspace: h.workspace,
++      dynamicWorkflowEnabled: true,
++    });
++    const cold = h.apps.get(result.sessionId);
++    assert.ok(cold);
++    const runs = await cold.listDynamicWorkflowRuns?.({ limit: 64 });
++    assert.equal(runs?.length, 1);
++    assert.equal(runs?.[0]?.runId, result.runId);
++    const artifact = await cold.readDynamicWorkflowRunArtifact?.({
++      runId: result.runId,
++      artifactId: "receipt",
++      version: 1,
++    });
++    assert.deepEqual(artifact?.bytes, bytes?.bytes);
++    console.log(
++      JSON.stringify({
++        proof: "actual-saved-workflow-launch-recovery",
++        sessionId: result.sessionId,
++        runId: result.runId,
++        starts: 1,
++        closes: 0,
++        coldRuns: runs?.length,
++        authoredModelCalls: h.f.calls.length - modelCallsBefore,
++        httpCalls: h.f.httpCalls,
++      }),
++    );
++    assert.equal(h.f.httpCalls, 0);
++  } finally {
++    await h.close();
++  }
++});
++
++test("unavailable original receipt retains accepted real run; changed request can only requery and never close/restart", async () => {
++  const h = await productionHandoffFixture();
++  try {
++    const app = await h.createSession();
++    await h.saveWorkflow(app, "authored", 'await artifact.markdown("receipt", "retained");');
++    const wire = await actualTransport(h);
++    wire.unavailable(true);
++    const input = operationInput(wire.transport, wire.service as Input["agentService"]);
++    input.target.workspacePath = h.workspace.workspacePath;
++    const first = await runSavedWorkflowLaunch(input);
++    assert.equal(first.ok, false);
++    if (!first.ok) assert.equal(first.error.reason, "uncertain");
++    const operation = input.unsettled.current;
++    assert.ok(operation);
++    assert.ok(h.apps.get(operation.createdSessionId));
++    input.request = {
++      name: "a different requested workflow",
++      scope: "global",
++      args: { changed: true },
++    };
++    wire.unavailable(false);
++    const recovered = await runSavedWorkflowLaunch(input);
++    assert.ok(recovered.ok);
++    assert.equal(recovered.sessionId, operation.createdSessionId);
++    assert.equal(wire.sent.filter((x) => x.type === "createSession").length, 1);
++    assert.equal(wire.sent.filter((x) => x.type === "startSavedWorkflow").length, 1);
++    assert.equal(wire.sent.filter((x) => x.type === "deleteSession").length, 0);
++    assert.ok(
++      wire.queries.every((q) => q.commands[0]?.commandId === operation.startEnvelope.commandId),
++    );
++    const original = h.apps.get(recovered.sessionId);
++    assert.ok(original);
++    await waitForRun(original, recovered.runId);
++    assert.equal((await original.listDynamicWorkflowRuns?.({ limit: 64 }))?.length, 1);
++    assert.equal(h.f.httpCalls, 0);
++  } finally {
++    await h.close();
++  }
++});
++
++test("real preflight not_found receipt cleans only its fresh empty Session", async () => {
++  const h = await productionHandoffFixture();
++  try {
++    const wire = await actualTransport(h);
++    wire.keepReply();
++    const input = operationInput(wire.transport, wire.service as Input["agentService"]);
++    input.target.workspacePath = h.workspace.workspacePath;
++    const result = await runSavedWorkflowLaunch(input);
++    assert.equal(result.ok, false);
++    if (!result.ok) assert.equal(result.error.reason, "not_found");
++    assert.equal(input.unsettled.current, null);
++    assert.deepEqual(
++      wire.sent.map((x) => x.type),
++      ["createSession", "startSavedWorkflow", "deleteSession"],
++    );
++    const empty = wire.sent[1]?.sessionId;
++    const closed = await h.raw(zcodeProtocolMethods.sessionRead, { sessionId: empty });
++    assert.ok(
++      closed && "error" in closed,
++      "positively rejected empty Session is no longer resident",
++    );
++    assert.equal(h.f.httpCalls, 0);
++  } finally {
++    await h.close();
++  }
++});
++
++for (const reason of ["unknown", "generic", "start_failed", "wrong-key", "no-result"]) {
++  test(`uncertain ${reason} cannot clean up or replay writable launch`, async () => {
++    const sent: CommandEnvelope[] = [];
++    const ack = (envelope: CommandEnvelope, extra: Partial<CommandAck>): CommandAck => ({
++      commandId: envelope.commandId,
++      status: "accepted",
++      revisionAtDecision: 0,
++      ...extra,
++    });
++    const transport: Input["transport"] = {
++      async sendCommand(envelope) {
++        sent.push(envelope);
++        if (envelope.type === "createSession")
++          return ack(envelope, { result: { type: "createSession", sessionId: "owned" } });
++        throw new Error("Lost start receipt");
++      },
++      async queryCommands({ commands }) {
++        const key = commands[0]!;
++        if (reason === "unknown") return { results: [{ key, result: "unknown" }] };
++        return {
++          results: [
++            {
++              key: reason === "wrong-key" ? { ...key, sessionId: "foreign" } : key,
++              result: {
++                commandId: key.commandId,
++                status: reason === "no-result" ? "accepted" : "failed",
++                revisionAtDecision: 0,
++                reasonCode:
++                  reason === "start_failed"
++                    ? "fault.command.savedWorkflowStartRejected.start_failed"
++                    : "fault.generic",
++              },
++            },
++          ],
++        };
++      },
++    };
++    const input = operationInput(transport, {} as Input["agentService"]);
++    const first = await runSavedWorkflowLaunch(input);
++    assert.equal(first.ok, false);
++    const original = input.unsettled.current;
++    assert.ok(original);
++    input.target = { workspacePath: "/other-workspace" };
++    await runSavedWorkflowLaunch(input);
++    assert.equal(input.unsettled.current, original);
++    assert.deepEqual(
++      sent.map((x) => x.type),
++      ["createSession", "startSavedWorkflow"],
++    );
++  });
++}
+diff --git a/packages/ui/test/savedWorkflowLaunchScope.browser.test.tsx b/packages/ui/test/savedWorkflowLaunchScope.browser.test.tsx
+new file mode 100644
+index 00000000..d7f0c2dd
+--- /dev/null
++++ b/packages/ui/test/savedWorkflowLaunchScope.browser.test.tsx
+@@ -0,0 +1,286 @@
++import { act, useState } from "react";
++import { createRoot } from "react-dom/client";
++import type { CommandEnvelope } from "@zcode/shared/zcode-protocol-v4";
++import { acquireWorkspaceConnection } from "../src/v4/workspaceConnectionRegistry.js";
++import { useSavedWorkflowPromote } from "../src/settings/saved-workflows/useSavedWorkflowPromote.js";
++import { useSavedWorkflowLauncher } from "../src/settings/saved-workflows/useSavedWorkflowLauncher.js";
++import { nativePresentationAgent } from "./helpers/nativePresentationAgent.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++const tick = async () => {
++  for (let i = 0; i < 40; i++) await Promise.resolve();
++};
++async function activationFailureRetry(kind: "launcher" | "promote") {
++  const old = nativePresentationAgent(),
++    failing = nativePresentationAgent(),
++    recovered = nativePresentationAgent();
++  const target = {
++    workspacePath: `/authored-activation-${crypto.randomUUID()}`,
++    workspaceIdentity: `remote-${crypto.randomUUID()}`,
++    remoteSessionId: `attachment-${crypto.randomUUID()}`,
++  };
++  const sent: CommandEnvelope[] = [];
++  const warm = acquireWorkspaceConnection(target, old.agent);
++  failing.agent.onDynamicConversationFrame = () => () => {
++    throw new Error("Authored activation failure");
++  };
++  recovered.agent.sendConversationCommandV4 = async ({ envelope }) => {
++    sent.push(envelope);
++    return {
++      commandId: envelope.commandId,
++      status: "accepted",
++      revisionAtDecision: 0,
++      result:
++        envelope.type === "createSession"
++          ? { type: "createSession", sessionId: "recovered-parent" }
++          : { type: "startSavedWorkflow", runId: "recovered-run", toolCallId: "recovered-tool" },
++    };
++  };
++  const node = document.createElement("div");
++  document.body.append(node);
++  const root = createRoot(node);
++  function Probe({ agent }: { agent: typeof recovered.agent }) {
++    const launcher = useSavedWorkflowLauncher({ agentService: agent });
++    const promoter = useSavedWorkflowPromote({ agentService: agent });
++    const [last, setLast] = useState<unknown>();
++    const pending = kind === "launcher" ? launcher.pending : promoter.pending;
++    return (
++      <>
++        <button
++          disabled={pending}
++          onClick={() =>
++            void (
++              kind === "launcher"
++                ? launcher.launch(target, { name: "authored", scope: "project", args: {} })
++                : promoter.promote(target, {
++                    name: "authored",
++                    path: "authored.dwf.ts",
++                    locale: "en-US",
++                  })
++            ).then(setLast)
++          }
++        >
++          Run
++        </button>
++        <pre>{JSON.stringify({ last, pending })}</pre>
++      </>
++    );
++  }
++  try {
++    await act(async () => {
++      root.render(<Probe agent={failing.agent} />);
++      await tick();
++    });
++    await act(async () => {
++      node.querySelector("button")?.click();
++      await tick();
++    });
++    check(
++      !node.querySelector("button")?.disabled &&
++        node.textContent?.includes("Authored activation failure"),
++      `${kind} must expose activation failure and release pending`,
++    );
++    check(sent.length === 0, "failed activation has no command effect");
++    await act(async () => {
++      root.render(<Probe agent={recovered.agent} />);
++      await tick();
++    });
++    await act(async () => {
++      node.querySelector("button")?.click();
++      await tick();
++    });
++    check(
++      !node.querySelector("button")?.disabled && node.textContent?.includes('"ok":true'),
++      `${kind} next explicit action must succeed rather than remain locked`,
++    );
++    check(
++      sent.length === (kind === "launcher" ? 2 : 1),
++      "retry executes only the fresh admitted original action",
++    );
++  } finally {
++    await act(async () => root.unmount());
++    node.remove();
++    warm.release();
++  }
++}
++
++async function run() {
++  try {
++    const a = nativePresentationAgent(),
++      b = nativePresentationAgent();
++    const commands: CommandEnvelope[] = [];
++    const queries: Array<{
++      workspacePath: string;
++      commands: Array<{ sessionId: string | null; commandId: string }>;
++    }> = [];
++    let queryState: "unavailable" | "unknown" | "accepted" = "unavailable";
++    let wrongHost = 0;
++    a.agent.sendConversationCommandV4 = async (params) => {
++      check(params.workspacePath === "/authored-host-A", "only original workspace A can execute");
++      commands.push(params.envelope);
++      if (params.envelope.type === "createSession")
++        return {
++          commandId: params.envelope.commandId,
++          status: "accepted",
++          revisionAtDecision: 0,
++          result: { type: "createSession", sessionId: "original-parent" },
++        };
++      if (params.envelope.type === "startSavedWorkflow")
++        throw new Error("Authored accepted reply lost");
++      throw new Error("Uncertain launch must never close or replay");
++    };
++    a.agent.queryConversationCommandsV4 = async (params) => {
++      queries.push({ workspacePath: params.workspacePath, commands: params.commands });
++      check(params.workspacePath === "/authored-host-A", "query must retain original workspace");
++      if (queryState === "unavailable") throw new Error("Authored original receipt unavailable");
++      return {
++        results: params.commands.map((key) => ({
++          key,
++          result:
++            queryState === "unknown"
++              ? ("unknown" as const)
++              : {
++                  commandId: key.commandId,
++                  status: "duplicate" as const,
++                  revisionAtDecision: 0,
++                  result: {
++                    type: "startSavedWorkflow" as const,
++                    runId: "original-run",
++                    toolCallId: "original-tool",
++                  },
++                },
++        })),
++      };
++    };
++    b.agent.sendConversationCommandV4 = async () => {
++      wrongHost++;
++      throw new Error("Wrong Host B write");
++    };
++    b.agent.queryConversationCommandsV4 = async () => {
++      wrongHost++;
++      throw new Error("Wrong Host B query");
++    };
++    const node = document.createElement("div");
++    document.body.append(node);
++    const root = createRoot(node);
++    const navigated: Array<{ path: string; sessionId: string }> = [];
++    function Launcher({
++      agent,
++      path,
++      name,
++    }: {
++      agent: typeof a.agent;
++      path: string;
++      name: string;
++    }) {
++      const launcher = useSavedWorkflowLauncher({
++        agentService: agent,
++        onNavigate: (target, sessionId) =>
++          navigated.push({ path: target.workspacePath, sessionId }),
++      });
++      const [last, setLast] = useState<unknown>();
++      return (
++        <>
++          <button
++            disabled={launcher.pending}
++            onClick={() =>
++              void launcher
++                .launch({ workspacePath: path }, { name, scope: "project", args: {} })
++                .then(setLast)
++            }
++          >
++            Run
++          </button>
++          <pre>{JSON.stringify({ last, error: launcher.error })}</pre>
++        </>
++      );
++    }
++    const render = async (agent: typeof a.agent, path: string, name: string) => {
++      await act(async () => {
++        root.render(<Launcher agent={agent} path={path} name={name} />);
++        await tick();
++      });
++    };
++    const click = async () => {
++      await act(async () => {
++        node.querySelector("button")?.click();
++        await tick();
++      });
++    };
++    try {
++      await render(a.agent, "/authored-host-A", "first");
++      await click();
++      check(
++        node.textContent?.includes("uncertain") && node.textContent?.includes("original-parent"),
++        "unknown outcome keeps original Session discoverable",
++      );
++      queryState = "unknown";
++      await render(b.agent, "/authored-host-B", "changed");
++      await click();
++      check(
++        node.textContent?.includes("uncertain"),
++        "changed target cannot replace unresolved launch",
++      );
++      check(wrongHost === 0, "A→B cannot query/write through B carrier");
++      queryState = "accepted";
++      await render(a.agent, "/authored-host-A", "third");
++      await click();
++      check(
++        node.textContent?.includes("original-run") && node.textContent?.includes("original-tool"),
++        "exact accepted duplicate receipt returns real correlated identities",
++      );
++      check(
++        commands.length === 2 &&
++          commands[0]?.type === "createSession" &&
++          commands[1]?.type === "startSavedWorkflow",
++        "exactly one create and one start, no close/replay",
++      );
++      check(
++        queries.length === 3 &&
++          queries.every(
++            (q) =>
++              q.commands[0]?.commandId === commands[1]?.commandId &&
++              q.commands[0]?.sessionId === "original-parent",
++          ),
++        "all queries retain exact original command and Session",
++      );
++      check(
++        navigated.length === 1 &&
++          navigated[0]?.path === "/authored-host-A" &&
++          navigated[0]?.sessionId === "original-parent",
++        "navigation uses original target after recovery",
++      );
++      results.push({
++        name: "actual hook + original connection/transport retains A scope across A→B→A with zero new start/close",
++      });
++    } finally {
++      await act(async () => root.unmount());
++      node.remove();
++    }
++  } catch (error) {
++    results.push({
++      name: "actual hook launch scope recovery",
++      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
++    });
++  }
++  for (const kind of ["launcher", "promote"] as const) {
++    try {
++      await activationFailureRetry(kind);
++      results.push({
++        name: `${kind}: original activation failure releases pending and next explicit retry succeeds`,
++      });
++    } catch (error) {
++      results.push({
++        name: `${kind} activation failure/retry`,
++        error: error instanceof Error ? (error.stack ?? error.message) : String(error),
++      });
++    }
++  }
++  return results;
++}
++(window as Window & { __savedWorkflowLaunchScopeTests?: unknown }).__savedWorkflowLaunchScopeTests =
++  run();
+diff --git a/packages/ui/test/workflowArtifactRecovery.browser.test.tsx b/packages/ui/test/workflowArtifactRecovery.browser.test.tsx
+new file mode 100644
+index 00000000..914430e8
+--- /dev/null
++++ b/packages/ui/test/workflowArtifactRecovery.browser.test.tsx
+@@ -0,0 +1,334 @@
++import { act, useEffect, useState } from "react";
++import { createRoot } from "react-dom/client";
++import type { IServiceAccessor } from "@zcode/services";
++import type { IPlatformService } from "@zcode/shared";
++import type { V4ConversationWorkflowRunArtifactDataResult } from "@zcode/shared/zcode-protocol-v4";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { TabStoreProvider } from "../src/store/TabStoreProvider.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { V4PaneConversationProvider } from "../src/v4/V4ConversationContext.js";
++import { useWorkflowRunArtifactData } from "../src/hooks/useWorkflowRunArtifactData.js";
++import { WorkflowArtifactSidePane } from "../src/app-shell/WorkflowArtifactSidePane.js";
++import { WorkflowArtifactTilePreview } from "../src/app-shell/workflow-artifacts/WorkflowArtifactTilePreview.js";
++import { nativePresentationAgent } from "./helpers/nativePresentationAgent.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++const tick = async () => {
++  for (let i = 0; i < 30; i++) await Promise.resolve();
++};
++const deferred = <T,>() => {
++  let resolve!: (value: T) => void;
++  let reject!: (error: Error) => void;
++  const promise = new Promise<T>((yes, no) => {
++    resolve = yes;
++    reject = no;
++  });
++  return { promise, resolve, reject };
++};
++const empty: V4ConversationWorkflowRunArtifactDataResult = { items: [], hasMore: false };
++const item = (sequence: number, value: string) => ({
++  sequence,
++  siteId: "authored-site",
++  ordinal: sequence,
++  item: { value },
++});
++const artifact = {
++  id: "table",
++  kind: "table" as const,
++  version: 1,
++  versions: [],
++  itemCount: 1,
++  spec: { columns: [{ field: "value" }], title: "Authored table" },
++};
++const platform = {} as IPlatformService;
++const scope = {
++  workspacePath: `/authored/artifact-${crypto.randomUUID()}`,
++  workspaceKey: "authored",
++};
++function services(agent: ReturnType<typeof nativePresentationAgent>["agent"]): IServiceAccessor {
++  return { zcodeAgentService: agent } as IServiceAccessor;
++}
++function Providers({
++  agent,
++  children,
++}: {
++  agent: ReturnType<typeof nativePresentationAgent>["agent"];
++  children: React.ReactNode;
++}) {
++  return (
++    <PlatformProvider platform={platform}>
++      <ServiceProvider services={services(agent)}>
++        <TabStoreProvider>
++          <ZCodeIntlProvider locale="en-US">
++            <TooltipProvider>{children}</TooltipProvider>
++          </ZCodeIntlProvider>
++        </TabStoreProvider>
++      </ServiceProvider>
++    </PlatformProvider>
++  );
++}
++async function mount() {
++  const node = document.createElement("div");
++  document.body.append(node);
++  const root = createRoot(node);
++  return {
++    node,
++    root,
++    async close() {
++      await act(async () => root.unmount());
++      node.remove();
++    },
++  };
++}
++async function scenario(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({
++      name,
++      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
++    });
++  }
++}
++
++async function run() {
++  await scenario(
++    "same mounted original pane context A→B→A cannot lose replacement or final incremental drain",
++    async () => {
++      const view = await mount(),
++        a = nativePresentationAgent(),
++        b = nativePresentationAgent();
++      const readsA: Array<{
++        afterSequence?: number;
++        pending: ReturnType<typeof deferred<V4ConversationWorkflowRunArtifactDataResult>>;
++      }> = [];
++      const readsB: typeof readsA = [];
++      a.agent.conversationWorkflowRunArtifactDataV4 = async (params) => {
++        const pending = deferred<V4ConversationWorkflowRunArtifactDataResult>();
++        readsA.push({ afterSequence: params.afterSequence, pending });
++        return pending.promise;
++      };
++      b.agent.conversationWorkflowRunArtifactDataV4 = async (params) => {
++        const pending = deferred<V4ConversationWorkflowRunArtifactDataResult>();
++        readsB.push({ afterSequence: params.afterSequence, pending });
++        return pending.promise;
++      };
++      let mounts = 0;
++      function Probe({ count }: { count: number }) {
++        const state = useWorkflowRunArtifactData({
++          sessionId: "original-session",
++          runId: "original-run",
++          artifactId: "table",
++          itemCount: count,
++        });
++        useEffect(() => {
++          mounts++;
++        }, []);
++        return <pre data-testid="data-state">{JSON.stringify(state)}</pre>;
++      }
++      const render = async (agent: typeof a.agent, count = 1) => {
++        await act(async () => {
++          view.root.render(
++            <Providers agent={agent}>
++              <V4PaneConversationProvider scope={scope}>
++                <Probe count={count} />
++              </V4PaneConversationProvider>
++            </Providers>,
++          );
++          await tick();
++        });
++      };
++      try {
++        await render(a.agent);
++        check(readsA.length === 1, "initial original A read must start");
++        await render(b.agent);
++        check(readsB.length === 1, "replacement B must read while old A is pending");
++        await render(a.agent);
++        check(readsA.length === 2, "return A has its own current-generation read");
++        check(mounts === 1, "context service replacement retains the actual hook instance");
++        await act(async () => {
++          readsA[0]!.pending.resolve({ items: [item(1, "stale-A")], hasMore: false });
++          readsB[0]!.pending.resolve({ items: [item(1, "stale-B")], hasMore: false });
++          await tick();
++        });
++        check(
++          !view.node.textContent?.includes("stale-"),
++          "late foreign generations cannot publish",
++        );
++        await render(a.agent, 2);
++        check(readsA.length === 2, "same-generation signal coalesces behind its active read");
++        await act(async () => {
++          readsA[1]!.pending.resolve({ items: [item(1, "current")], hasMore: false });
++          await tick();
++        });
++        check(
++          readsA.length === 3 && readsA[2]!.afterSequence === 1,
++          "late prior finally cannot erase final incremental read",
++        );
++        await act(async () => {
++          readsA[2]!.pending.resolve({ items: [item(2, "final")], hasMore: false });
++          await tick();
++        });
++        check(
++          view.node.textContent?.includes("current") && view.node.textContent?.includes("final"),
++          "both current rows remain",
++        );
++      } finally {
++        for (const read of [...readsA, ...readsB]) read.pending.resolve(empty);
++        await view.close();
++      }
++    },
++  );
++
++  for (const outcome of ["loading", "failed", "unsupported", "empty", "metadata-failed"] as const) {
++    await scenario(
++      `actual artifact pane and tile distinguish ${outcome} from successful empty`,
++      async () => {
++        const view = await mount(),
++          owner = nativePresentationAgent(),
++          pending = deferred<V4ConversationWorkflowRunArtifactDataResult>();
++        owner.agent.conversationWorkflowRunArtifactsV4 = async () => {
++          if (outcome === "metadata-failed") throw new Error("Authored metadata journal failure");
++          return { artifacts: [artifact] };
++        };
++        owner.agent.conversationWorkflowRunArtifactDataV4 = async () => {
++          if (outcome === "loading") return pending.promise;
++          if (outcome === "failed") throw new Error("Authored item journal failure");
++          if (outcome === "unsupported")
++            throw new Error("fault.command.capabilityUnsupported: ArtifactItems");
++          return empty;
++        };
++        try {
++          await act(async () => {
++            view.root.render(
++              <Providers agent={owner.agent}>
++                <WorkflowArtifactSidePane
++                  tab={{
++                    ...scope,
++                    type: "workflow-artifact",
++                    id: "artifact-tab",
++                    parentSessionId: "original-session",
++                    runId: "original-run",
++                    artifactId: "table",
++                  }}
++                />
++                <V4PaneConversationProvider scope={scope}>
++                  <div data-testid="tile">
++                    <WorkflowArtifactTilePreview
++                      artifact={artifact}
++                      sessionId="original-session"
++                      runId="original-run"
++                      theme="light"
++                    />
++                  </div>
++                </V4PaneConversationProvider>
++              </Providers>,
++            );
++            await tick();
++          });
++          const expected =
++            outcome === "loading"
++              ? "workflow-artifact-loading"
++              : outcome === "failed"
++                ? "workflow-artifact-error"
++                : outcome === "unsupported"
++                  ? "workflow-artifact-unavailable"
++                  : outcome === "metadata-failed"
++                    ? "workflow-artifact-metadata-error"
++                    : undefined;
++          if (expected)
++            check(
++              view.node.querySelector(`[data-testid="${expected}"]`),
++              `full pane must show ${expected}`,
++            );
++          if (outcome === "empty") {
++            check(
++              view.node.querySelector('[data-artifact-body="preset"]'),
++              "successful empty is a valid preset",
++            );
++            check(
++              !view.node.querySelector('[data-testid="workflow-artifact-error"]'),
++              "successful empty is not error",
++            );
++          }
++          const tile = view.node.querySelector('[data-testid="tile"]');
++          if (outcome === "failed" || outcome === "unsupported")
++            check(
++              tile?.querySelector('[data-testid="workflow-artifact-preview-read-error"]'),
++              "tile reports read failure/unavailable",
++            );
++          if (outcome === "loading")
++            check(
++              tile?.querySelector('[data-testid="workflow-artifact-preview-pending"]'),
++              "tile remains pending while original read is in flight",
++            );
++        } finally {
++          pending.resolve(empty);
++          await view.close();
++        }
++      },
++    );
++  }
++
++  await scenario(
++    "incremental failure retains last original data and exposes error rather than zero rows",
++    async () => {
++      const view = await mount(),
++        owner = nativePresentationAgent();
++      let count = 1;
++      owner.agent.conversationWorkflowRunArtifactDataV4 = async (params) => {
++        if (params.afterSequence !== undefined) throw new Error("Authored incremental failure");
++        return { items: [item(1, "last-good")], hasMore: false };
++      };
++      function Probe() {
++        const [signal, setSignal] = useState(count);
++        const state = useWorkflowRunArtifactData({
++          sessionId: "original-session",
++          runId: "original-run",
++          artifactId: "table",
++          itemCount: signal,
++        });
++        return (
++          <>
++            <button onClick={() => setSignal(++count)}>Refresh</button>
++            <pre>{JSON.stringify(state)}</pre>
++          </>
++        );
++      }
++      try {
++        await act(async () => {
++          view.root.render(
++            <Providers agent={owner.agent}>
++              <V4PaneConversationProvider scope={scope}>
++                <Probe />
++              </V4PaneConversationProvider>
++            </Providers>,
++          );
++          await tick();
++        });
++        await act(async () => {
++          view.node.querySelector("button")?.click();
++          await tick();
++        });
++        check(
++          view.node.textContent?.includes("last-good") &&
++            view.node.textContent?.includes("Authored incremental failure"),
++          "old rows and explicit error remain together",
++        );
++      } finally {
++        await view.close();
++      }
++    },
++  );
++
++  return results;
++}
++(window as Window & { __workflowArtifactRecoveryTests?: unknown }).__workflowArtifactRecoveryTests =
++  run();
+diff --git a/scripts/verify-product-completion.mjs b/scripts/verify-product-completion.mjs
+index 1a46a438..bd54df45 100644
+--- a/scripts/verify-product-completion.mjs
++++ b/scripts/verify-product-completion.mjs
+@@ -6,6 +6,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+ const tsx = "node_modules/tsx/dist/cli.mjs";
+ // Public owners, actual SQLite/files/transports and concrete regression cases. No live providers.
+ const backend = [
++  "apps/zcode-cli/packages/bootstrap/test/active-edit-core-preempt.test.ts",
++  "apps/zcode-cli/packages/bootstrap/test/active-edit-legacy-facade.test.ts",
+   "apps/zcode-cli/packages/adapters/test/file-search-boundary.test.ts",
+   "apps/zcode-cli/packages/adapters/test/native-file-boundary.test.ts",
+   "apps/zcode-cli/packages/adapters/test/native-file-publication.test.ts",
+@@ -54,6 +56,10 @@ const transport = [
+   "apps/zcode-cli/packages/bootstrap/test/native-projection-ndjson.test.ts",
+ ];
+ const ui = [
++  "packages/ui/test/pluginUninstallRecovery.test.ts",
++  "packages/ui/test/pluginUninstallHook.test.ts",
++  "packages/ui/test/savedWorkflowLaunchRecovery.test.ts",
++  "packages/ui/test/savedWorkflowLaunchActivation.test.ts",
+   // Actual Host + original UI SessionDataLayer share the UI runtime aliases.
+   "apps/zcode-cli/packages/bootstrap/test/native-foreground-host.test.ts",
+   "packages/ui/test/savedWorkflowRequests.test.ts",
+@@ -83,4 +89,5 @@ for (const args of [
+   [tsx, "--test", ...backend],
+   [tsx, "--test", "--test-concurrency=1", ...transport],
+   [tsx, "--tsconfig", "packages/ui/tsconfig.json", "--test", ...ui],
+-]) runCommand(process.execPath, args, { cwd: root, env: process.env, stdio: "inherit" });
++])
++  runCommand(process.execPath, args, { cwd: root, env: process.env, stdio: "inherit" });

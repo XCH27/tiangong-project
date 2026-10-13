@@ -230,6 +230,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0211 | [0211-kernel-lifecycle-rectification.patch](0211-kernel-lifecycle-rectification.patch) | `10f55ae9c07d183a134a54cd561d937c5eba3c2a` |
 | 0212 | [0212-plugin-market-consistency-cancellation.patch](0212-plugin-market-consistency-cancellation.patch) | `e76f0601a4944aa5e2e9c693eb3ef2b4761087c1` |
 | 0213 | [0213-product-completion-native-recovery.patch](0213-product-completion-native-recovery.patch) | `766e5f9d127e72faa09b8b73eb39ff568fd6b99f` |
+| 0214 | [0214-reference-derived-journey-recovery.patch](0214-reference-derived-journey-recovery.patch) | `8f9e0722140eea1822eed1e4575bca89ee393a23` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -256,3 +257,13 @@ owners, preserves workflow artifact identities across concurrent publication and
 and fixes full Workbench uncached Session/first-Save rendering. No new dependencies or database
 migrations. Current complete delivery and native GUI acceptance are recorded separately; source
 reconstruction alone never promotes usability.
+
+## Current reference-derived journey corrections
+
+Candidate `e5b4e7738b9e8a3895ce9ca23f11829710eaf9d6`, tree `8f9e0722140eea1822eed1e4575bca89ee393a23`. Patch 0214 keeps prior native/receipt recovery and corrects
+the old Save fixtures, narrow drawing-tool layout, partial uninstall reconciliation, uncertain
+workflow launch receipt handling, artifact status/generation visibility, remote action-time service
+activation and Core foreground preemption before history edits. Original stores and permission
+owners remain; no reference-source copying, dependencies, data migration or highspeed feature.
+Updated external reference snapshots are separately recorded and are not product dependencies.
+Automatic acceptance and deferred visible GUI evidence remain distinct in the readiness register.
