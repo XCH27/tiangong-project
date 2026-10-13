@@ -91,6 +91,13 @@ presentation are pending, and release its original leases without dispatch. Once
 retain the original exact-foreground backend Stop and uncertain receipt reconciliation; do not
 clear a possibly committed operation as if no effect occurred. No second cancellation store.
 
+Sending the RPC is not foreground admission: an earlier ordinary request can still hold the same
+channel. Preserve Stop intent in that original UI operation through settlement, observe the original
+Session projection for its exact `activeWorks.foregroundExecutionId`, and deliver the existing
+targeted Stop once that execution is current. Never stop another execution, replay a write, broaden
+the backend idle/mismatch guard or invent a future-execution cancellation database. Failed/lost Stop
+and uncertain results remain visible; local cancellation is not a durable no-effect receipt.
+
 UI retains RAM boards as drafts until durable ACK, adds Save/Open/refresh/export in the current
 pane, shows unsaved/error/conflict and fences workspace/Host/board generations. Reload merges
 with live drafts, never resets before ACK. Dirty pane/app close offers Save/Discard/Cancel through

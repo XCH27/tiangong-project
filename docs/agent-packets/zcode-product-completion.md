@@ -269,6 +269,11 @@ S owns the corresponding test-only full Workbench early-Stop regression in its e
 `ensureNativeWhiteboardSession` to release its original creation lease promptly. Observe the original
 create promise through late settlement without duplicating or replaying it; a late empty Session
 does not authorize native tool dispatch, model work or a new persistence owner.
+The same C private UI claims cover retained post-dispatch Stop intent: use the original held
+projection/detail lease and exact existing foreground ID to send one original targeted Stop when
+admitted. R owns read-only actual-wire cross-validation of queued-send/cold-admission behavior.
+Do not add transport/Host/Shared fields, a future-ID store or a second accepted queue. Pending
+receipts remain until actual settlement, including lost/failed Stop and effect uncertainty.
 
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
