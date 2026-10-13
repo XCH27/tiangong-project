@@ -221,3 +221,23 @@ C-Handoff is execution-ready for R's read/test continuation of existing workflow
 Session production and restart. It may add bounded actual-consumer fixtures; a reproduced source
 defect still requires Lead path acknowledgement. It does not open a new Library database, native
 editor, proposed Craft contract or historical wave. The current product inventory remains evidence.
+
+The 2026-10-13 development-memory correction remains within Q. On the owner's 16GB Mac,
+the initial app-family RSS sum was 6.37GiB across 12 renderer processes; it includes shared pages
+and is not a unique footprint or a leak diagnosis. Current pressure was normal. Recent retained
+diagnostics were disk-write notices, not OOM terminations; the earlier delivery interruption still
+has no established cause. Current/previous project transcripts are approximately 104/359MiB,
+which warrants bounded tool output without deleting history or claiming all records were loaded.
+
+Candidate `8dbfda9851ba06d8c0651ff6ac136bfa2b2b76e8` removes the upstream global 8GiB heap
+override, retains explicit caller options, and serializes heavy Node files/recursive package work.
+The private renderer harness records code/signal and cleans only its own process tree on failure,
+interruption or deadline. Its original internal 20-second deadline and every prior check remain.
+Fifteen lightweight real-child/build-entry regressions pass naturally; the previously interrupted
+styled decision-source group passes all 12 cases, peaks at 1129MiB aggregate RSS and leaves no
+owned processes. Actual adapters compilation into an isolated output directory passes under a
+4GiB heap ceiling, with 1285MiB peak RSS. Evidence is under
+`/Volumes/AIGC/.fleet-tmp/fleet-horizontal-comparison-2026-10-13/memory-diagnosis/`.
+Patch 0215 replays to tree `e19d34f928fde067dd85d70df4f044c3eb8fda7b`. This is measured development
+verification; Windows cleanup, a full current delivery rerun and deferred visible product checks
+remain separate. No profile, transcript, cache, session or other existing data was cleared/migrated.

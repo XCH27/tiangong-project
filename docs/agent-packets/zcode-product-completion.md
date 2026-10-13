@@ -456,3 +456,24 @@ and reuse original `preemptActiveTurnAndWait` before rewind/history mutation/new
 legacy controller, idle and exact identity semantics. Prove held real stream/late result, idle,
 native foreground and stop/idle failure; no write on failed preemption, no second execution owner,
 no Highspeed feature/import/copied handler. Extra helper/public changes require Lead acknowledgement.
+
+### Q development memory diagnosis and bounded verification (2026-10-13)
+
+The owner reports recurring memory exhaustion during programming and asks for diagnosis first.
+Pause heavy builds and parallel test invocations while collecting bounded, read-only process,
+pressure/swap and diagnostic metadata. Distinguish summed RSS from unique physical memory,
+resource-write reports from OOM, and interruption from a proven application leak. Do not terminate
+the user's Codex/app processes or clear profiles, sessions, caches or logs.
+
+Lead owns `package.json`, `scripts/verify-delivery.mjs`, `scripts/verify-product-completion.mjs`
+and `scripts/build-desktop-agent-cli.mjs`/its test, including original CLI workspace configuration.
+Retain every check and existing compiler dependency order; serialize heavy Node test files and
+recursive package work, preserve an explicit caller heap limit, and do not raise memory to mask a
+failure. Only one heavy verification invocation may run on this 16GB Mac at a time.
+
+The Sol worker claims only `scripts/test-usage-hooks.mjs`, its private
+`scripts/renderer-test-process.mjs` and focused `scripts/renderer-test-process.test.mjs` in a new
+isolated candidate worktree from `e5b4e773`. Record actual exit code/signal and ensure interruption
+or deadline failure terminates only its own Electron process tree, releases timers/handlers and
+allows normal Node exit. No forced successful test exit, unref, deadline increase, GUI, heavy
+build or product-runtime owner change. Lead owns test registration, source recipe and acceptance.

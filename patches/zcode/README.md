@@ -231,6 +231,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0212 | [0212-plugin-market-consistency-cancellation.patch](0212-plugin-market-consistency-cancellation.patch) | `e76f0601a4944aa5e2e9c693eb3ef2b4761087c1` |
 | 0213 | [0213-product-completion-native-recovery.patch](0213-product-completion-native-recovery.patch) | `766e5f9d127e72faa09b8b73eb39ff568fd6b99f` |
 | 0214 | [0214-reference-derived-journey-recovery.patch](0214-reference-derived-journey-recovery.patch) | `8f9e0722140eea1822eed1e4575bca89ee393a23` |
+| 0215 | [0215-development-memory-budget.patch](0215-development-memory-budget.patch) | `e19d34f928fde067dd85d70df4f044c3eb8fda7b` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -267,3 +268,13 @@ activation and Core foreground preemption before history edits. Original stores 
 owners remain; no reference-source copying, dependencies, data migration or highspeed feature.
 Updated external reference snapshots are separately recorded and are not product dependencies.
 Automatic acceptance and deferred visible GUI evidence remain distinct in the readiness register.
+
+## Development verification memory budget
+
+Candidate `8dbfda9851ba06d8c0651ff6ac136bfa2b2b76e8`, tree `e19d34f928fde067dd85d70df4f044c3eb8fda7b`. Patch 0215 bounds Node test-file and recursive
+package/build concurrency, removes the inherited global 8GiB heap override, retains caller Node
+options, and makes the renderer harness report actual code/signal and clean only its own process
+tree on failure, interruption or deadline. Original coverage, internal 20-second renderer deadline
+and normal successful exit remain; no product-runtime or user-data owner changes. Node24 measured
+adapters compilation succeeds under 4GiB, and the interrupted renderer group succeeds independently.
+This is bounded development verification evidence, not a complete delivery pass or a proven app leak.
