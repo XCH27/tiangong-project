@@ -232,6 +232,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0213 | [0213-product-completion-native-recovery.patch](0213-product-completion-native-recovery.patch) | `766e5f9d127e72faa09b8b73eb39ff568fd6b99f` |
 | 0214 | [0214-reference-derived-journey-recovery.patch](0214-reference-derived-journey-recovery.patch) | `8f9e0722140eea1822eed1e4575bca89ee393a23` |
 | 0215 | [0215-development-memory-budget.patch](0215-development-memory-budget.patch) | `e19d34f928fde067dd85d70df4f044c3eb8fda7b` |
+| 0216 | [0216-declared-plugin-host-entrypoints.patch](0216-declared-plugin-host-entrypoints.patch) | `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -278,3 +279,14 @@ tree on failure, interruption or deadline. Original coverage, internal 20-second
 and normal successful exit remain; no product-runtime or user-data owner changes. Node24 measured
 adapters compilation succeeds under 4GiB, and the interrupted renderer group succeeds independently.
 This is bounded development verification evidence, not a complete delivery pass or a proven app leak.
+
+## Official plugin launch admission
+
+Candidate `a499ba1c16d670ad125dd7b1d7e4e60681915d07`, tree `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39`. Patch 0216 prevents official plugin launch from
+replaying arbitrary test/library entrypoints as a CLI, which was observed recursively creating
+App/MCP children. Source CLI and generated CJS positively declare the original private plugin-host
+command; non-SEA admission reads at most 4KiB and refuses undeclared/non-file/unreadable entries.
+The declaration is a capability convention, not authentication. SEA keeps its original command.
+Default plugins are not hidden in fixtures; original manifest data and explicit MCP configurations
+remain intact. A bounded actual Host counterexample now completes without recursive children.
+Fresh artifacts/current canonical acceptance are recorded separately; no usability promotion.

@@ -241,3 +241,15 @@ owned processes. Actual adapters compilation into an isolated output directory p
 Patch 0215 replays to tree `e19d34f928fde067dd85d70df4f044c3eb8fda7b`. This is measured development
 verification; Windows cleanup, a full current delivery rerun and deferred visible product checks
 remain separate. No profile, transcript, cache, session or other existing data was cleared/migrated.
+
+The subsequent bounded full run on that exact source is **interrupted, not passing**: its
+`test:product-completion` phase peaks at 6.11GiB aggregate owned RSS and 25 processes; the observer
+stops only its owned groups at pressure 28%. A stricter single-case trace confirms that official
+Node REPL launch repeats `native-plugin-view-host.test.ts __zcode-plugin-host .../server.js`,
+which creates another App/MCP instance and recursively repeats. Successive children each approach
+700MiB; the guarded single case stops after 6.5 seconds. The launcher incorrectly assumes any
+`process.argv[1]` implements the private CLI plugin-host command. Current upstream has the same
+assumption. Positive CLI capability admission is the selected original-owner correction, with
+legitimate source/generated CLI and SEA acceptance required. This supersedes a diagnosis based
+only on outer concurrency; no Codex application leak is asserted. Captures remain in
+`memory-diagnosis/confirmed-recursive-launch.json` and `plugin-single-process-trace.json`.

@@ -477,3 +477,19 @@ isolated candidate worktree from `e5b4e773`. Record actual exit code/signal and 
 or deadline failure terminates only its own Electron process tree, releases timers/handlers and
 allows normal Node exit. No forced successful test exit, unref, deadline increase, GUI, heavy
 build or product-runtime owner change. Lead owns test registration, source recipe and acceptance.
+
+The bounded full run then reproduces a separate causal defect: default official Node REPL launch
+reuses a library/test `process.argv[1]` with `__zcode-plugin-host`, recursively recreating App and
+MCP children. Full-run RSS reaches 6.11GiB; the observer stops only its owned groups at pressure
+28%. A bounded single-case argv trace confirms successive test-file plugin-host launches.
+Do not treat the interrupted full chain as passing or hide builtins only in fixtures.
+
+Lead delegates a new isolated worktree from `8dbfda9` to the Sol worker for these exact source
+paths: `bootstrap/src/app/official-plugin-runtime.ts`, `cli/src/main.ts` and
+`cli/scripts/build.mjs` (under `apps/zcode-cli/packages/`), plus focused original-owner tests.
+Non-SEA launcher construction requires a positive private CLI plugin-host capability declaration
+in a bounded entry prefix; unknown, unreadable and test/library entrypoints are refused. Preserve
+the existing SEA command, genuine source/generated CLI launch and original runtime/plugin owners.
+The declaration is a capability convention, not a security credential. No name-only heuristic,
+NODE_TEST_CONTEXT workaround, fixture-only builtin suppression, timeout increase, second host or
+permission waiver. Lead owns registration, fresh CLI staging, public seams and measured acceptance.

@@ -1,0 +1,194 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-runtime.ts
+index e029bea9..c7084ad5 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-runtime.ts
+@@ -1,4 +1,4 @@
+-import { readFileSync } from "node:fs";
++import { closeSync, constants, fstatSync, openSync, readFileSync, readSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ import {
+   ZCODE_OFFICIAL_PLUGIN_MARKETPLACE,
+@@ -96,11 +96,29 @@ export function officialPluginHostPrefixArgs(): string[] | undefined {
+   if (isSeaRuntime()) return [ZCODE_PLUGIN_HOST_COMMAND];
+ 
+   const entrypoint = process.argv[1];
+-  if (!entrypoint) return undefined;
++  if (!entrypoint || !declaresPluginHostCapability(entrypoint)) return undefined;
+ 
+   return [...process.execArgv, resolve(entrypoint), ZCODE_PLUGIN_HOST_COMMAND];
+ }
+ 
++function declaresPluginHostCapability(entrypoint: string): boolean {
++  let descriptor: number | undefined;
++  try {
++    // This is an entrypoint capability declaration, not an authentication credential.
++    // Bound the read even for large generated bundles; NONBLOCK also avoids opening a FIFO hang.
++    descriptor = openSync(entrypoint, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
++    if (!fstatSync(descriptor).isFile()) return false;
++    const prefix = Buffer.alloc(4096);
++    const length = readSync(descriptor, prefix, 0, prefix.length, 0);
++    return prefix.toString("utf8", 0, length).split(/\r?\n/)
++      .includes(`// zcode-cli-capability: ${ZCODE_PLUGIN_HOST_COMMAND}`);
++  } catch {
++    return false;
++  } finally {
++    if (descriptor !== undefined) closeSync(descriptor);
++  }
++}
++
+ function isSeaRuntime(): boolean {
+   const getBuiltinModule = process.getBuiltinModule as ((id: "node:sea") => SeaModule) | undefined;
+   try {
+diff --git a/apps/zcode-cli/packages/bootstrap/test/official-plugin-launcher-admission.test.ts b/apps/zcode-cli/packages/bootstrap/test/official-plugin-launcher-admission.test.ts
+new file mode 100644
+index 00000000..6dfa4fec
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/official-plugin-launcher-admission.test.ts
+@@ -0,0 +1,94 @@
++import assert from "node:assert/strict";
++import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import test from "node:test";
++import { ZCODE_PLUGIN_HOST_COMMAND } from "@zcode/contracts";
++import {
++  createBundledMcpRuntimeConfig,
++  officialPluginHostPrefixArgs,
++  writeOfficialPluginRuntimeManifest,
++} from "../src/app/official-plugin-runtime.js";
++
++const marker = `// zcode-cli-capability: ${ZCODE_PLUGIN_HOST_COMMAND}`;
++const sourceEntry = resolve(import.meta.dirname, "../../cli/src/main.ts");
++
++test("official launcher admits declared source/generated/symlink CLI entries and preserves args", async () => {
++  const root = await mkdtemp(join(tmpdir(), "launcher-admission-"));
++  const previous = process.argv;
++  try {
++    // Importing the build module does not invoke its guarded build entrypoint.
++    const buildModulePath = "../../cli/scripts/build.mjs";
++    const { createCliBundleBanner } = await import(buildModulePath);
++    const generated = join(root, "zcode.cjs");
++    const linked = join(root, "zcode-link.cjs");
++    const banner = createCliBundleBanner(Buffer.from("authored notices"));
++    assert.ok(banner.startsWith(`#!/usr/bin/env node\n${marker}\n`));
++    await writeFile(generated, `${banner}\n}\n`);
++    await symlink(generated, linked);
++    for (const entry of [sourceEntry, generated, linked]) {
++      process.argv = [process.execPath, entry, "ordinary-argument"];
++      const prefix = [...process.execArgv, resolve(entry), ZCODE_PLUGIN_HOST_COMMAND];
++      assert.deepEqual(officialPluginHostPrefixArgs(), prefix);
++      const runtime = createBundledMcpRuntimeConfig({
++        cwd: root, rootPath: root, env: { AUTHORED: "retained" }, timeoutMs: 123,
++      });
++      assert.deepEqual(runtime?.args, [...prefix, join(root, "dist", "mcp", "server.js")]);
++      assert.equal(runtime?.command, process.execPath);
++      assert.equal(runtime?.cwd, root);
++      assert.equal(runtime?.timeoutMs, 123);
++      assert.deepEqual(runtime?.env, { AUTHORED: "retained", ELECTRON_RUN_AS_NODE: "1" });
++    }
++    assert.ok((await readFile(sourceEntry, "utf8")).startsWith(`${marker}\n`));
++  } finally {
++    process.argv = previous;
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("arbitrary/test/missing/nonfile/late-declared entries refuse without rewriting manifests", async () => {
++  const root = await mkdtemp(join(tmpdir(), "launcher-refusal-"));
++  const previous = process.argv;
++  try {
++    const arbitrary = join(root, "embedded.js"), late = join(root, "late.cjs");
++    await writeFile(arbitrary, "throw new Error('must never execute');\n");
++    await writeFile(late, `${" ".repeat(4096)}\n${marker}\n`);
++    await mkdir(join(root, ".zcode-plugin"));
++    const manifestPath = join(root, ".zcode-plugin", "plugin.json");
++    const original = JSON.stringify({ mcpServers: { server: { command: "original-command", args: ["original-argument"] } } });
++    await writeFile(manifestPath, original);
++    for (const entry of [arbitrary, import.meta.filename, join(root, "missing"), root, late]) {
++      process.argv = [process.execPath, entry];
++      assert.equal(officialPluginHostPrefixArgs(), undefined);
++      assert.equal(createBundledMcpRuntimeConfig({ cwd: root, rootPath: root }), undefined);
++      writeOfficialPluginRuntimeManifest({ rootPath: root, pluginName: "authored" });
++      assert.equal(await readFile(manifestPath, "utf8"), original);
++    }
++    process.argv = [process.execPath];
++    assert.equal(officialPluginHostPrefixArgs(), undefined);
++    if (process.platform !== "win32" && process.getuid?.() !== 0) {
++      const unreadable = join(root, "unreadable.cjs");
++      await writeFile(unreadable, `${marker}\n`);
++      await chmod(unreadable, 0);
++      process.argv = [process.execPath, unreadable];
++      assert.equal(officialPluginHostPrefixArgs(), undefined);
++    }
++  } finally {
++    process.argv = previous;
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("SEA retains direct plugin-host command without inspecting the embedding entrypoint", () => {
++  const original = process.getBuiltinModule;
++  const replacement = ((id: string) => id === "node:sea" ? { isSea: () => true } : original(id)) as typeof original;
++  const previous = process.argv;
++  try {
++    process.getBuiltinModule = replacement;
++    process.argv = [process.execPath, "arbitrary-unreadable-entry"];
++    assert.deepEqual(officialPluginHostPrefixArgs(), [ZCODE_PLUGIN_HOST_COMMAND]);
++  } finally {
++    process.getBuiltinModule = original;
++    process.argv = previous;
++  }
++});
+diff --git a/apps/zcode-cli/packages/cli/scripts/build.mjs b/apps/zcode-cli/packages/cli/scripts/build.mjs
+index 93f5e902..711d8fb6 100644
+--- a/apps/zcode-cli/packages/cli/scripts/build.mjs
++++ b/apps/zcode-cli/packages/cli/scripts/build.mjs
+@@ -6,6 +6,7 @@ import {
+ import { basename, dirname, relative, resolve } from "node:path";
+ import { pathToFileURL } from "node:url";
+ import { build } from "esbuild";
++import { ZCODE_PLUGIN_HOST_COMMAND } from "@zcode/contracts/plugins";
+ import { stageBuiltinProviderConfig } from "../../../../../scripts/builtin-provider-config.mjs";
+ 
+ const cliRoot = resolve(import.meta.dirname, "..");
+@@ -16,6 +17,10 @@ const rootPackageVersionError = "Root package.json must define a non-empty strin
+ const desktopAgentBuildFlag = "--desktop-agent";
+ export const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi"];
+ 
++export function createCliBundleBanner(notices) {
++  return `#!/usr/bin/env node\n// zcode-cli-capability: ${ZCODE_PLUGIN_HOST_COMMAND}\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else { const __fleetBundleLocation = require("node:url").pathToFileURL(__filename).href;`;
++}
++
+ // Embedded SDKs evaluate ESM locations during initialization. The desktop ships one CJS
+ // artifact; only those packages resolve their location to this artifact. Native CLI paths stay explicit.
+ export function createPiBundleLocationPlugin() {
+@@ -252,7 +257,7 @@ export const buildCli = async ({
+   await build({
+     banner: {
+       // SEA 与普通 CLI 共用入口；声明必须在 Agent 初始化和原生资源解压前可独立读取。
+-      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else { const __fleetBundleLocation = require("node:url").pathToFileURL(__filename).href;`,
++      js: createCliBundleBanner(notices),
+     },
+     footer: { js: "}" },
+     bundle: true,
+diff --git a/apps/zcode-cli/packages/cli/src/main.ts b/apps/zcode-cli/packages/cli/src/main.ts
+index 7d09851f..624aea41 100644
+--- a/apps/zcode-cli/packages/cli/src/main.ts
++++ b/apps/zcode-cli/packages/cli/src/main.ts
+@@ -1,3 +1,4 @@
++// zcode-cli-capability: __zcode-plugin-host
+ import { interceptTuiStderr, isTuiInvocation } from "./tui-stderr.js";
+ import { interceptKnownRuntimeWarnings } from "./runtime-warnings.js";
+ import { installStderrConsoleBoundary } from "./protocol-console.js";
+diff --git a/scripts/verify-product-completion.mjs b/scripts/verify-product-completion.mjs
+index ce99087b..0fbeb73a 100644
+--- a/scripts/verify-product-completion.mjs
++++ b/scripts/verify-product-completion.mjs
+@@ -6,6 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+ const tsx = "node_modules/tsx/dist/cli.mjs";
+ // Public owners, actual SQLite/files/transports and concrete regression cases. No live providers.
+ const backend = [
++  "apps/zcode-cli/packages/bootstrap/test/official-plugin-launcher-admission.test.ts",
+   "apps/zcode-cli/packages/bootstrap/test/active-edit-core-preempt.test.ts",
+   "apps/zcode-cli/packages/bootstrap/test/active-edit-legacy-facade.test.ts",
+   "apps/zcode-cli/packages/adapters/test/file-search-boundary.test.ts",
