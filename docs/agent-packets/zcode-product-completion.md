@@ -258,6 +258,14 @@ The exact S test-only port claims are `nativeWorkbenchFixture.ts`,
 `whiteboardPaneClose.browser.test.tsx` and `pluginViewNativeBridge.browser.test.tsx` under
 `packages/ui/test/`; original behavior/failure assertions and owners stay intact.
 
+C's reproduced pre-admission Stop continuation owns `lib/nativeSessionPresentation.ts`,
+`lib/nativeWhiteboardDraft.ts`, `hooks/useNativeWhiteboardControls.ts` and the existing focused
+native presentation/control tests/helpers. Private optional AbortSignal/onDispatch and the existing
+owned-Save handle may distinguish pending admission from dispatched execution; no public wire or
+state authority is added. Prove Stop during Session creation/initial hydration prevents late dispatch
+and preserves drafts. Dispatched operations retain exact original backend Stop/receipt semantics.
+S owns the corresponding test-only full Workbench early-Stop regression in its existing claims.
+
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
 update depth on uncached/native Session navigation. Select stable store inputs and derive options

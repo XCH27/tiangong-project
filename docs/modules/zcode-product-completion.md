@@ -84,6 +84,13 @@ store or widen subscription FIFO bypass. Error/closed/disconnected/stale context
 30-second readiness deadline refuse before dispatch while keeping the draft. Whiteboard and MCP
 Apps first actions use this same presentation seam; no model or alternate queue is involved.
 
+Stop also cancels a Save before actor admission. A real same-channel test reproduced an early
+foreground Stop doing nothing, followed by a late initial frame dispatching the supposedly stopped
+write. Keep cancellation in the original renderer operation handle while Session creation and
+presentation are pending, and release its original leases without dispatch. Once dispatch starts,
+retain the original exact-foreground backend Stop and uncertain receipt reconciliation; do not
+clear a possibly committed operation as if no effect occurred. No second cancellation store.
+
 UI retains RAM boards as drafts until durable ACK, adds Save/Open/refresh/export in the current
 pane, shows unsaved/error/conflict and fences workspace/Host/board generations. Reload merges
 with live drafts, never resets before ACK. Dirty pane/app close offers Save/Discard/Cancel through
