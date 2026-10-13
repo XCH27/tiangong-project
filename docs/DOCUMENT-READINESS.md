@@ -370,3 +370,44 @@ normally with Host cleanup code 0; all original rows across 23 tables remain unc
 15 sessions and 36 model-usage rows. Fresh reconstruction of 220 patches matches the exact tree
 and leaves the original index unchanged. A complete current-source rerun and actual new-build
 first-Save/close/cold recovery are in progress; no earlier interruption or failure is relabeled.
+
+### Final current-source acceptance — 2026-10-13
+
+The complete canonical wrapper on exact candidate `2cda91840263afe99b87095f71e64a44b702283f`
+**exits 0 naturally**, without an observer interruption or omitted step. It includes fresh CLI
+and server builds, compiled read-only server execution, all 16 root and strict CLI type projects,
+all pre-push checks, current desktop/CSS build, staged cross-session/EOF/cold receipt recovery,
+every styled group and final strict CLI lint. Counts are 1851 Node test executions (overlap is
+possible), 118 styled cases and 14 renderer invocations with code 0 / no signal. The invocation
+takes 745.9 seconds; aggregate owned RSS peaks at 2844MiB (2.78GiB, includes shared pages),
+with explicit per-process old-space ceiling 2048MiB. Kernel masks are Normal/Warning, never
+Critical; swap usage ranges only 2523–2531MiB. Those observations do not claim a global app leak
+is fixed. Full logs, memory samples, frozen source and coverage counts are in `recovery-final-delivery`.
+
+Lead then accepts the exact **local human native whiteboard loop as usable on this Mac**:
+fresh empty conversation → selected retained native workspace → empty side-pane whiteboard card
+→ real pointer input → Save → original allow-once ToolExecutor approval → durable file/Session
+receipt. No Stop or unrelated-tab workaround is used. Its new file is
+`de994a5d-056a-4f1d-ae00-d08a6834e75d`, named `Fleet 首次空会话保存实测`.
+Revision 1 has two strokes. A further stroke triggers actual quit protection; Cancel keeps the
+draft. Choosing Save and allowing once produces revision 2/three strokes, then normal Host cleanup
+code 0 and application exit. After restart, explicitly opening the saved native drawing restores
+it as editable; another stroke and allow-once Save produces revision 3/four strokes, hash
+`bb39ec551fe376ee59253890af3d16469531f819b20343167cdec11d42488b44`.
+The new review-created blank launcher draft is explicitly discarded during final normal quit.
+Automatic side-pane/tab restoration is not claimed; native content is reopened through its
+existing saved-file entry.
+
+The original `Fleet 冷恢复实测` still opens and retains revision 3/two strokes and hash
+`f64132f1df4b8361465c4585979f90fec8542af9281bfc23de92157cefac5400`; the earlier empty native
+file is also unchanged. Row-by-row comparisons against both the original database and the
+immediately preceding review snapshot preserve every old row in all 23 tables. Current review
+counts are 16 sessions, 27 tool-usage rows and the same 36 model-usage rows; three new human
+native writes introduce no model request or title generation. Original untracked user directories
+are retained. The 220-patch fresh reconstruction matches tree
+`6d6fe24d0bf8d5881b7449fef977984b486a4923` without changing the candidate index.
+
+This promotion is limited to the measured local native loop. Live provider sign-in/entitlements,
+actual Windows service execution, independent TraeWork/SOLO coverage, automatic tab restoration
+and proprietary crash durability are not established here. Whole-product readiness and historical
+Locked waves are not promoted by this acceptance.
