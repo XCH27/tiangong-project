@@ -74,6 +74,16 @@ Native preimages are prepared before file publication in the existing ArtifactSt
 journal. The same checkpoint writer publishes them; failed publication is repaired by observing
 existing file/receipt facts on cold reopen or the next native control, without rerunning a tool.
 
+First-action presentation must be ready before an admitted native tool waits for approval. Actual
+same-channel acceptance exposed that a void navigation followed immediately by the long control
+can leave the required conversation subscription behind that control's FIFO. Reuse the original
+workspace connection and SessionDataLayer detail lease, present the real Session, and observe its
+existing store until a live subscription and matching hydrated snapshot are available before
+dispatch. Hold both leases through settlement and release in finally. Never reconnect/replace the
+store or widen subscription FIFO bypass. Error/closed/disconnected/stale context and the bounded
+30-second readiness deadline refuse before dispatch while keeping the draft. Whiteboard and MCP
+Apps first actions use this same presentation seam; no model or alternate queue is involved.
+
 UI retains RAM boards as drafts until durable ACK, adds Save/Open/refresh/export in the current
 pane, shows unsaved/error/conflict and fences workspace/Host/board generations. Reload merges
 with live drafts, never resets before ACK. Dirty pane/app close offers Save/Discard/Cancel through

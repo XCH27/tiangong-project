@@ -237,6 +237,16 @@ mutation. Production fixes require a confirmed counterexample and Lead exact pat
 
 ## W UI continuation — S worker
 
+C's first-action subscription continuation owns private `lib/nativeSessionPresentation.ts`,
+`nativeWhiteboardDraft.ts` and `nativePluginViewControl.ts` actor consumers, focused actual
+same-channel service/NDJSON/SessionDataLayer tests and necessary authored fixture ports. Reuse
+original workspace and detail leases; present the exact real surface/Session, observe stable
+store live subscriptionId plus matching hydrated snapshot, dispatch only then and release both
+leases after settlement in finally. Never call connect/retry, replace subscriptions, add a store,
+queue or public field. Error/closed/transport loss/stale scope and 30-second readiness timeout
+reject before effect, preserving draft/reconciliation. R owns the separate readonly transport
+admission/poll bounds; Root owns public seams/registrations and visible native GUI.
+
 Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
 existing task-model recovery helper only after the full original Workbench reproduces React
 update depth on uncached/native Session navigation. Select stable store inputs and derive options
