@@ -229,6 +229,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0210 | [0210-steerable-guide-and-session-durability.patch](0210-steerable-guide-and-session-durability.patch) | `225208f8e4384d80bce57fbba2b1b37abd54879e` |
 | 0211 | [0211-kernel-lifecycle-rectification.patch](0211-kernel-lifecycle-rectification.patch) | `10f55ae9c07d183a134a54cd561d937c5eba3c2a` |
 | 0212 | [0212-plugin-market-consistency-cancellation.patch](0212-plugin-market-consistency-cancellation.patch) | `e76f0601a4944aa5e2e9c693eb3ef2b4761087c1` |
+| 0213 | [0213-product-completion-native-recovery.patch](0213-product-completion-native-recovery.patch) | `766e5f9d127e72faa09b8b73eb39ff568fd6b99f` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -245,3 +246,13 @@ grants remain canonical; no new dependencies or data migrations. Authored handle
 and actual rendered market/dialog paths provide bounded evidence; installed reference products
 and REA are analysis references only. Strict inherited CLI lint remains a failing release check.
 See `docs/audits/2026-10-12-plugin-market-reference-rectification.md`.
+
+## D59 current product completion source
+
+Candidate `5bb45c30c7cb22370191c6081bd30e8ab13b8411`, tree `766e5f9d127e72faa09b8b73eb39ff568fd6b99f`. Patch 0213 preserves the existing product/data owners,
+corrects strict source boundaries and all desktop type gates, completes native whiteboard persistence
+and readonly inspection, admits MCP Apps tool effects through original Session/permission/receipt
+owners, preserves workflow artifact identities across concurrent publication and legacy restart,
+and fixes full Workbench uncached Session/first-Save rendering. No new dependencies or database
+migrations. Current complete delivery and native GUI acceptance are recorded separately; source
+reconstruction alone never promotes usability.
