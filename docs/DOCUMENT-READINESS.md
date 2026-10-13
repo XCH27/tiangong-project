@@ -321,3 +321,33 @@ so equality of installer members to installed apps is not claimed. No closed sou
 copied into the product, and no user credential/profile/database or target program is executed
 for this static analysis. Capabilities remain `wired but not visually checked` where visible
 acceptance is pending; no whole-project `usable` promotion or historical wave opening.
+
+The subsequent candidate `c0a5c421` (patch 0218, tree
+`68ebb1af4d61fb75c4cb6a9a841b908c26a4b163`) corrects deterministic native-login rejection.
+Only Facade preparation before target invocation, or the original locked synchronous transform,
+can carry the typed zero-account-write proof. IO/atomic publication/refresh stay outside those
+catch boundaries. Real preflight and second-repository CAS cases turn red to green, with an
+actual repository-IO refusal still retaining its unknown home; all 24 login cases pass. An
+independent Sol reader verifies the capture boundaries before integration.
+
+Two complete-wrapper attempts on that source remain interrupted. The percentage-only observer
+stops at free 37% without recording the contemporaneous kernel level; that cannot establish OOM
+or a normal state at that instant. A corrected observer captures an actual Warning mask at
+root typecheck, so that invocation is also stopped and never counted as passing. Apple's
+[sysctl handler](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_memorystatus_notify.c)
+converts the internal enum to dispatch masks; the public Normal/Warning/Critical values are
+1/2/4, as defined in
+[event_private.h](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/event_private.h).
+The separate encodings and original captures remain in `memory-diagnosis`.
+
+Candidate `7e743abac1f00c847547d00816fc5026749bb9af` (patch 0219, tree
+`ebca395799e10e22ec8b35193a31197bea6ddf0a`) bounds compiler graph lifetime by running the exact
+original 16 root projects in separate sequential processes. Real-child regressions verify
+independent PIDs, argument/environment preservation and fail-fast behavior; no project or TS
+setting is dropped. Fresh reconstruction of all 219 patches matches that tree and leaves the
+main index unchanged. The current complete wrapper uses an explicit **2GiB per-process heap
+ceiling**, lower than previous attempts. It records advisory Warning honestly; Critical/unknown
+mask or 512MiB swap growth within 30 seconds under Warning aborts its owned tree and fails.
+This changes external observation, not any assertion, deadline or required stage. Other user
+jobs and apps are untouched. All 16 root checks and subsequent strict CLI type checks pass;
+final whole-wrapper and visible product results remain pending until their actual completion.

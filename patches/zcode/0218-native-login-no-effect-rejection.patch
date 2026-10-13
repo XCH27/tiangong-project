@@ -1,0 +1,398 @@
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index cc57ed12..480613a9 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -1,3 +1,4 @@
++import { NativeConnectionNoEffectError } from "./native-connection-no-effect.js";
+ import {
+   decisionSourceSaveSchema,
+   buildDecisionSourceUpdate,
+@@ -472,85 +473,91 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+     const builtin = await this.#zcodeBuiltinSource.read();
+     // 自动发现必须一次写入；逐行调用添加会留下半份目录，并覆盖用户修改。
+     return this.#updatePersonal((current) => {
+-      if (nativeAccess && replace && membership?.nativeConnection) {
+-        membership.assertCurrent();
+-        const observed = membership.nativeConnection;
+-        const locked = resolvePersonalProviderBaselines(builtin, current.providers);
+-        const actual = locked.get(id);
+-        // 账号/目录只依赖自己的连接；无关设置写入不能使重连失败，但连接变更必须在文件锁内拦截。
+-        if (
+-          membership.providerId !== id ||
+-          !actual ||
+-          locked.getRule(id)?.templateId !== observed.templateId ||
+-          JSON.stringify([actual.api?.toJSON(), actual.access?.toJSON()]) !==
+-            JSON.stringify([observed.config.api?.toJSON(), observed.config.access?.toJSON()])
+-        )
+-          throw new Error("Connection changed; reload its model list");
+-      } else {
+-        assertMembershipCurrent(membership, id, current);
+-      }
+-      let provider = writableProviderOverlay(builtin, current, id);
+-      const effective = resolvePersonalProviderBaselines(builtin, current.providers).get(id);
+-      const access = effective?.access;
+-      if (replace && !usesAccountScopedModelCatalog(effective))
+-        throw new Error("Only declared account-scoped catalogs support replacement");
+-      if (nativeAccess) {
+-        if (
+-          !replace ||
+-          access?.type !== "native-cli" ||
+-          access.provider !== nativeAccess.provider ||
+-          access.executable !== nativeAccess.executable ||
+-          ((access.configDir || "") !== (nativeAccess.configDir || "") &&
+-            // 切换账号只能换到该连接自己保存的 CLI 目录，不能借此指向任意目录。
+-            !nativeAccess.accounts?.some(
+-              (account) => (account.configDir || "") === (nativeAccess.configDir || ""),
+-            ))
+-        )
+-          throw new Error("Native CLI connection changed; reload it before connecting");
+-        if (nativeAccess.validateComplete().length)
+-          throw new Error("Native CLI account is not connected");
+-        // Identity and its observed catalog are one existing Repository transaction.
+-        provider = provider.overlay(new ProviderConfigValue({ access: nativeAccess }));
+-      }
+-      const inheritedBaseline =
+-        membership?.inheritedModelIds ??
+-        resolveProviderBuiltinModelIds(builtin, current.providers, id);
+-      const incomingIds = [...new Set(incoming.map((model) => model.modelId))];
+-      const inherited = replace ? [] : inheritedBaseline;
+-      const personal = replace
+-        ? [...new Set([...incomingIds, ...(provider.manualModelIds ?? [])])].filter(
+-            (modelId) => !inherited.includes(modelId),
++      try {
++        if (nativeAccess && replace && membership?.nativeConnection) {
++          membership.assertCurrent();
++          const observed = membership.nativeConnection;
++          const locked = resolvePersonalProviderBaselines(builtin, current.providers);
++          const actual = locked.get(id);
++          // 账号/目录只依赖自己的连接；无关设置写入不能使重连失败，但连接变更必须在文件锁内拦截。
++          if (
++            membership.providerId !== id ||
++            !actual ||
++            locked.getRule(id)?.templateId !== observed.templateId ||
++            JSON.stringify([actual.api?.toJSON(), actual.access?.toJSON()]) !==
++              JSON.stringify([observed.config.api?.toJSON(), observed.config.access?.toJSON()])
+           )
+-        : [...(provider.personalModelIds ?? [])];
+-      const existing = new Set([...inherited, ...personal]);
+-      // 订阅目录属于当前账号；只替换观察和成员，精确/手动修正保持休眠以供切回恢复。
+-      const prior = replace
+-        ? current.models.withoutLegacySubscriptionOffSnapshots(id, incoming)
+-        : current.models;
+-      const rules = prior.withDiscovered(id, incoming, replace);
+-      for (const model of incoming) {
+-        if (!existing.has(model.modelId)) {
+-          existing.add(model.modelId);
+-          personal.push(model.modelId);
++            throw new Error("Connection changed; reload its model list");
++        } else {
++          assertMembershipCurrent(membership, id, current);
+         }
+-      }
+-      const order =
+-        replace && incoming.length === 0
+-          ? // 清空可见成员时保留原顺序提示；下一份目录仅投影仍存在的 ID，不暴露休眠模型。
+-            normalizeModelOrder(
+-              inheritedBaseline,
+-              provider.personalModelIds ?? [],
+-              provider.modelOrder ?? [],
++        let provider = writableProviderOverlay(builtin, current, id);
++        const effective = resolvePersonalProviderBaselines(builtin, current.providers).get(id);
++        const access = effective?.access;
++        if (replace && !usesAccountScopedModelCatalog(effective))
++          throw new Error("Only declared account-scoped catalogs support replacement");
++        if (nativeAccess) {
++          if (
++            !replace ||
++            access?.type !== "native-cli" ||
++            access.provider !== nativeAccess.provider ||
++            access.executable !== nativeAccess.executable ||
++            ((access.configDir || "") !== (nativeAccess.configDir || "") &&
++              // 切换账号只能换到该连接自己保存的 CLI 目录，不能借此指向任意目录。
++              !nativeAccess.accounts?.some(
++                (account) => (account.configDir || "") === (nativeAccess.configDir || ""),
++              ))
++          )
++            throw new Error("Native CLI connection changed; reload it before connecting");
++          if (nativeAccess.validateComplete().length)
++            throw new Error("Native CLI account is not connected");
++          // Identity and its observed catalog are one existing Repository transaction.
++          provider = provider.overlay(new ProviderConfigValue({ access: nativeAccess }));
++        }
++        const inheritedBaseline =
++          membership?.inheritedModelIds ??
++          resolveProviderBuiltinModelIds(builtin, current.providers, id);
++        const incomingIds = [...new Set(incoming.map((model) => model.modelId))];
++        const inherited = replace ? [] : inheritedBaseline;
++        const personal = replace
++          ? [...new Set([...incomingIds, ...(provider.manualModelIds ?? [])])].filter(
++              (modelId) => !inherited.includes(modelId),
+             )
+-          : normalizeModelOrder(inherited, personal, provider.modelOrder ?? []);
+-      return {
+-        providers: current.providers.set(
+-          id,
+-          provider.withPersonalModelIds(personal).withModelOrder(order),
+-        ),
+-        models: rules,
+-        providerOrder: current.providerOrder,
+-      };
++          : [...(provider.personalModelIds ?? [])];
++        const existing = new Set([...inherited, ...personal]);
++        // 订阅目录属于当前账号；只替换观察和成员，精确/手动修正保持休眠以供切回恢复。
++        const prior = replace
++          ? current.models.withoutLegacySubscriptionOffSnapshots(id, incoming)
++          : current.models;
++        const rules = prior.withDiscovered(id, incoming, replace);
++        for (const model of incoming) {
++          if (!existing.has(model.modelId)) {
++            existing.add(model.modelId);
++            personal.push(model.modelId);
++          }
++        }
++        const order =
++          replace && incoming.length === 0
++            ? // 清空可见成员时保留原顺序提示；下一份目录仅投影仍存在的 ID，不暴露休眠模型。
++              normalizeModelOrder(
++                inheritedBaseline,
++                provider.personalModelIds ?? [],
++                provider.modelOrder ?? [],
++              )
++            : normalizeModelOrder(inherited, personal, provider.modelOrder ?? []);
++        return {
++          providers: current.providers.set(
++            id,
++            provider.withPersonalModelIds(personal).withModelOrder(order),
++          ),
++          models: rules,
++          providerOrder: current.providerOrder,
++        };
++      } catch (error) {
++        // Only synchronous transform rejection is proven; repository/atomic-write errors stay unknown.
++        if (nativeAccess) throw new NativeConnectionNoEffectError(error);
++        throw error;
++      }
+     });
+   }
+ 
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 424903b5..1438d00f 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -1,3 +1,4 @@
++import { NativeConnectionNoEffectError } from "./native-connection-no-effect.js";
+ import {
+   decisionSourceSaveSchema,
+   sourceSaveConflict,
+@@ -470,38 +471,46 @@ export class ProviderSettingsFacade {
+     nativeConnection?: { access: NativeCliAccessConfigObject; basedOnRevision?: number },
+   ): Promise<ProviderSettingsView> {
+     return this.#mutateProvider(providerId, "discover-models", async (target) => {
+-      if (
+-        nativeConnection?.basedOnRevision !== undefined &&
+-        this.getView().revision !== nativeConnection.basedOnRevision
+-      )
+-        throw new Error("Provider Settings revision conflict; reload this connection");
+-      await assertAccountCurrent?.();
+-      const current = this.getView().providers.find(
+-        (provider) => provider.providerId === providerId,
+-      );
+-      if (!current) throw new Error("Connection no longer exists");
+-      // 只核对连接身份；发现期间的模型编辑、禁用与排序必须保留，不能使整份目录失效。
+-      const identity = (config: ProviderConfigObject) =>
+-        JSON.stringify([config.api, config.access]);
+-      if (identity(current.effectiveConfig) !== identity(expectedConnection))
+-        throw new Error("Connection changed; reload its model list");
+-      if (replace && !usesAccountScopedModelCatalog(current.effectiveConfig))
+-        throw new Error("Only declared account-scoped catalogs support replacement");
+-      if (!models.length && !replace) return;
+-      await target.mergeDiscoveredModels(
+-        providerId,
+-        models.map((model) => ({ modelId: model.id, config: parseModelConfig(model.config) })),
+-        this.#modelMembership(
++      let prepared: Parameters<ProviderSettingsMutationTarget["mergeDiscoveredModels"]>;
++      try {
++        if (
++          nativeConnection?.basedOnRevision !== undefined &&
++          this.getView().revision !== nativeConnection.basedOnRevision
++        )
++          throw new Error("Provider Settings revision conflict; reload this connection");
++        await assertAccountCurrent?.();
++        const current = this.getView().providers.find(
++          (provider) => provider.providerId === providerId,
++        );
++        if (!current) throw new Error("Connection no longer exists");
++        // 只核对连接身份；发现期间的模型编辑、禁用与排序必须保留，不能使整份目录失效。
++        const identity = (config: ProviderConfigObject) =>
++          JSON.stringify([config.api, config.access]);
++        if (identity(current.effectiveConfig) !== identity(expectedConnection))
++          throw new Error("Connection changed; reload its model list");
++        if (replace && !usesAccountScopedModelCatalog(current.effectiveConfig))
++          throw new Error("Only declared account-scoped catalogs support replacement");
++        if (!models.length && !replace) return;
++        prepared = [
+           providerId,
+-          requireSnapshot(this.#source),
+-          nativeConnection !== undefined && nativeConnection.basedOnRevision === undefined,
+-        ),
+-        replace,
+-        nativeConnection
+-          ? (parseProviderConfig({ access: nativeConnection.access })
+-              .access as import("./config/index.js").NativeCliAccessConfig)
+-          : undefined,
+-      );
++          models.map((model) => ({ modelId: model.id, config: parseModelConfig(model.config) })),
++          this.#modelMembership(
++            providerId,
++            requireSnapshot(this.#source),
++            nativeConnection !== undefined && nativeConnection.basedOnRevision === undefined,
++          ),
++          replace,
++          nativeConnection
++            ? (parseProviderConfig({ access: nativeConnection.access })
++                .access as import("./config/index.js").NativeCliAccessConfig)
++            : undefined,
++        ];
++      } catch (error) {
++        // The target has not been invoked: this proof cannot cover its IO or publication.
++        if (nativeConnection) throw new NativeConnectionNoEffectError(error);
++        throw error;
++      }
++      await target.mergeDiscoveredModels(...prepared);
+     });
+   }
+ 
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index f009e03f..5ed651e9 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -24,3 +24,5 @@ export { lookupModelKnowledge, modelKnowledgeConfig, setModelKnowledgeOverlay, t
+ export { buildModelKnowledge, type ModelKnowledgeData } from "./model-knowledge-build.js";
+ 
+ export * from "./decision-source-save.js";
++
++export { NativeConnectionNoEffectError } from "./native-connection-no-effect.js";
+diff --git a/packages/provider/src/native-connection-no-effect.ts b/packages/provider/src/native-connection-no-effect.ts
+new file mode 100644
+index 00000000..6758ec94
+--- /dev/null
++++ b/packages/provider/src/native-connection-no-effect.ts
+@@ -0,0 +1,7 @@
++/** Internal proof of zero account writes: target preflight/preparation or locked transform rejection. */
++export class NativeConnectionNoEffectError extends Error {
++  constructor(cause: unknown) {
++    super(cause instanceof Error ? cause.message : String(cause), { cause });
++    this.name = "NativeConnectionNoEffectError";
++  }
++}
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index dd03d89e..63a8b9f8 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -1,5 +1,5 @@
+ import type { ProviderSettingsFacade, ProviderId, NativeCliAccessConfigObject, ProviderConfigObject } from "@zcode/provider";
+-import { connectionRouteRestriction } from "@zcode/provider";
++import { connectionRouteRestriction, NativeConnectionNoEffectError } from "@zcode/provider";
+ import {
+   inspectNativeCliConnection, nativeSavedAccounts, nativeAccessForAccount,
+   NATIVE_CLI_MULTI_ACCOUNT, nativeCliAccountHome as home, nativeCliCommitMatches,
+@@ -276,8 +276,7 @@ export function createNativeCliConnectionOperations(
+         assertActive();
+         if (flows.get(id) !== flow) throw new Error("Native CLI login expired or cancelled");
+         const current = view.providers.find((provider) => provider.providerId === id)?.effectiveConfig;
+-        const intended = flow.intendedAccess;
+-        if (!nativeCliCommitMatches(current, flow.expected, intended))
++        if (!nativeCliCommitMatches(current, flow.expected, flow.intendedAccess))
+           throw flow.commitFailure ?? new Error("Native CLI login outcome is unknown");
+         flow.committed = true;
+         flow.allocatedHome = undefined;
+@@ -303,6 +302,7 @@ export function createNativeCliConnectionOperations(
+         flow.allocatedHome = undefined;
+       } catch (error) {
+         flow.commitFailure = error;
++        if (error instanceof NativeConnectionNoEffectError) flow.writing = false;
+         if (!flow.writing) {
+           discardUnpublishedHome(flow.allocatedHome, flow);
+           flow.allocatedHome = undefined;
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index 1cbc3358..f9f3ea64 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -1,10 +1,11 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
++import { chmod, mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { ProviderSettingsFacade, type ProviderSettingsMutationTarget } from "@zcode/provider";
++import { ProviderSettingsFacade, ProviderConfig, parseProviderConfig, NativeConnectionNoEffectError, type ProviderSettingsMutationTarget } from "@zcode/provider";
++import { NodePersonalProviderConfigRepository } from "../../provider-node/src/personal-provider-config-repository.js";
+ import { startClaudeNativeLogin } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-login.js";
+ import { requireClaudeSubscriptionAccount } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.js";
+ import { createNativeCliConnectionOperations } from "../src/model-provider/nativeCliConnection.js";
+@@ -801,3 +802,63 @@ test("replacement login never removes the CLI home used by the new current flow"
+     assert.deepEqual(f.removed, []);
+   } finally { await f.close(); }
+ });
++
++
++for (const stage of ["facade-preflight", "locked-cas"] as const) {
++  test(`real ${stage} rejection cleans the unpublished login home and lets Cancel end the attempt`, async () => {
++    const f = await publicationFailureFixture();
++    const external = new NodePersonalProviderConfigRepository({ filePath: f.personalFilePath, pollingIntervalMs: false });
++    try {
++      const initial = f.facade.getView().providers.find((provider) => provider.providerId === f.providerId)!.effectiveConfig.access!;
++      const { flowId } = await f.operations.beginNativeCliLogin(f.providerId, { addAccount: true });
++      await external.update((current) => {
++        const rule = current.providers.getRule(f.providerId)!;
++        return { ...current, providers: current.providers.setRule({ ...rule,
++          config: (rule.config ?? new ProviderConfig()).overlay(parseProviderConfig({
++            access: { ...initial, executable: "/authored/changed-codex" },
++          })),
++        }) };
++      });
++      const afterExternal = await readFile(f.personalFilePath, "utf8");
++      if (stage === "facade-preflight") await f.facade.refresh("fixture-other-settings");
++      else {
++        const oldAccess = f.facade.getView().providers.find((provider) => provider.providerId === f.providerId)!.effectiveConfig.access;
++        assert.ok(oldAccess?.type === "native-cli");
++        assert.equal(oldAccess.executable, undefined, "The locked CAS fixture must retain the older facade observation");
++      }
++      await assert.rejects(f.operations.pollNativeCliLogin(f.providerId, flowId), (error) => {
++        assert.ok(error instanceof NativeConnectionNoEffectError);
++        assert.ok(error.cause instanceof Error);
++        assert.equal(error.message, error.cause.message);
++        assert.match(error.message, /Connection changed/);
++        return true;
++      });
++      assert.equal(await readFile(f.personalFilePath, "utf8"), afterExternal, "Rejected login performed an account write");
++      assert.equal(afterExternal.includes(f.cliHome), false);
++      assert.deepEqual(f.removed, [f.cliHome], "A proven no-effect rejection leaked its unpublished home");
++      await f.operations.cancelNativeCliLogin(f.providerId, flowId);
++      await assert.rejects(f.operations.pollNativeCliLogin(f.providerId, flowId), /expired or cancelled/);
++      assert.equal(await readFile(f.personalFilePath, "utf8"), afterExternal);
++      assert.deepEqual(f.removed, [f.cliHome], "Cancel removed the same home twice");
++    } finally { external.dispose(); await f.close(); }
++  });
++}
++
++
++test("real repository IO refusal stays unknown and Cancel cannot delete an admitted login home", { skip: process.getuid?.() === 0 }, async () => {
++  const f = await publicationFailureFixture();
++  try {
++    const before = await readFile(f.personalFilePath, "utf8");
++    const { flowId } = await f.operations.beginNativeCliLogin(f.providerId, { addAccount: true });
++    await chmod(f.directory, 0o555);
++    await assert.rejects(f.operations.pollNativeCliLogin(f.providerId, flowId), (error) => {
++      assert.ok(error instanceof Error);
++      assert.equal(error instanceof NativeConnectionNoEffectError, false);
++      return true;
++    });
++    assert.deepEqual(f.removed, []);
++    await assert.rejects(f.operations.cancelNativeCliLogin(f.providerId, flowId));
++    assert.deepEqual(f.removed, []);
++    assert.equal(await readFile(f.personalFilePath, "utf8"), before);
++  } finally { await chmod(f.directory, 0o755); await f.close(); }
++});

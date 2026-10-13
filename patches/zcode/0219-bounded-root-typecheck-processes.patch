@@ -1,0 +1,114 @@
+diff --git a/package.json b/package.json
+index d169a6d5..3a2ebf47 100644
+--- a/package.json
++++ b/package.json
+@@ -27,7 +27,7 @@
+     "build:native-search": "node scripts/build-native-search-tools.mjs",
+     "pack:native-search": "node scripts/package-native-search-tools.mjs",
+     "clean": "node scripts/clean.mjs",
+-    "typecheck": "tsc -b packages/rpc packages/provider packages/provider-node packages/shared packages/services packages/client packages/server packages/zcode-server-cli packages/ui packages/web packages/desktop/tsconfig.host.json packages/desktop/tsconfig.main.json packages/desktop/tsconfig.preload.json packages/desktop/tsconfig.renderer.json packages/desktop/tsconfig.scheduler.json packages/desktop/tsconfig.tooling.json",
++    "typecheck": "node scripts/typecheck-root.mjs",
+     "bundle:desktop": "pnpm --filter @zcode/desktop run bundle --",
+     "sync:usage-prices": "node scripts/sync-usage-price-catalog.mjs",
+     "fmt": "oxfmt",
+@@ -75,7 +75,7 @@
+     "test:catalog-filter-ui": "tsx --tsconfig packages/ui/tsconfig.json --test --test-concurrency=1 packages/ui/test/providerCatalogFilters.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/providerCatalogFilters.browser.test.tsx __providerCatalogFilterTests --desktop-styles --focused-window",
+     "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/decisionSourceSettings.browser.test.tsx __decisionSourceSettingsTests --desktop-styles",
+     "test:decision-classifier": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
+-    "test:git-hooks": "node --test --test-concurrency=1 scripts/prepare-git-hooks.test.mjs scripts/verify-delivery.test.mjs scripts/build-desktop-agent-cli.test.mjs scripts/renderer-test-process.test.mjs && node --test --test-concurrency=1 packages/desktop/scripts/desktop-vite-config.test.mjs packages/desktop/scripts/production-build-isolation.test.mjs packages/desktop/test/remote-session-window-ownership.test.mjs",
++    "test:git-hooks": "node --test --test-concurrency=1 scripts/prepare-git-hooks.test.mjs scripts/verify-delivery.test.mjs scripts/typecheck-root.test.mjs scripts/build-desktop-agent-cli.test.mjs scripts/renderer-test-process.test.mjs && node --test --test-concurrency=1 packages/desktop/scripts/desktop-vite-config.test.mjs packages/desktop/scripts/production-build-isolation.test.mjs packages/desktop/test/remote-session-window-ownership.test.mjs",
+     "test:decision-host": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts apps/zcode-cli/packages/core/test/automatic-execution-binding.test.ts apps/zcode-cli/packages/bootstrap/test/automatic-model-intent.test.ts apps/zcode-cli/packages/adapters/test/decision-single-attempt.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+     "test:kernel-recovery": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts apps/zcode-cli/packages/core/test/bash-stop-recovery.test.ts apps/zcode-cli/packages/core/test/bash-stop-cold-projection.test.ts apps/zcode-cli/packages/core/test/subagent-stop-cold-projection.test.ts apps/zcode-cli/packages/core/test/remote-host-attachment-stop-session.test.ts apps/zcode-cli/packages/core/test/host-cold-background-works-honesty.test.ts apps/zcode-cli/packages/core/test/cold-background-works-materialization.test.ts apps/zcode-cli/packages/core/test/background-task-completed-durability.test.ts apps/zcode-cli/packages/core/test/background-task-started-durability.test.ts apps/zcode-cli/packages/core/test/background-task-updated-durability.test.ts apps/zcode-cli/packages/core/test/agent-background-task-durability.test.ts apps/zcode-cli/packages/core/test/workflow-background-task-completed-durability.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts apps/zcode-cli/packages/bootstrap/test/session-shutdown.test.ts apps/zcode-cli/packages/bootstrap/test/session-shutdown-retry.test.ts apps/zcode-cli/packages/bootstrap/test/cold-workflow-background-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/remote-host-stop-receipts.test.ts apps/zcode-cli/packages/bootstrap/test/remote-host-stop-bindings.test.ts apps/zcode-cli/packages/bootstrap/test/cold-workflow-clock-order.test.ts apps/zcode-cli/packages/core/test/background-task-lifecycle-order.test.ts && tsx --test --test-concurrency=1 apps/zcode-cli/packages/bootstrap/test/protocol-shutdown-process.test.ts packages/services/test/zcode-stdio-shutdown-settlement.test.ts",
+diff --git a/scripts/typecheck-root.mjs b/scripts/typecheck-root.mjs
+new file mode 100644
+index 00000000..ab809200
+--- /dev/null
++++ b/scripts/typecheck-root.mjs
+@@ -0,0 +1,41 @@
++import { dirname, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { runCommand } from "./spawn-command.mjs";
++
++const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++// Original root typecheck coverage and order. Each invocation releases its compiler graphs.
++export const ROOT_TYPECHECK_PROJECTS = Object.freeze([
++  "packages/rpc",
++  "packages/provider",
++  "packages/provider-node",
++  "packages/shared",
++  "packages/services",
++  "packages/client",
++  "packages/server",
++  "packages/zcode-server-cli",
++  "packages/ui",
++  "packages/web",
++  "packages/desktop/tsconfig.host.json",
++  "packages/desktop/tsconfig.main.json",
++  "packages/desktop/tsconfig.preload.json",
++  "packages/desktop/tsconfig.renderer.json",
++  "packages/desktop/tsconfig.scheduler.json",
++  "packages/desktop/tsconfig.tooling.json",
++]);
++
++/** Options are a local test seam; the command entry always uses the complete original list. */
++export function typecheckRoot({
++  cwd = root,
++  compiler = resolve(cwd, "node_modules/typescript/bin/tsc"),
++  projects = ROOT_TYPECHECK_PROJECTS,
++  env = process.env,
++} = {}) {
++  for (const project of projects) {
++    console.log(`[typecheck] ${project}`);
++    runCommand(process.execPath, [compiler, "-b", project], { cwd, env });
++  }
++}
++
++if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  typecheckRoot();
++}
+diff --git a/scripts/typecheck-root.test.mjs b/scripts/typecheck-root.test.mjs
+new file mode 100644
+index 00000000..03903aad
+--- /dev/null
++++ b/scripts/typecheck-root.test.mjs
+@@ -0,0 +1,39 @@
++import assert from "node:assert/strict";
++import { mkdtemp, writeFile, readFile, realpath, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { typecheckRoot } from "./typecheck-root.mjs";
++
++async function fixture() {
++  const cwd = await mkdtemp(join(tmpdir(), "root types ' "));
++  const compiler = join(cwd, "compiler fixture.cjs");
++  const log = join(cwd, "calls.jsonl");
++  await writeFile(compiler, `const fs = require('node:fs');
++const record = { pid: process.pid, cwd: process.cwd(), args: process.argv.slice(2), heap: process.env.NODE_OPTIONS, marker: process.env.TYPECHECK_FIXTURE_MARKER };
++fs.appendFileSync(process.env.TYPECHECK_FIXTURE_LOG, JSON.stringify(record) + '\\n');
++if (process.argv[3] === 'reject') process.exit(19);
++`);
++  const env = { ...process.env, NODE_OPTIONS: "--max-old-space-size=128", TYPECHECK_FIXTURE_MARKER: "caller-preserved", TYPECHECK_FIXTURE_LOG: log };
++  return { cwd, compiler, env, async calls() { return (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse); }, async close() { await rm(cwd, { recursive: true, force: true }); } };
++}
++
++test("serial root gate launches fresh compiler processes in order with caller environment", async () => {
++  const f = await fixture();
++  try {
++    typecheckRoot({ ...f, projects: ["project a", "project ' b", "last"] });
++    const calls = await f.calls();
++    assert.deepEqual(calls.map(call => call.args), [["-b", "project a"], ["-b", "project ' b"], ["-b", "last"]]);
++    assert.equal(new Set(calls.map(call => call.pid)).size, 3);
++    const expectedCwd = await realpath(f.cwd);
++    assert.ok(calls.every(call => call.pid !== process.pid && call.cwd === expectedCwd && call.heap === f.env.NODE_OPTIONS && call.marker === "caller-preserved"));
++  } finally { await f.close(); }
++});
++
++test("a real compiler subprocess rejection stops the gate before later projects", async () => {
++  const f = await fixture();
++  try {
++    assert.throws(() => typecheckRoot({ ...f, projects: ["first", "reject", "must-not-run"] }), /failed with code 19/);
++    assert.deepEqual((await f.calls()).map(call => call.args), [["-b", "first"], ["-b", "reject"]]);
++  } finally { await f.close(); }
++});

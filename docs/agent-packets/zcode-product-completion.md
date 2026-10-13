@@ -602,3 +602,18 @@ may carry that proof. Repository IO, atomic publication and registry refresh fai
 never infer no effect from error text or remove a possibly accepted account home. Preserve the
 existing queue, lock and flow; no new wire field, admission store or mutation owner. Root stops
 the current owned gate, records it as interrupted and reruns final acceptance on corrected source.
+
+### Q compiler-graph lifetime on the shared 16GB Mac
+
+The corrected external observer captures an actual kernel Warning mask during the single root
+`tsc -b` invocation; it safely interrupts only that check tree. Root authorizes the service Sol
+worker to add `scripts/typecheck-root.mjs` and small real-child regressions. Each of the original
+16 root projects runs in its own sequential compiler process, preserving order, build mode,
+caller environment and failure propagation. Root owns the package-script mapping, registration,
+stage labels and measured full acceptance. No TS configuration, checked project, assertion,
+deadline or release requirement is removed. External observation records the sysctl dispatch
+mask, free percentage, swap usage and owned RSS. The final bounded caller lowers every Node
+old-space ceiling to 2GiB. Advisory Warning remains visible; Critical/unknown mask or 512MiB
+swap growth within 30 seconds under Warning interrupts only this tree and fails.
+Percentage alone is not a pressure event. Unrelated user tasks and application processes remain
+outside this worker's process ownership.

@@ -234,6 +234,8 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0215 | [0215-development-memory-budget.patch](0215-development-memory-budget.patch) | `e19d34f928fde067dd85d70df4f044c3eb8fda7b` |
 | 0216 | [0216-declared-plugin-host-entrypoints.patch](0216-declared-plugin-host-entrypoints.patch) | `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39` |
 | 0217 | [0217-canonical-login-plugin-and-service-recovery.patch](0217-canonical-login-plugin-and-service-recovery.patch) | `b7941b6570a72385fd2710c493435ec5de455753` |
+| 0218 | [0218-native-login-no-effect-rejection.patch](0218-native-login-no-effect-rejection.patch) | `68ebb1af4d61fb75c4cb6a9a841b908c26a4b163` |
+| 0219 | [0219-bounded-root-typecheck-processes.patch](0219-bounded-root-typecheck-processes.patch) | `ebca395799e10e22ec8b35193a31197bea6ddf0a` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -308,3 +310,25 @@ No dependency, data migration, live login or OS service registration is added. S
 ASAR/Trae bundle and bounded native-interface disassembly are comparison evidence only; no
 closed source/assets are copied into this patch. Current acceptance is recorded separately in
 `docs/DOCUMENT-READINESS.md`; reconstruction does not promote whole-product usability.
+
+
+## Deterministic native-login rejection
+
+Candidate `c0a5c4214a7d5ec1355fa9782e32679097c3e666`, tree
+`68ebb1af4d61fb75c4cb6a9a841b908c26a4b163`. Patch 0218 distinguishes proven zero-account-write
+Facade preparation/file-lock transform rejection from unknown IO/publication outcomes. The
+original flow can clean its unpublished home and finish Cancel for the former; it retains home
+and reconciliation for the latter. No error-text inference, write replay, wire field or second
+store is added. Real Facade preflight and separate-repository CAS counterexamples pass, alongside
+an actual repository-IO refusal that stays unknown. Final acceptance remains recorded separately.
+
+
+## Root compiler graph lifetime
+
+Candidate `7e743abac1f00c847547d00816fc5026749bb9af`, tree
+`ebca395799e10e22ec8b35193a31197bea6ddf0a`. Patch 0219 checks the same original 16 root
+projects in the same order with separate sequential compiler processes. Each uses the original
+TypeScript build mode and caller environment; real failure stops later checks. Their graph
+lifetimes are bounded without changing TS settings, checked projects, deadlines or release gates.
+Real child tests cover separate PIDs, environment/path handling and failure propagation. Actual
+memory-pressure and complete delivery acceptance are recorded separately.
