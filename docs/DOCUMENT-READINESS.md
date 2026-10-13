@@ -197,11 +197,19 @@ ZCode inventory replaces historical Craft capability labels as evidence, not an 
 
 Q/Desktop is also execution-ready: direct checks exposed that the canonical command omitted
 Main/preload/renderer/scheduler. Existing type exports and a declaration derived from the actual
-preload API now close preload/renderer gaps; Main consumer errors still block the full new gate.
+preload API now close those gaps. The canonical command includes all five desktop runtime projects
+and tooling; Lead independently executed it successfully. All original strict CLI max-lines
+failures are corrected; the actual recursive package-level gate passes without suppressions.
 W backend tests cover actual Core/file/broker/SQLite, actual Host RPC and close/cold recovery,
 including synchronous reverse-request timer settlement and retry checkpoint anchors. The current
-styled pane/close worker uses authored port fixtures; visible native Host/pane/quit/relaunch proof
-and full current-source delivery/reconstruction remain required. No whole-project `usable` claim.
+styled pane/close worker uses authored port fixtures. Actual native first Save exposed Workbench
+update-depth and terminal-usage correlation defects; both are corrected with real consumer tests.
+Effective admitted input now survives hook/permission changes and lost checkpoint publication.
+Readonly projection avoids synthetic human turns and permits inspecting intact files despite an
+unsafe older checkpoint. Full original Workbench fixtures cover both locales; first-Save successful
+ACK and its own Session reveal receive additional regression coverage. Lead's new-build native
+save/quit/relaunch, final delivery chain and exact source reconstruction still remain required.
+No whole-project `usable` claim.
 
 P-View is execution-ready for the bounded existing plugin-tool bypass correction selected in the
 spec/packet. An actual Host and SDK counterexample writes owned data without any Session or
