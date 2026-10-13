@@ -273,3 +273,51 @@ old-space ceiling; remaining-step aggregate RSS peaks at 3779MiB with pressure 6
 tree `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39` without changing the main candidate index.
 Deferred visible product checks and whole-project `usable` promotion remain open; no baseline,
 permission, store, dependency, real profile or existing-data migration is introduced.
+
+### Shipped-artifact comparison and canonical recovery continuation — 2026-10-13
+
+Candidate `c7ec42243485c61375391ecafed478ee12ab78e2`, tree
+`b7941b6570a72385fd2710c493435ec5de455753`, is reconstructible from 217 ordered patches in
+an untouched base checkout; the original candidate index is unchanged. This continuation fixes
+pending decision publication without another physical provider write, uncertain native-login
+delivery, and partial plugin install/update projection and consumer refresh. Existing provider,
+flow, inventory, Session, permission and artifact owners remain. Focused real provider recovery
+tests pass 15/15; native login/service tests pass 27/27; original market Node tests pass 19/19.
+The actual Host/SessionDataLayer/ToolExecutor/permission approval proof preserves later drawing
+while saving its submitted snapshot and still requires the original close confirmation. Original
+rows across all 23 retained review database tables are unchanged before the next visible review.
+
+An actual server CLI build succeeded but its compiled ESM entry crashed on bundled CJS
+`require("fs")`. The original shared banner now uses module-relative `createRequire`; both
+compiled read-only status probes exit 0 on development Node24 and packaged Node22, from an
+isolated root with no service registration or data creation. Canonical delivery now rebuilds and
+executes that actual server entry. Source checks alone had missed this defect.
+
+The full `ea3bf89` invocation fails honestly at the native login owner's 400-line lint limit,
+with no memory cutoff. A same-owner stateless-helper extraction closes that error without a
+waiver. The later `c7ec422` invocation is **operator-interrupted, not passing** (exit -15):
+cross-review finds deterministic pre-writer/locked-CAS rejection classified as an unknown account
+write, preventing Cancel. Root stops only its owned process groups and delegates a typed no-effect
+correction under the packet. Its peak aggregate owned RSS is 2963MiB, pressure 41–58%; no
+recursive launcher or OOM is observed. Logs and the interruption reason remain under
+`/Volumes/AIGC/.fleet-tmp/fleet-horizontal-comparison-2026-10-13/recovery-final/`.
+Final corrected-source delivery and actual first empty-Session Save/close/restart are still open.
+
+Comparison now reads shipped implementation, not just UI or announcements. Installed MiniMax
+Design is 3.0.21/build 3.0.21.85; its 51MB ASAR is statically extracted and main/preload/renderer
+producer-consumer paths traced. Installed Trae is IDE 3.6.2, with proprietary chat bundles,
+native IPC/library metadata and a bounded 120-byte ARM64 `_BP_GetInterface` disassembly. It is
+not proof of an independently installed SOLO/TraeWork. Artifact digests, byte offsets, static
+branches and unknowns remain in `reverse-artifacts`, `reverse-minimax` and `reverse-trae` beside
+the run evidence. REA's latest cloned workflow/source is consulted; absent CLI/dist/connected
+tools are reported, and ordinary static results are never called REA Evidence records.
+
+MiniMax's persisted-versus-runtime publication and guarded checkpoint mechanisms, and Trae's
+staged context publication/current MCP membership and old-process replacement checks, guide
+existing-owner counterexamples. Reference code also swallows some failures; no blanket correctness
+is assumed. Gateway authorization, proprietary database transactions and cold crash durability
+remain unknown. Installer hashes/metadata are retained; read-only mounting is denied by the OS,
+so equality of installer members to installed apps is not claimed. No closed source/assets are
+copied into the product, and no user credential/profile/database or target program is executed
+for this static analysis. Capabilities remain `wired but not visually checked` where visible
+acceptance is pending; no whole-project `usable` promotion or historical wave opening.

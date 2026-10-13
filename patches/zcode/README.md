@@ -233,6 +233,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0214 | [0214-reference-derived-journey-recovery.patch](0214-reference-derived-journey-recovery.patch) | `8f9e0722140eea1822eed1e4575bca89ee393a23` |
 | 0215 | [0215-development-memory-budget.patch](0215-development-memory-budget.patch) | `e19d34f928fde067dd85d70df4f044c3eb8fda7b` |
 | 0216 | [0216-declared-plugin-host-entrypoints.patch](0216-declared-plugin-host-entrypoints.patch) | `1e6e6cf3562f8e9bb88c327cf2a5b27ce386bc39` |
+| 0217 | [0217-canonical-login-plugin-and-service-recovery.patch](0217-canonical-login-plugin-and-service-recovery.patch) | `b7941b6570a72385fd2710c493435ec5de455753` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -290,3 +291,20 @@ The declaration is a capability convention, not authentication. SEA keeps its or
 Default plugins are not hidden in fixtures; original manifest data and explicit MCP configurations
 remain intact. A bounded actual Host counterexample now completes without recursive children.
 Fresh artifacts/current canonical acceptance are recorded separately; no usability promotion.
+
+
+## Canonical login, package and service recovery
+
+Candidate `c7ec42243485c61375391ecafed478ee12ab78e2`, tree
+`b7941b6570a72385fd2710c493435ec5de455753`. Patch 0217 preserves prior memory/entry admission
+corrections and closes uncertain native-login replies, pending decision-source publication,
+physical no-op provider writes and partial plugin install/update consumer refresh. The same
+provider repository, login flow, plugin inventory, Session and permission owners remain.
+Server bootstrap derives its real entry from its own module, preserves valid current-service
+fast paths and validates before registration changes. Its ESM build now supports bundled CJS;
+the canonical delivery chain builds and actually executes the compiled read-only status entry.
+Real approval while drawing preserves the submitted snapshot and newer unsaved strokes.
+No dependency, data migration, live login or OS service registration is added. Static MiniMax
+ASAR/Trae bundle and bounded native-interface disassembly are comparison evidence only; no
+closed source/assets are copied into this patch. Current acceptance is recorded separately in
+`docs/DOCUMENT-READINESS.md`; reconstruction does not promote whole-product usability.

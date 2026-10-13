@@ -493,3 +493,112 @@ the existing SEA command, genuine source/generated CLI launch and original runti
 The declaration is a capability convention, not a security credential. No name-only heuristic,
 NODE_TEST_CONTEXT workaround, fixture-only builtin suppression, timeout increase, second host or
 permission waiver. Lead owns registration, fresh CLI staging, public seams and measured acceptance.
+
+### Q/C/D/P continuation after memory correction (2026-10-13)
+
+The owner authorizes finishing related defects and resuming whole-project optimization. Existing
+ZC-COMPLETE gates remain In Progress; start from candidate `a499ba1`. Keep one heavy verification
+invocation on this 16GB Mac, bounded log output, and short-context GPT-6.1 Sol workers. No live
+provider login, paid inference, OS service registration, profile migration or dependency change.
+
+The service-entry worker claims `packages/zcode-server-cli/src/cli.ts`, its private
+`runtime/serviceBootstrap.ts`, narrow `runtime/stableLauncher.ts` bootstrap argument handling if
+needed, and focused same-owner tests. Derive a genuine server main/compiled entry from the
+module's own location, never caller argv. Validate before stopping an existing daemon or writing
+registration data. Reuse the same verified entry for explicit detached fallback; preserve release
+priority, existing launcher identity, source-loader compatibility and real failure status. Root
+owns test registration/build, public option additions and all actual service effects.
+
+The decision-recovery worker claims `packages/ui/src/settings/DecisionSourceEditor.tsx`, narrow
+`DecisionModelDefaults.tsx` reload-result consumption if needed, and focused existing consumer
+tests. Preserve the original committed request/identity and auxiliary provider facade. A committed
+source with pending registry publication can recover through its existing reload/idempotent save
+instead of remaining permanently disabled. No duplicate source mutation, stale-context unlock,
+new model/provider store or whole-form reset; keep unsaved newer choices inspectable. Facade/public
+changes require an exact consumed-field proposal to Root first.
+
+Native-login continuation first traces the original `model-provider-section/NativeCliConnectionSection.tsx` and
+`packages/services/src/model-provider/nativeCliConnection.ts` lifecycle. Root delegates exact code
+claims after the pending/committed/lost-ACK counterexamples are specified. Preserve original flow,
+account, process and permission owners; do not turn a transport error into a terminal cancellation
+or replay login. An uncertain flow needs an explicit recovery/cancel path and canonical completion
+evidence. No second auth store, arbitrary CLI execution or real account/process mutation in tests.
+
+Root delegates the native-login worker these exact paths in a new worktree from `a499ba1`:
+`packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx`,
+`packages/services/src/model-provider/nativeCliConnection.ts`, and original same-owner
+`ui/test/nativeCliConnection.browser.test.tsx` / `services/test/native-cli-login.test.ts` fixtures.
+Preserve flow ID and captured original service through unknown poll/cancel delivery; offer same-flow
+recovery and explicit cancel, with generation/service fences. Reuse existing status DTOs. The
+original flows Map may retain bounded terminal receipts after dropping process references, so
+lost-ACK poll can return the same connected result without repeating inspect/config writes. TTL
+and a bounded retained count must not add live timers that prevent normal exit. Cancel during a
+commit cannot claim no effect; original-home cleanup must never remove a newer accepted flow's
+home. Root owns any wire/locales/test registration changes, actual renderer checks and integration.
+
+### D/P corrective cross-review continuation
+
+The real decision-source recovery returns the existing canonical content, but its repository still
+atomically rewrites that identical content and emits `updated`. Root delegates
+`packages/provider-node/src/personal-provider-config-repository.ts` and focused same-owner tests
+to the service worker in a new worktree from `ea3bf89`. Retain the existing lock, transformation
+validation, serialization, recovery and disposal. Compare the original serialized/canonical form
+inside the lock; an unchanged update returns the current snapshot without a physical write or
+false update event. Genuine changes and external concurrent writers remain observable. Do not add
+a new repository, equality cache, revision scheme, serialization or policy waiver.
+
+Install/update have the same partial-commit boundary as uninstall: package/record may exist before
+config failure or a lost reply. Root delegates `packages/ui/src/store/pluginManagementStore.ts`,
+narrow `pluginManagementStoreLoading.ts` original observation behavior, `settings/PluginStorePage.tsx`
+and focused original-owner tests to the completion worker in a new worktree from `ea3bf89`.
+Read the canonical inventory on failed install/update without replay, preserving the original
+diagnostic. Refresh existing draft Session/Skill definitions when a current canonical change is
+observed, including partial failure. Current workspace/service/scope/generation must own both
+publication and post-action refresh; stale/ABA completions must not refresh another context. No
+second installed state, install queue, cached permission authority or new backend/wire method.
+
+### Native login structure and built server entry acceptance
+
+The canonical run exposes the native login owner exceeding the existing 400-line lint limit.
+Root delegates behavior-preserving extraction of its adapter/flow types and stateless identity
+helpers into `services/src/model-provider/nativeCliConnectionHelpers.ts`. The original factory
+retains its flows/adoptions Maps, admission, cleanup, cancellation and reconciliation, and its
+public exports remain available. No lint threshold or waiver changes.
+
+An actual server build succeeds but executing `dist/server-cli.js status` fails during bundled
+CJS initialization with `Dynamic require of fs is not supported`. Root delegates only
+`packages/zcode-server-cli/tsup.config.ts` and same-owner authored CJS/ESM build tests. Retain the
+Node 22 target, original entries, external dependencies and staging; make the original ESM banner
+provide the standard module-relative CJS bridge. Root owns actual product build, compiled-entry
+execution, test registration and the canonical chain. No OS service registration is selected.
+
+### Shipped-artifact comparison
+
+The owner requests real reverse analysis of installed MiniMax Design and Trae, beyond UI control.
+Sol readers inspect the exact installed ASAR/extracted resources and native module metadata;
+Root records SHA/version, read-only installer inspection and resulting source comparisons.
+External evidence stays under the owned comparison directory. Do not copy closed implementation
+or assets into product source. Static calls and branches establish static behavior only; they
+do not prove runtime success, gateway authorization or crash durability. Preserve unknowns and
+tool availability honestly. The currently installed Trae IDE is not evidence that TraeWork/SOLO
+is installed. Findings can justify a narrowly delegated correction in the original ZCode owner.
+
+The exact approval/drawing integration proof may extend the original
+`packages/ui/test/nativeWhiteboardCloseStop.test.ts` using its real Host, SessionDataLayer,
+ToolExecutor, permission broker and original draft/close stores. No Save/permission receipt stub,
+product change or new owner is selected; Root owns registration and acceptance.
+
+### Native login deterministic pre-write rejection
+
+Read-only cross-review on `c7ec422` finds that native login marks writing before the original
+Facade connection fence, and before the original file-lock CAS fence. A definite zero-account-write
+rejection can therefore retain an unpublished home and make Cancel permanently report unknown.
+Root delegates the exact `mergeDiscoveredModels` branches in provider `facades.ts` and
+`config-service.ts`, a narrow same-owner error helper/export if needed, the original service's
+login commit catch, and same-owner real Facade/repository tests. A typed deterministic no-effect
+error is authorized for this existing service consumer, preserving the original message/cause.
+Only failure before invoking the target writer, or inside its transform before producing a write,
+may carry that proof. Repository IO, atomic publication and registry refresh failures stay unknown;
+never infer no effect from error text or remove a possibly accepted account home. Preserve the
+existing queue, lock and flow; no new wire field, admission store or mutation owner. Root stops
+the current owned gate, records it as interrupted and reruns final acceptance on corrected source.
