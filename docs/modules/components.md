@@ -328,6 +328,28 @@ read manifest → validate dependencies/scope/license → build activation plan
 No production caller exists for this pipeline yet. The archived data-only resolver is not this
 pipeline and must not be reported as one.
 
+## Fleet surface host on the upstream UI-plugin contract (P12, TODO delivery 3)
+
+Upstream ZCode v3.15.1 parses manifest `ui.surfaces[]` (`adapters/src/plugins/ui-surfaces.ts`):
+`id`, `title`, `icon`, MCP `server`, `ui://` `resourceUri` and `availability: "session"`. Pages run
+in the desktop plugin sandbox (`desktop/src/main/pluginSandbox/*`) over MCP Apps
+(`bootstrap/src/zcode-protocol/mcp-ui/*`) and appear only inline or in the conversation side pane.
+
+Fleet extends that same declaration instead of inventing a second manifest or host:
+
+| Field | Upstream | Fleet addition |
+|---|---|---|
+| `placement` | absent (= conversation side pane) | `"session-pane"` (default), `"sidebar"`, `"main"`, `"right-tool"`, `"settings"` |
+| `availability` | `"session"` | adds `"project"` (opened from the Project's suite set) and `"app"` (global page) |
+| `operations` | page tools via `registerTool()` | listed so the page assistant and workflows can call them without the page open |
+
+Rendering, sandbox, CSP, permission gate, MCP Apps messaging and resource subscriptions stay
+upstream's. An upstream plugin without the new fields behaves exactly as upstream. Fleet's
+first-party suites (canvas, trading/quant research, Office, Board) declare placements on this host;
+the shell reads the parsed surfaces to build sidebar entries and main routes. A Project's suite
+selection (OV-023) decides which `project` surfaces appear. Status: `not implemented`; contract
+first, then one Board or Office surface in `main` placement as the proof.
+
 ## Component manifest minimum
 
 These are target manifest responsibilities, not fields already validated by a current TypeScript
