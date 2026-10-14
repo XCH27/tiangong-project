@@ -238,6 +238,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0219 | [0219-bounded-root-typecheck-processes.patch](0219-bounded-root-typecheck-processes.patch) | `ebca395799e10e22ec8b35193a31197bea6ddf0a` |
 | 0220 | [0220-first-empty-whiteboard-entry.patch](0220-first-empty-whiteboard-entry.patch) | `6d6fe24d0bf8d5881b7449fef977984b486a4923` |
 | 0221 | [0221-feature-receipts-and-definition-publication.patch](0221-feature-receipts-and-definition-publication.patch) | `b25de0eb074b10cb5e0e21b5887b9c9552e42aeb` |
+| 0222 | [0222-existing-plugin-workflow-and-saved-artifact-loops.patch](0222-existing-plugin-workflow-and-saved-artifact-loops.patch) | `932a6fb7be23f7e962a05c90a6b83afbba732649` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -362,3 +363,26 @@ original command and read monotonic workflow journal evidence; process revisions
 across epochs. Post-effect storage/index failures remain uncertain. No data migration, dependency,
 wire schema or second state authority is added. Static closed-software comparison is evidence
 only; final behavioral and delivery acceptance is recorded in `docs/DOCUMENT-READINESS.md`.
+
+
+## Existing package, workflow and saved artifact loops
+
+Candidate `cfdc5a0601ca848b29a650e5fff0a786e46da1b3`, tree `932a6fb7be23f7e962a05c90a6b83afbba732649`. Patch 0222 publishes confirmed original package
+changes to deferred drafts and Skill management/read projections without reinitializing active
+Session discovery. Failed writes require clean canonical observations; diagnosed empty lists
+do not authorize withdrawal. Original uninstall receipts preserve failure and retained user data.
+Keyboard activation distinguishes a plugin card from its nested original menu.
+
+Configure/Amend persists the original query-only identity before dispatch and final accepted
+result before reply, joining Cancel/Resume in the same original registry/writer. Same-key checks
+recover inplace caps or the exact successor, including proof arriving during an older empty
+read; unknown effects never authorize replay. The selected HTML output opens its journal/Store
+version through original read admission, an explicit optional snapshot-path request and both
+original service forwarding layers. Old strict calls retain their response shape. Local
+filesystem tampering/cross-read races are not claimed to be prevented by an absolute path.
+
+The same tsup and Vite build commands now settle sequentially, with supported rc.15 native
+pool defaults of one and explicit caller values retained. Hidden maps, minification, original
+coverage, deadlines, heap/pressure gates and clean paths remain. No dependency, data migration,
+alternative store or execution host is added. Lead records actual delivery and native acceptance
+in `docs/DOCUMENT-READINESS.md`; source replay alone is not capability acceptance.

@@ -201,3 +201,11 @@ This authorization does not promote capabilities or historical waves.
 
 Spec and exact claims: `modules/zcode-product-completion.md`, `agent-packets/zcode-product-completion.md`.
 Historical Craft W1–W5 stay Locked. These gates do not promote capability results.
+
+
+2026-10-14 acceptance retains every gate above as In Progress. The
+[existing-loop acceptance](audits/2026-10-14-zcode-existing-loop-acceptance.md) promotes only exact
+local/native package-definition, Configure/Amend receipt and saved-HTML/cold-history loops.
+The production workflow rollout default and inherited Interrupted-effect refusal remain.
+Complete current delivery and fresh 222-patch reconstruction passed; original data/configuration
+were preserved/restored. This is capability evidence, not a new roadmap or Locked-wave promotion.

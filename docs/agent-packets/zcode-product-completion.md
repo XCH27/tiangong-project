@@ -759,3 +759,103 @@ read original `workflowRunEvents` after the issue sequence, bounded to 500. A pr
 sequence hint requires that exact Session/run's newer persisted `run-started` event and a current
 projection at least as new as it. Both awaits fence current scope/service/token/observation epoch;
 unknown ACK, missing run or a future unpublished event cannot unlock another Resume. No replay.
+
+## Current exposed-loop implementation continuation — 2026-10-13
+
+Owner requests implementation of the decomposed mechanisms, with native user-path acceptance.
+Starting source is `cf093a502306c32e30d2a44d8df5756c7733c04c`. Existing D59 gates remain In Progress;
+historical waves and proposed Library/ArtifactRef/ExternalJob/native editor contracts stay closed.
+Reference databases, code and assets are not transplanted. Root owns registration, locales,
+shared internal/public contracts, builds, actual native review and ordered source reconstruction.
+Workers are GPT-6.1 Sol, isolated under `/Volumes/AIGC/.fleet-tmp/fleet-current-loop-2026-10-13/worktrees/`.
+
+### P — package removal and definition publication
+
+Current Core availability correctly filters withdrawn skills and must be preserved. The exposed
+consumer gap is package inventory publication without refreshing open Skill/reference projections
+or invalidating the original warmed draft; newly added package skills need actual discovery evidence.
+Worker owns original `ui/src/settings/usePluginUninstall.ts`,
+`PluginsSection.tsx`, `PluginStorePage.tsx`, narrow same-owner uninstall consumer helpers and focused
+Node/browser/real App regressions. Separate current canonical-change refresh from success-only
+dialog finalization using the original package receipt. Successful removal and confirmed partial
+removal invalidate the original deferred draft/Skill projection; uncertainty retains error and
+confirmation without repeating removal. Both sides of waits retain service/scope/epoch/ABA fences.
+Original busy refusal, user-data retention, grants and boolean compatibility remain.
+The same current package install/update consumers in `PluginsSection.tsx` and `PluginStorePage.tsx`
+are included when a real package-version/new-skill counterexample confirms the missing original
+draft/catalog publication. Changes to Core/context or adapter discovery require an exact actual
+counterexample and separately approved existing-owner path, never a second cache or watch service.
+The actual package v1→v2/new-skill red confirms a warmed runtime preserves its initial catalog,
+while a new original App discovers the new skill. Preserve that active-runtime snapshot and
+immediate withdrawal filtering. Add private `uninstallPluginWithReceipt` in the original UI store
+without changing its boolean method; canonical package changes invalidate the original warmed
+deferred draft and open Skill projections so their next discovery uses the new package contents.
+The existing `SkillsSection.tsx` management projection also receives its current target's original
+draft-runtime invalidation version as a guarded reload signal. Preserve its service/scope/read
+generation and Header Refresh/Remote Sync inventory behavior; no additional Skill authority.
+
+### C-Handoff — saved HTML output identity
+
+Confirmed exposed gap: history/completion opens saved HTML through mutable `sourcePath`, even though
+the original workflow ArtifactStore retains that output version's bytes. Worker owns the exact
+original HTML-open path in `ui/src/hooks/useAppPanels.ts`, `app-shell/WorkflowArtifactSidePane.tsx`,
+the existing HTML card and bounded same-owner helpers/tests. Open the selected canonical output
+identity/version, including after another Session changes/removes the source file. Reveal-source
+remains a separate existing file operation. No unsafe renderer iframe, alternative byte store,
+server or dependency. Root must approve any required original Browser/desktop protocol or service
+seam before edits there. Exact parent/workspace/service/artifact/version/generation ownership,
+visible unavailable/error, permission and cold original reader acceptance are required.
+Root defines the narrow consumed seam in original contracts `DynamicWorkflowRunArtifactBytes`,
+bootstrap `dynamic-workflow-run-artifact-read.ts`/`v4-gateway-workflow-runs.ts`, and shared original
+workflow-artifacts schemas: optional `localSnapshotPath` comes only from the selected journal URI's
+original local HTML Store read, with bounded absolute path/URI/MIME checks. Existing ReadParams
+opts in with optional `includeLocalSnapshotPath`; old requests preserve their old response shape.
+Preview opt-in re-reads that same authorized owner to check cached body/path coherence; no raw
+caller-selected path or new method. Workers may pass the field through original Byte hook/Body;
+the local independent Browser opens it, with current Workspace reveal kept distinct. Old/missing
+preview capabilities cannot fall back to a mutable workspace file. A path view is not protection
+against OS tampering of the underlying authoritative Store or a change after validation.
+
+### C — configure/amend control recovery
+
+Actual original UI producer→transport→App/SQLite reproduces two successors from one intended Apply
+after an accepted reply is lost; cold original-key query is unknown. Root delegates original
+`useWorkflowRunPaneSettings`, settings Popover/state/Form and necessary existing timeline producers
+in `SessionPane`/`ConversationWorkflowDigests`, the original registry/replay/control helper, and
+the existing Gateway final-fact filter. Extend that original writer to the actual final accepted
+Amend ACK with its result IDs/hint. Capture/persist one query-only command identity before Apply;
+unknown blocks another Apply, explicit same-key read recovers the original result and follows
+the original successor projection/journal. Scope/service/parent/endpoint/epoch/ABA fences govern
+both awaits and dialog/follow publication. Only proven pre-effect codes release uncertainty;
+generic/start-failed can occur after stop/new entry and remain unknown. Original Cancel/Resume,
+cap64/durable-first storage, input recovery and boolean/optional caller compatibility remain.
+The necessary original `conversationRowContext.ts` optional UI recovery field, SidePane settings
+callsite and narrow Cancel/Resume hook type discrimination are included. All uncertain controls
+may block new mutation, while only their original typed owner presents/checks/settles that result.
+No automatic replay, alternate engine or broad workflow schema is authorized. All workers keep
+lightweight serial tests at 768 MiB or less and do not run Electron or heavy gates during Root's
+owned native review. Lead records exact actual outcomes, not blanket usability.
+
+Lead additionally delegates the exact existing HTML read consumers
+`packages/ui/src/v4/agentConversationTransportWorkflowRuns.ts` and
+`packages/services/src/zcode-agent/zcodeAgentService.ts`, its original
+`zcodeAgent.ts` optional read-parameter declaration, plus a focused original-service
+consumer regression. Both existing whitelists must preserve the opted-in snapshot flag;
+ordinary strict calls retain their prior wire shape. Shared declarations remain Lead-owned.
+
+### Q/Desktop — actual build memory continuation
+
+The monitored current desktop build was interrupted under kernel Warning with rapid swap growth;
+it is a failed acceptance. Lead delegates only original
+`packages/desktop/scripts/run-production-build.mjs` and
+`packages/desktop/scripts/production-build-isolation.test.mjs` to serialize the same tsup and Vite
+commands, retaining original clean paths, cwd/environment, complete outputs and failure propagation.
+A focused actual-child check must prove no overlap and no later child after a prior failure.
+No heap/pressure/deadline waiver or coverage reduction; Lead owns actual rebuild and delivery proof.
+
+Actual styled plugin recovery additionally exposes nested menu Enter bubbling into the parent
+market card's keyboard activation. Lead delegates the exact original
+`packages/ui/src/settings/PluginStoreCard.tsx` target/currentTarget guard plus original renderer
+regression. The menu must remain keyboard-accessible without opening the card detail; direct
+card keyboard activation remains. Required authored fixture DTO fields and distinct original
+Skill-owner read evidence may be corrected, without suppressing assertions or increasing deadlines.

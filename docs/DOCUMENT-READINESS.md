@@ -466,3 +466,34 @@ These bounded corrections remain **wired but not visually checked** for a new ma
 Host/UI acceptance. Actual styled fixtures passed; no blanket `usable`, whole-product Ready or
 historical Locked-wave promotion is made. Proprietary native/cloud transactions, live login and
 Windows execution remain outside this evidence.
+
+
+## Existing plugin, workflow and saved-version native acceptance — 2026-10-14
+
+Candidate `cfdc5a0601ca848b29a650e5fff0a786e46da1b3`, tree
+`932a6fb7be23f7e962a05c90a6b83afbba732649`, is retained by patch 0222.
+[Exact implementation and acceptance](audits/2026-10-14-zcode-existing-loop-acceptance.md) records
+real package v1→v2→uninstall/Skill publication, query-only Configure/Amend/cold receipts and original
+HTML version opening. Native A saved A1; independent B's original ToolExecutor changed the source
+to B2; A1 remained readable after normal quit/reopen and withdrawal of the temporary QA model.
+The native successor retained an inherited Interrupted tool receipt rather than replaying it.
+Actual lost-ACK injection is Host/styled evidence, not claimed as native GUI injection.
+
+Canonical delivery exits 0 in 825.42s: 1950 Node executions, 156 styled cases, all 17 renderer
+invocations exit 0/no signal. All 16 root and strict CLI types, actual CLI/server/desktop builds
+and lint/architecture gates pass. Peak summed owned RSS is 2727008 KiB (2.60 GiB), at most 25
+processes, caller heap 2 GiB, kernel masks1/2/no Critical, swap4375.62–4590.94 MiB; no final OOM
+or guard stop. Original tsup/Vite commands now run sequentially and supported rc.15 native pool
+defaults are one. Interrupted earlier runs remain failed evidence; total RSS is not universally
+bounded. All 222 patches reconstruct the exact tree, including fresh materialization/post-build.
+
+All original 23 tables/426 exact rows and original configuration are retained; integrity is ok.
+Baseline native automatic summary added three external Grok records before the local fixture;
+subsequent native acceptance added three localhost QA records and zero other-provider records.
+The eight original providers/credentials/preferences and current draft model are restored. Only
+authored QA plugin/source were removed; review desktop and loopback fixture are closed.
+
+Lead promotes only these exact local/native loops to **usable** with the development-only
+workflow mode and explicit interrupted-effect limits recorded above. Native language was Chinese;
+both locales passed styled checks. D59 remains In Progress; production rollout, historical Locked
+waves, all capabilities and proprietary/Windows behavior are not globally promoted.
