@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Adversarially rechecked the commercial design corpus against failure branches and consumers,
+  correcting unsupported durability, directory-filtering, receipt and source-anchor claims.
+  Isolated original-method counterexamples remain distinct from native application execution;
+  source extraction and matching hashes do not certify whole-design correctness.
+
 - Expanded the existing AIGC commercial reference corpus to seven installed applications:
   NewMax, TRAE IDE/SOLO, MiniMax Design, Manus Studio, Minara, Claude Desktop and QoderWork CN.
   Preserved source revisions and earlier analyses, bound frontend/local-backend designs to
