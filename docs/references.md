@@ -428,6 +428,50 @@ or secret access, paid request or third-party mutation was part of these audits.
 | [NewMax reference index](/Volumes/AIGC/天工参考/commercial/NewMax/README.md) | Installed 1.1.18 is retained separately from installer 1.1.19. DMG SHA256 `dc723fd60f170a51917814c07c332e9a8e9cca409beee4e2df011ffd5400063e`; installer ASAR `42038c7a7a6991d013a1a0fe945b20d2cda69256e5dc9e12746176854bf4ee99`. Decoded main/preload/renderer reading aids retain original spans and warnings; exact synthetic leaf tests remain synthetic. | [Comparison and dispositions](/Volumes/AIGC/天工参考/commercial/NewMax/FLEET-COMPARISON.md): bounded capability search/invoke and packaged topic help inform Context; sender-bound app view/data plumbing informs Components. The broker exists in both versions. Capsule backend entry, manifest permissions and separate AI path do not prove a unified application-operation host; app deletion loses its data. Hosted services, native helper internals and live behavior remain unknown. |
 | [Minara reference index](/Volumes/AIGC/天工参考/commercial/Minara/README.md) | Installed 1.2.1 build `36741430652.1`, claimed source commit `164e677a43f63bc03eafe95a94a3ad5460acd79a`. DMG SHA256 `01a9060fa1b135876cdb8fb6ff0351b908e6ef6a389a453bdcced55b613dad36`. Its separate app copy matches 12,837 file/symlink records; primary rechecked 2,089 exact gateway spans, 6,363 ASAR entries and 83 evidence anchors. Installer mounting failed, so full installer/app equivalence is unproved. | [Source audit and Fleet comparison](/Volumes/AIGC/天工参考/commercial/Minara/research/AUDIT.md): GUI leases retained until settlement inform Browser/remote operations; account-bound unknown-submission recovery informs Media; accepted-version preview/data contracts inform Components. Conditional sequential automations and Full permission defaults do not satisfy Fleet governance. Office XML edits are not a native human editor; finance behavior is not Fleet product intent. |
 
+### Seven installed desktop clients — source-backed design corpus
+
+The owner's broader reverse-inspection request is retained in the existing commercial record.
+The [AIGC corpus index](/Volumes/AIGC/天工参考/commercial/README.md) and
+[machine design index](/Volumes/AIGC/天工参考/commercial/DESIGN-INDEX.json) bind seven applications,
+their separate revisions, frontend/state, bridge/IPC, local services, schema and failure/recovery
+paths. This is `EVIDENCE_ONLY`; it is not a runtime, owner-visual, whole-cloud or original-source
+reconstruction claim. NewMax remained primary-only. Bounded independent readers inspected the
+other clients and cross-reviewed source/claim bindings; no proprietary code enters Fleet.
+
+| Application | Prior work actually verified | Current design evidence and boundary |
+|---|---|---|
+| NewMax | Preserved installed 1.1.18 exactly matches current ASAR `becb4a2c4b43dd3363bc661edeefaff7c34863469dcceb57a460a716d7d8cc87`; richer installer 1.1.19 remains separate. Prior deobfuscated/source-mapped review and 77 source-area rows exist. | [Primary design map](/Volumes/AIGC/天工参考/commercial/NewMax/current-review/ARCHITECTURE.md); 57 bundled table declarations in 26 SQL carriers, 924 preload operations with 760 unique literal Main pairings. Lexical declaration counts include dependencies; pairing is not runtime registration. Earlier model/configuration traces below remain authoritative. |
+| TRAE | Prior IDE 3.6.2 source paths, hashes and 63 fragments match. They did not cover standalone SOLO. | [Design](/Volumes/AIGC/天工参考/commercial/TRAE/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/TRAE/FEATURES.md): separately preserved IDE `TRAE_I18N` 3.6.2 and SOLO `SOLO_I18N` 0.1.69. Lazy SOLO project/session/composer/artifact/schedule paths are now traced. Corrected MessageInput anchor/ordinary Stop ignores wait result; guarded follow-up is a separate branch. |
+| MiniMax Design | Existing 15 mechanisms/135 original-byte anchors remain and match; 3.0.21/build 3.0.21.85 and 4.0.0/build 4.0.0.95 stay separate. | [Expanded design](/Volumes/AIGC/天工参考/commercial/MiniMax-Design/current-review-4.0.0/ARCHITECTURE.md): 18 additional curated designs/125 canonical anchors across local Gateway, CanvasV3/Tasks, sidecars and recovery. Broad indexes include repeated/dependency sections, not unique product features. |
+| Manus Studio | No equivalent prior complete dossier located. Initial 2.0.3 observation differs from acquired 2.0.7/build 2.0.7.13; the acquisition cannot explain the change. | [Design](/Volumes/AIGC/天工参考/commercial/Manus-Studio/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/Manus-Studio/FEATURES.md): 54 curated anchors, core frontend/Main/operator boundaries, eight independently versioned addon archives. The video addon explicitly reports dirty/local-only source; its coordinator design is not attributed to a formal vendor release. Declared task-addon operations refuse execution in the shipped server. |
+| Minara | Existing exact app/Gateway/UI source review and all 83 prior canonical anchors revalidated. | [Expanded design](/Volumes/AIGC/天工参考/commercial/Minara/current-review/source-map-1.2.1/ARCHITECTURE.md): 20 curated families/149 canonical anchors. Build acceptance and frozen-run/startup/scheduler producer chains are bound. Skipped browser verification, incomplete post-DB compensation and team-routine missed-run scope are explicit; ordinary run admission does not require every definition to be active. |
+| Claude Desktop | No equivalent prior full desktop dossier located; CLI/SDK references are different evidence. | [Design](/Volumes/AIGC/天工参考/commercial/Claude-Desktop/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/Claude-Desktop/FEATURES.md): 2.37337.1, 42 curated anchors, 94 generated interfaces/1334 method/store/event entries with 94 Main bindings. Cowork, Code, governed artifacts, general Frames and Spaces retain separate owners and policies. Conditional contracts do not establish live availability. |
+| QoderWork CN | Earlier UI/material evidence did not establish this complete local design map. | [Design](/Volumes/AIGC/天工参考/commercial/QoderWork-CN/0.9.9/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/QoderWork-CN/0.9.9/FEATURES.md): 0.9.9; 139 emitted module markers, 37 SQL files, 16 manifests, 60 curated spans. Writing UI save, success SessionEnd snapshots and optional watcher broadcasts are distinct. CWD strings do not prove native ownership/freshness; view navigation is not complete permission governance. Canvas request/notification mismatch remains a static candidate. Stable family IDs have an explicit Markdown crosswalk. |
+
+The primary verified all seven final dossier manifests: 1002 indexed output files match their
+bytes/hashes. Source span checks and independent red/recheck records are retained in the AIGC
+`commercial/analysis-tools` folder. Counts describe indexed artifacts and reviewed declarations;
+they do not mean every anonymous closure, dependency or native implementation is understood.
+Original app copies, notices, raw bytes, source maps and older reports/manifests remain.
+
+REA was checked against [its official source](https://github.com/morluto/rea). Independent source
+`efbc486b9bf8ab46da16fdd6ed88128849e30e81` and verified npm `rea-agents` 6.5.0 were staged on AIGC,
+preserving `fa0a9b2d328a07d8ec2924dc224d51c620981dcc`/6.4.0. No global MCP setup or toolchain upgrade
+was made. The large directory graph exceeded its parent 768 MiB heap. The smaller source subset
+retained partial Evidence but the Darwin ownership helper failed to compile under both xcrun
+and the matching explicit Swift/SDK path with SIGTRAP. Native inspector calls hit that blocker;
+failed/error JSON and caller-input corrections remain. This corpus uses ordinary streamed/mmap,
+parser/source-map inspection; it is not successful REA whole-application decompilation.
+
+Useful mechanisms are exact page/session/resource binding, callback-derived capabilities,
+domain-native human/Agent operations, service leases, accepted versions and query-only recovery.
+Adverse defaults and unproved guarantees remain rejected evidence. Compare current upstream
+ZCode's page/plugin contract first, through [Components](modules/components.md), before admitting
+Fleet product changes. No target code/app, personal profile, paid inference, account operation,
+production dependency or live-authority change occurred. Cloud service bodies and opaque native
+algorithms remain unavailable; packaged clients do not establish server storage/security or
+visual/runtime acceptance.
+
 ### Primary NewMax model-configuration comparison
 
 The primary traced installer 1.1.19's `ModelSettingsTab`, `NewPresetConfigPanel`, imported

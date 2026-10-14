@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Expanded the existing AIGC commercial reference corpus to seven installed applications:
+  NewMax, TRAE IDE/SOLO, MiniMax Design, Manus Studio, Minara, Claude Desktop and QoderWork CN.
+  Preserved source revisions and earlier analyses, bound frontend/local-backend designs to
+  actual code/schema/recovery paths, corrected cross-review overclaims and recorded opaque
+  native/cloud boundaries. Fleet code, accounts and reference pins remain unchanged.
+
 - Patch 0224: native document boundaries accept a path that reaches the workspace through a
   canonical ancestor (macOS `/var` -> `/private/var`, workspace aliases) while still rejecting
   symlinks inside the workspace. With the default macOS TMPDIR six native-file cases had failed;
