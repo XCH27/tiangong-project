@@ -1,34 +1,231 @@
-> ## Hard rule — product baseline (2026-10-10)
->
-> **产品基线 = `.fleet/zcode`（ZCode）；Craft Agents / `app/` / 本 spine 的 Craft Exit 证据仅交互参考与历史审计，不是产品底座。**
->
-> Product baseline = `.fleet/zcode` (ZCode Host + ordered `patches/zcode/`). Agents must not resume Craft-as-baseline.
-> Do not resume Craft Exit 1–7 / v0.11 pin / Electron desktop-loop as the delivery path.
-> D56 records this correction. It does not mark any capability `usable` or any wave Ready, and it does not invent a typecheck pass.
-> `docs/engineering.md` is not on this branch.
+# AGENTS.md — collaboration and code-development rules
 
-# AGENTS.md
+Mandatory entry for every executing agent. Read this file, then the documents your task routes
+to. A requested repository-wide documentation audit may traverse the whole set; ordinary tasks
+should not preload unrelated modules.
 
-This file is the forced-read execution summary for agents working in this repository.
-It is not an independent roadmap and must not define a second source of truth.
+## Current boundary
 
-Active project documentation is English-primary. Bilingual comments and technical explanations are fully allowed to clarify technical selections, preventing deadlocks.
+- Fleet is a local-first workbench where people and Agents operate the same native artifacts.
+  Read [product](docs/product.md) before proposing scope or architecture. Coding benchmarks cover
+  only part of this product. Contextual Agent operation of feature pages is required baseline
+  behavior under OV-024/026/062, not an optional future assistant.
+- **Direction (P12, OV-112/113/116/117):** Fleet is an independent, general Agent workbench;
+  ZCode is its engine, merged from upstream, not its host. Fleet owns the product layer: a stronger
+  Agent (vendor-neutral connections, per-step model choice, workflows, every page operable), its
+  own plugin surface host (plugins add sidebars, pages, canvases, dashboards), first-party suites
+  built from mature open source (creative canvas, trading/quant research, one GenOffice-style
+  Office plugin, Board), and its
+  identity and data. Never reduce Fleet to an upstream plugin or to a single-domain tool. See [product](docs/product.md#position-against-upstream-zcode).
+- **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` (v3.14.3) and the 222
+  ordered patches; [TODO delivery 1](TODO.md#delivery-order) moves it onto the current upstream
+  release (v3.15.x).
+  ZCode `AgentRuntime` is the Host: it builds requests, calls models, executes tools, applies
+  permissions and owns durable state. Pi Agent Core only sequences rounds of the default turn
+  (OV-084); its private messages carry placeholder tool receipts, not the real context. Pi
+  defaults and extension autoload are not enabled; native Claude/Codex run as whole executors. See
+  [candidate setup and verification](docs/engineering.md#zcode-candidate).
+- **Retained Craft:** the v0.13.4 tree with declared changes and dirty work is on branch
+  `park/craft-app-dirty-2026-10-10`. On this working branch (`work/fresh-base-spine`) `app/` is an
+  older 0.10.5 tree from the abandoned v0.11 migration: comparison material only, never edited for
+  product work. Do not delete `app/`. Changes *to app/* still require `docs/UPSTREAM-DELTA.tsv`.
+- **Current order (P12):** secure and stabilize → move onto current upstream → Fleet connections on
+  the new base → Fleet surface host and Agent-operable pages → first-party suites (canvas, then
+  trading/quant research). [TODO](TODO.md#delivery-order)
+  owns the order. Fleet-owned seams (connection, account, executor admission, usage, model-facing
+  projection) stay first-class; inherited upstream lifecycle edges are fixed only for a defect
+  reproduced on a real path (P12 (d), narrowing OV-067).
+- Pi Agent Core sits beneath the ZCode Host (OV-084) and only decides whether another round runs;
+  describe it that way, not as the engine. Alternative sources remain bounded references; a live
+  authority/data cutover retains its explicit checkpoint.
+- The owner has authorized comprehensive source-backed audit and bounded rectification. Preserve
+  original useful interactions, current records and unrelated changes. Do not expand a bounded fix
+  into a new visual system, new service or data migration without its applicable checkpoint.
 
-## Read First (Context-Budget Oriented)
+## Read this first
 
-Read these files first in this exact order to understand the entry orientation and current state:
-1. `docs/START-HERE.md` — Orientation & sequence entry points.
-2. `docs/DECISIONS-LEDGER.md` — Active binding decisions & logic restrictions.
-3. **Your Assigned spec** in `docs/modules/` — Behavior specification for your task.
-4. **Your Assigned wave packet** in `docs/agent-packets/` — Bounded work limits.
+Authority order: current owner instructions → `docs/product.md` for product meaning → applicable
+current decisions → module contracts. `TODO.md` owns execution order; the capability register owns
+status. References and research supply evidence only. If they disagree, reconcile the lower source
+instead of silently selecting whichever passage permits an action.
 
-## Non-Negotiable Rules
+ZCode is the selected reconstruction direction. Craft supplies contextual Agent interaction and
+useful Board/Pages behavior; Cindy supplies application-plugin comparisons; OpenChamber supplies
+Git/GitHub comparisons. These roles do not import several independent products' authorities.
 
--   **Build on Fleet Base**: Product baseline is `.fleet/zcode` (ZCode) plus ordered `patches/zcode/` (D56). `app/` and the Craft shell are interaction reference and historical audit, not the product base. Do not resume Craft Exit 1–7 or the v0.11 pin as the delivery path.
--   **Complete Loops**: Every deliverable must cover user interface, core backend, state persistence, timelines, and permissions.
--   **No Second Systems**: Do not create a second session store, permission model, or memory database.
--   **Status Transparency**: Report capability status as `not implemented`, `display-only`, `wired but not visually checked`, or `usable`. `Locked` is an execution gate (`Locked`, `Ready`, `In Progress`, `Blocked` on `docs/WAVE-MODULE-MAP.md`), not a capability result. Do not start work while the assigned gate is Locked. Only the Lead promotes `usable`.
--   **Grades & Audit**: CLI terminal, git operations, and local writes must route through the L0-L3 permission validator and log timeline evidence.
--   **Pi boundary**: Pi Agent Core only sequences a default model turn after Fleet host admission. Do not describe or implement that path as a complete Pi execution host. The local candidate `.fleet/zcode` is gitignored; tracked host notes live in `patches/zcode/`, and `app/` changes are listed in `docs/UPSTREAM-DELTA.tsv`. Do not delete `app/`.
+## Rules
 
-For detailed parallel branch rules, see `docs/PARALLEL-AGENT-OPERATING-MODEL.md`.
+1. **Reuse before redesign — upstream first.** Before building anything, check whether the
+   current upstream ZCode release or an admitted reference already provides it (OV-046/048, P12);
+   if so adopt or configure it and write only the remaining gap. Then inspect the current component
+   and its pinned original, then the named reference. Before implementing each module, inspect the relevant vendors' official
+   clients/SDKs or published contracts and their plugin ecosystem. Record the actual request,
+   credential, persistence and recovery mechanisms in the existing reference record; screenshots
+   or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
+   Check current upstream releases/tips before that comparison; review newer source in a separate
+   immutable copy while preserving required pins, and record the exact version and proof level.
+   Use the latest source entry in `docs/references.md` and `源码参考/latest/` alongside the preserved
+   baseline. Verify component, commit and release lineage when tags use different namespaces or
+   reset version numbers; a numeric maximum or GitHub's latest label alone does not select a product.
+   Name the source of each borrowed design and trace the whole related feature: its other views,
+   settings, producers/consumers and lifecycle, rather than comparing one convenient component.
+   Preserve the working interaction and host primitives. A new domain capability
+   may need new code; justify that gap and its consumers instead of inventing unrelated controls.
+   For interaction changes, trace the reference's trigger, pointer anchoring, drag/resize,
+   focus/keyboard/close behavior, context/rule delivery and conversation lifetime before coding.
+   Context menus reuse the entity's useful overflow actions. Omit actions identical to its primary
+   click; preserve distinct destinations with clear names and the original confirmation/owner path.
+   Record the mechanism being reused or adapted; screenshots, similarly named features and
+   per-page substitute controls do not establish an equivalent interaction.
+2. **Keep scope and acceptance fixed.** Later messages steer the active work; they do not erase
+   earlier unfinished requirements. A discovered adjacent issue does not silently replace the task.
+3. **One owner per logical entity.** Human UI, Agent tools and automations invoke the same domain
+   operation. Native editor data/undo and an executor's opaque continuation state are legitimate
+   separate entities. Do not force all data into one database or duplicate Fleet Session/settings.
+4. **Retire without losing capability or data.** Name each removed control's new home or the owner's
+   explicit retirement. In `app/`, declare L2 in `UPSTREAM-DELTA.tsv`; in the candidate, preserve the
+   reviewable patch chain. Obsolete docs may be removed after unique content and links are absorbed.
+5. **Evidence must match the claim.** Distinguish source inspection, fake transport, real local
+   execution, live provider behavior and owner visual acceptance. None implies the next level. Trace the whole
+   feature and its failure/recovery consumers before closure; passing one component test is insufficient.
+6. **Check reality first.** Verify the checkout, process, dependencies, permission and input path
+   before debugging. Missing optional evidence is not permission to rebuild unrelated infrastructure.
+7. **Stop a non-progressing approach after two attempts.** Preserve the observed failure and choose
+   the smallest evidence-backed alternative; ask only for a decision genuinely requiring the owner.
+8. **Use capability statuses precisely:** `usable`, `wired but not visually checked`, `display-only`,
+   `not implemented`. These describe capability delivery, not research quality or document completeness.
+9. **Keep documentation singular.** Product meaning, execution order, capability status, module
+   contracts, engineering, evidence and history have separate homes. English-first; Chinese remains
+   for UI literals and the rare owner quotation whose exact wording matters (OV-093: record meaning,
+   not transcripts). No dated progress reports or in-tree archives.
+10. **Primary owns integration.** Follow the owner's no-casual-delegation direction. OV-043 account
+    correction and the current NewMax frontend/backend/model-configuration study are primary-only.
+    The owner has stopped delegation for that study; its earlier worker authorization does not
+    permit further dispatch for that study. OV-080 authorizes parallel rectification in bounded,
+    disjoint code areas with explicit acceptance and cross-review; primary retains account work,
+    product/layout decisions, integration and final running verification.
+    Use `gpt-6.1-sol` for delegated implementation and verification to control cost. Workers report
+    failures, unresolved judgments and cross-module issues to the primary instead of repeatedly
+    expanding or retrying the task; primary decides the correction and owns final integration.
+
+11. **Own the product layer, keep the engine mergeable.** Fleet's product layer lives in
+    Fleet-owned packages with narrow, named hooks into upstream; engine changes stay minimal. Never
+    split or reformat inherited upstream files to satisfy a Fleet lint rule; keep upstream's file
+    shape so releases merge. Every patch states the owner request/OV,
+    the reason and whether upstream lacks the behavior ([patch rules](patches/zcode/README.md#patch-authoring-rules)).
+    Test fixtures and acceptance runs use isolated profiles and local model responses unless the
+    owner approves a paid call.
+
+## Routing — read before you touch
+
+Every document has one job. Modules are self-contained: each opens with a generated card (its
+register rows, status, release, surfaces), then owns its contract, code entry points, references
+and execution rows. Read the module first, and the shared documents only for what it points to.
+
+| Before you touch… | Read |
+|---|---|
+| **Anything rendered** — a value, layout, motion | [`DESIGN.md`](DESIGN.md), then the module — mandatory before UI code |
+| Sidebar, navigation, Project, new conversation, composer and right panel | [`docs/modules/shell.md`](docs/modules/shell.md) |
+| Updater, hosted Pages, telemetry, help, OAuth relays, branding (R2) | [`docs/modules/services.md`](docs/modules/services.md), then [packaging](docs/packaging.md) |
+| Retained Craft walkthrough, baseline evidence or original-Craft behavior | [`docs/modules/baseline.md`](docs/modules/baseline.md) |
+| Sessions, permissions, actions, tasks, orchestration | [`docs/modules/agent-core.md`](docs/modules/agent-core.md) |
+| Provider setup, catalogs, subscriptions, model options, connection diagnostics | [`docs/modules/models.md`](docs/modules/models.md) |
+| Prompt, tools, tokens, Skills loadout | [`docs/modules/context.md`](docs/modules/context.md) |
+| Memory retrieval, curation, foreign-history imports | [`docs/modules/memory.md`](docs/modules/memory.md) |
+| Inherited ZCode lifecycle, receipt and plugin-market corrections (D57–D59) | [`docs/modules/lifecycle.md`](docs/modules/lifecycle.md) |
+| Delegation, coordination and intervention | [`docs/modules/orchestration.md`](docs/modules/orchestration.md) |
+| Browser pane, capture, evidence | [`docs/modules/browser.md`](docs/modules/browser.md) |
+| Canvas, design, documents | [`docs/modules/canvas.md`](docs/modules/canvas.md) |
+| Image, audio, video, decks | [`docs/modules/media.md`](docs/modules/media.md) |
+| Workflows, schedules, delivery | [`docs/modules/workflow.md`](docs/modules/workflow.md) |
+| Remote targets, worktrees, messaging, computer use | [`docs/modules/remote.md`](docs/modules/remote.md) |
+| Plugins, Skills, MCP catalogs, component distribution | [`docs/modules/marketplace.md`](docs/modules/marketplace.md) |
+| Panel host, components, workspace compositions | [`docs/modules/components.md`](docs/modules/components.md) |
+| Scope — "should Fleet do this at all?" | [`docs/product.md`](docs/product.md) |
+| A capability's status, acceptance ID, page or surface ID | [`docs/capabilities.md`](docs/capabilities.md) — the register; edit rows there |
+| "Is this already decided?", the owner's exact words | [`docs/decisions.md`](docs/decisions.md) |
+| A cross-module invariant, authority or code entry point | [`docs/architecture.md`](docs/architecture.md) |
+| Cross-platform packaging and release constraints | [`docs/packaging.md`](docs/packaging.md) |
+| A component, a gate, a test, a commit, a build | [`docs/engineering.md`](docs/engineering.md) |
+| Which open-source project to reference, and where | [`docs/references.md`](docs/references.md) |
+| The ZCode patch chain, its reconstruction and authoring rules | [`patches/zcode/README.md`](patches/zcode/README.md) |
+| What to do now | [`TODO.md`](TODO.md) |
+
+Where to write: a fact belongs to exactly one of these. Module-specific detail goes in its module,
+never in a shared document; a status goes in the register row, never in prose; history goes in
+[`CHANGELOG.md`](CHANGELOG.md). Documents other than the ledgers (`capabilities`, `decisions`,
+`references`, `CHANGELOG`) stay under 700 lines — the gate enforces it; split by module, not by
+raising the limit.
+
+## Preflight
+
+```bash
+python3 scripts/check-zcode-candidate.py      # patch chain reproduces the candidate tree
+python3 scripts/validate-doc-contracts.py     # canonical documents and links agree
+bash scripts/fleet-verify.sh                  # full candidate delivery gate (≈15 min)
+```
+
+`scripts/init.sh` and the Craft pin checks live on the retained Craft branch, not here.
+`源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/` and are not tracked. When the
+volume is not mounted, every "compare the reference first" step is unexecutable — report it and
+stop rather than work from memory. Reference checkouts carry their own `.git`; a `checkout` inside
+one silently moves the baseline.
+
+## Before you write UI
+
+Read [DESIGN](DESIGN.md), then the routed module. Diff the affected implementation against its
+own original: `.fleet/zcode` against `源码参考/software/ZCode`; `app/` against the pinned Craft
+checkout. Read the named reference's actual component/controller, not just a screenshot.
+Use that host's existing controls and values; Craft look-pin measurements are scoped in DESIGN
+and must not be applied blindly to unrelated ZCode components. UI redesign needs a concrete reason.
+
+A disappearing interaction needs a retained path or an explicit retirement. Verify light/dark,
+English/Chinese, keyboard and narrow-window states appropriate to the change. A style linter is
+not visual acceptance. Do not create mockup images as substitutes for source-backed implementation.
+
+## Owner protocol
+
+- **Checkpoints — stop and get explicit approval before:** spending money or any irreversible or
+  public effect (paid APIs, deletion, deployment, publication, external messages, merge to remote
+  `main`); adding a production dependency or external service; creating or replacing an authority
+  or security boundary (Session storage, permissions, credentials, migrations); choosing between
+  materially different product outcomes or changing established behaviour; removing or re-pinning a
+  reference project. Present **what · why · cost and risk · two or three options ·
+  recommendation**, in words a non-programmer understands.
+- **Proceed without approval:** reversible in-scope work, code organization and technical patterns,
+  read-only inspection, tests, builds, fixing your own regression, documenting changed facts.
+- **Acceptance:** every delivery states the outcome in plain language, the status, a short
+  **CHECK THIS** list, and what was deliberately left unchanged. The owner judges look and feel —
+  light and dark, `zh-Hans` and English, narrow windows — and accepts, which promotes the capability
+  to `usable`, or names the mismatch for the next bounded fix. Agents own logic, data integrity and
+  code quality. Show the running change; do not describe it.
+  Before asking the owner to review, personally test and inspect the built running change. Fix
+  known failures first; never delegate basic QA to the owner. Open and focus the exact page, explain
+  what changed and limit owner acceptance to the already-checked scope and its user experience.
+- **Status meanings:** `usable` = real path verified and visible behaviour owner-accepted;
+  `wired but not visually checked` = real path verified, visual acceptance pending; `display-only` =
+  UI without real behaviour; `not implemented` = absent. "Mostly done" and "should work" are not
+  statuses.
+- **Duty to dissent:** if an instruction conflicts with a recorded decision or will lose data or a
+  function, say so once with evidence, then follow the owner's call and record it in
+  [`docs/decisions.md`](docs/decisions.md).
+- **Test content is not product intent.** Session content, Project names and fixtures (for example
+  the stock-trading test chats) are data, never requirements or defaults.
+- **Reference projects are retained unless the owner decides otherwise.** Present target, evidence
+  and recovery plan before removing or re-pinning one.
+
+## Learned owner preferences
+
+- Reviews must be deep and evidence-backed: paths, diffs, file:line. Survey-style reviews are
+  rejected.
+- Bound improvement work with measurable goals and stop conditions; no open-ended optimizing loops.
+- Rectify the project, do not pile up documents (「我是要你整改项目而不是堆砌文档」).
+- Value over volume: a change must give the owner something upstream ZCode or a reference does not,
+  or fix a defect on a real path (OV-112). Duplicated engineering is waste, however well tested.
+- A whole-project audit includes direction: run the real gate, diff the latest upstream release,
+  re-check earlier defect lists in code and compare owner requests with what exists (OV-111).
+- Fleet is not another pure coding-agent IDE; coding-agent forks are harness and interaction
+  references, not the product shape.
+- Keep essential control names visible. Do not repeat selected values, provider paths, implementation
+  details or multi-paragraph rules in routine controls/tooltips. Put occasional detail in the original
+  Help pattern; show diagnosis when an actual failure or unavailable state needs recovery.

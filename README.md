@@ -1,17 +1,35 @@
-> ## Hard rule — product baseline (2026-10-10)
->
-> **产品基线 = `.fleet/zcode`（ZCode）；Craft Agents / `app/` / 本 spine 的 Craft Exit 证据仅交互参考与历史审计，不是产品底座。**
->
-> Product baseline = `.fleet/zcode` (ZCode Host + ordered `patches/zcode/`). Agents must not resume Craft-as-baseline.
-> Do not resume Craft Exit 1–7 / v0.11 pin / Electron desktop-loop as the delivery path.
-> D56 records this correction. It does not mark any capability `usable` or any wave Ready, and it does not invent a typecheck pass.
+# Fleet
 
-# Fleet / AI Work Workbench
+A local-first desktop workbench where a person and their Agents operate the same native
+artifacts. Fleet targets Windows, macOS and Linux; a later phone connector uses a user-owned
+desktop runtime.
 
-This is a local-first AI work creation platform. The product candidate is ZCode at `.fleet/zcode`. Craft Agents in `app/`, and this spine's Craft Exit evidence, are interaction reference and historical audit, not the product base.
+## Status
 
-## Documentation Entry Point
+**ZCode is the product base (OV-027).** The development candidate is `.fleet/zcode`: ZCode
+`29628c9` (v3.14.3) plus the ordered patches in [`patches/zcode/`](patches/zcode/README.md).
+The ZCode Host owns requests, tools, permissions and storage; Pi Agent Core sits beneath it and only
+decides whether another model round runs (OV-084).
 
-Please start reading at **[docs/START-HERE.md](file:///Users/lullwen/Documents/天工/docs/START-HERE.md)**. This is the single, unique entry point for both humans and developer agents. It defines the orientation, read order, and contains the complete index of all active documentation.
+Fleet is an independent, general Agent workbench with ZCode as its engine: the Agent does the
+backend work, the person gets a clear visual front end. Fleet adds a stronger Agent on the person's
+own models and CLIs, a plugin-composed workbench, and first-party suites built from mature open
+source — creative canvas, trading and quantitative research, Board
+([P12](docs/decisions.md#a-product-shape), [position](docs/product.md#position-against-upstream-zcode)).
+The next step moves the candidate onto the current upstream release ([TODO](TODO.md#delivery-order)).
 
-For active agent execution rules and logic restrictions, refer to the forced-read summary in **[AGENTS.md](file:///Users/lullwen/Documents/天工/AGENTS.md)**.
+No capability is owner-accepted as `usable` yet; see the [capability register](docs/capabilities.md).
+`app/` on this branch is an older Craft 0.10.5 tree kept for comparison; the retained Craft v0.13.4
+branch is `park/craft-app-dirty-2026-10-10`.
+
+## Working on the project
+
+Read [AGENTS.md](AGENTS.md) first; it routes every task to its document. Then:
+
+```bash
+python3 scripts/check-zcode-candidate.py
+bash scripts/fleet-verify.sh
+```
+
+No signed Fleet release or production updater feed exists. Packaging requirements are in
+[packaging](docs/packaging.md).

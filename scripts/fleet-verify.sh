@@ -10,6 +10,7 @@ case "${1:-}" in
     ;;
   *) echo "Usage: fleet-verify.sh [--candidate-only|--retained-craft]" >&2; exit 2 ;;
 esac
+python3 "$ROOT_DIR/scripts/validate-doc-contracts.py"
 python3 -m unittest discover -s "$ROOT_DIR/scripts/tests" -p 'test_*.py'
 node --test "$ROOT_DIR/scripts/review-zcode.test.mjs"
 python3 "$ROOT_DIR/scripts/check-zcode-candidate.py"

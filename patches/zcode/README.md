@@ -15,6 +15,23 @@ ports. Pi Agent Core sequences default turns after Host admission; it is not a s
 Profiles, dependencies and user data are excluded from the source recipe and never migrated here.
 Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone does not prove usability.
 
+## Patch authoring rules
+
+Decision P12 (b) keeps this fork thin so upstream releases keep merging
+([upstream comparison](../../docs/references.md#upstream-zcode-3151-against-the-candidate)).
+
+1. **Header.** Every new patch starts with `git format-patch` headers whose body states the owner
+   request or OV, the reason, and whether current upstream lacks the behavior. 211 of patches
+   0001–0222 are bare diffs; their reasons must be recovered from `docs/decisions.md` before the
+   delivery-1 rebase classifies them.
+2. **Upstream shape.** Never split, rename or reformat an inherited upstream file to satisfy a
+   Fleet lint rule. The 400-line rule applies to Fleet-authored files.
+3. **Product layer in Fleet packages.** Fleet's Agent extensions, connection layer and plugin
+   surface host live in Fleet-owned packages reached through narrow, named hooks; first-party suites
+   are plugins on Fleet's host. Patches to upstream engine files stay minimal.
+4. **One concern per patch.** Keep connection, independence (OV-030), Agent-operability and
+   creative-suite changes in separate patches so each can be kept, dropped or re-expressed alone.
+
 | Order | Patch | Cumulative source tree |
 |---|---|---|
 | 0001 | [0001-provider-route-ownership.patch](0001-provider-route-ownership.patch) | — |
@@ -254,7 +271,7 @@ cancellation and human add-dialog operation/context ownership. Original service/
 grants remain canonical; no new dependencies or data migrations. Authored handler/file fixtures
 and actual rendered market/dialog paths provide bounded evidence; installed reference products
 and REA are analysis references only. Strict inherited CLI lint remains a failing release check.
-See `docs/audits/2026-10-12-plugin-market-reference-rectification.md`.
+See [plugin market comparison](../../docs/references.md#plugin-market-reference-rectification-2026-10-12).
 
 ## D59 current product completion source
 
@@ -312,7 +329,7 @@ Real approval while drawing preserves the submitted snapshot and newer unsaved s
 No dependency, data migration, live login or OS service registration is added. Static MiniMax
 ASAR/Trae bundle and bounded native-interface disassembly are comparison evidence only; no
 closed source/assets are copied into this patch. Current acceptance is recorded separately in
-`docs/DOCUMENT-READINESS.md`; reconstruction does not promote whole-product usability.
+[acceptance evidence](../../docs/references.md#zcode-rectification-acceptance-evidence-2026-10-122026-10-14); reconstruction does not promote whole-product usability.
 
 
 ## Deterministic native-login rejection
@@ -362,7 +379,7 @@ ACK uses the original Session timeline fact/index before reply. Cold result chec
 original command and read monotonic workflow journal evidence; process revisions are not compared
 across epochs. Post-effect storage/index failures remain uncertain. No data migration, dependency,
 wire schema or second state authority is added. Static closed-software comparison is evidence
-only; final behavioral and delivery acceptance is recorded in `docs/DOCUMENT-READINESS.md`.
+only; final behavioral and delivery acceptance is recorded in [acceptance evidence](../../docs/references.md#zcode-rectification-acceptance-evidence-2026-10-122026-10-14).
 
 
 ## Existing package, workflow and saved artifact loops
@@ -385,4 +402,4 @@ The same tsup and Vite build commands now settle sequentially, with supported rc
 pool defaults of one and explicit caller values retained. Hidden maps, minification, original
 coverage, deadlines, heap/pressure gates and clean paths remain. No dependency, data migration,
 alternative store or execution host is added. Lead records actual delivery and native acceptance
-in `docs/DOCUMENT-READINESS.md`; source replay alone is not capability acceptance.
+in [acceptance evidence](../../docs/references.md#zcode-rectification-acceptance-evidence-2026-10-122026-10-14); source replay alone is not capability acceptance.
