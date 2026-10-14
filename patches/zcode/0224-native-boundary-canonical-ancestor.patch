@@ -1,0 +1,252 @@
+From 859ed22a7ba883f9517119fcccfb67b2f3dcac6a Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 11:36:13 -0700
+Subject: [PATCH] fix(fs): accept native document paths spelled through a
+ canonical ancestor
+
+Owner request: TODO delivery 0 (deterministic verify:delivery) and OV-114
+(native canvas documents must save inside any real workspace).
+
+Reason: resolveNativeFileBoundary compared the requested path only with
+boundaryRoot and its realpath. A path reaching the same workspace through
+another spelling (macOS /var -> /private/var, or a workspace alias) was
+denied with permission_denied. The 2026-10-14 acceptance passed only
+because TMPDIR then had no symlinked ancestor; with the default macOS
+TMPDIR six native-file cases failed.
+
+Change: also accept a path whose nearest ancestor canonicalizes to the
+workspace root; segments below that ancestor stay literal, so symlinks
+inside the workspace are still rejected. Tests now create canonical temp
+roots, and the plugin cwd assertion compares canonical paths.
+Upstream: native document boundaries are Fleet-authored.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../adapters/src/fs/native-boundary.ts        | 32 +++++++++++++++++--
+ .../test/native-file-boundary.test.ts         | 19 +++++------
+ .../test/native-file-publication.test.ts      |  8 ++---
+ .../core/test/native-plugin-view.test.ts      |  7 ++--
+ 4 files changed, 48 insertions(+), 18 deletions(-)
+
+diff --git a/apps/zcode-cli/packages/adapters/src/fs/native-boundary.ts b/apps/zcode-cli/packages/adapters/src/fs/native-boundary.ts
+index d867a8fd..ff078e2b 100644
+--- a/apps/zcode-cli/packages/adapters/src/fs/native-boundary.ts
++++ b/apps/zcode-cli/packages/adapters/src/fs/native-boundary.ts
+@@ -1,5 +1,5 @@
+ import { lstat, realpath, stat } from "node:fs/promises";
+-import { isAbsolute, join, relative, sep } from "node:path";
++import { dirname, isAbsolute, join, relative, sep } from "node:path";
+ import { createFileSystemError } from "@zcode/contracts";
+ import { throwIfAborted } from "./file-errors.js";
+ import { resolveAbsoluteRequestPath } from "./file-values.js";
+@@ -17,6 +17,31 @@ function descendantPath(root: string, path: string): string | undefined {
+     : undefined;
+ }
+ 
++/**
++ * The request may name the workspace through a different spelling than boundaryRoot, e.g. an
++ * ancestor symlink (macOS /var -> /private/var) or a workspace alias. Canonicalize only the
++ * ancestor that resolves to the workspace root itself; segments below it stay literal so
++ * assertNativeFileBoundary still rejects symlinks inside the workspace.
++ */
++async function descendantThroughCanonicalAncestor(
++  root: string,
++  path: string,
++): Promise<string | undefined> {
++  let ancestor = dirname(path);
++  while (ancestor !== dirname(ancestor)) {
++    try {
++      if ((await realpath(ancestor)) === root) {
++        const rest = descendantPath(ancestor, path);
++        return rest === undefined ? undefined : rest;
++      }
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
++    }
++    ancestor = dirname(ancestor);
++  }
++  return undefined;
++}
++
+ function denied(path: string) {
+   return createFileSystemError({
+     code: "permission_denied",
+@@ -33,7 +58,10 @@ export async function resolveNativeFileBoundary(
+   throwIfAborted(signal);
+   const requestedRoot = resolveAbsoluteRequestPath(boundaryRoot);
+   const root = await realpath(requestedRoot);
+-  const child = descendantPath(requestedRoot, path) ?? descendantPath(root, path);
++  const child =
++    descendantPath(requestedRoot, path) ??
++    descendantPath(root, path) ??
++    (await descendantThroughCanonicalAncestor(root, path));
+   if (child === undefined) throw denied(path);
+   const boundary = { requestedRoot, root, path: join(root, child) };
+   await assertNativeFileBoundary(boundary, signal);
+diff --git a/apps/zcode-cli/packages/adapters/test/native-file-boundary.test.ts b/apps/zcode-cli/packages/adapters/test/native-file-boundary.test.ts
+index ad1535bf..d60c7ff2 100644
+--- a/apps/zcode-cli/packages/adapters/test/native-file-boundary.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/native-file-boundary.test.ts
+@@ -3,6 +3,7 @@ import test from "node:test";
+ import {
+   mkdir,
+   mkdtemp,
++  realpath,
+   readFile,
+   readdir,
+   rename,
+@@ -18,7 +19,7 @@ import fs from "node:fs/promises";
+ import { syncBuiltinESMExports } from "node:module";
+ 
+ test("native boundary refuses outside destinations before creating directories", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-boundary-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-boundary-")));
+   try {
+     const workspace = join(root, "workspace");
+     await mkdir(workspace);
+@@ -40,7 +41,7 @@ test("native boundary refuses outside destinations before creating directories",
+ });
+ 
+ test("native create-only never overwrites an already committed document", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-create-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-create-")));
+   try {
+     const path = join(root, "board.json");
+     await writeFile(path, "committed");
+@@ -60,7 +61,7 @@ test("native create-only never overwrites an already committed document", async
+ });
+ 
+ test("native read and write reject descendant directory and final-file symlinks", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-symlink-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-symlink-")));
+   try {
+     const workspace = join(root, "workspace"),
+       outside = join(root, "outside");
+@@ -96,7 +97,7 @@ test(
+   "native canonical workspace aliases share a create-only lock across two processes",
+   { timeout: 20000 },
+   async () => {
+-    const root = await mkdtemp(join(tmpdir(), "fleet-native-create-race-"));
++    const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-create-race-")));
+     const children: ReturnType<typeof fork>[] = [];
+     try {
+       const workspace = join(root, "workspace"),
+@@ -156,7 +157,7 @@ process.on("message",async()=>{try{await new NodeFileSystemAdapter().writeTextFi
+ );
+ 
+ test("native create-only rechecks publication after an external creation during staging", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-staging-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-staging-")));
+   const path = join(root, "board.json"),
+     originalOpen = fs.open;
+   try {
+@@ -191,7 +192,7 @@ test("native create-only rechecks publication after an external creation during
+ });
+ 
+ test("native boundary rechecks descendants after lock-path resolution and rejects a late symlink", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-late-link-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-late-link-")));
+   const workspace = join(root, "workspace"),
+     outside = join(root, "outside"),
+     native = join(workspace, "native");
+@@ -230,7 +231,7 @@ test("native boundary rechecks descendants after lock-path resolution and reject
+ });
+ 
+ test("native non-directory root and cancelled or failed staging never create a document", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-failures-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-failures-")));
+   const originalOpen = fs.open;
+   try {
+     const fileRoot = join(root, "not-a-directory");
+@@ -294,7 +295,7 @@ test("native non-directory root and cancelled or failed staging never create a d
+ });
+ 
+ test("native directory discovery rejects outside enumeration before reading entries", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-directory-outside-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-directory-outside-")));
+   const originalReaddir = fs.readdir;
+   let reads = 0;
+   try {
+@@ -320,7 +321,7 @@ test("native directory discovery rejects outside enumeration before reading entr
+   }
+ });
+ test("native directory discovery rejects child links without enumeration and accepts root aliases", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-directory-link-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-directory-link-")));
+   const originalReaddir = fs.readdir;
+   let reads = 0;
+   try {
+diff --git a/apps/zcode-cli/packages/adapters/test/native-file-publication.test.ts b/apps/zcode-cli/packages/adapters/test/native-file-publication.test.ts
+index 6e620fc2..f4bc00bc 100644
+--- a/apps/zcode-cli/packages/adapters/test/native-file-publication.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/native-file-publication.test.ts
+@@ -1,14 +1,14 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import fs from "node:fs/promises";
+-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
++import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+ import { syncBuiltinESMExports } from "node:module";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { NodeFileSystemAdapter } from "../src/fs/index.js";
+ 
+ test("create-only publication cannot replace a file created after the last revision check", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-exclusive-publication-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-exclusive-publication-")));
+   const path = join(root, "board.json");
+   const originalRename = fs.rename, originalLink = fs.link;
+   let injected = false;
+@@ -43,7 +43,7 @@ test("create-only publication cannot replace a file created after the last revis
+ });
+ 
+ test("an unsupported exclusive publication fails without a replacement fallback or partial target", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-unsupported-publication-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-unsupported-publication-")));
+   const path = join(root, "board.json"), originalLink = fs.link;
+   try {
+     fs.link = async () => { throw Object.assign(new Error("Authored unsupported link"), { code: "EOPNOTSUPP" }); };
+@@ -61,7 +61,7 @@ test("an unsupported exclusive publication fails without a replacement fallback
+ });
+ 
+ test("non-atomic create-only also refuses a concurrent creator at the write syscall", async () => {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-native-exclusive-direct-"));
++  const root = await realpath(await mkdtemp(join(tmpdir(), "fleet-native-exclusive-direct-")));
+   const path = join(root, "board.json"), originalWrite = fs.writeFile;
+   let injected = false;
+   try {
+diff --git a/apps/zcode-cli/packages/core/test/native-plugin-view.test.ts b/apps/zcode-cli/packages/core/test/native-plugin-view.test.ts
+index 27bfc30f..fadcaf80 100644
+--- a/apps/zcode-cli/packages/core/test/native-plugin-view.test.ts
++++ b/apps/zcode-cli/packages/core/test/native-plugin-view.test.ts
+@@ -1,7 +1,7 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import { randomUUID } from "node:crypto";
+-import { mkdtemp, mkdir, rm, readFile } from "node:fs/promises";
++import { mkdtemp, mkdir, realpath, rm, readFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createMcpAdapter } from "../../adapters/src/mcp/index.js";
+@@ -11,7 +11,7 @@ import { setWorkingDirectory } from "../src/runtime/methods/config.js";
+ 
+ test("original Core plugin control asks, records one SDK effect and refuses a durable duplicate operation", async () => {
+   const mcp = createMcpAdapter({ env: {} });
+-  const data = await mkdtemp(join(tmpdir(), "owned-native-plugin-"));
++  const data = await realpath(await mkdtemp(join(tmpdir(), "owned-native-plugin-")));
+   const config = {
+     type: "stdio" as const,
+     command: process.execPath,
+@@ -240,7 +240,8 @@ test("the original Bash cwd setter does not rebind native plugin process scope a
+     setWorkingDirectory.call(x.f.runtime as never, child);
+     const result = await x.run("read_cwd");
+     assert.ok(result.accepted && result.result.success);
+-    assert.deepEqual(result.rawResult?.structuredContent, { cwd: x.f.dir });
++    // The plugin process reports its canonical cwd (macOS /var -> /private/var).
++    assert.deepEqual(result.rawResult?.structuredContent, { cwd: await realpath(x.f.dir) });
+     assert.equal(await x.count(), 0);
+     assert.equal(x.f.requests.length, 0);
+   } finally {
+-- 
+2.54.0 (Apple Git-157)
+

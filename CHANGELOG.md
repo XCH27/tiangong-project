@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Patch 0224: native document boundaries accept a path that reaches the workspace through a
+  canonical ancestor (macOS `/var` -> `/private/var`, workspace aliases) while still rejecting
+  symlinks inside the workspace. With the default macOS TMPDIR six native-file cases had failed;
+  the 2026-10-14 acceptance had passed only on a symlink-free TMPDIR. Tests now use canonical
+  temp roots.
 - Delivery 0 (TODO): patch 0223 makes the plugin-cancel NDJSON cases await child readiness before
   their unchanged behavioral budgets and use the product's stdin-EOF exit budget; 16/16 passes under
   parallel load. 68 stale candidate worktrees removed after archiving every uncommitted diff and

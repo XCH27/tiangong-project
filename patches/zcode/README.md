@@ -257,6 +257,7 @@ Decision P12 (b) keeps this fork thin so upstream releases keep merging
 | 0221 | [0221-feature-receipts-and-definition-publication.patch](0221-feature-receipts-and-definition-publication.patch) | `b25de0eb074b10cb5e0e21b5887b9c9552e42aeb` |
 | 0222 | [0222-existing-plugin-workflow-and-saved-artifact-loops.patch](0222-existing-plugin-workflow-and-saved-artifact-loops.patch) | `932a6fb7be23f7e962a05c90a6b83afbba732649` |
 | 0223 | [0223-plugin-cancel-test-readiness.patch](0223-plugin-cancel-test-readiness.patch) | `2c9d81bde51f4e2b46108363f4e2b9de8233e537` |
+| 0224 | [0224-native-boundary-canonical-ancestor.patch](0224-native-boundary-canonical-ancestor.patch) | `5eb2dc71f6d938ff77dc101698371c04547831fe` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
