@@ -411,3 +411,58 @@ This promotion is limited to the measured local native loop. Live provider sign-
 actual Windows service execution, independent TraeWork/SOLO coverage, automatic tab restoration
 and proprietary crash durability are not established here. Whole-product readiness and historical
 Locked waves are not promoted by this acceptance.
+
+
+## Feature implementation comparison and bounded corrections — 2026-10-13
+
+Product baseline remains ZCode. Candidate `cf093a502306c32e30d2a44d8df5756c7733c04c`,
+tree `b25de0eb074b10cb5e0e21b5887b9c9552e42aeb`, is retained by patch 0221.
+The [feature audit](audits/2026-10-13-feature-implementation-comparison.md) decomposes
+15 MiniMax, 12 Trae and 10 corresponding ZCode features, plus three browser-lifetime traces.
+MiniMax 3.0.21 and 4.0.0 snapshots remain separate; Trae is 3.6.2/`TRAE_I18N`.
+Closed source and assets are external read-only evidence, never product implementation.
+
+The original plugin enabled writer/projection now retains real ACK facts, known absence and
+confirmed projection changes separately from failed observations. Browser, Plugins and Computer
+Use refresh original draft/Skill definitions for confirmed changes and retain warning/failure
+telemetry. Reciprocal mutation admission preserves the original busy owner. Original SkillStore
+reads and post-write refresh are fenced by service, workspace identity and generation, including
+ABA and explicit identity mismatch; no second cache of skills or config authority was added.
+
+Workflow Cancel/Resume persists its query-only identity before dispatch in the original pending
+registry, with 64-control capacity and visible refusal on unavailable persistence. The actual final
+accepted ACK is saved before reply through the existing Session timeline fact/index. Cold query
+and duplicate submission recover that same command without another engine activation. Read-only
+checks use current-epoch observation and the original monotonic run journal, including explicit
+run-started evidence for terminal-state ABA. Generic post-effect storage/index failures stay
+uncertain. Original input/sensitive-digest recovery and command schemas remain intact.
+
+The canonical delivery command exits **0** after **671.89 seconds**. It includes the actual bundled
+CLI/server build and read-only executable probe, all original root and strict CLI type checks,
+pre-push regressions, current desktop build, **1914 Node test executions** and **134 styled renderer
+cases**. Counts may overlap between mandatory Node scripts; they are not unique-test totals.
+All **15 renderer invocations** exit 0 with no signal. Strict lint and architecture checks pass.
+The actual Host fixture retains original Session messages, has one resumed journal incarnation,
+preserves ACK revision 20, recovers across shutdown/reopen, and records zero external model calls.
+
+Evidence: `/Volumes/AIGC/.fleet-tmp/fleet-horizontal-comparison-2026-10-13/feature-correction-verification/`
+contains the full log, exit result, coverage counts, memory samples, frozen source and fresh replay.
+Earlier failed runs and their exact source patches are retained in `feature-correction-delivery`
+and `feature-correction-final`. Old overlapping-mutation fixtures were revised to assert zero-write
+busy refusal, current failure/reconciliation, later retry and genuine changed-context isolation;
+the language fixture now uses the real Intl initialization property. No test or gate was removed.
+
+Caller heap remains 2 GiB per Node process; heavy checks are serial. Aggregate owned-process RSS
+peaks at **3.03 GiB** (shared pages may be counted twice), with at most 18 processes. Kernel pressure
+masks are Normal/Warning (1/2), never Critical; swap ranges 2066.94–2080.62 MiB. No OOM, recursive
+launcher tree or memory-triggered termination occurs. This measures the owned check tree, not a
+claim that every desktop application's memory issue is solved.
+
+All **221 patches** materialize in an untouched exact-base checkout and match the recorded tree;
+the post-build candidate source gate also exits 0 without changing the working index. Source
+changes include no data migration or profile/credential edits. Existing owned native data and the
+prior manual whiteboard acceptance remain retained; that manual GUI loop was not repeated here.
+These bounded corrections remain **wired but not visually checked** for a new manual native
+Host/UI acceptance. Actual styled fixtures passed; no blanket `usable`, whole-product Ready or
+historical Locked-wave promotion is made. Proprietary native/cloud transactions, live login and
+Windows execution remain outside this evidence.

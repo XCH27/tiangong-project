@@ -628,3 +628,134 @@ the same existing Whiteboard pane through `onOpenWhiteboard`, with the original 
 without creating an unrelated tab, Session turn or inference. Reuse its existing button/icon and
 localized title; no store, Core, API or new navigation owner. Root owns shipped-CSS rebuild,
 styled execution, actual first empty-Session Save/close/restart and integration.
+
+### Feature-level shipped implementation decomposition — 2026-10-13
+
+The owner asks for detailed implementation study of many reference features, beyond the initial
+entry/lifecycle pass. Root delegates read-only, disjoint GPT-6.1 Sol investigations of the same
+exact installed artifacts. MiniMax: canvas/document operations, asset/search/reference lifetime,
+generation/ComfyUI workflow jobs, plugins/skills and their packaged gateway boundary. Trae:
+Agent chat/context/streaming, permission/tool admission, checkpoint/undo/worktree, indexing and
+native task boundaries. A third reader maps those exposed promises against original ZCode owners
+and approved open-source mechanisms. External outputs have separate subdirectories under
+`feature-decomposition`; do not edit another reader's index or the accepted source candidate.
+
+Each feature needs its real entry, call path, state writer, success/failure/Stop/retry/restart
+branches, concrete artifact digest/location and coverage limit. Enumerating strings or package
+dependencies does not prove implementation. Closed code/assets are read-only evidence, never
+product source. Do not execute target modules, read user credential/profile/database contents,
+call cloud services, install heavy analysis engines or infer private native transactions. Reuse
+existing extracted artifacts and selected bounded native tools. Keep text windows small and
+process heap at most 768MiB; no build/Electron/full gate. Root owns synthesis and approves exact
+source paths only after a concrete current ZCode counterexample is identified. Historical waves
+remain Locked and no new Session/permission/asset/job authority is authorized.
+
+The installed MiniMax artifact changes during this read-only investigation to 4.0.0/build
+4.0.0.95. Root authorizes a separate immutable ASAR/Resources snapshot for that version, preserving
+3.0.21 evidence. Current gateway/Bun/plugin resources must not be attributed to the older ASAR.
+No target execution or product dependency/source-copy promotion follows from this version intake.
+
+### Plugin enabled partial-commit correction
+
+The ZCode reader identifies a concrete existing-contract failure: canonical enabled config can
+commit before an abort or lost ACK, while the original optimistic catch restores stale state;
+Browser Settings can then skip definition refresh and record requested state as successful.
+Root delegates `ui/src/store/pluginManagementStoreEnabled.ts`, narrow original store/private
+helpers, `settings/BrowserSettingsSection.tsx`, `settings/PluginsSection.tsx` and original market
+Node/browser regressions in a fresh worktree from `2cda9184`. Keep `setEnabled`'s boolean ABI;
+Root authorizes an additive private UI receipt action for its exact consumers, with succeeded,
+canonicalChanged and current-operation fence, not a backend/wire method or new state authority.
+Read canonical enabled/source on failure without replay, preserve the actual error and distinguish
+unknown observation from a committed change. Refresh the existing draft/Skill owners for confirmed
+current changes, including partial failure. Workspace/service/configScope/ABA/newer operation
+fences govern both state and delayed consumer refresh. Failed operation telemetry/toasts must
+not claim success. Root owns test registration, locales, build/render/recipe and acceptance.
+
+The same worker may complete the exact Computer Use toggle consumer in `settings/ComputerUseSection.tsx`
+and existing `settings/pluginEnabledChange.ts`, with bounded same-owner tests. Confirmed effective
+partial changes converge original CUA/draft/Skill state without success telemetry/toasts or opening
+an OS permissions modal. The original boolean helper remains compatible where used.
+
+Independent review additionally confirms overlapping original mutations can invalidate a committed
+toggle's receipt and strand `operationId`. Root authorizes the same worker's original
+`store/pluginManagementStoreLoading.ts` admission helper: reject overlapping mutations in both
+directions with existing busy feedback, without a queue or replay. Same-scope newer read-only
+publication may retain the confirmed matching fact's receipt, but cannot overwrite fresher state
+or bypass service/epoch/ABA fences. Successful write ACK facts and known absence stay distinct
+from failed canonical observation; observation failures remain visible.
+The full canonical gate exposes the old same-ID overlap expectation in
+`ui/test/pluginMarketRequestRaces.test.ts`. Root delegates this existing test file only for
+explicit zero-write refusal/no version theft, visible first-operation failure and busy cleanup,
+then a permitted later retry, retaining scope/service/ABA late-failure coverage. Do not delete
+the regression or weaken it into an unasserted no-op; production changes require a new reproducer.
+The subsequent full gate identifies the same obsolete overlap assumption in
+`ui/test/pluginUninstallHook.test.ts` and `ui/test/pluginUninstallRecovery.test.ts`. These two
+existing tests are also delegated with the same required refusal/cleanup/retry assertions;
+retain real partial-uninstall canonical reconciliation and genuine changed-context late-failure
+protection. A read-only sweep of other affected fixtures precedes the next full run.
+Root additionally authorizes the original Requests helper's canonical-projection epoch metadata,
+without cached plugin facts, after real external-write/pre-effect-rejection counterexamples.
+Only a clean projection from the same service/scope epoch may supply the captured pre-optimistic
+comparison. Definition refresh follows both confirmed physical change and confirmed publication
+delta; unknown provenance cannot be promoted into a changed fact.
+
+Root also authorizes the original `store/skillStore.ts`, a narrow request-identity helper if
+needed, and `test/skillStoreOwnership.test.ts` for its observed read-publication defect:
+initialize/refresh have unguarded late success/failure, and in-flight reads deduplicate by path/provider
+without service identity. Only the same current workspace/provider/service/generation may publish;
+ABA and replacement must fence old reads and post-write refresh. Same-service initial dedup and
+explicit fresh-read semantics remain. Request identity metadata is not another Skill cache/store;
+the original SkillStore remains the sole projection. Use small real-Promise red/green cases.
+Two additional real counterexamples authorize refusing a mismatched explicit workspace identity
+before read or enabled-write request/state mutation, and clearing old skills/capability on a missing-service initialize
+into a different scope. Matching same-scope behavior and the original method signatures remain.
+
+### Existing workflow Cancel/Resume command recovery
+
+The original exposed controls have no transport rejection handling or retained command identity.
+Root delegates their SidePane/Sections and a private `useWorkflowRunControl` helper, plus narrow
+original `v4/pendingCommandReplay`, `pendingCommandRegistry`, `pendingCommandWorkspace` extensions
+and optional resolved scope in `V4ConversationContext`, to the Trae reader's new worktree from
+`2cda9184`. Reuse the original registry/localStorage and SessionDataLayer `queryCommands`.
+The private query-only replay kind may retain workflow command type/workId, original command and
+client/Session identities, workspace/remote endpoint and minimal projection/revision hints; it
+can never be consumed as a replay. Only this kind retains unknown/unavailable query results;
+existing input/sensitive-digest recovery behavior remains unchanged. Real resolved scope is an
+optional UI-context field, not a backend/wire DTO or new connection owner.
+
+Register before dispatch, catch delivery uncertainty, query the same original command and offer
+explicit read-only result checking. Original run/Session/workspace/service/endpoint/mount generations
+own callbacks, including ABA and late ACK/query. An accepted ACK proves receipt, not Stop completion
+or resumed run visibility; consume existing authoritative run projection/revision evidence before
+releasing those locks. Unknown never authorizes a new Resume. Definite ACK reasons retain their
+original rejection presentation. No new queue, command authority, automatic replay or engine.
+Root owns new localized copy, wire/shared contracts, test registration, actual render/build/recipe
+and acceptance. Workers use only bounded original Node tests and authored renderer fixtures.
+
+For this query-only workflow kind, Root requires the original registry to durably retain the
+command identity before dispatch. Unavailable/quota storage or the 64-entry control capacity
+refuses locally with visible client feedback and no forged Host ACK. Unknown controls do not
+expire into a second Resume. Post-dispatch persistence failures keep the original pending disk
+identity for read-only restart reconciliation. Existing input/sensitive-digest limits and recovery
+semantics remain unchanged; no second storage namespace or command owner is authorized.
+
+The real Host fixture then confirms these control ACKs have no cold command fact: after
+Resume and shutdown/reopen, the original key queries unknown although the journal preserves
+the one resumed run. Root authorizes `bootstrap/src/zcode-protocol-v4/v4-gateway-handle-command.ts`,
+its original internal Host interface in `v4-gateway-support-2.ts`, and
+`bootstrap/src/zcode-protocol/v4-bridge-entry.ts` to persist only these two actual final accepted
+ACKs before reply through the existing Core Host `recordPersistentCommandFact` timeline writer
+and original SessionStore/index. A narrow same-owner bridge leaf is allowed if the line gate
+requires it. No wire/Session schema or new receipt database. A post-effect receipt publication
+failure remains uncertain and never implies rollback. Actual cold same-key query/duplicate,
+one original journal incarnation and storage/index failure regressions are required.
+
+A private accepted-observation epoch/revision may be retained only after the same-key positive
+query in the current scope. Cross-epoch confirmation uses that current observation and original
+monotonic journal sequence/action state, never numerical comparison of two process revisions.
+Unknown/missing run/unchanged-state ABA cannot clear the receipt or authorize replay.
+For a known accepted Resume returning to the same terminal status, an explicit Check Result may
+read original `workflowRunEvents` after the issue sequence, bounded to 500. A private resume-start
+sequence hint requires that exact Session/run's newer persisted `run-started` event and a current
+projection at least as new as it. Both awaits fence current scope/service/token/observation epoch;
+unknown ACK, missing run or a future unpublished event cannot unlock another Resume. No replay.

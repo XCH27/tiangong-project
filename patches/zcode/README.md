@@ -237,6 +237,7 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0218 | [0218-native-login-no-effect-rejection.patch](0218-native-login-no-effect-rejection.patch) | `68ebb1af4d61fb75c4cb6a9a841b908c26a4b163` |
 | 0219 | [0219-bounded-root-typecheck-processes.patch](0219-bounded-root-typecheck-processes.patch) | `ebca395799e10e22ec8b35193a31197bea6ddf0a` |
 | 0220 | [0220-first-empty-whiteboard-entry.patch](0220-first-empty-whiteboard-entry.patch) | `6d6fe24d0bf8d5881b7449fef977984b486a4923` |
+| 0221 | [0221-feature-receipts-and-definition-publication.patch](0221-feature-receipts-and-definition-publication.patch) | `b25de0eb074b10cb5e0e21b5887b9c9552e42aeb` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
@@ -344,3 +345,20 @@ Workbench regression starts at that actual empty card in both locales, then draw
 through the original pane/control. The native-CLI missing-tool assertion follows the corrected
 app-provided CLI wording in both languages; raw-process-error and editor-refusal checks remain.
 No new navigation, Session, document, permission or persistence owner is introduced.
+
+
+## Feature receipts and definition publication
+
+Candidate `cf093a502306c32e30d2a44d8df5756c7733c04c`, tree
+`b25de0eb074b10cb5e0e21b5887b9c9552e42aeb`. Patch 0221 repairs the original plugin enabled/Skill publication owners and
+existing workflow Cancel/Resume recovery. Known write replies, clean canonical observations and
+current projection changes are distinct; reciprocal mutation admission preserves the original
+busy owner. Skill reads and post-write refresh retain service/workspace/generation ownership.
+Browser, Plugins and Computer Use refresh original definitions for confirmed changes while
+retaining failures. Query-only workflow identities are saved in the original pending registry
+before dispatch, bounded to 64, and cannot expire into replay. The actual final accepted control
+ACK uses the original Session timeline fact/index before reply. Cold result checks retain the
+original command and read monotonic workflow journal evidence; process revisions are not compared
+across epochs. Post-effect storage/index failures remain uncertain. No data migration, dependency,
+wire schema or second state authority is added. Static closed-software comparison is evidence
+only; final behavioral and delivery acceptance is recorded in `docs/DOCUMENT-READINESS.md`.
