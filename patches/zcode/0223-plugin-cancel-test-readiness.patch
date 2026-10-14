@@ -1,0 +1,127 @@
+From e99853a0cf4998679f69d6e071c1cb709c7d6eb0 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 11:07:34 -0700
+Subject: [PATCH] test: await child readiness before plugin-cancel behavioral
+ budgets
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Owner request: OV-110/OV-113 and TODO delivery 0 — make verify:delivery
+deterministic on the owner's Mac.
+
+Reason: the four plugin-cancel-ndjson cases started their 5 s catalog-
+admission timer and 8 s test timeout at spawn, so tsx compiling the
+bootstrap graph under build load failed them (2/4 and 3/4 failures in
+isolated reruns on 2026-10-14). The shutdown check also killed the child
+after 2 s, stricter than the product's own RUNTIME_STDIO_EOF_WAIT_MS.
+
+Change: one readiness request (30 s budget) before each case; behavioral
+budgets unchanged; the exit deadline uses RUNTIME_STDIO_EOF_WAIT_MS.
+Upstream: this test is Fleet-authored; upstream has no equivalent.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../test/plugin-cancel-ndjson.test.ts         | 33 +++++++++++++++----
+ 1 file changed, 26 insertions(+), 7 deletions(-)
+
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts
+index 47e368c4..7e9f543d 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts
+@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { loadKnownMarketplacesSync } from "@zcode/adapters/plugins";
+-import { zcodeProtocolMethods } from "@zcode/shared";
++import { RUNTIME_STDIO_EOF_WAIT_MS, zcodeProtocolMethods } from "@zcode/shared";
+ 
+ async function observed(promise: Promise<void>, label: string, timeoutMs: number) {
+   let timer: ReturnType<typeof setTimeout> | undefined;
+@@ -23,6 +23,13 @@ async function observed(promise: Promise<void>, label: string, timeoutMs: number
+   }
+ }
+ 
++// Child startup compiles the bootstrap graph through tsx; under build load that alone can exceed
++// the behavioral budgets below. Readiness is awaited separately so those budgets measure only the
++// plugin operation, cancellation and shutdown they assert.
++const CHILD_READY_TIMEOUT_MS = 30_000;
++const CHILD_READY_ID = 9_000;
++const TEST_TIMEOUT_MS = CHILD_READY_TIMEOUT_MS + 15_000;
++
+ async function fixture() {
+   const root = await mkdtemp(join(tmpdir(), "zcode-plugin-cancel-"));
+   const home = join(root, "home");
+@@ -92,7 +99,7 @@ async function fixture() {
+       waiters.delete(value.id);
+     }
+   });
+-  return {
++  const fixtureApi = {
+     get reached() {
+       return observed(reached.promise, "catalog admission", 5_000);
+     },
+@@ -135,7 +142,8 @@ async function fixture() {
+     async close() {
+       release.resolve();
+       child.stdin.end();
+-      const deadline = setTimeout(() => child.kill("SIGKILL"), 2_000);
++      // The product's own stdin-EOF exit budget, not a stricter test-only bound.
++      const deadline = setTimeout(() => child.kill("SIGKILL"), RUNTIME_STDIO_EOF_WAIT_MS);
+       const result = await exit;
+       clearTimeout(deadline);
+       await new Promise<void>((resolve) => {
+@@ -146,11 +154,22 @@ async function fixture() {
+       assert.deepEqual(result, { code: 0, signal: null }, errors);
+     },
+   };
++  fixtureApi.send(CHILD_READY_ID, zcodeProtocolMethods.sessionList, {
++    workspace: fixtureApi.workspace,
++  });
++  try {
++    await fixtureApi.response(CHILD_READY_ID, CHILD_READY_TIMEOUT_MS);
++  } catch (error) {
++    await fixtureApi.close().catch(() => {});
++    throw error;
++  }
++  responseOrder.length = 0;
++  return fixtureApi;
+ }
+ 
+ test(
+   "NDJSON cancellation reaches the original plugin operation while its catalog GET remains held",
+-  { timeout: 8_000 },
++  { timeout: TEST_TIMEOUT_MS },
+   async () => {
+     const f = await fixture();
+     try {
+@@ -183,7 +202,7 @@ test(
+ 
+ test(
+   "an unknown cancellation leaves the running operation and ordinary response order intact",
+-  { timeout: 8_000 },
++  { timeout: TEST_TIMEOUT_MS },
+   async () => {
+     const f = await fixture();
+     try {
+@@ -219,7 +238,7 @@ test(
+ 
+ test(
+   "one NDJSON input batch registers the original operation before cancellation bypasses queued work",
+-  { timeout: 8_000 },
++  { timeout: TEST_TIMEOUT_MS },
+   async () => {
+     const f = await fixture();
+     try {
+@@ -263,7 +282,7 @@ test(
+ 
+ test(
+   "an intervening ordinary request cannot delay cancellation of the running operation",
+-  { timeout: 8_000 },
++  { timeout: TEST_TIMEOUT_MS },
+   async () => {
+     const f = await fixture();
+     try {
+-- 
+2.54.0 (Apple Git-157)
+

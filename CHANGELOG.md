@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Delivery 0 (TODO): patch 0223 makes the plugin-cancel NDJSON cases await child readiness before
+  their unchanged behavioral budgets and use the product's stdin-EOF exit budget; 16/16 passes under
+  parallel load. 68 stale candidate worktrees removed after archiving every uncommitted diff and
+  untracked source file to `/Volumes/AIGC/.fleet-tmp/worktree-archive-2026-10-14/`.
 - Direction and documentation (OV-111..113, decision P12, 2026-10-14). Restore the ZCode-era
   canonical set (AGENTS, product, architecture, capabilities, decisions with OV-001..106,
   engineering, references, packaging, modules, research, TODO, DESIGN, doc validators) that existed
