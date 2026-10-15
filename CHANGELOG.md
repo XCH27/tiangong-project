@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Patch 0225: Host test fixtures await existing runtime settlement before closing SQLite,
+  reopening or deleting artifact directories. This fixes a real delivery-gate ENOTEMPTY failure
+  after automatic-decision Stop. Held-writer regressions cover both boundaries; the whiteboard
+  approval fixture releases its pending answer even after an assertion failure. Production
+  execution, permissions, dependencies and data formats are unchanged.
+
 - Delivery 0 closed: `bash scripts/fleet-verify.sh` passed three consecutive times on the owner's
   Mac (1,948 tests each, default TMPDIR, concurrent load), the branch is pushed, and stale worktrees
   are gone. Delivery 1 started: the v3.15.1 merge runs on candidate branch `fleet/upstream-3.15.1`

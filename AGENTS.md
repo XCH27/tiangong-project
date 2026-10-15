@@ -17,7 +17,7 @@ should not preload unrelated modules.
   built from mature open source (creative canvas, trading/quant research, one GenOffice-style
   Office plugin, Board), and its
   identity and data. Never reduce Fleet to an upstream plugin or to a single-domain tool. See [product](docs/product.md#position-against-upstream-zcode).
-- **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` (v3.14.3) and the 222
+- **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` (v3.14.3) and the 225
   ordered patches; [TODO delivery 1](TODO.md#delivery-order) moves it onto the current upstream
   release (v3.15.x).
   ZCode `AgentRuntime` is the Host: it builds requests, calls models, executes tools, applies

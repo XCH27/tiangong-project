@@ -79,6 +79,10 @@ absolute CIM/taskkill deadline inside the same phase. These are finite limits, n
 Preserve hard termination for non-settling resources and report unknown outcome; never promise
 receipt survival after explicit kill or indefinitely retain a dead process.
 
+Host fixtures use the same store-lifetime owner: await `waitForShutdownSettlement()` before
+closing SQLite, reopening or removing artifact directories. `beginShutdown()` alone only fences
+admission. Held-writer regressions in `test:pi-executor` verify both fixture lifecycle boundaries.
+
 Cold recovery: an older terminal event cannot override newer same-ID resume evidence. Preserve
 terminal authority against genuinely stale Started data using existing event/journal facts.
 Preserve the original event emission timestamp in optional internal `entry.data.eventTimestamp`

@@ -1,0 +1,165 @@
+From 68ada71da991a98dd0a014db1158bc1be625f53c Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 20:09:21 -0700
+Subject: [PATCH] test: settle owned Host writes before fixture reopen and
+ cleanup
+
+Owner request: TODO delivery 0 deterministic verification, OV-112 and P12.
+
+Reason: the full delivery gate on 859ed22a failed with ENOTEMPTY while
+cleaning artifacts/session after the public automatic-decision Stop case.
+The shared Pi Host fixture closed SQLite and removed its directory after
+beginShutdown without awaiting owned receipt writers.
+
+Reuse production's existing waitForShutdownSettlement before closing the
+fixture store on both reopen and close. Add held-writer regressions with
+real SQLite/filesystem, and release the whiteboard's fake approval in
+finally so assertion failures cannot strand cleanup.
+
+Current upstream v3.15.1 does not contain this Fleet-owned Pi fixture.
+No production runtime, dependency, account, permission or data format changes.
+---
+ .../core/test/helpers/pi-runtime-fixture.ts   |  2 +
+ .../core/test/native-whiteboard.test.ts       |  9 ++-
+ .../test/pi-runtime-fixture-lifecycle.test.ts | 56 +++++++++++++++++++
+ package.json                                  |  2 +-
+ 4 files changed, 65 insertions(+), 4 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/core/test/pi-runtime-fixture-lifecycle.test.ts
+
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+index 1cbee5a2..1a1b8ba4 100644
+--- a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -258,6 +258,7 @@ export async function fixture(
+     },
+     async reopen() {
+       runtime.beginShutdown();
++      await runtime.waitForShutdownSettlement();
+       store.close();
+       store = new SqliteSessionStore({ dbPath: path });
+       create();
+@@ -265,6 +266,7 @@ export async function fixture(
+     },
+     async close() {
+       runtime.beginShutdown();
++      await runtime.waitForShutdownSettlement();
+       store.close();
+       await rm(dir, { recursive: true, force: true });
+     },
+diff --git a/apps/zcode-cli/packages/core/test/native-whiteboard.test.ts b/apps/zcode-cli/packages/core/test/native-whiteboard.test.ts
+index c29b7001..1e713edb 100644
+--- a/apps/zcode-cli/packages/core/test/native-whiteboard.test.ts
++++ b/apps/zcode-cli/packages/core/test/native-whiteboard.test.ts
+@@ -81,6 +81,7 @@ test("repeating the exact mutation observes its commit; conflicting revisions an
+ 
+ test("denial and native Stop preserve workspace bytes, and an occupied foreground rejects without another queue", async () => {
+   const f = await nativeFixture();
++  let release: ((value: any) => void) | undefined;
+   try {
+     const board = drawing();
+     f.deny();
+@@ -93,7 +94,6 @@ test("denial and native Stop preserve workspace bytes, and an occupied foregroun
+     f.runtime.releaseForegroundPromotionLease("other");
+     // Let the original no-op drain settle before acquiring the next foreground.
+     await new Promise(resolve => setImmediate(resolve));
+-    let release!: (value: any) => void;
+     let entered!: () => void;
+     const permissionEntered = new Promise<void>(resolve => { entered = resolve; });
+     f.permissionWith(() => { entered(); return new Promise(resolve => { release = resolve; }); });
+@@ -101,13 +101,16 @@ test("denial and native Stop preserve workspace bytes, and an occupied foregroun
+     await permissionEntered;
+     assert.ok(f.runtime.getActiveForegroundExecutionId()?.startsWith("native-whiteboard:"));
+     assert.equal(f.runtime.stopActiveForegroundExecution().kind, "stopped");
+-    release({ decision: "allow" });
++    release!({ decision: "allow" });
+     const stopped = await saving;
+     assert.equal(stopped.accepted && stopped.result.success, false);
+     await f.runtime.waitForShutdownSettlement();
+     await assert.rejects(readFile(join(f.dir, whiteboardRelativePath(board.id))), { code: "ENOENT" });
+     assert.equal(f.requests.length, 0);
+-  } finally { await f.close(); }
++  } finally {
++    release?.({ decision: "allow" });
++    await f.close();
++  }
+ });
+ 
+ test("a changed drawing retaining an old mutation digest is refused on read, discovery and exact retry", async () => {
+diff --git a/apps/zcode-cli/packages/core/test/pi-runtime-fixture-lifecycle.test.ts b/apps/zcode-cli/packages/core/test/pi-runtime-fixture-lifecycle.test.ts
+new file mode 100644
+index 00000000..446888d3
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/pi-runtime-fixture-lifecycle.test.ts
+@@ -0,0 +1,56 @@
++import assert from "node:assert/strict";
++import { mkdir, readFile, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import test from "node:test";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++for (const transition of ["reopen", "close"] as const) {
++  test(`Host fixture ${transition} retains storage until owned writes settle`, async () => {
++    const host = await fixture();
++    host.steps.push(() => reply("Persist the authored fixture session"));
++    await host.runtime.executeTurn("Initialize the authored session");
++    const requestsBeforeTeardown = host.requests.length;
++    const store = host.store;
++    const release = Promise.withResolvers<void>();
++    const target = join(host.dir, "artifacts", "session", "late-receipt.txt");
++    const write = host.runtime.trackResidencyBlockingWork(
++      (async () => {
++        await release.promise;
++        store.debugCounts();
++        await mkdir(join(host.dir, "artifacts", "session"), { recursive: true });
++        await writeFile(target, "settled", "utf8");
++      })(),
++    );
++    // Attach both rejection handlers before exercising the teardown boundary.
++    const writeResult = Promise.allSettled([write]);
++    const pending = host[transition]();
++    const transitionResult = Promise.allSettled([pending]);
++    try {
++      assert.doesNotThrow(
++        () => store.debugCounts(),
++        "the original SQLite owner must remain open while its writer is pending",
++      );
++      release.resolve();
++      const [writer] = await writeResult;
++      const [lifecycle] = await transitionResult;
++      if (writer.status === "rejected") throw writer.reason;
++      if (lifecycle.status === "rejected") throw lifecycle.reason;
++      if (transition === "reopen") {
++        assert.equal(await readFile(target, "utf8"), "settled");
++        assert.doesNotThrow(() => host.store.debugCounts());
++      } else {
++        await assert.rejects(readFile(target, "utf8"), { code: "ENOENT" });
++      }
++      assert.equal(
++        host.requests.length,
++        requestsBeforeTeardown,
++        "teardown never dispatches inference",
++      );
++    } finally {
++      release.resolve();
++      await writeResult;
++      await transitionResult;
++      if (transition === "reopen") await host.close();
++    }
++  });
++}
+diff --git a/package.json b/package.json
+index 741746fc..f9bcf487 100644
+--- a/package.json
++++ b/package.json
+@@ -55,7 +55,7 @@
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test --test-concurrency=1 packages/ui/test/browserPopupScope.test.ts",
+     "test:usage-accounting": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-project-membership.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test --test-concurrency=1 packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/adapters/test/request-admission.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts apps/zcode-cli/packages/core/test/model-tool-capability.test.ts apps/zcode-cli/packages/core/test/request-budget.test.ts",
++    "test:pi-executor": "tsx --test --test-concurrency=1 apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/deferred-tools.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/adapters/test/request-admission.test.ts apps/zcode-cli/packages/core/test/page-settings-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts apps/zcode-cli/packages/core/test/permission-revocation.test.ts apps/zcode-cli/packages/core/test/model-tool-capability.test.ts apps/zcode-cli/packages/core/test/request-budget.test.ts apps/zcode-cli/packages/core/test/pi-runtime-fixture-lifecycle.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+-- 
+2.54.0 (Apple Git-157)
+
