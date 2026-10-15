@@ -166,15 +166,16 @@ bash scripts/fleet-verify.sh                  # full candidate delivery gate (�
 ```
 
 `scripts/init.sh` and the Craft pin checks live on the retained Craft branch, not here.
-`源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/` and are not tracked. When the
-volume is not mounted, every "compare the reference first" step is unexecutable — report it and
-stop rather than work from memory. Reference checkouts carry their own `.git`; a `checkout` inside
-one silently moves the baseline.
+The full reference root is `/Volumes/AIGC/天工参考/源码参考`; `UI参考/` links to the AIGC UI cache.
+This checkout's `源码参考/` is a partial local directory, not the full cache: preserve it and use
+the full root, including `--reference-root /Volumes/AIGC/天工参考/源码参考` for reference guides.
+When AIGC is not mounted, reference comparison is unexecutable — report it and stop rather than
+work from memory. Each reference has its own `.git`; a `checkout` silently moves its baseline.
 
 ## Before you write UI
 
 Read [DESIGN](DESIGN.md), then the routed module. Diff the affected implementation against its
-own original: `.fleet/zcode` against `源码参考/software/ZCode`; `app/` against the pinned Craft
+own original: `.fleet/zcode` against `<reference-root>/software/ZCode`; `app/` against the pinned Craft
 checkout. Read the named reference's actual component/controller, not just a screenshot.
 Use that host's existing controls and values; Craft look-pin measurements are scoped in DESIGN
 and must not be applied blindly to unrelated ZCode components. UI redesign needs a concrete reason.

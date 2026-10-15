@@ -5,11 +5,20 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Validated NewMax's original selected handlers/preload with real Electron IPC and file writes,
+  including an adverse parallel acknowledgement/storage mismatch and fresh-process readback.
+  Extended two commercial native seams through source/symbol evidence and a bounded Claude
+  stop-request prefix; whole-native settlement remains unknown. Reference commands now name
+  the full AIGC cache instead of mistaking the partial workspace copy for it.
+
 - Patch 0225: Host test fixtures await existing runtime settlement before closing SQLite,
   reopening or deleting artifact directories. This fixes a real delivery-gate ENOTEMPTY failure
   after automatic-decision Stop. Held-writer regressions cover both boundaries; the whiteboard
   approval fixture releases its pending answer even after an assertion failure. Production
   execution, permissions, dependencies and data formats are unchanged.
+  Candidate `68ada71d` then passed the full delivery gate three consecutive times on this Mac.
+  An authored real-SQLite roundtrip through exact v3.15.1 migration/read sources retained all
+  data and rejected a corrupt migration checksum; mixed support dependencies remain explicit.
 
 - Delivery 0 closed: `bash scripts/fleet-verify.sh` passed three consecutive times on the owner's
   Mac (1,948 tests each, default TMPDIR, concurrent load), the branch is pushed, and stale worktrees

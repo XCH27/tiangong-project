@@ -434,7 +434,8 @@ The owner's broader reverse-inspection request is retained in the existing comme
 The [AIGC corpus index](/Volumes/AIGC/天工参考/commercial/README.md) and
 [machine design index](/Volumes/AIGC/天工参考/commercial/DESIGN-INDEX.json) bind seven applications,
 their separate revisions, frontend/state, bridge/IPC, local services, schema and failure/recovery
-paths. This is `EVIDENCE_ONLY`; it is not a runtime, owner-visual, whole-cloud or original-source
+paths. This is `EVIDENCE_ONLY`; selected-handler execution is scoped below, without whole-vendor-runtime,
+owner-visual, whole-cloud or original-source
 reconstruction claim. NewMax remained primary-only. Bounded independent readers inspected the
 other clients and cross-reviewed source/claim bindings; no proprietary code enters Fleet.
 
@@ -448,7 +449,7 @@ other clients and cross-reviewed source/claim bindings; no proprietary code ente
 | Claude Desktop | No equivalent prior full desktop dossier located; CLI/SDK references are different evidence. | [Design](/Volumes/AIGC/天工参考/commercial/Claude-Desktop/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/Claude-Desktop/FEATURES.md): 2.37337.1, 43 curated anchors, 94 generated interfaces/1334 method/store/event entries with 94 Main bindings. Artifact cache eligibility and approval-only shown-ID rechecks are explicit; advisory tool hints do not establish a vulnerability. Cowork, Code, artifacts, Frames and Spaces retain separate owners/policies. Conditional contracts do not establish live availability. |
 | QoderWork CN | Earlier UI/material evidence did not establish this complete local design map. | [Design](/Volumes/AIGC/天工参考/commercial/QoderWork-CN/0.9.9/ARCHITECTURE.md), [coverage](/Volumes/AIGC/天工参考/commercial/QoderWork-CN/0.9.9/FEATURES.md): 0.9.9; 139 emitted module markers, 37 SQL files, 16 manifests, 68 curated spans. Writing UI save, comment snapshots, success SessionEnd snapshots and optional watcher broadcasts are distinct. Artifact roots group rather than filter results; handled submit is not durable acceptance. CWD strings do not prove native ownership/freshness. Canvas request/notification mismatch has selected-source synthetic evidence; native execution remains unverified. Stable family IDs retain an explicit crosswalk. |
 
-The primary verified all seven corrected dossier manifests: 1004 indexed output files match their
+The primary verified all seven corrected dossier manifests: 1005 indexed output files match their
 bytes/hashes. Source span checks and independent red/recheck records are retained in the AIGC
 `commercial/analysis-tools` folder. Counts describe indexed artifacts and reviewed declarations;
 they do not mean every anonymous closure, dependency or native implementation is understood.
@@ -464,6 +465,22 @@ labelled. The primary also caught a wrong Minara method window in the new review
 the red evidence remains. A byte/hash match is not semantic validation. This is a finite critical
 path audit, not proof every frontend closure, native algorithm or cloud service is reconstructed.
 
+[NewMax's selected-handler integration](/Volumes/AIGC/天工参考/commercial/analysis-tools/newmax-electron-integration/README.md)
+now runs unchanged preload/original handlers and store through real Electron 41.0.3 IPC/filesystem:
+two processes, five invoke channels and 14 checks. Registry metadata/sender mapping are authored
+adapters; no whole vendor app, original registry/window manager, account or native binding ran.
+Normal data/file bytes survive restart. Without scheduling injection, parallel A acknowledged
+`race-a`, B rejected renaming the shared temporary file, yet only `race-b` persisted. This is
+adverse selected-handler evidence, not a safe-store or full-app acceptance claim.
+
+[Native seam evidence](/Volumes/AIGC/天工参考/commercial/analysis-tools/native-seam-review/FINDINGS.md)
+binds Manus recorder teardown and Claude VM wrappers to preserved binaries. A bounded raw-byte
+decoder recovered Claude's conditional `canRequestStop`/`requestStopWithError:` prefix; opposite
+branches, final promise/resource settlement and N-API address wiring remain unproved. Apple's
+[request contract](https://developer.apple.com/documentation/virtualization/vzvirtualmachine/requeststop%28%29?language=objc)
+explicitly separates request success from VM exit. No target native image was loaded. The failed
+unbounded range-tool output and the small analysis-only Capstone alternative are recorded separately.
+
 REA was checked against [its official source](https://github.com/morluto/rea). Independent source
 `efbc486b9bf8ab46da16fdd6ed88128849e30e81` and verified npm `rea-agents` 6.5.0 were staged on AIGC,
 preserving `fa0a9b2d328a07d8ec2924dc224d51c620981dcc`/6.4.0. No global MCP setup or toolchain upgrade
@@ -478,8 +495,8 @@ domain-native human/Agent operations, service leases, accepted versions and quer
 Adverse defaults and unproved guarantees remain rejected evidence. Compare current upstream
 ZCode's page/plugin contract first, through [Components](modules/components.md), before admitting
 Fleet product changes. No target application, personal profile, paid inference, account operation,
-production dependency or live-authority change occurred. Selected shipped leaf methods were
-evaluated only in authored memory/filesystem fixtures during the subsequent adverse review;
+production dependency or live-authority change occurred. Selected source methods/preload were
+evaluated with authored host adapters, memory/filesystem fixtures and real Electron IPC;
 this is not native application or provider execution. Cloud service bodies and opaque native
 algorithms remain unavailable; packaged clients do not establish server storage/security or
 visual/runtime acceptance.
@@ -543,8 +560,10 @@ and unresolved integration boundary. No SDK dependency or replacement executor w
 
 Per-project `FLEET-ADAPTATION.md` guides inside each reference checkout are generated from the
 tables below and the modules' `Execution` sections. After changing either, run
-`python3 scripts/reference-guides.py --write`; `--check` validates without fetching. Refreshing a
-checkout is not code admission or a baseline update.
+`python3 scripts/reference-guides.py --write --reference-root /Volumes/AIGC/天工参考/源码参考`;
+`--check` validates without fetching. The workspace `源码参考/` is a partial local copy, preserved
+separately; missing paths there do not mean the locked AIGC cache is absent. All 87 source-locked
+guides validate against the full root. Refreshing a checkout is not admission or a baseline update.
 
 Current checkout observation: 2026-09-29. Historical findings below retain their original revisions and dates.
 
@@ -4612,6 +4631,24 @@ tests. 211 of 222 patch files carry no subject or rationale header.
 conflicts. 49 conflicts are in the split upstream files, where upstream changed +4,208/−1,056
 lines that would have to be hand-ported into the numbered fragments. Areas: CLI core 37, Settings
 UI 32, bootstrap 32, v4 UI 13, adapters 13, desktop main 9.
+
+The current source/tag recheck still resolves public main and peeled `v3.15.1` to `aac47556`;
+the annotated tag object is separate, and GitHub's latest-release redirect is not that source
+selection. [Adoption evidence](/Volumes/AIGC/天工参考/commercial/analysis-tools/upstream-adoption-review/RECOMMENDATION.md)
+selects upstream's AppBridge/sandbox instead of extending Fleet's handwritten bridge, while
+retaining Fleet's durable operation/result/usage/checkpoint owners. Upstream widget state is
+volatile and does not replace those receipts.
+
+An existing upgrade worktree, `/Volumes/AIGC/.fleet-tmp/upstream-3.15.1`, is the Fleet merge
+checkpoint `827c62cd` descending from `aac47556`, with uncommitted lockfile/typecheck changes.
+It is not pure upstream or a fully verified candidate; it and its changes are retained.
+[Real storage roundtrip](/Volumes/AIGC/天工参考/commercial/analysis-tools/upstream-adoption-review/storage-roundtrip/runs/probe.PqC3lu/RESULT.json)
+instead stages 12 exact-tag source files with explicitly mixed Fleet support dependencies:
+Fleet `68ada71d` store → upstream migration/read repositories → Fleet store, on an authored
+database under Node 24.14.0. All 24 migration records, schema/rows, native metadata, optional
+JSON kinds, custom usage fields and artifact bytes survive; zero migrations execute and the
+native admission remains a duplicate. A separate corrupt-checksum copy fails closed. This
+does not prove full new-base boot, receipt recovery, exports or live-profile migration.
 
 **Owner-decided removals that a merge must keep removed.** OV-030 retired ZCode commerce and
 official-server dependencies; patches 0002 and 0044 removed the Coding Plan purchase/upgrade/quota UI, and
