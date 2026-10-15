@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Delivery 0 closed: `bash scripts/fleet-verify.sh` passed three consecutive times on the owner's
+  Mac (1,948 tests each, default TMPDIR, concurrent load), the branch is pushed, and stale worktrees
+  are gone. Delivery 1 started: the v3.15.1 merge runs on candidate branch `fleet/upstream-3.15.1`
+  (worktree `/Volumes/AIGC/.fleet-tmp/upstream-3.15.1`); Fleet-split files receive upstream hunks in
+  their fragments, and OV-030 removals stay removed.
 - Adversarially rechecked the commercial design corpus against failure branches and consumers,
   correcting unsupported durability, directory-filtering, receipt and source-anchor claims.
   Isolated original-method counterexamples remain distinct from native application execution;
