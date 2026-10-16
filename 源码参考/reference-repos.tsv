@@ -1,0 +1,38 @@
+# path	url	ref
+# Keep this list limited to reference projects that are tracked as gitlinks
+# in the Fleet repository. The sync workflow updates only the gitlink commit
+# pointer, not the third-party source contents.
+源码参考/plugins/codegraph	https://github.com/colbymchenry/codegraph	HEAD
+源码参考/plugins/context-mode	https://github.com/mksglu/context-mode	HEAD
+源码参考/plugins/deepcode-cli	https://github.com/lessweb/deepcode-cli	HEAD
+源码参考/plugins/headroom	https://github.com/chopratejas/headroom	HEAD
+源码参考/plugins/hyperframes	https://github.com/heygen-com/hyperframes	HEAD
+源码参考/plugins/letta-code	https://github.com/letta-ai/letta-code	HEAD
+源码参考/plugins/markitdown	https://github.com/microsoft/markitdown	HEAD
+源码参考/plugins/mem0	https://github.com/mem0ai/mem0	HEAD
+源码参考/plugins/mempalace	https://github.com/MemPalace/mempalace	HEAD
+源码参考/plugins/open-design	https://github.com/nexu-io/open-design	HEAD
+源码参考/plugins/openui	https://github.com/thesysdev/openui	HEAD
+源码参考/plugins/remotion	https://github.com/remotion-dev/remotion	HEAD
+源码参考/plugins/repomix	https://github.com/yamadashy/repomix	HEAD
+源码参考/plugins/rtk	https://github.com/rtk-ai/rtk	HEAD
+源码参考/plugins/supermemory	https://github.com/supermemoryai/supermemory	HEAD
+源码参考/software/AionUi	https://github.com/iOfficeAI/AionUi	HEAD
+源码参考/software/AstrBot	https://github.com/AstrBotDevs/AstrBot	HEAD
+源码参考/software/CowAgent	https://github.com/zhayujie/CowAgent	HEAD
+源码参考/software/DeepSeek-Reasonix	https://github.com/esengine/DeepSeek-Reasonix	HEAD
+源码参考/software/Kun	https://github.com/KunAgent/Kun	HEAD
+源码参考/software/OpenHands	https://github.com/OpenHands/OpenHands	HEAD
+源码参考/software/cc-switch	https://github.com/farion1231/cc-switch	HEAD
+源码参考/software/cherry-studio	https://github.com/CherryHQ/cherry-studio	HEAD
+源码参考/software/cmux	https://github.com/manaflow-ai/cmux	HEAD
+源码参考/software/cockpit-tools	https://github.com/jlcodes99/cockpit-tools	HEAD
+源码参考/software/craft-agents-oss	https://github.com/craft-ai-agents/craft-agents-oss	HEAD
+源码参考/software/golutra	https://github.com/golutra/golutra	HEAD
+源码参考/software/hermes-agent	https://github.com/NousResearch/hermes-agent	HEAD
+源码参考/software/kdenlive	https://github.com/KDE/kdenlive	HEAD
+源码参考/software/lobehub	https://github.com/lobehub/lobehub	HEAD
+源码参考/software/multica	https://github.com/multica-ai/multica	HEAD
+源码参考/software/opencode	https://github.com/anomalyco/opencode	HEAD
+源码参考/software/warp	https://github.com/warpdotdev/warp	HEAD
+源码参考/software/zed	https://github.com/zed-industries/zed	HEAD
